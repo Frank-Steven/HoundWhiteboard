@@ -1,4 +1,6 @@
 const { app, BrowserWindow } = require("electron");
+const fs = require("fs");
+const path = require("path");
 let winMainMenu, winNewFile, win;
 const ipc = require("electron").ipcMain;
 function createWindow(template, width, height, minWidth, minHeight) {
@@ -15,6 +17,12 @@ function createWindow(template, width, height, minWidth, minHeight) {
   });
   win.loadFile(__dirname + "/templates/" + template);
   // win.webContents.openDevTools();
+
+  win.webContents.on("did-finish-load", () => {
+    const settings = loadSettings();
+    console.log(settings);
+    win.webContents.send("settings-loaded", settings);
+  });
   return win;
 }
 function createFullScreenWindow(template) {
@@ -32,6 +40,32 @@ function createFullScreenWindow(template) {
   return win;
 }
 
+// 获取用户数据目录（类似 VSCode 的 ~/.config/YourApp/）
+const userDataPath = app.getPath("userData");
+const settingsPath = path.join(userDataPath, "settings.json");
+
+// 读取设置文件
+function loadSettings() {
+  if (fs.existsSync(settingsPath)) {
+    const data = fs.readFileSync(settingsPath, "utf-8");
+    return JSON.parse(data);
+  } else {
+    // 如果文件不存在，创建默认设置
+    const defaultSettings = { theme: "light", language: "zh-CN" };
+    fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2));
+    return defaultSettings;
+  }
+}
+
+function saveSettings(settings) {
+  try {
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    console.log("Settings saved successfully");
+  } catch (err) {
+    console.error("Error saving settings:", err);
+  }
+}
+
 app.whenReady().then(() => {
   winMainMenu = createWindow("main-menu.html", 800, 600, 800, 600);
   app.on("activate", () => {
@@ -42,7 +76,26 @@ app.whenReady().then(() => {
 });
 
 ipc.on("new-file", () => {
-  winNewFile = createWindow("new-file.html", 800, 600, 800, 600);
+  winNewFile = new BrowserWindow({
+    width: 800,
+    height: 600,
+    minWidth: 800,
+    minHeight: 600,
+    parent: winMainMenu,
+    modal: true,
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+  });
+  winNewFile.loadFile(__dirname + "/templates/new-file.html");
+  
+  winNewFile.webContents.on("did-finish-load", () => {
+    const settings = loadSettings();
+    console.log(settings);
+    winNewFile.webContents.send("settings-loaded", settings);
+  });
 });
 
 ipc.on("new-file-edit", () => {
@@ -63,16 +116,17 @@ ipc.on("open-file", () => {
     })
     .then((result) => {
       if (!result.canceled) {
-        console.log(result.filePaths);
+        // 先选择文件再打开全屏白板
+        createFullScreenWindow("full-screen.html");
       }
     });
-  createFullScreenWindow("full-screen.html");
 });
 
-ipc.on("settings-changed", () => {
+ipc.on("settings-changed", (event, settings) => {
   BrowserWindow.getAllWindows().forEach((win) => {
-    win.webContents.send("settings-changed");
-  })
+    win.webContents.send("settings-changed", settings);
+  });
+  saveSettings(settings);
 });
 
 app.on("window-all-closed", () => {

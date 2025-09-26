@@ -41,6 +41,7 @@ settingsBtn.addEventListener("click", () => {
   startScreen.style.display = "none";
   helpScreen.style.display = "none";
   aboutScreen.style.display = "none";
+  resetSelects();
 });
 
 /// Start screen buttons
@@ -100,7 +101,7 @@ function resetSelects() {
   console.log(window.settings);
   // 根据当前 theme 选择项，初始化 select 项
   for (let i = 0; i < themeSelect.options.length; i++) {
-    if (themeSelect.options[i].value == window.settings.theme) {
+    if (themeSelect.options[i].value === window.settings.theme) {
       themeSelect.selectedIndex = i;
       break;
     }
@@ -108,7 +109,7 @@ function resetSelects() {
 
   // 根据当前 language 选择项，初始化 select 项
   for (let i = 0; i < languageSelect.options.length; i++) {
-    if (languageSelect.options[i].value == window.settings.language) {
+    if (languageSelect.options[i].value === window.settings.language) {
       languageSelect.selectedIndex = i;
       break;
     }
@@ -127,12 +128,9 @@ saveBtn.addEventListener("click", () => {
   console.log(languageSelect.value);
   window.settings.theme = themeSelect.value;
   window.settings.language = languageSelect.value;
-  ipc.send("settings-changed");
+  ipc.send("settings-changed", window.settings);
 });
 
 cancelBtn.addEventListener("click", () => {
   resetSelects();
 });
-setTimeout(() => {
-  resetSelects();
-}, 1000);
