@@ -1,0 +1,43 @@
+{
+  "language": "English",
+  "text": {
+    "main-menu": {
+      "title": "Hound Whiteboard",
+      "sidebar": {
+        "start": "Start",
+        "help": "Help",
+        "about": "About",
+        "settings": "Settings"
+      },
+      "content": {
+        "start": {
+          "title": "Start",
+          "discription": "Welcome to Hound Whiteboard, an open-source whiteboard application. You can draw, write, take notes, and share your ideas here.",
+          "buttons": {
+            "new-text": "New Whiteboard",
+            "new-edit-text": "New (Edit Mode)",
+            "open-text": "Open Whiteboard"
+          }
+        },
+        "help": {
+          "title": "Help",
+          "discription": "Here is some help information."
+        },
+        "about": {
+          "title": "About",
+          "discription": "This is an introduction to Hound Whiteboard."
+        },
+        "settings": {
+          "title": "Settings",
+          "discription": "This is the settings page.",
+          "theme": "Theme",
+          "language": "Language",
+          "buttons": {
+            "save": "Save",
+            "cancel": "Cancel"
+          }
+        }
+      }
+    }
+  }
+}
