@@ -38,6 +38,18 @@
           }
         }
       }
+    },
+    "new-file" :{
+      "title": "新建白板",
+      "header": "新建白板",
+      "description": "内容",
+      "form": {
+        "label": "label",
+        "input": "input",
+        "submit": "屈从"
+      }
+
+
     }
   }
 }

@@ -1,18 +1,10 @@
-window.onload = function () {
-  window.settings = require(`../data/settings.json`);
+let ipc = require("electron").ipcRenderer;
+
+ipc.on("settings-loaded", (event, settings) => {
+  window.settings = settings;
   setTheme();
   setLanguage();
-  //!! 读取文件
-  // const fs = require("fs");
-  // console.log(`${__dirname}/../../../../data/settings.json`);
-  // fs.readFile(`${__dirname}/../../../../data/settings.json`, "utf-8", (err, data) => {
-  //   if (err) throw err;
-  //   window.settings = JSON.parse(data);
-  //   alert(window.settings);
-  //   setTheme();
-  //   setLanguage();
-  // });
-};
+});
 
 function setTheme() {
   let stylesheet = document.getElementById("theme-stylesheet");
@@ -49,20 +41,12 @@ function setLanguage() {
   document.dispatchEvent(langEvent);
 }
 
-let ipc = require("electron").ipcRenderer;
-
-ipc.on("settings-changed", () => {
+ipc.on("settings-changed", (event, settings) => {
   console.log("Settings changed.");
-  // 将 window.settings 写入文件
-  const fs = require("fs");
-  fs.writeFile(
-    `${__dirname}/../data/settings.json`,
-    JSON.stringify(window.settings),
-    (err) => {
-      if (err) throw err;
-      console.log("Settings saved.");
-    }
-  );
+  window.settings = settings;
   setTheme();
   setLanguage();
 });
+
+setTheme();
+setLanguage();
