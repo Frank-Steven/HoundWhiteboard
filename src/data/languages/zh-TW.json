@@ -1,0 +1,43 @@
+{
+  "language": "繁體中文",
+  "text": {
+    "main-menu": {
+      "title": "獵犬白板 Hound Whiteboard",
+      "sidebar": {
+        "start": "開始",
+        "help": "幫助",
+        "about": "關於",
+        "settings": "設定"
+      },
+      "content": {
+        "start": {
+          "title": "開始",
+          "discription": "歡迎使用獵犬白板，這是一款開源的白板應用。你可以在這裡繪製，寫字，做筆記，分享你的想法。",
+          "buttons": {
+            "new-text": "新建白板",
+            "new-edit-text": "新建（編輯模式）",
+            "open-text": "開啟白板"
+          }
+        },
+        "help": {
+          "title": "幫助",
+          "discription": "這裡有一些幫助資訊。"
+        },
+        "about": {
+          "title": "關於",
+          "discription": "這是關於獵犬白板的介紹。"
+        },
+        "settings": {
+          "title": "設定",
+          "discription": "這裡是設定頁面。",
+          "theme": "主題",
+          "language": "語言",
+          "buttons": {
+            "save": "儲存",
+            "cancel": "取消"
+          }
+        }
+      }
+    }
+  }
+}

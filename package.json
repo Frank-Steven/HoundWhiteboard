@@ -1,0 +1,15 @@
+{
+  "name": "hound-whiteboard",
+  "version": "0.0.0",
+  "description": "A whiteboard app",
+  "main": "./src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "packager": "electron-packager ./ MyApp --ignore=^(data|defaults|\\..+) --out=./dist"
+  },
+  "author": "Frank Steven",
+  "license": "MIT",
+  "dependencies": {
+    "electron": "^25.9.8"
+  }
+}
