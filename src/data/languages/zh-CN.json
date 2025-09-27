@@ -44,12 +44,10 @@
       "header": "新建白板",
       "description": "内容",
       "form": {
-        "label": "label",
-        "input": "input",
-        "submit": "屈从"
+        "label": "文件名",
+        "input": "请输入文本",
+        "submit": "确定"
       }
-
-
     }
   }
 }
