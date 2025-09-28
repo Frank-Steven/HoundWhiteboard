@@ -39,7 +39,7 @@
         }
       }
     },
-    "new-file" :{
+    "new-file": {
       "title": "新建白板",
       "header": "新建白板",
       "description": "内容",
@@ -47,6 +47,19 @@
         "label": "文件名",
         "input": "请输入文本",
         "submit": "确定"
+      }
+    },
+    "new-theme": {
+      "title": "新建样式",
+      "header": "新建样式",
+      "foreground": {
+        "description": "选择纹理",
+        "import": {
+          "text": "从 .hwt 导入"
+        }
+      },
+      "background": {
+        "description": "选择背景"
       }
     }
   }

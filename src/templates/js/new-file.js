@@ -12,6 +12,7 @@ const choosePathBtn = document.getElementById("new-file-choosepath");
 
 let filePath = "";
 
+// 输入框
 input.onkeydown = () => {
   setTimeout(() => {
     if (filePath === "") {
@@ -23,6 +24,7 @@ input.onkeydown = () => {
   }, 10);
 };
 
+// 选择保存文件夹
 choosePathBtn.onclick = () => {
   ipc.send("path-choose");
 };
@@ -37,3 +39,8 @@ ipc.on("path-choose-result", (event, result) => {
   console.log(filePath);
   filePathSpan.textContent = filePath + input.value;
 });
+
+// 新建主题
+newThemeBtn.onclick = () => {
+  ipc.send("new-theme");
+}

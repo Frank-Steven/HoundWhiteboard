@@ -49,9 +49,9 @@ settingsBtn.addEventListener("click", () => {
 const startNewBtn = document.getElementById(
   "main-menu-content-start-buttons-new"
 );
-const startNewEditBtn = document.getElementById(
-  "main-menu-content-start-buttons-new-edit"
-);
+// const startNewEditBtn = document.getElementById(
+//   "main-menu-content-start-buttons-new-edit"
+// );
 const startOpenBtn = document.getElementById(
   "main-menu-content-start-buttons-open"
 );
@@ -60,9 +60,9 @@ startNewBtn.addEventListener("click", () => {
   ipc.send("new-file");
 });
 
-startNewEditBtn.addEventListener("click", () => {
-  ipc.send("new-edit-file");
-});
+// startNewEditBtn.addEventListener("click", () => {
+//   ipc.send("new-edit-file");
+// });
 
 startOpenBtn.addEventListener("click", () => {
   ipc.send("open-file");
