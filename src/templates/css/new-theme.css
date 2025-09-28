@@ -1,0 +1,46 @@
+#new-theme {
+  background-color: var(--bg0);
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+#new-theme>div {
+  margin: 0 40px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+#new-theme-foreground {
+  width: 100%;
+  height: calc(100% - 350px);
+  display: flex;
+  flex-wrap: wrap;
+  overflow-y: scroll;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+#new-theme-foreground-description {
+  flex-basis: 100%;
+}
+
+/* ::-webkit-scrollbar {
+  display: none;
+} */
+
+#new-theme-foreground>div {
+  display: flex;
+  flex-wrap: wrap;
+  height: 100%;
+  justify-content: left;
+  align-items: center;
+  flex-direction: column;
+}
+
+#new-theme-foreground>div>button>img {
+  display: block;
+  width: 40px;
+  height: 40px;
+}
