@@ -37,9 +37,9 @@ ipc.on("new-theme", () => {
   winNewTheme = createModalWindow("new-theme.html", 800, 600, 800, 600, winNewFile, settingsManager);
 });
 
-ipc.on("new-file-edit", () => {
-  winNewFile = createWindow("new-file-edit.html", 800, 600, 800, 600, settingsManager);
-});
+// ipc.on("new-file-edit", () => {
+//   winNewFile = createWindow("new-file-edit.html", 800, 600, 800, 600, settingsManager);
+// });
 
 app.on("window-all-closed", () => {
   setTimeout(() => {

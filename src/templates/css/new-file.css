@@ -15,7 +15,9 @@
 
 #new-file-theme-select {
   width: 100%;
-  height: calc(100% - 200px);
+  /* NOTE: Use margin else */
+  /* height: calc(100% - 200px); */
+  height: 100%;
   display: flex;
   overflow-y: auto;
   flex-wrap: wrap;
@@ -36,26 +38,6 @@
   flex-direction: column;
 }
 
-/* NOTE: 请请用 class="big-flex-btn" in global.css 而不是这个 */
-#new-file-theme-select button {
-  margin: 10px;
-  padding: 10px;
-  border: none;
-  border-radius: 5px;
-  background-color: var(--bg1);
-  color: var(--fg1);
-  font-size: 1.2em;
-  cursor: pointer;
-  width: 150px;
-  height: 100px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-}
-
-#new-file-theme-select>div>button>img {
-  display: block;
-  width: 40px;
-  height: 40px;
+#new-file-save {
+  margin-bottom: 40px;
 }

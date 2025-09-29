@@ -16,11 +16,8 @@ function compressFile(directory) {
   fs.remove(directory);
 }
 
-// 创建一个空的白板
-function createEmptyBoard(file) {}
-
 function setupFileOperationIPC(ipc, utils) {
-  ipc.on("open-file", () => {
+  ipc.on("open-hwb-file", () => {
     // 调用系统默认打开文件对话框
     dialog
       .showOpenDialog(utils.getWinMainMenu(), {
@@ -38,6 +35,24 @@ function setupFileOperationIPC(ipc, utils) {
       });
   });
 
+  // NOTE: 暂时没用
+  // ipc.on("open-hwt-file", () => {
+  //   // 调用系统默认打开文件对话框
+  //   dialog
+  //     .showOpenDialog(utils.getWinMainMenu(), {
+  //       properties: ["openFile"],
+  //       filters: [
+  //         { name: "All Files", extensions: ["*"] },
+  //         { name: "HoundWhileboard Texture Files", extensions: ["hwt"] },
+  //       ],
+  //     })
+  //     .then((result) => {
+  //       if (!result.canceled) {
+  //         // TODO: 打开 hwt 文件
+  //       }
+  //     });
+  // });
+
   ipc.on("path-choose", (event) => {
     // 调用系统默认打开目录对话框
     dialog
@@ -53,6 +68,9 @@ function setupFileOperationIPC(ipc, utils) {
       });
   });
 }
+
+// 创建一个空的白板
+function createEmptyBoard(file) {}
 
 module.exports = {
   extractFile,

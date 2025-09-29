@@ -26,3 +26,19 @@ body {
   justify-content: center;
   flex-direction: column;
 }
+
+.big-flex-btn img {
+  display: block;
+  width: 40px;
+  height: 40px;
+}
+
+.yes-or-no-buttons {
+  margin-bottom: 40px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.yes-or-no-buttons button {
+  margin: 10px;
+}
