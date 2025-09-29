@@ -48,5 +48,6 @@ ipc.on("settings-changed", (event, settings) => {
   setLanguage();
 });
 
+// Init
 setTheme();
 setLanguage();

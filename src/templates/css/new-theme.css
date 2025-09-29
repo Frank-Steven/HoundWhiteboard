@@ -7,40 +7,73 @@
 
 #new-theme>div {
   margin: 0 40px;
-  height: 100%;
+  width: 100%;
   display: flex;
   flex-direction: column;
 }
 
 #new-theme-foreground {
   width: 100%;
-  height: calc(100% - 350px);
+  /* NOTE: Use margin-bottom from #new-theme-bottom else */
+  /* height: calc(100% - 200px); */
+  height: 100%;
   display: flex;
   flex-wrap: wrap;
-  overflow-y: scroll;
+  overflow-y: hidden;
   align-items: flex-start;
   justify-content: flex-start;
 }
 
-#new-theme-foreground-description {
-  flex-basis: 100%;
-}
-
-/* ::-webkit-scrollbar {
+::-webkit-scrollbar {
   display: none;
-} */
+}
 
 #new-theme-foreground>div {
   display: flex;
   flex-wrap: wrap;
   height: 100%;
+  width: 100%;
+  overflow-x: scroll;
+  overflow-y: visible;
   justify-content: left;
-  align-items: center;
+  align-content: flex-start;
   flex-direction: column;
 }
 
-#new-theme-foreground>div>button>img {
-  display: block;
+#new-theme-background-options {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+#new-theme-background-options label {
+  margin-right: 5px;
+}
+
+#new-theme-background-options input[type="color"] {
   width: 40px;
-  height: 40px;
+  height: 30px;
+  margin-left: 10px;
+  border: none;
+  cursor: pointer;
+}
+
+#new-theme-preview {
+  display: flex;
+  flex-direction: row;
+}
+
+#new-theme-background-options>div {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+#new-theme-bottom {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 40px;
 }

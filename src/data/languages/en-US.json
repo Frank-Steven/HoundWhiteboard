@@ -21,21 +21,56 @@
         },
         "help": {
           "title": "Help",
-          "discription": "Here is some help information."
+          "discription": "Here is some helpful resources and information."
         },
         "about": {
           "title": "About",
-          "discription": "This is an introduction to Hound Whiteboard."
+          "discription": "Hound Whiteboard is an innovative, open-source collaborative whiteboard application designed to enhance creativity and teamwork."
         },
         "settings": {
           "title": "Settings",
-          "discription": "This is the settings page.",
+          "discription": "Customize your Hound Whiteboard experience.",
           "theme": "Theme",
           "language": "Language",
           "buttons": {
             "save": "Save",
             "cancel": "Cancel"
           }
+        }
+      }
+    },
+    "new-file": {
+      "title": "Create New Whiteboard",
+      "header": "Create New Whiteboard",
+      "description": "Content",
+      "form": {
+        "label": "File Name",
+        "input": "Enter text here"
+      },
+      "save": {
+        "choosepath": "Choose",
+        "prompt": "File will be saved in:",
+        "path": "Please select a file path",
+        "form": {
+          "prompt": "File Name:",
+          "submit": "Submit"
+        }
+      }
+    },
+    "new-theme": {
+      "title": "Create New Style",
+      "header": "Create New Style",
+      "foreground": {
+        "description": "Select Texture",
+        "import": {
+          "text": "Import from .hwt"
+        }
+      },
+      "background": {
+        "description": "Choose Background",
+        "options": {
+          "solidlbl": "Solid Color",
+          "imagelbl": "Custom"
         }
       }
     }

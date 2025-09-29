@@ -38,6 +38,41 @@
           }
         }
       }
+    },
+    "new-file": {
+      "title": "新建白板",
+      "header": "新建白板",
+      "description": "內容",
+      "form": {
+        "label": "檔案名稱",
+        "input": "請輸入文字"
+      },
+      "save": {
+        "choosepath": "選擇",
+        "prompt": "檔案儲存在：",
+        "path": "請選擇檔案路徑",
+        "form": {
+          "prompt": "檔案名稱：",
+          "submit": "提交"
+        }
+      }
+    },
+    "new-theme": {
+      "title": "新建樣式",
+      "header": "新建樣式",
+      "foreground": {
+        "description": "選擇紋理",
+        "import": {
+          "text": "從 .hwt 匯入"
+        }
+      },
+      "background": {
+        "description": "選擇背景",
+        "options": {
+          "solidlbl": "純色",
+          "imagelbl": "自訂"
+        }
+      }
     }
   }
 }
