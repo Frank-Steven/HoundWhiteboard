@@ -67,7 +67,7 @@ startNewBtn.addEventListener("click", () => {
 // });
 
 startOpenBtn.addEventListener("click", () => {
-  ipc.send("open-hwb-file");
+  ipc.send("open-hwb-file", "MainMenu");
 });
 
 /// Settings screen buttons
@@ -101,7 +101,6 @@ for (let i = 0; i < languages.length; i++) {
 
 //!!
 function resetSelects() {
-  console.log(window.settings);
   // 根据当前 theme 选择项，初始化 select 项
   for (let i = 0; i < themeSelect.options.length; i++) {
     if (themeSelect.options[i].value === window.settings.theme) {

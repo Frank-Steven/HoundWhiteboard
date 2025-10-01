@@ -57,22 +57,37 @@
         }
       }
     },
-    "new-theme": {
+    "new-template": {
       "title": "新建样式",
       "header": "新建样式",
       "foreground": {
         "description": "选择纹理",
         "import": {
-          "text": "从 .hwt 导入"
+          "text": "从 .hmq 导入"
         }
       },
       "background": {
         "description": "选择背景",
         "options": {
           "solidlbl": "纯色",
-          "imagelbl": "自定义"
+          "imagelbl": "自定义",
+          "image": {
+            "text": "未选择图片",
+            "upload": "选择"
+          }
         }
+      },
+      "name-template": {
+        "text": "样式名称", 
+        "input": "请输入样式名称"
+      },
+      "preview": {
+        "description": "预览"
       }
+    },
+    "yes-or-no-button": {
+      "yes": "确认",
+      "no": "取消"
     }
   }
 }

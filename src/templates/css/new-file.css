@@ -13,7 +13,7 @@
   flex-direction: column;
 }
 
-#new-file-theme-select {
+#new-file-template-select {
   width: 100%;
   /* NOTE: Use margin else */
   /* height: calc(100% - 200px); */
@@ -29,7 +29,7 @@
   display: none;
 }
 
-#new-file-theme-select>div {
+#new-file-template-select>div {
   display: flex;
   flex-wrap: wrap;
   height: 100%;

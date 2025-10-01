@@ -33,12 +33,11 @@ body {
   height: 40px;
 }
 
-.yes-or-no-buttons {
-  margin-bottom: 40px;
-  display: flex;
+#yes-or-no-button {
+  position: fixed;
+  right: 30px;
+  bottom: 30px;
+  background-color: var(--bg1);
   justify-content: flex-end;
-}
-
-.yes-or-no-buttons button {
-  margin: 10px;
+  gap: 10px;
 }
