@@ -1,11 +1,15 @@
 const { BrowserWindow } = require("electron");
+const IOManager = require("./IOManager");
 
-function createWindow(template, width, height, minWidth, minHeight, settingsManager) {
+function createWindow(
+  template,
+  size = { width: 800, height: 600, minWidth: 800, minHeight: 600 }
+) {
   const win = new BrowserWindow({
-    width: width,
-    height: height,
-    minWidth: minWidth,
-    minHeight: minHeight,
+    width: size.width,
+    height: size.height,
+    minWidth: size.minWidth,
+    minHeight: size.minHeight,
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: true,
@@ -16,8 +20,7 @@ function createWindow(template, width, height, minWidth, minHeight, settingsMana
   // win.webContents.openDevTools();
 
   win.webContents.on("did-finish-load", () => {
-    const settings = settingsManager.loadSettings();
-    console.log(settings);
+    const settings = IOManager.loadSettings();
     win.webContents.send("settings-loaded", settings);
   });
   return win;
@@ -38,12 +41,16 @@ function createFullScreenWindow(template) {
   return win;
 }
 
-function createModalWindow(template, width = 800, height = 600, minWidth = 800, minHeight = 600, parent, settingsManager) {
+function createModalWindow(
+  template,
+  parent,
+  size = { width: 800, height: 600, minWidth: 800, minHeight: 600 }
+) {
   const modalWin = new BrowserWindow({
-    width: width,
-    height: height,
-    minWidth: minWidth,
-    minHeight: minHeight,
+    width: size.width,
+    height: size.height,
+    minWidth: size.minWidth,
+    minHeight: size.minHeight,
     parent: parent,
     modal: true,
     autoHideMenuBar: true,
@@ -55,8 +62,7 @@ function createModalWindow(template, width = 800, height = 600, minWidth = 800, 
   modalWin.loadFile(__dirname + "/../templates/" + template);
 
   modalWin.webContents.on("did-finish-load", () => {
-    const settings = settingsManager.loadSettings();
-    console.log(settings);
+    const settings = IOManager.loadSettings();
     modalWin.webContents.send("settings-loaded", settings);
   });
 

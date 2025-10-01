@@ -57,13 +57,13 @@
         }
       }
     },
-    "new-theme": {
+    "new-template": {
       "title": "Create New Style",
       "header": "Create New Style",
       "foreground": {
         "description": "Select Texture",
         "import": {
-          "text": "Import from .hwt"
+          "text": "Import from .hmq"
         }
       },
       "background": {

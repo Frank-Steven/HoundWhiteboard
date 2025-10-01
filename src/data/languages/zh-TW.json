@@ -57,13 +57,13 @@
         }
       }
     },
-    "new-theme": {
+    "new-template": {
       "title": "新建樣式",
       "header": "新建樣式",
       "foreground": {
         "description": "選擇紋理",
         "import": {
-          "text": "從 .hwt 匯入"
+          "text": "從 .hmq 匯入"
         }
       },
       "background": {
