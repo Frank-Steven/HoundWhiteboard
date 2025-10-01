@@ -4,25 +4,29 @@
 
 const newThemeBtn = document.getElementById("new-file-theme-select-new-theme");
 
-const input = document.getElementById("new-file-form-input");
-const inputConfirmBtn = document.getElementById("new-file-form-submit");
+const input = document.getElementById("new-file-save-form-input");
+const inputSubmit = document.getElementById("new-file-save-form-submit");
 
-const filePathSpan = document.getElementById("new-file-path");
-const choosePathBtn = document.getElementById("new-file-choosepath");
+const filePathSpan = document.getElementById("new-file-save-path");
+const choosePathBtn = document.getElementById("new-file-save-choosepath");
 
 let filePath = "";
 
+// 输入框
 input.onkeydown = () => {
   setTimeout(() => {
     if (filePath === "") {
-      filePathSpan.textContent =
-        "Please choose a directory." + input.value + ".hwb";
+      alert("请选择文件路径");
+      input.value = "";
     } else {
-      filePathSpan.textContent = filePath + input.value + ".hwb";
+      console.log("File Name:" + input.value);
+      filePathSpan.textContent =
+        filePath + (input.value === "" ? "" : input.value + ".hwb");
     }
-  }, 10);
+  }, 2);
 };
 
+// 选择保存文件夹
 choosePathBtn.onclick = () => {
   ipc.send("path-choose");
 };
@@ -34,6 +38,12 @@ ipc.on("path-choose-result", (event, result) => {
     filePath = result[0] + "/";
   }
 
-  console.log(filePath);
-  filePathSpan.textContent = filePath + input.value;
+  console.log("Path:" + filePath);
+  filePathSpan.textContent =
+    filePath + (input.value === "" ? "" : input.value + ".hwb");
 });
+
+// 新建主题
+newThemeBtn.onclick = () => {
+  ipc.send("new-theme");
+};
