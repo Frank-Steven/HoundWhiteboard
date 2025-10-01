@@ -49,9 +49,11 @@ settingsBtn.addEventListener("click", () => {
 const startNewBtn = document.getElementById(
   "main-menu-content-start-buttons-new"
 );
-const startNewEditBtn = document.getElementById(
-  "main-menu-content-start-buttons-new-edit"
-);
+
+// const startNewEditBtn = document.getElementById(
+//   "main-menu-content-start-buttons-new-edit"
+// );
+
 const startOpenBtn = document.getElementById(
   "main-menu-content-start-buttons-open"
 );
@@ -60,12 +62,12 @@ startNewBtn.addEventListener("click", () => {
   ipc.send("new-file");
 });
 
-startNewEditBtn.addEventListener("click", () => {
-  ipc.send("new-edit-file");
-});
+// startNewEditBtn.addEventListener("click", () => {
+//   ipc.send("new-edit-file");
+// });
 
 startOpenBtn.addEventListener("click", () => {
-  ipc.send("open-file");
+  ipc.send("open-hwb-file");
 });
 
 /// Settings screen buttons
@@ -73,6 +75,7 @@ startOpenBtn.addEventListener("click", () => {
 const themeSelect = document.getElementById(
   "main-menu-content-settings-theme-select"
 );
+
 const languageSelect = document.getElementById(
   "main-menu-content-settings-language-select"
 );
@@ -119,6 +122,7 @@ function resetSelects() {
 const saveBtn = document.getElementById(
   "main-menu-content-settings-buttons-save"
 );
+
 const cancelBtn = document.getElementById(
   "main-menu-content-settings-buttons-cancel"
 );
