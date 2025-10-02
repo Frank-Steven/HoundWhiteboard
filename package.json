@@ -11,6 +11,8 @@
   "license": "MIT",
   "dependencies": {
     "adm-zip": "^0.5.16",
-    "electron": "^25.9.8"
+    "electron": "^25.9.8",
+    "hidefile": "^3.0.0",
+    "electron-packager": "^17.1.0"
   }
 }

@@ -1,11 +1,9 @@
-const print = console.log;
 const { randomInt } = require("crypto");
 const fs = require("fs");
-const { version } = require("os");
 const path = require("path");
-const { threadId } = require("worker_threads");
 const AdmZip = require("adm-zip");
 const { dialog } = require("electron");
+const hidefile = require('hidefile');
 
 function setupFileOperationIPC(ipc, windows) {
   ipc.on("open-hwb-file", (event, windowNow) => {
@@ -25,6 +23,7 @@ function setupFileOperationIPC(ipc, windows) {
         }
       });
   });
+
   ipc.on("open-hmq-file", (event, windowNow) => {
     dialog
       .showOpenDialog(windows[windowNow], {
@@ -49,8 +48,23 @@ function setupFileOperationIPC(ipc, windows) {
       .showOpenDialog(windows[windowNow], {
         properties: ["openFile"],
         filters: [
-          { name: "All Files", extensions: ["*"] },
-          { name: "Image Files", extensions: ["jpg", "png", "jpeg"] },
+          {
+            name: "Image Files",
+            extensions: [
+              "jpg",
+              "jpeg",
+              "png",
+              "gif",
+              "bmp",
+              "ico",
+              "tif",
+              "tiff",
+              "svg",
+              "webp",
+              "apng",
+              "avif",
+            ],
+          },
         ],
       })
       .then((result) => {
@@ -79,28 +93,23 @@ function setupFileOperationIPC(ipc, windows) {
   });
 }
 
-// 创建一个空的白板
-function createEmptyBoard(file) {}
-
 function extractFile(directory, file) {
   const zip = new AdmZip(path.join(directory, file.name + "." + file.suffix));
   const dest = path.join(directory, file.name);
   zip.extractAllTo(dest, true);
 }
 
-function compressFile(directory, destDirectory, file) {
+function compressFile(directory, file, remove = false) {
   const zip = new AdmZip();
   zip.addLocalFolder(directory);
-  zip.writeZip(path.join(destDirectory, file.name + "." + file.suffix));
-  fs.rm(directory, { recursive: true, force: true }, (err) => {
-    if (err) throw err;
-    console.log("Directory deleted");
-  });
+  zip.writeZip(file);
+  if (remove) {
+    fs.rm(directory, { recursive: true, force: true }, (err) => {
+      if (err) throw err;
+      console.log("Directory deleted");
+    });
+  }
 }
-
-let userDataPath, settingsPath, templatesPath;
-
-let templatePool;
 
 class fileNameRandomPool {
   constructor(directory, suffix) {
@@ -118,7 +127,6 @@ class fileNameRandomPool {
         this.existance[num] = true;
       }
     });
-    console.log(this.existance);
   }
 
   //新建文件
@@ -132,9 +140,47 @@ class fileNameRandomPool {
   //删除文件
   delete(fileID) {
     fs.unlinkSync(path.join(this.directory, fileID + "." + this.suffix));
-    this.existance[parseInt(path.basename(filename, this.suffix))] = null;
+    delete this.existance[parseInt(path.basename(filename, this.suffix))];
   }
 }
+
+// 创建一个空的白板
+function createEmptyBoard(boardInfo) {
+  // 创建临时目录 (去除文件名中的".hwb"后缀)
+  const tempDir = boardInfo.filePath.replace(".hwb", "");
+  // 创建隐藏的临时目录
+  fs.mkdirSync(tempDir, { recursive: true });
+  // 创建 meta.json 文件
+  const meta = {
+    type: "board",
+    version: "0.1.0",
+  };
+  fs.writeFileSync(
+    path.join(tempDir, "meta.json"),
+    JSON.stringify(meta, null, 2)
+  );
+  // 创建 pages.json 文件
+  fs.writeFileSync(
+    path.join(tempDir, "pages.json"),
+    JSON.stringify([], null, 2)
+  );
+  // 创建 history.json 文件
+  fs.writeFileSync(
+    path.join(tempDir, "history.json"),
+    JSON.stringify([], null, 2)
+  );
+  // 创建 pages 目录
+  fs.mkdirSync(path.join(tempDir, "pages"), { recursive: true });
+  // 创建 templates 目录
+  fs.mkdirSync(path.join(tempDir, "templates"), { recursive: true });
+  // 创建templates/default.hmq文件（打包）
+  compressFile(tempDir, boardInfo.filePath);
+  hidefile.hideSync(tempDir);
+}
+
+let userDataPath, settingsPath, templatesPath;
+
+let templatePool;
 
 function init(app) {
   // 获取用户数据目录（类似 VSCode 的 ~/.config/YourApp/）
@@ -179,15 +225,18 @@ function saveTemplate(template) {
   let templateData = {
     name: template.name,
     background: template.backgroundColor,
+    backgroundType: "solid",
   };
   if (template.backgroundImage) {
     // 从urljson获取图片，copy to tempDir as backgroundImage.[suffix] use fs.cpSync
     const imgUrl = template.backgroundImage;
-    const imgName = "backgroundImage." + imgUrl.split(".").pop();
+    const suffix = imgUrl.split(".").pop();
+    const imgName = "backgroundImage." + suffix;
     const imgPath = path.join(tempDir, imgName);
     fs.cpSync(imgUrl, imgPath);
-    templateData.background = "image";
-    print(templateData);
+    templateData.background = suffix;
+    templateData.backgroundType = "image";
+    console.log(templateData);
   }
   // 写入文件
   fs.writeFileSync(
@@ -198,6 +247,15 @@ function saveTemplate(template) {
     path.join(tempDir, "template.json"),
     JSON.stringify(templateData, null, 2)
   );
+  return {
+    id: templateID.name,
+    data: templateData,
+    imgPath: path.join(
+      templatesPath,
+      templateID.name,
+      `backgroundImage.${templateData.background}`
+    ),
+  };
 }
 
 function loadTemplate(template) {
@@ -208,13 +266,18 @@ function loadTemplate(template) {
     const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
     return meta.type === "template";
   });
-  // 遍历数组，读取每个文件夹中的 {ID:[dir], data: template.json}，组成一个对象数组返回
+  // 遍历数组，读取每个文件夹中的 {id, data: template.json, imgPath}，组成一个对象数组返回
   const templates = templateDirs.map((dir) => {
     const templatePath = path.join(templatesPath, dir, "template.json");
     const templateData = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
     return {
       id: dir,
       data: templateData,
+      imgPath: path.join(
+        templatesPath,
+        dir,
+        `backgroundImage.${templateData.background}`
+      ),
     };
   });
   return templates;
@@ -235,7 +298,9 @@ module.exports = {
   saveSettings,
   setupSettingsIPC,
   saveTemplate,
+  loadTemplate,
   setupFileOperationIPC,
   extractFile,
   compressFile,
+  createEmptyBoard,
 };

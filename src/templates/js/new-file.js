@@ -2,7 +2,11 @@
 // const ipc = ipcRenderer
 // ipc has been decleared in global.js
 
-const newTemplateBtn = document.getElementById("new-file-template-select-new-template");
+const path = require("path");
+
+const newTemplateBtn = document.getElementById(
+  "new-file-template-select-new-template"
+);
 
 const input = document.getElementById("new-file-save-form-input");
 const inputSubmit = document.getElementById("new-file-save-form-submit");
@@ -13,25 +17,71 @@ const choosePathBtn = document.getElementById("new-file-save-choosepath");
 const confirmBtn = document.getElementById("yes-or-no-button-yes");
 const cancelBtn = document.getElementById("yes-or-no-button-no");
 
-const buttonList = document.getElementById("new-file-template-select-buttons")
+const buttonList = document.getElementById("new-file-template-select-buttons");
 
 let filePath = "";
 
-// 输入框
-input.onkeydown = () => {
-  const clearInput = () => {
-    if (filePath === "") {
-      input.value = "";
-    } else {
-      console.log("File Name:" + input.value);
-      filePathSpan.textContent =
-        filePath + (input.value === "" ? "" : input.value + ".hwb");
+let boardInfo = {
+  templateId: null,
+  filePath: null,
+};
+
+// 输入框事件优化（使用input事件替代keydown）
+input.addEventListener('input', () => {
+  // 文件名过滤配置
+  const FILTER_CONFIG = {
+    // 增强正则表达式（覆盖所有操作系统非法字符）
+    illegalChars: /[<>:"/\\\.@|?*~$^'`\u0000-\u001F]/g, // 包含控制字符过滤
+    maxLength: 255 - '.hwb'.length, // 保留扩展名空间
+    replaceChar: '_' // 非法字符替换符
+  };
+
+  // 执行过滤操作
+  const sanitizeFilename = (value) => {
+    // 阶段1：预处理
+    let cleaned = value.trim()
+      .normalize('NFC') // 统一Unicode格式（重要macOS兼容）
+      .replace(FILTER_CONFIG.illegalChars, FILTER_CONFIG.replaceChar);
+
+    // 阶段2：长度控制
+    cleaned = cleaned.slice(0, FILTER_CONFIG.maxLength);
+
+    // 阶段3：保留系统特殊名称检测
+    if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]?)$/i.test(cleaned)) {
+      cleaned = FILTER_CONFIG.replaceChar + cleaned; // 避免保留名称冲突
     }
+
+    return cleaned;
+  };
+
+  // 应用过滤
+  const newValue = sanitizeFilename(input.value);
+  
+  // 仅当值变化时更新（避免无限循环）
+  if (input.value !== newValue) {
+    input.value = newValue;
+    showValidationFeedback(); // 添加视觉反馈
   }
 
-  setTimeout(clearInput, 2);
-  setTimeout(clearInput, 10);
-};
+  // 更新文件路径显示
+  updateFilePathDisplay(newValue);
+});
+
+// 新增视觉反馈函数
+function showValidationFeedback() {
+  input.classList.add('invalid-input');
+  setTimeout(() => input.classList.remove('invalid-input'), 500);
+}
+
+// 提取路径更新逻辑
+function updateFilePathDisplay(fileName) {
+  boardInfo.filePath = path.join(
+    filePath, 
+    fileName ? `${fileName}.hwb` : ''
+  );
+  filePathSpan.textContent = boardInfo.filePath || "未选择路径";
+}
+
 
 // 选择保存文件夹
 choosePathBtn.onclick = () => {
@@ -39,16 +89,13 @@ choosePathBtn.onclick = () => {
 };
 
 ipc.on("path-choose-result", (event, result) => {
-  // TODO: Use path.join
-  if (process.platform === "win32") {
-    filePath = result[0] + "\\";
-  } else {
-    filePath = result[0] + "/";
-  }
+  filePath = result[0];
 
   console.log("Path:" + filePath);
-  filePathSpan.textContent =
-    filePath + (input.value === "" ? "" : input.value + ".hwb");
+  filePathSpan.textContent = path.join(
+    filePath,
+    input.value === "" ? "" : input.value + ".hwb"
+  );
 });
 
 // 新建主题
@@ -59,10 +106,78 @@ newTemplateBtn.onclick = () => {
 // 取消
 cancelBtn.addEventListener("click", () => {
   ipc.send("close-window", "NewFile");
-})
+});
+
+// 确认
+// TODO: 不能有同名
+confirmBtn.addEventListener("click", () => {
+  if (boardInfo.templateId === null) {
+    console.log("No template selected");
+    return;
+  }1
+  if (filePath === "" || input.value === "") {
+    if (input.value === "") {
+      input.focus();
+      console.log("No file name selected");
+    } else if (filePath === "") {
+      choosePathBtn.focus();
+      console.log("No file path selected");
+    }
+    return;
+  }
+  ipc.send("create-new-board-templated", boardInfo);
+  ipc.send("close-window", "NewFile");
+});
+
+function buttonLoadAdd(element) {
+  let btn = document.createElement("button");
+  let span = document.createElement("span");
+  let img = document.createElement("img");
+  // 加载按钮（在新建模版按钮后面插入）
+  buttonList.insertBefore(btn, buttonList.children[1]);
+  btn.appendChild(img);
+  btn.appendChild(span);
+
+  btn.className = "big-flex-btn";
+  btn.id = element.id;
+  span.innerHTML = element.data.name;
+  if (element.data.backgroundType === "solid") {
+    // 加载背景色
+    img.style.background = element.data.background;
+  } else {
+    // 加载图片
+    img.src = element.imgPath;
+  }
+
+  const choose = () => {
+    console.log("Choose: " + element.id);
+    // 当选中这个模版时，result.templateId = element.id
+    boardInfo.templateId = element.id;
+    // 遍历所有按钮，取消选中
+    for (let i = 0; i < buttonList.children.length; i++) {
+      buttonList.children[i].style.border = "2px solid transparent";
+    }
+    // 选中当前按钮
+    btn.style.border = "2px solid #007aff";
+  };
+  choose(); // Init
+  btn.addEventListener("click", choose);
+}
 
 // 加载按钮
 ipc.send("load-buttons", "NewFile");
+
+confirmBtn.focus();
+
 ipc.on("buttons-loaded", (event, result) => {
-  
+  console.log(result);
+  buttonList.innerHTML = "";
+  buttonList.appendChild(newTemplateBtn);
+  result.forEach((element) => {
+    buttonLoadAdd(element);
+  });
+});
+
+ipc.on("new-template-adding", (event, result) => {
+  buttonLoadAdd(result.info);
 });
