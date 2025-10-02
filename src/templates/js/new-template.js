@@ -96,3 +96,4 @@ ipc.on("open-hmq-file-result", (event, result) => {
   }
   previewScreenFlush();
 });
+

@@ -1,5 +1,7 @@
 * {
   user-select: none;
+  transition: color 0.2s ease-in-out;
+  transition: background-color 0.2s ease-in-out;
 }
 
 body {
@@ -37,7 +39,6 @@ body {
   position: fixed;
   right: 30px;
   bottom: 30px;
-  background-color: var(--bg1);
   justify-content: flex-end;
   gap: 10px;
 }

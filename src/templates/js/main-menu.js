@@ -99,7 +99,6 @@ for (let i = 0; i < languages.length; i++) {
   languageSelect.add(option);
 }
 
-//!!
 function resetSelects() {
   // 根据当前 theme 选择项，初始化 select 项
   for (let i = 0; i < themeSelect.options.length; i++) {
