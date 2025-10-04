@@ -100,7 +100,7 @@ ipc.on("path-choose-result", (event, result) => {
 
 // 新建主题
 newTemplateBtn.onclick = () => {
-  ipc.send("new-template");
+  ipc.send("open-modal-window", "NewFile", "NewTemplate", "new-template.html");
 };
 
 // 取消
