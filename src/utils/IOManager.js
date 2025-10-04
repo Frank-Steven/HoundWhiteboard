@@ -112,15 +112,13 @@ function compressFile(directory, file, remove = false) {
 }
 
 class fileNameRandomPool {
-  constructor(directory, suffix) {
+  constructor(directory, filter) {
     this.directory = directory;
     this.suffix = suffix;
     // 读取目录下所有文件名
     const files = fs.readdirSync(directory);
-    const filteredFiles = files.filter((file) => path.extname(file) === suffix);
-    const numbers = filteredFiles.map((file) =>
-      parseInt(path.basename(file, suffix))
-    );
+    const filteredFiles = files.filter(filter);
+    const numbers = filteredFiles.map(parseInt);
     this.existance = {};
     numbers.forEach((num) => {
       if (!isNaN(num)) {
@@ -143,6 +141,8 @@ class fileNameRandomPool {
     delete this.existance[parseInt(path.basename(filename, this.suffix))];
   }
 }
+
+let userDataPath, settingsPath, templatesPath;
 
 // 创建一个空的白板
 function createEmptyBoard(boardInfo) {
@@ -171,14 +171,33 @@ function createEmptyBoard(boardInfo) {
   );
   // 创建 pages 目录
   fs.mkdirSync(path.join(tempDir, "pages"), { recursive: true });
+  // 创建第一页
+  let pagePool = new fileNameRandomPool(path.join(tempDir, "pages"), (_) => true)
+  let firstPageID = pagePool.generate();
+  fs.mkdirSync(path.join(tempDir, "pages", firstPageID), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, "pages", firstPageID, "assets"), { recursive: true });
+  const pageMeta = {
+    type: "page",
+    version: "0.1.0",
+  };
+  fs.writeFileSync(
+    path.join(tempDir, "pages", firstPageID, "meta.json"),
+    JSON.stringify(pageMeta, null, 2)
+  );
+
   // 创建 templates 目录
   fs.mkdirSync(path.join(tempDir, "templates"), { recursive: true });
-  // 创建templates/default.hmq文件（打包）
+  // 把样式从 templatesPath 中拷过来，不需要 Pool
+  // let tpltPool = new fileNameRandomPool(path.join(tempDir, "templates"), (_) => ture)
+  fs.mkdirSync(path.join(tempDir, "templates", boardInfo.templateID), { recursive: true });
+  fs.cpSync(
+    path.join(templatesPath, boardInfo.templateID), 
+    path.join(tempDir, "templates", boardInfo.templateID)
+  );
+  // 创建 .hmq 文件（打包）
   compressFile(tempDir, boardInfo.filePath);
   hidefile.hideSync(tempDir);
 }
-
-let userDataPath, settingsPath, templatesPath;
 
 let templatePool;
 
@@ -188,7 +207,7 @@ function init(app) {
   settingsPath = path.join(userDataPath, "settings.json");
   templatesPath = path.join(userDataPath, "templates");
   // 读取templates目录
-  templatePool = new fileNameRandomPool(templatesPath, "hmq");
+  templatePool = new fileNameRandomPool(templatesPath, (_) => true);
 }
 
 // 读取设置文件

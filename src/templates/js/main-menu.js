@@ -59,7 +59,7 @@ const startOpenBtn = document.getElementById(
 );
 
 startNewBtn.addEventListener("click", () => {
-  ipc.send("new-file");
+  ipc.send("open-modal-window", "MainMenu", "NewFile", "new-file.html");
 });
 
 // startNewEditBtn.addEventListener("click", () => {
