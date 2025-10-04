@@ -35,7 +35,7 @@ function createFullScreenWindow(template) {
     fullscreen: true,
     autoHideMenuBar: true,
     frame: false,
-    transparent: false,
+    transparent: true,
   });
   win.loadFile(__dirname + "/../templates/" + template);
   console.log(__dirname + "/../templates/" + template);
