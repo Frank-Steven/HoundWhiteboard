@@ -42,3 +42,11 @@ body {
   justify-content: flex-end;
   gap: 10px;
 }
+
+.content-screen {
+  display: none;
+}
+
+.content-active {
+  display: block;
+}
