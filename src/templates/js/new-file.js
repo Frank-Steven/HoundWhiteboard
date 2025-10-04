@@ -92,10 +92,8 @@ ipc.on("path-choose-result", (event, result) => {
   filePath = result[0];
 
   console.log("Path:" + filePath);
-  filePathSpan.textContent = path.join(
-    filePath,
-    input.value === "" ? "" : input.value + ".hwb"
-  );
+  boardInfo.filePath = path.join(filePath, input.value === "" ? "" : input.value + ".hwb");
+  filePathSpan.textContent = boardInfo.filePath;
 });
 
 // 新建主题
@@ -125,8 +123,8 @@ confirmBtn.addEventListener("click", () => {
     }
     return;
   }
+  console.log(boardInfo);
   ipc.send("create-new-board-templated", boardInfo);
-  // ipc.send("close-window", "NewFile");
 });
 
 function buttonLoadAdd(element) {

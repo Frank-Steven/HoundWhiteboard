@@ -73,12 +73,13 @@ ipc.on("new-template-result", (event, result) => {
 });
 
 ipc.on("load-buttons", (event, windowNow) => {
-  const result = IOManager.loadTemplate();
+  const result = IOManager.loadTemplateAll();
   windows[windowNow].webContents.send("buttons-loaded", result);
 });
 
 ipc.on("create-new-board-templated", (event, boardInfo) => {
-  console.log("create-new-board-templated " + boardInfo);
+  console.log("create-new-board-templated ");
+  console.log(boardInfo);
   IOManager.createEmptyBoard(boardInfo);
   BrowserWindow.getAllWindows().forEach((win) => {
     win.close();
@@ -88,7 +89,8 @@ ipc.on("create-new-board-templated", (event, boardInfo) => {
 });
 
 ipc.on("open-board-templated", (event, filePath) => {
-  console.log("open-board-templated " + filePath);
+  console.log("open-board-templated ");
+  console.log("filePath");
   BrowserWindow.getAllWindows().forEach((win) => {
     win.close();
   })

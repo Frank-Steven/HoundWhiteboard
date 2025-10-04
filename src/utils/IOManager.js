@@ -189,9 +189,10 @@ function createEmptyBoard(boardInfo) {
   // 把样式从 templatesPath 中拷过来，不需要 Pool
   // let tpltPool = new fileNameRandomPool(path.join(tempDir, "templates"), (_) => ture)
   fs.mkdirSync(path.join(tempDir, "templates", boardInfo.templateID), {recursive: true});
+  console.log("cp %s %s -r", path.join(templatesPath, boardInfo.templateID), path.join(tempDir, "templates", boardInfo.templateID));
   fs.cpSync(
     path.join(templatesPath, boardInfo.templateID),
-    path.join(tempDir, "templates"),
+    path.join(tempDir, "templates", boardInfo.templateID),
     {recursive: true}
   );
   // 创建 .hmq 文件（打包）
@@ -239,17 +240,20 @@ function saveTemplate(template) {
   // 创建临时目录
   const tempDir = path.join(templatesPath, templateID);
   fs.mkdirSync(tempDir);
+
   let meta = {
     type: "template",
     version: "0.1.0",
   };
+
   let templateData = {
     name: template.name,
     background: template.backgroundColor,
     backgroundType: "solid",
   };
+
   if (template.backgroundImage) {
-    // 从urljson获取图片，copy to tempDir as backgroundImage.[suffix] use fs.cpSync
+    // 从 url 获取图片，复制到 tempDir，文件名改为 backgroundImage
     const imgUrl = template.backgroundImage;
     const suffix = imgUrl.split(".").pop();
     const imgName = "backgroundImage." + suffix;
@@ -260,14 +264,8 @@ function saveTemplate(template) {
     console.log(templateData);
   }
   // 写入文件
-  fs.writeFileSync(
-    path.join(tempDir, "meta.json"),
-    JSON.stringify(meta, null, 2)
-  );
-  fs.writeFileSync(
-    path.join(tempDir, "template.json"),
-    JSON.stringify(templateData, null, 2)
-  );
+  fs.writeFileSync(path.join(tempDir, "meta.json"), JSON.stringify(meta, null, 2));
+  fs.writeFileSync(path.join(tempDir, "template.json"), JSON.stringify(templateData, null, 2));
   return {
     id: templateID,
     data: templateData,
@@ -279,7 +277,7 @@ function saveTemplate(template) {
   };
 }
 
-function loadTemplate(template) {
+function loadTemplateAll() {
   // 获取 templatesPath 里所有文件夹，保留文件夹中 meta.json 的 type 是 template 的那些，保存到一个数组中
   const templateDirs = fs.readdirSync(templatesPath).filter((dir) => {
     const metaPath = path.join(templatesPath, dir, "meta.json");
@@ -304,32 +302,8 @@ function loadTemplate(template) {
   return templates;
 }
 
-// function getAvailableThemes() {
-//   const themesPath = path.join(__dirname, '../data/themes');
-//   return fs.readdirSync(themesPath)
-//            .filter(file => file.endsWith('.css'))
-//            .map(file => file.replace('.css', ''));
-// }
-
-// function getAvailableLanguages() {
-//   const languagesPath = path.join(__dirname, '../data/languages');
-//   return fs.readdirSync(languagesPath)
-//            .filter(file => file.endsWith('.json'))
-//            .map(file => file.replace('.json', ''));
-// }
-
 function setupSettingsIPC(ipc, BrowserWindow) {
-  ipc.handle('get-available-themes', async () => {
-    return getAvailableThemes();
-  });
-
-  ipc.handle('get-available-languages', async () => {
-    return getAvailableLanguages();
-  });
-
-  ipc.handle('get-current-settings', async () => {
-    return loadSettings();
-  });
+  ipc.handle('get-current-settings', async () => {return loadSettings();});
 
   ipc.on("settings-changed", (event, settings) => {
     BrowserWindow.getAllWindows().forEach((win) => {
@@ -345,11 +319,9 @@ module.exports = {
   saveSettings,
   setupSettingsIPC,
   saveTemplate,
-  loadTemplate,
+  loadTemplateAll,
   setupFileOperationIPC,
   extractFile,
   compressFile,
   createEmptyBoard,
-  // getAvailableThemes,
-  // getAvailableLanguages,
 };
