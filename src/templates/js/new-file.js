@@ -22,7 +22,7 @@ const buttonList = document.getElementById("new-file-template-select-buttons");
 let filePath = "";
 
 let boardInfo = {
-  templateId: null,
+  templateID: null,
   filePath: null,
 };
 
@@ -111,7 +111,7 @@ cancelBtn.addEventListener("click", () => {
 // 确认
 // TODO: 不能有同名
 confirmBtn.addEventListener("click", () => {
-  if (boardInfo.templateId === null) {
+  if (boardInfo.templateID === null) {
     console.log("No template selected");
     return;
   }1
@@ -152,7 +152,7 @@ function buttonLoadAdd(element) {
   const choose = () => {
     console.log("Choose: " + element.id);
     // 当选中这个模版时，result.templateId = element.id
-    boardInfo.templateId = element.id;
+    boardInfo.templateID = element.id;
     // 遍历所有按钮，取消选中
     for (let i = 0; i < buttonList.children.length; i++) {
       buttonList.children[i].style.border = "2px solid transparent";

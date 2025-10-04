@@ -42,24 +42,6 @@ app.whenReady().then(() => {
   // console.log(windows);
 });
 
-// ipc.on("new-file", () => {
-//   windows.NewFile = createModalWindow("new-file.html", windows.MainMenu, {
-//     width: 800,
-//     height: 600,
-//     minWidth: 800,
-//     minHeight: 600,
-//   });
-// });
-
-// ipc.on("new-template", () => {
-//   windows.NewTemplate = createModalWindow("new-template.html", windows.NewFile, {
-//     width: 800,
-//     height: 600,
-//     minWidth: 800,
-//     minHeight: 600,
-//   });
-// });
-
 ipc.on("open-modal-window", (event, windowNow, windowNew, windowNewHTML) => {
   windows[windowNew] = createModalWindow(windowNewHTML, windows[windowNow], {
     width: 800,
@@ -96,14 +78,9 @@ ipc.on("load-buttons", (event, windowNow) => {
 
 ipc.on("create-new-board-templated", (event, boardInfo) => {
   IOManager.createEmptyBoard(boardInfo);
-  // BrowserWindow.getAllWindows().forEach((win) => {
-  //   win.close();
-  // });
-  windows.FullScreen = createWindow("new-template.html", {
-    width: 800,
-    height: 600,
-    minWidth: 800,
-    minHeight: 600,
+  BrowserWindow.getAllWindows().forEach((win) => {
+    win.close();
   });
+  windows.FullScreen = createFullScreenWindow("full-screen.html");
   console.log(windows.FullScreen);
 });

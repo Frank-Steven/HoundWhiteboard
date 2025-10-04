@@ -114,7 +114,6 @@ function compressFile(directory, file, remove = false) {
 class fileNameRandomPool {
   constructor(directory, filter) {
     this.directory = directory;
-    this.suffix = suffix;
     // 读取目录下所有文件名
     const files = fs.readdirSync(directory);
     const filteredFiles = files.filter(filter);
@@ -132,13 +131,13 @@ class fileNameRandomPool {
     let randomNum;
     while (this.existance[(randomNum = randomInt(0, 1145141919810))]);
     this.existance[randomNum] = true;
-    return { name: randomNum.toString(), suffix: this.suffix };
+    return randomNum.toString();
   }
 
-  //删除文件
-  delete(fileID) {
-    fs.unlinkSync(path.join(this.directory, fileID + "." + this.suffix));
-    delete this.existance[parseInt(path.basename(filename, this.suffix))];
+  //删除文件夹
+  delete(ID) {
+    fs.unlinkSync(path.join(this.directory, ID));
+    delete this.existance[parseInt(filename)];
   }
 }
 
@@ -192,7 +191,8 @@ function createEmptyBoard(boardInfo) {
   fs.mkdirSync(path.join(tempDir, "templates", boardInfo.templateID), { recursive: true });
   fs.cpSync(
     path.join(templatesPath, boardInfo.templateID), 
-    path.join(tempDir, "templates", boardInfo.templateID)
+    path.join(tempDir, "templates"),
+    { recursive: true }
   );
   // 创建 .hmq 文件（打包）
   compressFile(tempDir, boardInfo.filePath);
@@ -206,7 +206,8 @@ function init(app) {
   userDataPath = app.getPath("userData");
   settingsPath = path.join(userDataPath, "settings.json");
   templatesPath = path.join(userDataPath, "templates");
-  // 读取templates目录
+  // 读取templates目录，如果没有就创建
+  fs.mkdirSync(templatesPath, { recursive: true });
   templatePool = new fileNameRandomPool(templatesPath, (_) => true);
 }
 
@@ -235,7 +236,7 @@ function saveSettings(settings) {
 function saveTemplate(template) {
   const templateID = templatePool.generate();
   // 创建临时目录
-  const tempDir = path.join(templatesPath, templateID.name);
+  const tempDir = path.join(templatesPath, templateID);
   fs.mkdirSync(tempDir);
   let meta = {
     type: "template",
@@ -267,11 +268,11 @@ function saveTemplate(template) {
     JSON.stringify(templateData, null, 2)
   );
   return {
-    id: templateID.name,
+    id: templateID,
     data: templateData,
     imgPath: path.join(
       templatesPath,
-      templateID.name,
+      templateID,
       `backgroundImage.${templateData.background}`
     ),
   };
@@ -302,7 +303,33 @@ function loadTemplate(template) {
   return templates;
 }
 
+function getAvailableThemes() {
+  const themesPath = path.join(__dirname, '../data/themes');
+  return fs.readdirSync(themesPath)
+           .filter(file => file.endsWith('.css'))
+           .map(file => file.replace('.css', ''));
+}
+
+function getAvailableLanguages() {
+  const languagesPath = path.join(__dirname, '../data/languages');
+  return fs.readdirSync(languagesPath)
+           .filter(file => file.endsWith('.json'))
+           .map(file => file.replace('.json', ''));
+}
+
 function setupSettingsIPC(ipc, BrowserWindow) {
+  ipc.handle('get-available-themes', async () => {
+    return getAvailableThemes();
+  });
+
+  ipc.handle('get-available-languages', async () => {
+    return getAvailableLanguages();
+  });
+
+  ipc.handle('get-current-settings', async () => {
+    return loadSettings();
+  });
+
   ipc.on("settings-changed", (event, settings) => {
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send("settings-changed", settings);
@@ -322,4 +349,6 @@ module.exports = {
   extractFile,
   compressFile,
   createEmptyBoard,
+  getAvailableThemes,
+  getAvailableLanguages,
 };
