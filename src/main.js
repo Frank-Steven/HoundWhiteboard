@@ -4,6 +4,7 @@ const {
   createWindow,
   createFullScreenWindow,
   createModalWindow,
+  openBoard,
 } = require("./utils/windowManager");
 
 let windows = {
@@ -55,13 +56,13 @@ ipc.on("close-window", (event, windowNow) => {
   windows[windowNow].close();
 })
 
-// app.on("window-all-closed", () => {
-//   setTimeout(() => {
-//     if (BrowserWindow.getAllWindows().length === 0) {
-//       app.quit();
-//     }
-//   }, 1000);
-// });
+app.on("window-all-closed", () => {
+  setTimeout(() => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      app.quit();
+    }
+  }, 1000);
+});
 
 ipc.on("new-template-result", (event, result) => {
   // result: {texture, backgroundColor, backgroundImage, name}
@@ -77,10 +78,20 @@ ipc.on("load-buttons", (event, windowNow) => {
 });
 
 ipc.on("create-new-board-templated", (event, boardInfo) => {
+  console.log("create-new-board-templated " + boardInfo);
   IOManager.createEmptyBoard(boardInfo);
   BrowserWindow.getAllWindows().forEach((win) => {
     win.close();
   });
-  windows.FullScreen = createFullScreenWindow("full-screen.html");
+  windows.FullScreen = openBoard(boardInfo.filePath);
   console.log(windows.FullScreen);
 });
+
+ipc.on("open-board-templated", (event, filePath) => {
+  console.log("open-board-templated " + filePath);
+  BrowserWindow.getAllWindows().forEach((win) => {
+    win.close();
+  })
+  windows.FullScreen = openBoard(filePath);
+  console.log(windows.FullScreen);
+})

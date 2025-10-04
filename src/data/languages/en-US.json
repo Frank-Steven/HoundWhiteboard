@@ -1,5 +1,5 @@
 {
-  "language": "English",
+  "language": "English (US)",
   "text": {
     "main-menu": {
       "title": "Hound Whiteboard",
@@ -12,7 +12,7 @@
       "content": {
         "start": {
           "title": "Start",
-          "discription": "Welcome to Hound Whiteboard, an open-source whiteboard application. You can draw, write, take notes, and share your ideas here.",
+          "description": "Welcome to Hound Whiteboard, an open-source whiteboard application. You can draw, write, take notes, and share your ideas here.",
           "buttons": {
             "new-text": "New Whiteboard",
             "new-edit-text": "New (Edit Mode)",
@@ -21,15 +21,15 @@
         },
         "help": {
           "title": "Help",
-          "discription": "Here is some helpful resources and information."
+          "description": "Here is some help information."
         },
         "about": {
           "title": "About",
-          "discription": "Hound Whiteboard is an innovative, open-source collaborative whiteboard application designed to enhance creativity and teamwork."
+          "description": "This is an introduction to Hound Whiteboard."
         },
         "settings": {
           "title": "Settings",
-          "discription": "Customize your Hound Whiteboard experience.",
+          "description": "This is the settings page.",
           "theme": "Theme",
           "language": "Language",
           "buttons": {
@@ -40,17 +40,17 @@
       }
     },
     "new-file": {
-      "title": "Create New Whiteboard",
-      "header": "Create New Whiteboard",
+      "title": "New Whiteboard",
+      "header": "New Whiteboard",
       "description": "Content",
       "form": {
         "label": "File Name",
-        "input": "Enter text here"
+        "input": "Please enter text"
       },
       "save": {
         "choosepath": "Choose",
-        "prompt": "File will be saved in:",
-        "path": "Please select a file path",
+        "prompt": "File saved in:",
+        "path": "Please select file path",
         "form": {
           "prompt": "File Name:",
           "submit": "Submit"
@@ -58,8 +58,8 @@
       }
     },
     "new-template": {
-      "title": "Create New Style",
-      "header": "Create New Style",
+      "title": "New Template",
+      "header": "New Template",
       "foreground": {
         "description": "Select Texture",
         "import": {
@@ -67,12 +67,27 @@
         }
       },
       "background": {
-        "description": "Choose Background",
+        "description": "Select Background",
         "options": {
           "solidlbl": "Solid Color",
-          "imagelbl": "Custom"
+          "imagelbl": "Custom",
+          "image": {
+            "text": "No image selected",
+            "upload": "Select"
+          }
         }
+      },
+      "name-template": {
+        "text": "Template Name",
+        "input": "Please enter template name"
+      },
+      "preview": {
+        "description": "Preview"
       }
+    },
+    "yes-or-no-button": {
+      "yes": "Confirm",
+      "no": "Cancel"
     }
   }
 }

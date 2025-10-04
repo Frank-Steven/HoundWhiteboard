@@ -12,7 +12,7 @@
       "content": {
         "start": {
           "title": "开始",
-          "discription": "欢迎使用猎犬白板，这是一款开源的白板应用。你可以在这里绘制，写字，做笔记，分享你的想法。",
+          "description": "欢迎使用猎犬白板，这是一款开源的白板应用。你可以在这里绘制，写字，做笔记，分享你的想法。",
           "buttons": {
             "new-text": "新建白板",
             "new-edit-text": "新建（编辑模式）",
@@ -21,15 +21,15 @@
         },
         "help": {
           "title": "帮助",
-          "discription": "这里有一些帮助信息。"
+          "description": "这里有一些帮助信息。"
         },
         "about": {
           "title": "关于",
-          "discription": "这是关于猎犬白板的介绍。"
+          "description": "这是关于猎犬白板的介绍。"
         },
         "settings": {
           "title": "设置",
-          "discription": "这里是设置页面。",
+          "description": "这里是设置页面。",
           "theme": "主题",
           "language": "语言",
           "buttons": {

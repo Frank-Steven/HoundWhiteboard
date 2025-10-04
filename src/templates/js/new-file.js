@@ -31,7 +31,7 @@ input.addEventListener('input', () => {
   // 文件名过滤配置
   const FILTER_CONFIG = {
     // 增强正则表达式（覆盖所有操作系统非法字符）
-    illegalChars: /[<>:"/\\\.@|?*~$^'`\u0000-\u001F]/g, // 包含控制字符过滤
+    illegalChars: /[<>:"/\\.@|?*~$^'`\u0000-\u001F]/g, // 包含控制字符过滤
     maxLength: 255 - '.hwb'.length, // 保留扩展名空间
     replaceChar: '_' // 非法字符替换符
   };
@@ -114,7 +114,7 @@ confirmBtn.addEventListener("click", () => {
   if (boardInfo.templateID === null) {
     console.log("No template selected");
     return;
-  }1
+  }
   if (filePath === "" || input.value === "") {
     if (input.value === "") {
       input.focus();
@@ -126,7 +126,7 @@ confirmBtn.addEventListener("click", () => {
     return;
   }
   ipc.send("create-new-board-templated", boardInfo);
-  ipc.send("close-window", "NewFile");
+  // ipc.send("close-window", "NewFile");
 });
 
 function buttonLoadAdd(element) {

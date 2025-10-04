@@ -1,9 +1,12 @@
-const { BrowserWindow } = require("electron");
+const {BrowserWindow} = require("electron");
 const IOManager = require("./IOManager");
+const fs = require("fs");
+const path = require("path");
+const hidefile = require('hidefile');
 
 function createWindow(
   template,
-  size = { width: 800, height: 600, minWidth: 800, minHeight: 600 }
+  size = {width: 800, height: 600, minWidth: 800, minHeight: 600}
 ) {
   const win = new BrowserWindow({
     width: size.width,
@@ -45,7 +48,7 @@ function createFullScreenWindow(template) {
 function createModalWindow(
   template,
   parent,
-  size = { width: 800, height: 600, minWidth: 800, minHeight: 600 }
+  size = {width: 800, height: 600, minWidth: 800, minHeight: 600}
 ) {
   const modalWin = new BrowserWindow({
     width: size.width,
@@ -70,8 +73,29 @@ function createModalWindow(
   return modalWin;
 }
 
+function openBoard(filePath) {
+  let win = createFullScreenWindow("../templates/full-screen.html");
+  console.log("open board: " + filePath);
+
+  let fileDir = filePath.replace(".hwb", "");
+  let tempDir = path.join(path.dirname(fileDir), "." + path.basename(fileDir));
+  if (fs.existsSync(tempDir)) {
+    fs.rmSync(tempDir, {recursive: true, force: true});
+  }
+  IOManager.extractFile(filePath, fileDir);
+  hidefile.hideSync(fileDir);
+  // 在 win 完成加载时，给它发 ipc，内容为 tempDir
+  win.webContents.on("did-finish-load", () => {
+    // setTimeout(() => {
+    // }, 100);
+    win.webContents.send("board-opened", tempDir); // 发送 tempDir 给渲染进程
+  });
+  return win;
+}
+
 module.exports = {
   createWindow,
   createFullScreenWindow,
   createModalWindow,
+  openBoard,
 };

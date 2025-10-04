@@ -1,8 +1,8 @@
-const { randomInt } = require("crypto");
+const {randomInt} = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const AdmZip = require("adm-zip");
-const { dialog } = require("electron");
+const {dialog} = require("electron");
 const hidefile = require('hidefile');
 
 function setupFileOperationIPC(ipc, windows) {
@@ -12,14 +12,16 @@ function setupFileOperationIPC(ipc, windows) {
       .showOpenDialog(windows[windowNow], {
         properties: ["openFile"],
         filters: [
-          { name: "All Files", extensions: ["*"] },
-          { name: "HoundWhileboard Files", extensions: ["hwb"] },
+          {name: "All Files", extensions: ["*"]},
+          {name: "HoundWhiteboard Files", extensions: ["hwb"]},
         ],
       })
       .then((result) => {
         if (!result.canceled) {
-          // 先选择文件再打开全屏白板
-          // TODO: 再发回去
+          windows[windowNow].webContents.send(
+            "open-hwb-file-result",
+            result.filePaths
+          );
         }
       });
   });
@@ -29,8 +31,8 @@ function setupFileOperationIPC(ipc, windows) {
       .showOpenDialog(windows[windowNow], {
         properties: ["openFile"],
         filters: [
-          { name: "All Files", extensions: ["*"] },
-          { name: "HoundWhileboard Module Quark Files", extensions: ["hmq"] },
+          {name: "All Files", extensions: ["*"]},
+          {name: "HoundWhiteboard Module Quark Files", extensions: ["hmq"]},
         ],
       })
       .then((result) => {
@@ -93,9 +95,8 @@ function setupFileOperationIPC(ipc, windows) {
   });
 }
 
-function extractFile(directory, file) {
-  const zip = new AdmZip(path.join(directory, file.name + "." + file.suffix));
-  const dest = path.join(directory, file.name);
+function extractFile(from, dest) {
+  const zip = new AdmZip(from);
   zip.extractAllTo(dest, true);
 }
 
@@ -104,7 +105,7 @@ function compressFile(directory, file, remove = false) {
   zip.addLocalFolder(directory);
   zip.writeZip(file);
   if (remove) {
-    fs.rm(directory, { recursive: true, force: true }, (err) => {
+    fs.rm(directory, {recursive: true, force: true}, (err) => {
       if (err) throw err;
       console.log("Directory deleted");
     });
@@ -129,7 +130,7 @@ class fileNameRandomPool {
   //新建文件
   generate() {
     let randomNum;
-    while (this.existance[(randomNum = randomInt(0, 1145141919810))]);
+    while (this.existance[(randomNum = randomInt(0, 1145141919810))]) ;
     this.existance[randomNum] = true;
     return randomNum.toString();
   }
@@ -145,10 +146,9 @@ let userDataPath, settingsPath, templatesPath;
 
 // 创建一个空的白板
 function createEmptyBoard(boardInfo) {
-  // 创建临时目录 (去除文件名中的".hwb"后缀)
   const tempDir = boardInfo.filePath.replace(".hwb", "");
-  // 创建隐藏的临时目录
-  fs.mkdirSync(tempDir, { recursive: true });
+  // 创建临时目录
+  fs.mkdirSync(tempDir, {recursive: true});
   // 创建 meta.json 文件
   const meta = {
     type: "board",
@@ -169,12 +169,12 @@ function createEmptyBoard(boardInfo) {
     JSON.stringify([], null, 2)
   );
   // 创建 pages 目录
-  fs.mkdirSync(path.join(tempDir, "pages"), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, "pages"), {recursive: true});
   // 创建第一页
   let pagePool = new fileNameRandomPool(path.join(tempDir, "pages"), (_) => true)
   let firstPageID = pagePool.generate();
-  fs.mkdirSync(path.join(tempDir, "pages", firstPageID), { recursive: true });
-  fs.mkdirSync(path.join(tempDir, "pages", firstPageID, "assets"), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, "pages", firstPageID), {recursive: true});
+  fs.mkdirSync(path.join(tempDir, "pages", firstPageID, "assets"), {recursive: true});
   const pageMeta = {
     type: "page",
     version: "0.1.0",
@@ -185,17 +185,18 @@ function createEmptyBoard(boardInfo) {
   );
 
   // 创建 templates 目录
-  fs.mkdirSync(path.join(tempDir, "templates"), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, "templates"), {recursive: true});
   // 把样式从 templatesPath 中拷过来，不需要 Pool
   // let tpltPool = new fileNameRandomPool(path.join(tempDir, "templates"), (_) => ture)
-  fs.mkdirSync(path.join(tempDir, "templates", boardInfo.templateID), { recursive: true });
+  fs.mkdirSync(path.join(tempDir, "templates", boardInfo.templateID), {recursive: true});
   fs.cpSync(
-    path.join(templatesPath, boardInfo.templateID), 
+    path.join(templatesPath, boardInfo.templateID),
     path.join(tempDir, "templates"),
-    { recursive: true }
+    {recursive: true}
   );
   // 创建 .hmq 文件（打包）
   compressFile(tempDir, boardInfo.filePath);
+  // 隐藏刚刚创建的临时目录
   hidefile.hideSync(tempDir);
 }
 
@@ -207,7 +208,7 @@ function init(app) {
   settingsPath = path.join(userDataPath, "settings.json");
   templatesPath = path.join(userDataPath, "templates");
   // 读取templates目录，如果没有就创建
-  fs.mkdirSync(templatesPath, { recursive: true });
+  fs.mkdirSync(templatesPath, {recursive: true});
   templatePool = new fileNameRandomPool(templatesPath, (_) => true);
 }
 
@@ -218,7 +219,7 @@ function loadSettings() {
     return JSON.parse(data);
   } else {
     // 如果文件不存在，创建默认设置
-    const defaultSettings = { theme: "light", language: "zh-CN" };
+    const defaultSettings = {theme: "light", language: "zh-CN"};
     fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2));
     return defaultSettings;
   }
@@ -303,19 +304,19 @@ function loadTemplate(template) {
   return templates;
 }
 
-function getAvailableThemes() {
-  const themesPath = path.join(__dirname, '../data/themes');
-  return fs.readdirSync(themesPath)
-           .filter(file => file.endsWith('.css'))
-           .map(file => file.replace('.css', ''));
-}
+// function getAvailableThemes() {
+//   const themesPath = path.join(__dirname, '../data/themes');
+//   return fs.readdirSync(themesPath)
+//            .filter(file => file.endsWith('.css'))
+//            .map(file => file.replace('.css', ''));
+// }
 
-function getAvailableLanguages() {
-  const languagesPath = path.join(__dirname, '../data/languages');
-  return fs.readdirSync(languagesPath)
-           .filter(file => file.endsWith('.json'))
-           .map(file => file.replace('.json', ''));
-}
+// function getAvailableLanguages() {
+//   const languagesPath = path.join(__dirname, '../data/languages');
+//   return fs.readdirSync(languagesPath)
+//            .filter(file => file.endsWith('.json'))
+//            .map(file => file.replace('.json', ''));
+// }
 
 function setupSettingsIPC(ipc, BrowserWindow) {
   ipc.handle('get-available-themes', async () => {
@@ -349,6 +350,6 @@ module.exports = {
   extractFile,
   compressFile,
   createEmptyBoard,
-  getAvailableThemes,
-  getAvailableLanguages,
+  // getAvailableThemes,
+  // getAvailableLanguages,
 };

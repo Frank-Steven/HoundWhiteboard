@@ -23,6 +23,11 @@
   background-color: var(--bg2);
 }
 
+#main-menu-sidebar .sidebar-button.content-active {
+  /* 当前选中的按钮 */
+  background-color: var(--bg2);
+}
+
 #main-menu-content {
   width: 100%;
   overflow: auto;

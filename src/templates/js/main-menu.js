@@ -1,84 +1,56 @@
 /// Sidebar buttons
 
-const startBtn = document.getElementById("main-menu-sidebar-start");
-const helpBtn = document.getElementById("main-menu-sidebar-help");
-const aboutBtn = document.getElementById("main-menu-sidebar-about");
-const settingsBtn = document.getElementById("main-menu-sidebar-settings");
+const sidebarButtons = document.querySelectorAll(".sidebar-button");
+const contentScreens = document.querySelectorAll(".content-screen");
 
-const startScreen = document.getElementById("main-menu-content-start");
-const helpScreen = document.getElementById("main-menu-content-help");
-const aboutScreen = document.getElementById("main-menu-content-about");
-const settingsScreen = document.getElementById("main-menu-content-settings");
+function activateScreen(screen) {
+  contentScreens.forEach((scr) => {
+    scr.classList.remove("content-active");
+  });
+  screen.classList.add("content-active");
+}
 
-startScreen.style.display = "block";
-helpScreen.style.display = "none";
-aboutScreen.style.display = "none";
-settingsScreen.style.display = "none";
+function activateButton(button) {
+  sidebarButtons.forEach((btn) => {
+    btn.classList.remove("content-active");
+  })
+  button.classList.add("content-active");
+}
 
-startBtn.addEventListener("click", () => {
-  startScreen.style.display = "block";
-  helpScreen.style.display = "none";
-  aboutScreen.style.display = "none";
-  settingsScreen.style.display = "none";
+sidebarButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const scr = document.getElementById(btn.dataset.targetScreen);
+    activateScreen(scr);
+    activateButton(btn);
+  });
 });
 
-helpBtn.addEventListener("click", () => {
-  helpScreen.style.display = "block";
-  startScreen.style.display = "none";
-  aboutScreen.style.display = "none";
-  settingsScreen.style.display = "none";
-});
-
-aboutBtn.addEventListener("click", () => {
-  aboutScreen.style.display = "block";
-  startScreen.style.display = "none";
-  helpScreen.style.display = "none";
-  settingsScreen.style.display = "none";
-});
-
-settingsBtn.addEventListener("click", () => {
-  settingsScreen.style.display = "block";
-  startScreen.style.display = "none";
-  helpScreen.style.display = "none";
-  aboutScreen.style.display = "none";
-  resetSelects();
-});
+sidebarButtons[0].classList.add("content-active");
+contentScreens[0].classList.add("content-active");
 
 /// Start screen buttons
 
-const startNewBtn = document.getElementById(
-  "main-menu-content-start-buttons-new"
-);
-
-// const startNewEditBtn = document.getElementById(
-//   "main-menu-content-start-buttons-new-edit"
-// );
-
-const startOpenBtn = document.getElementById(
-  "main-menu-content-start-buttons-open"
-);
+const startNewBtn = document.getElementById("main-menu-content-start-buttons-new");
+const startOpenBtn = document.getElementById("main-menu-content-start-buttons-open");
 
 startNewBtn.addEventListener("click", () => {
   ipc.send("open-modal-window", "MainMenu", "NewFile", "new-file.html");
 });
 
-// startNewEditBtn.addEventListener("click", () => {
-//   ipc.send("new-edit-file");
-// });
-
 startOpenBtn.addEventListener("click", () => {
+  console.log("open.");
   ipc.send("open-hwb-file", "MainMenu");
 });
 
+ipc.on("open-hwb-file-result", (event, filePath) => {
+  console.log("open: ", filePath);
+  ipc.send("open-board-templated", filePath[0]);
+})
+
 /// Settings screen buttons
 
-const themeSelect = document.getElementById(
-  "main-menu-content-settings-theme-select"
-);
-
-const languageSelect = document.getElementById(
-  "main-menu-content-settings-language-select"
-);
+const themeSelect = document.getElementById("main-menu-content-settings-theme-select");
+const languageSelect = document.getElementById("main-menu-content-settings-language-select");
 
 // 遍历 theme 目录，动态生成 theme 选项
 const themes = require("fs").readdirSync(`./src/data/themes`);
@@ -117,13 +89,8 @@ function resetSelects() {
   }
 }
 
-const saveBtn = document.getElementById(
-  "main-menu-content-settings-buttons-save"
-);
-
-const cancelBtn = document.getElementById(
-  "main-menu-content-settings-buttons-cancel"
-);
+const saveBtn = document.getElementById("main-menu-content-settings-buttons-save");
+const cancelBtn = document.getElementById("main-menu-content-settings-buttons-cancel");
 
 saveBtn.addEventListener("click", () => {
   console.log(themeSelect.value);
