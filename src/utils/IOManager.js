@@ -158,16 +158,13 @@ function createEmptyBoard(boardInfo) {
     path.join(tempDir, "meta.json"),
     JSON.stringify(meta, null, 2)
   );
-  // 创建 pages.json 文件
-  fs.writeFileSync(
-    path.join(tempDir, "pages.json"),
-    JSON.stringify([], null, 2)
-  );
   // 创建 history.json 文件
   fs.writeFileSync(
     path.join(tempDir, "history.json"),
     JSON.stringify([], null, 2)
   );
+
+  /// PAGES ///
   // 创建 pages 目录
   fs.mkdirSync(path.join(tempDir, "pages"), {recursive: true});
   // 创建第一页
@@ -183,7 +180,18 @@ function createEmptyBoard(boardInfo) {
     path.join(tempDir, "pages", firstPageID, "meta.json"),
     JSON.stringify(pageMeta, null, 2)
   );
+  // 创建 pages.json 文件
+  fs.writeFileSync(
+    path.join(tempDir, "pages.json"),
+    JSON.stringify([
+      {
+        "templateID": boardInfo.templateID,
+        "pageID": firstPageID
+      }
+    ], null, 2)
+  );
 
+  /// TEMPLATES ///
   // 创建 templates 目录
   fs.mkdirSync(path.join(tempDir, "templates"), {recursive: true});
   // 把样式从 templatesPath 中拷过来，不需要 Pool
