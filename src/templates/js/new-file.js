@@ -26,7 +26,7 @@ let boardInfo = {
   filePath: null,
 };
 
-// 输入框事件优化（使用input事件替代keydown）
+// 输入框事件优化（使用 input 事件替代 keydown）
 input.addEventListener('input', () => {
   // 文件名过滤配置
   const FILTER_CONFIG = {
@@ -40,7 +40,7 @@ input.addEventListener('input', () => {
   const sanitizeFilename = (value) => {
     // 阶段1：预处理
     let cleaned = value.trim()
-      .normalize('NFC') // 统一Unicode格式（重要macOS兼容）
+      .normalize('NFC') // 统一 Unicode 格式（重要 macOS 兼容）
       .replace(FILTER_CONFIG.illegalChars, FILTER_CONFIG.replaceChar);
 
     // 阶段2：长度控制
@@ -60,17 +60,16 @@ input.addEventListener('input', () => {
   // 仅当值变化时更新（避免无限循环）
   if (input.value !== newValue) {
     input.value = newValue;
-    showValidationFeedback(); // 添加视觉反馈
+    blink(input); // 添加视觉反馈
   }
 
   // 更新文件路径显示
   updateFilePathDisplay(newValue);
 });
 
-// 新增视觉反馈函数
-function showValidationFeedback() {
-  input.classList.add('invalid-input');
-  setTimeout(() => input.classList.remove('invalid-input'), 500);
+function blink(element) {
+  element.classList.add('blinking');
+  setTimeout(() => element.classList.remove('blinking'), 500);
 }
 
 // 提取路径更新逻辑
@@ -116,9 +115,12 @@ confirmBtn.addEventListener("click", () => {
   if (filePath === "" || input.value === "") {
     if (input.value === "") {
       input.focus();
+      blink(input);
+      blink(choosePathBtn);
       console.log("No file name selected");
     } else if (filePath === "") {
       choosePathBtn.focus();
+      blink(choosePathBtn);
       console.log("No file path selected");
     }
     return;
