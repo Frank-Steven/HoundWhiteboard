@@ -78,22 +78,14 @@ ipc.on("load-buttons", (event, windowNow) => {
 });
 
 ipc.on("create-new-board-templated", (event, boardInfo) => {
-  console.log("create-new-board-templated ");
-  console.log(boardInfo);
+  console.log("create-new-board-templated: %s At %s", boardInfo.templateID, boardInfo.filePath);
   IOManager.createEmptyBoard(boardInfo);
-  BrowserWindow.getAllWindows().forEach((win) => {
-    win.close();
-  });
+  BrowserWindow.getAllWindows().forEach((win) => {win.close();});
   windows.FullScreen = openBoard(boardInfo.filePath);
-  console.log(windows.FullScreen);
 });
 
 ipc.on("open-board-templated", (event, filePath) => {
-  console.log("open-board-templated ");
-  console.log("filePath");
-  BrowserWindow.getAllWindows().forEach((win) => {
-    win.close();
-  })
+  console.log("open-board-templated: %s", filePath);
+  BrowserWindow.getAllWindows().forEach((win) => {win.close();})
   windows.FullScreen = openBoard(filePath);
-  console.log(windows.FullScreen);
 })
