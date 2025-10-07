@@ -1,8 +1,8 @@
-const {randomInt} = require("crypto");
+const { randomInt } = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const AdmZip = require("adm-zip");
-const {dialog} = require("electron");
+const { dialog } = require("electron");
 const hidefile = require('hidefile');
 
 function setupFileOperationIPC(ipc, windows) {
@@ -12,8 +12,8 @@ function setupFileOperationIPC(ipc, windows) {
       .showOpenDialog(windows[windowNow], {
         properties: ["openFile"],
         filters: [
-          {name: "All Files", extensions: ["*"]},
-          {name: "HoundWhiteboard Files", extensions: ["hwb"]},
+          { name: "All Files", extensions: ["*"] },
+          { name: "HoundWhiteboard Files", extensions: ["hwb"] },
         ],
       })
       .then((result) => {
@@ -31,8 +31,8 @@ function setupFileOperationIPC(ipc, windows) {
       .showOpenDialog(windows[windowNow], {
         properties: ["openFile"],
         filters: [
-          {name: "All Files", extensions: ["*"]},
-          {name: "HoundWhiteboard Module Quark Files", extensions: ["hmq"]},
+          { name: "All Files", extensions: ["*"] },
+          { name: "HoundWhiteboard Module Quark Files", extensions: ["hmq"] },
         ],
       })
       .then((result) => {
@@ -146,17 +146,17 @@ let userDataPath, settingsPath, templatesPath;
 
 // 创建一个空的白板
 function createEmptyBoard(boardInfo) {
-  const tempDir = boardInfo.filePath.replace(".hwb", "");
   // 创建临时目录
-  fs.mkdirSync(tempDir, {recursive: true});
+  const tempDir = boardInfo.filePath.replace(".hwb", "");
+  fs.mkdirSync(tempDir, { recursive: true });
+
   // 创建 meta.json 文件
-  const meta = {
-    type: "board",
-    version: "0.1.0",
-  };
   fs.writeFileSync(
     path.join(tempDir, "meta.json"),
-    JSON.stringify(meta, null, 2)
+    JSON.stringify({
+      type: "board",
+      version: "0.1.0",
+    }, null, 2)
   );
   // 创建 history.json 文件
   fs.writeFileSync(
@@ -166,13 +166,13 @@ function createEmptyBoard(boardInfo) {
 
   /// PAGES ///
   // 创建 pages 目录
-  fs.mkdirSync(path.join(tempDir, "pages"), {recursive: true});
+  fs.mkdirSync(path.join(tempDir, "pages"), { recursive: true });
   
   // 创建第一页
   // 生成 pageID
   let pagePool = new fileNameRandomPool(path.join(tempDir, "pages"), (_) => true)
   let firstPageID = pagePool.generate();
-  fs.mkdirSync(path.join(tempDir, "pages", firstPageID), {recursive: true});
+  fs.mkdirSync(path.join(tempDir, "pages", firstPageID), { recursive: true });
   
   // 创建 meta.json（元数据）
   fs.writeFileSync(
@@ -184,7 +184,7 @@ function createEmptyBoard(boardInfo) {
   );
   
   // 创建 page.json（页数据）
-  fs.mkdirSync(path.join(tempDir, "pages", firstPageID, "assets"), {recursive: true});
+  fs.mkdirSync(path.join(tempDir, "pages", firstPageID, "assets"), { recursive: true });
   fs.writeFileSync(
     path.join(tempDir, "pages", firstPageID, "page.json"),
     JSON.stringify({
@@ -206,14 +206,14 @@ function createEmptyBoard(boardInfo) {
 
   /// TEMPLATES ///
   // 创建 templates 目录
-  fs.mkdirSync(path.join(tempDir, "templates"), {recursive: true});
+  fs.mkdirSync(path.join(tempDir, "templates"), { recursive: true });
   // 把样式从 templatesPath 中拷过来，不需要 Pool
   // let tpltPool = new fileNameRandomPool(path.join(tempDir, "templates"), (_) => true)
-  fs.mkdirSync(path.join(tempDir, "templates", boardInfo.templateID), {recursive: true});
+  fs.mkdirSync(path.join(tempDir, "templates", boardInfo.templateID), { recursive: true });
   fs.cpSync(
     path.join(templatesPath, boardInfo.templateID),
     path.join(tempDir, "templates", boardInfo.templateID),
-    {recursive: true}
+    { recursive: true }
   );
   // 创建 .hmq 文件（打包）
   compressFile(tempDir, boardInfo.filePath);
@@ -229,7 +229,7 @@ function init(app) {
   settingsPath = path.join(userDataPath, "settings.json");
   templatesPath = path.join(userDataPath, "templates");
   // 读取templates目录，如果没有就创建
-  fs.mkdirSync(templatesPath, {recursive: true});
+  fs.mkdirSync(templatesPath, { recursive: true });
   templatePool = new fileNameRandomPool(templatesPath, (_) => true);
 }
 
@@ -256,15 +256,19 @@ function saveSettings(settings) {
 }
 
 function saveTemplate(template) {
+  /*
+    template 结构：
+    {
+      texture;
+      backgroundColor;
+      backgroundImage;
+      name;
+    }
+   */
   const templateID = templatePool.generate();
   // 创建临时目录
   const tempDir = path.join(templatesPath, templateID);
   fs.mkdirSync(tempDir);
-
-  let meta = {
-    type: "template",
-    version: "0.1.0",
-  };
 
   let templateData = {
     name: template.name,
@@ -284,7 +288,12 @@ function saveTemplate(template) {
     console.log(templateData);
   }
   // 写入文件
-  fs.writeFileSync(path.join(tempDir, "meta.json"), JSON.stringify(meta, null, 2));
+  fs.writeFileSync(
+    path.join(tempDir, "meta.json"),
+    JSON.stringify(meta = {
+      type: "template",
+      version: "0.1.0",
+    }, null, 2));
   fs.writeFileSync(path.join(tempDir, "template.json"), JSON.stringify(templateData, null, 2));
   return {
     id: templateID,
@@ -323,7 +332,7 @@ function loadTemplateAll() {
 }
 
 function setupSettingsIPC(ipc, BrowserWindow) {
-  ipc.handle('get-current-settings', async () => {return loadSettings();});
+  ipc.handle('get-current-settings', async () => { return loadSettings(); });
 
   ipc.on("settings-changed", (event, settings) => {
     BrowserWindow.getAllWindows().forEach((win) => {
