@@ -43,7 +43,7 @@ startOpenBtn.addEventListener("click", () => {
 });
 
 ipc.on("open-hwb-file-result", (event, filePath) => {
-  console.log("open: ", filePath);
+  console.log("open: %s", filePath);
   ipc.send("open-board-templated", filePath[0]);
 })
 
