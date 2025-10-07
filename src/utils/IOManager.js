@@ -167,20 +167,33 @@ function createEmptyBoard(boardInfo) {
   /// PAGES ///
   // 创建 pages 目录
   fs.mkdirSync(path.join(tempDir, "pages"), {recursive: true});
+  
   // 创建第一页
+  // 生成 pageID
   let pagePool = new fileNameRandomPool(path.join(tempDir, "pages"), (_) => true)
   let firstPageID = pagePool.generate();
   fs.mkdirSync(path.join(tempDir, "pages", firstPageID), {recursive: true});
-  fs.mkdirSync(path.join(tempDir, "pages", firstPageID, "assets"), {recursive: true});
-  const pageMeta = {
-    type: "page",
-    version: "0.1.0",
-  };
+  
+  // 创建 meta.json（元数据）
   fs.writeFileSync(
     path.join(tempDir, "pages", firstPageID, "meta.json"),
-    JSON.stringify(pageMeta, null, 2)
+    JSON.stringify({
+      type: "page",
+      version: "0.1.0",
+    }, null, 2)
   );
-  // 创建 pages.json 文件
+  
+  // 创建 page.json（页数据）
+  fs.mkdirSync(path.join(tempDir, "pages", firstPageID, "assets"), {recursive: true});
+  fs.writeFileSync(
+    path.join(tempDir, "pages", firstPageID, "page.json"),
+    JSON.stringify({
+      strokes: [],
+      assets: [],
+    }, null, 2)
+  );
+
+  // 创建 pages.json 文件（page 列表）
   fs.writeFileSync(
     path.join(tempDir, "pages.json"),
     JSON.stringify([
@@ -195,9 +208,8 @@ function createEmptyBoard(boardInfo) {
   // 创建 templates 目录
   fs.mkdirSync(path.join(tempDir, "templates"), {recursive: true});
   // 把样式从 templatesPath 中拷过来，不需要 Pool
-  // let tpltPool = new fileNameRandomPool(path.join(tempDir, "templates"), (_) => ture)
+  // let tpltPool = new fileNameRandomPool(path.join(tempDir, "templates"), (_) => true)
   fs.mkdirSync(path.join(tempDir, "templates", boardInfo.templateID), {recursive: true});
-  console.log("cp %s %s -r", path.join(templatesPath, boardInfo.templateID), path.join(tempDir, "templates", boardInfo.templateID));
   fs.cpSync(
     path.join(templatesPath, boardInfo.templateID),
     path.join(tempDir, "templates", boardInfo.templateID),

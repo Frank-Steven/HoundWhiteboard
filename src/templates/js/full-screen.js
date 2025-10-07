@@ -1,90 +1,118 @@
 const path = require("path");
 const fs = require("fs");
 const { getStroke } = require("perfect-freehand");
+const { info } = require("console");
 
-function setupDrawing(canvas) {
-  const ctx = canvas.getContext("2d");
-  let currentPoints = [];
+let currentPoints = [];
+let storingStrokes = [];
+
+function setupDrawing(floatingCanvas, storingCanvas) {
+  // init
+  const ctxFloat = floatingCanvas.getContext("2d");
+  const ctxStore = storingCanvas.getContext("2d");
   let isDrawing = false;
-  let allStrokes = []; // 用于存储所有已完成的笔画
+  drawStoringStroks();
 
-  canvas.addEventListener("pointerdown", (event) => {
+  // prefect-freehandwrite 参数
+  const strokeOption = {
+    size: 16,
+    thinning: 0.5,
+    smoothing: 0.5,
+    streamline: 0.5,
+    easing: (t) => t,
+    simulatePressure: true,
+    last: true,
+    start: {
+      cap: true,
+      taper: 0,
+      easing: (t) => t,
+    },
+    end: {
+      cap: true,
+      taper: 0,
+      easing: (t) => t,
+    },
+  };
+
+  floatingCanvas.addEventListener("pointerdown", (event) => {
+    // 阻止默认行为
+    event.preventDefault();
+
     isDrawing = true;
     currentPoints = [[event.clientX, event.clientY, event.pressure ?? 0.5]];
-    // 每次开始新笔画时重绘所有笔画
-    redrawAllStrokes();
+    redrawFloat();
   });
 
-  canvas.addEventListener("pointermove", (event) => {
+  floatingCanvas.addEventListener("pointermove", (event) => {
     if (!isDrawing) return;
+    // 阻止默认行为
+    event.preventDefault();
+
     currentPoints.push([event.clientX, event.clientY, event.pressure ?? 0.5]);
-    // 每次移动时重绘所有笔画
-    redrawAllStrokes();
+    redrawFloat();
   });
 
-  canvas.addEventListener("pointerup", () => {
+  floatingCanvas.addEventListener("pointerup", (event) => {
+    // 阻止默认行为
+    event.preventDefault();
+
     isDrawing = false;
-    if (currentPoints.length > 1) {
-      const stroke = getStroke(currentPoints, {
-        size: 16,
-        thinning: 0.5,
-        smoothing: 0.5,
-        streamline: 0.5,
-        easing: (t) => t,
-        simulatePressure: true,
-        last: true,
-        start: {
-          cap: true,
-          taper: 0,
-          easing: (t) => t,
-        },
-        end: {
-          cap: true,
-          taper: 0,
-          easing: (t) => t,
-        },
-      });
-      // 将完成的笔画添加到列表中
-      allStrokes.push(stroke);
-    }
-    // 清空当前笔画点
-    currentPoints = [];
-    // 确保所有笔画都已绘制
-    redrawAllStrokes();
+    applyFloat();
   });
 
-  function redrawAllStrokes() {
-    // 清除画布
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // 触摸被取消（如系统手势、来电等）
+  floatingCanvas.addEventListener("pointercancel", (event) => {
+    // 阻止默认行为
+    event.preventDefault();
 
-    // 绘制所有已完成的笔画
-    allStrokes.forEach((stroke) => {
-      drawStroke(stroke);
-    });
+    isDrawing = false;
+    applyFloat();
+  });
 
-    // 绘制当前正在进行的笔画
+  // 将当前 floating canvas 里的一笔添加到 storing canvas 里
+  function applyFloat() {
+    ctxFloat.clearRect(0, 0, floatingCanvas.width, floatingCanvas.height);
+
     if (currentPoints.length > 1) {
-      const currentStroke = getStroke(currentPoints, {
-        size: 16,
-        thinning: 0.5,
-        smoothing: 0.5,
-        streamline: 0.5,
-      });
-      drawStroke(currentStroke);
+      const currentStroke = getStroke(currentPoints, strokeOption);
+      drawStroke(ctxStore, currentStroke);
+      storingStrokes.push(currentStroke);
+      // console.log("apply");
+      // console.log(currentStroke);
+      // console.log(storingStrokes);
+    }
+
+    // 重置当前点
+    currentPoints = [];
+  }
+
+  // 重绘 floating canvas
+  function redrawFloat() {
+    ctxFloat.clearRect(0, 0, floatingCanvas.width, floatingCanvas.height);
+
+    if (currentPoints.length > 1) {
+      const currentStroke = getStroke(currentPoints, strokeOption);
+      drawStroke(ctxFloat, currentStroke);
     }
   }
 
-  function drawStroke(strokePoints) {
-    if (strokePoints.length === 0) return;
+  function drawStroke(ctx, points) {
+    if (points.length === 0) return;
 
     ctx.fillStyle = "black";
     ctx.beginPath();
-    ctx.moveTo(strokePoints[0][0], strokePoints[0][1]);
-    for (let i = 1; i < strokePoints.length; i++) {
-      ctx.lineTo(strokePoints[i][0], strokePoints[i][1]);
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i][0], points[i][1]);
     }
     ctx.closePath();
     ctx.fill();
+  }
+
+  function drawStoringStroks() {
+    storingStrokes.forEach((stroke) => {
+      drawStroke(ctxStore, stroke);
+    })
   }
 }
 
@@ -93,6 +121,26 @@ class pageInfo {
   constructor(templateID, pageID) {
     this.templateID = templateID;
     this.pageID = pageID;
+    this.strokes = JSON.parse(
+      fs.readFileSync(
+        path.join(tempDir, "pages", this.pageID, "page.json")
+      )
+    ).strokes;
+    console.log(path.join(tempDir, "pages", this.pageID, "page.json"));
+  }
+
+  saveToFile() {
+    fs.writeFileSync(
+      path.join(tempDir, "pages", this.pageID, "page.json"),
+      JSON.stringify({
+        "strokes": this.strokes,
+        "assets": []
+      }, null, 2)
+    );
+  }
+
+  saveToInfo(strokes) {
+    this.strokes = strokes;
   }
 }
 
@@ -107,6 +155,19 @@ ipc.on("board-opened", (event, dir) => {
   load();
 });
 
+// 监听窗口关闭事件
+window.addEventListener('beforeunload', (event) => {
+  // 保存当前笔画数据到文件
+  pagesInfos[0].saveToInfo(storingStrokes);
+  pagesInfos.forEach(info => {
+    info.saveToFile();
+  });
+  
+  // 发送 IPC 消息到主进程
+  ipc.send("save-board-templated", tempDir);
+});
+
+
 function init() {
   // init from tempDir.
   pages = JSON.parse(fs.readFileSync(path.join(tempDir, "pages.json")));
@@ -119,7 +180,7 @@ function init() {
 // 加载第一页
 // NOTE: 现在只有一页
 function load() {
-  const pageNo = 0;
+  let pageNo = 0;
   let info = pagesInfos[pageNo];
   let backgroundImg = document.getElementById("app-background-layer");
 
@@ -128,6 +189,7 @@ function load() {
       path.join(tempDir, "templates", info.templateID, "template.json")
     )
   );
+
   if (templateInfo.backgroundType === "solid") {
     // 加载背景色
     backgroundImg.style.background = templateInfo.background;
@@ -144,10 +206,14 @@ function load() {
   }
 
   // 初始化绘图功能
-  const drawingCanvas = document.getElementById("drawing-canvas");
-  if (drawingCanvas) {
-    drawingCanvas.width = window.innerWidth;
-    drawingCanvas.height = window.innerHeight;
-    setupDrawing(drawingCanvas);
+  storingStrokes = info.strokes
+  const floatingCanvas = document.getElementById("floating-canvas");
+  const storingCanvas = document.getElementById("storing-canvas");
+  if (floatingCanvas) {
+    floatingCanvas.width = window.innerWidth;
+    floatingCanvas.height = window.innerHeight;
+    storingCanvas.width = window.innerWidth;
+    storingCanvas.height = window.innerHeight;
+    setupDrawing(floatingCanvas, storingCanvas);
   }
 }

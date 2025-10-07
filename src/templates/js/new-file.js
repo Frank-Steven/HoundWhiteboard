@@ -4,9 +4,7 @@
 
 const path = require("path");
 
-const newTemplateBtn = document.getElementById(
-  "new-file-template-select-new-template"
-);
+const newTemplateBtn = document.getElementById("new-file-template-select-new-template");
 
 const input = document.getElementById("new-file-save-form-input");
 const inputSubmit = document.getElementById("new-file-save-form-submit");
@@ -83,9 +81,9 @@ function updateFilePathDisplay(fileName) {
 
 
 // 选择保存文件夹
-choosePathBtn.onclick = () => {
+choosePathBtn.addEventListener("click", () => {
   ipc.send("path-choose");
-};
+})
 
 ipc.on("path-choose-result", (event, result) => {
   filePath = result[0];
@@ -96,9 +94,9 @@ ipc.on("path-choose-result", (event, result) => {
 });
 
 // 新建主题
-newTemplateBtn.onclick = () => {
+newTemplateBtn.addEventListener("click", () => {
   ipc.send("open-modal-window", "NewFile", "NewTemplate", "new-template.html");
-};
+});
 
 // 取消
 cancelBtn.addEventListener("click", () => {
@@ -116,9 +114,9 @@ confirmBtn.addEventListener("click", () => {
     if (input.value === "") {
       input.focus();
       blink(input);
-      blink(choosePathBtn);
       console.log("No file name selected");
-    } else if (filePath === "") {
+    }
+    if (filePath === "") {
       choosePathBtn.focus();
       blink(choosePathBtn);
       console.log("No file path selected");

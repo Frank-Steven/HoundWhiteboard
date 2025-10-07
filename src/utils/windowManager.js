@@ -93,9 +93,22 @@ function openBoard(filePath) {
   return win;
 }
 
+function saveBoard(dirPath) {
+  console.log("save board: " + dirPath);
+
+  let filePath = path.join(path.dirname(dirPath), path.basename(dirPath).substring(1) + ".hwb");
+
+  if(fs.existsSync(filePath)) {
+    fs.rmSync(filePath, { force: true });
+  }
+
+  IOManager.compressFile(dirPath, filePath, true);
+}
+
 module.exports = {
   createWindow,
   createFullScreenWindow,
   createModalWindow,
   openBoard,
+  saveBoard,
 };

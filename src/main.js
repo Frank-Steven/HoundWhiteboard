@@ -1,11 +1,6 @@
 const { app, BrowserWindow } = require("electron");
 const IOManager = require("./utils/IOManager");
-const {
-  createWindow,
-  createFullScreenWindow,
-  createModalWindow,
-  openBoard,
-} = require("./utils/windowManager");
+const winManager = require("./utils/windowManager");
 
 let windows = {
   MainMenu: null,
@@ -19,7 +14,7 @@ const ipc = require("electron").ipcMain;
 app.whenReady().then(() => {
   IOManager.init(app);
 
-  windows.MainMenu = createWindow("main-menu.html", {
+  windows.MainMenu = winManager.createWindow("main-menu.html", {
     width: 800,
     height: 600,
     minWidth: 800,
@@ -27,7 +22,7 @@ app.whenReady().then(() => {
   });
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      windows.MainMenu = createWindow("main-menu.html", {
+      windows.MainMenu = winManager.createWindow("main-menu.html", {
         width: 800,
         height: 600,
         minWidth: 800,
@@ -44,7 +39,7 @@ app.whenReady().then(() => {
 });
 
 ipc.on("open-modal-window", (event, windowNow, windowNew, windowNewHTML) => {
-  windows[windowNew] = createModalWindow(windowNewHTML, windows[windowNow], {
+  windows[windowNew] = winManager.createModalWindow(windowNewHTML, windows[windowNow], {
     width: 800,
     height: 600,
     minWidth: 800,
@@ -69,7 +64,7 @@ ipc.on("new-template-result", (event, result) => {
   console.log(result);
   const templateInfo = IOManager.saveTemplate(result);
   windows.NewFile.webContents.send("new-template-adding", 
-    {info: templateInfo, result: result});
+    { info: templateInfo, result: result });
 });
 
 ipc.on("load-buttons", (event, windowNow) => {
@@ -80,12 +75,24 @@ ipc.on("load-buttons", (event, windowNow) => {
 ipc.on("create-new-board-templated", (event, boardInfo) => {
   console.log("create-new-board-templated: %s At %s", boardInfo.templateID, boardInfo.filePath);
   IOManager.createEmptyBoard(boardInfo);
-  BrowserWindow.getAllWindows().forEach((win) => {win.close();});
-  windows.FullScreen = openBoard(boardInfo.filePath);
+  BrowserWindow.getAllWindows().forEach((win) => { win.close(); });
+  windows.FullScreen = winManager.openBoard(boardInfo.filePath);
 });
 
 ipc.on("open-board-templated", (event, filePath) => {
   console.log("open-board-templated: %s", filePath);
-  BrowserWindow.getAllWindows().forEach((win) => {win.close();})
-  windows.FullScreen = openBoard(filePath);
+  BrowserWindow.getAllWindows().forEach((win) => { win.close(); })
+  windows.FullScreen = winManager.openBoard(filePath);
+})
+
+ipc.on("save-board-templated", (event, dirPath) => {
+  console.log("save-board-templated: %s", dirPath);
+  windows.FullScreen.close();
+  windows.MainMenu = winManager.createWindow("main-menu.html", {
+    width: 800,
+    height: 600,
+    minWidth: 800,
+    minHeight: 600,
+  });
+  winManager.saveBoard(dirPath);
 })
