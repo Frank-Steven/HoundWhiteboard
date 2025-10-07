@@ -104,10 +104,19 @@
   height: 100%;
 }
 
-#drawing-canvas {
+#storing-canvas {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
+}
+
+#floating-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none; /* 防止触摸时的默认行为（滚动、缩放等） */
 }
