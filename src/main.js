@@ -1,15 +1,13 @@
 const { app, BrowserWindow } = require("electron");
 const IOManager = require("./utils/IOManager");
-const {
-  createWindow,
-  createFullScreenWindow,
-  createModalWindow,
-} = require("./utils/windowManager");
+const winManager = require("./utils/windowManager");
+const boardManager = require("./utils/boardManager");
 
 let windows = {
   MainMenu: null,
   NewFile: null,
-  NewTemplate: null
+  NewTemplate: null,
+  FullScreen: null
 };
 
 const ipc = require("electron").ipcMain;
@@ -17,15 +15,16 @@ const ipc = require("electron").ipcMain;
 app.whenReady().then(() => {
   IOManager.init(app);
 
-  windows.MainMenu = createWindow("main-menu.html", {
+  windows.MainMenu = winManager.createWindow("main-menu.html", {
     width: 800,
     height: 600,
     minWidth: 800,
     minHeight: 600,
   });
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      windows.MainMenu = createWindow("main-menu.html", {
+      windows.MainMenu = winManager.createWindow("main-menu.html", {
         width: 800,
         height: 600,
         minWidth: 800,
@@ -41,17 +40,8 @@ app.whenReady().then(() => {
   // console.log(windows);
 });
 
-ipc.on("new-file", () => {
-  windows.NewFile = createModalWindow("new-file.html", windows.MainMenu, {
-    width: 800,
-    height: 600,
-    minWidth: 800,
-    minHeight: 600,
-  });
-});
-
-ipc.on("new-template", () => {
-  windows.NewTemplate = createModalWindow("new-template.html", windows.NewFile, {
+ipc.on("open-modal-window", (event, windowNow, windowNew, windowNewHTML) => {
+  windows[windowNew] = winManager.createModalWindow(windowNewHTML, windows[windowNow], {
     width: 800,
     height: 600,
     minWidth: 800,
@@ -72,11 +62,37 @@ app.on("window-all-closed", () => {
 });
 
 ipc.on("new-template-result", (event, result) => {
+  // result: {texture, backgroundColor, backgroundImage, name}
   console.log(result);
-  IOManager.saveTemplate(result);
+  const templateInfo = IOManager.saveTemplate(result);
+  windows.NewFile.webContents.send("new-template-adding",
+    { info: templateInfo, result: result });
 });
 
-// ipc.on("load-buttons", (event, windowNow) => {
-//   const buttons = IOManager.loadTemplates();
-//   windows[windowNow].webContents.send("buttons-loaded", buttons);
-// });
+ipc.on("load-buttons", (event, windowNow) => {
+  const result = IOManager.loadTemplateAll();
+  windows[windowNow].webContents.send("buttons-loaded", result);
+});
+
+ipc.on("create-new-board-templated", (event, boardInfo) => {
+  console.log("create-new-board-templated: %s At %s", boardInfo.templateID, boardInfo.filePath);
+  boardManager.createEmptyBoard(boardInfo);
+  BrowserWindow.getAllWindows().forEach((win) => { win.close(); });
+  windows.FullScreen = boardManager.openBoard(boardInfo.filePath);
+});
+
+ipc.on("open-board-templated", (event, filePath) => {
+  BrowserWindow.getAllWindows().forEach((win) => { win.close(); });
+  windows.FullScreen = boardManager.openBoard(filePath);
+});
+
+ipc.on("save-board-templated", (event, dirPath) => {
+  windows.FullScreen.close();
+  windows.MainMenu = winManager.createWindow("main-menu.html", {
+    width: 800,
+    height: 600,
+    minWidth: 800,
+    minHeight: 600,
+  });
+  boardManager.saveBoard(dirPath);
+});

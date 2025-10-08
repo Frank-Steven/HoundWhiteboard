@@ -95,11 +95,13 @@
   justify-content: space-between;
   margin-bottom: 40px;
 }
+
 .scrollable-path {
   overflow-x: auto; /* 当内容超出宽度时水平滚动 */
   white-space: nowrap; /* 防止span内的文本换行 */
   max-width: 100%; /* 确保容器的宽度不超过父元素 */
 }
+
 .scrollable-path span {
   display: inline-block; /* 确保span能够正确应用宽度和高度 */
   padding: 5px 0; /* 根据需要调整内边距 */

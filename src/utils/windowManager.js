@@ -1,10 +1,10 @@
 const { BrowserWindow } = require("electron");
 const IOManager = require("./IOManager");
+const fs = require("fs");
+const path = require("path");
+const hidefile = require('hidefile');
 
-function createWindow(
-  template,
-  size = { width: 800, height: 600, minWidth: 800, minHeight: 600 }
-) {
+function createWindow(template, size = { width: 800, height: 600, minWidth: 800, minHeight: 600 }) {
   const win = new BrowserWindow({
     width: size.width,
     height: size.height,
@@ -16,7 +16,7 @@ function createWindow(
       contextIsolation: false,
     },
   });
-  win.loadFile(__dirname + "/../templates/" + template);
+  win.loadFile(__dirname + "/../templates/html/" + template);
   // win.webContents.openDevTools();
 
   win.webContents.on("did-finish-load", () => {
@@ -31,21 +31,18 @@ function createFullScreenWindow(template) {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
+      nodeIntegrationInSubFrames: true,
     },
     fullscreen: true,
     autoHideMenuBar: true,
     frame: false,
     transparent: true,
   });
-  win.loadFile(__dirname + "/../templates/" + template);
+  win.loadFile(__dirname + "/../templates/html/" + template);
   return win;
 }
 
-function createModalWindow(
-  template,
-  parent,
-  size = { width: 800, height: 600, minWidth: 800, minHeight: 600 }
-) {
+function createModalWindow(template, parent, size = { width: 800, height: 600, minWidth: 800, minHeight: 600 }) {
   const modalWin = new BrowserWindow({
     width: size.width,
     height: size.height,
@@ -59,7 +56,7 @@ function createModalWindow(
       contextIsolation: false,
     },
   });
-  modalWin.loadFile(__dirname + "/../templates/" + template);
+  modalWin.loadFile(__dirname + "/../templates/html/" + template);
 
   modalWin.webContents.on("did-finish-load", () => {
     const settings = IOManager.loadSettings();

@@ -8,11 +8,11 @@ ipc.on("settings-loaded", (event, settings) => {
 
 function setTheme() {
   let stylesheet = document.getElementById("theme-stylesheet");
-  stylesheet.href = `../data/themes/${window.settings.theme}.css`;
+  stylesheet.href = `../../data/themes/${window.settings.theme}.css`;
 }
 
 function setLanguage() {
-  let language = require(`../data/languages/${window.settings.language}.json`);
+  let language = require(`../../data/languages/${window.settings.language}.json`);
 
   function updateTextNodes(obj, parentId = "") {
     for (const key in obj) {
