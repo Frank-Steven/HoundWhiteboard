@@ -15,8 +15,6 @@
 
 #new-file-template-select {
   width: 100%;
-  /* NOTE: Use margin else */
-  /* height: calc(100% - 200px); */
   height: 100%;
   display: flex;
   overflow-y: auto;
@@ -40,4 +38,21 @@
 
 #new-file-save {
   margin-bottom: 40px;
+}
+
+@keyframes blink-animation {
+  0%, 100% {
+    border-color: #ff0000;
+    box-shadow: 0 0 5px #ff0000;
+  }
+  50% {
+    border-color: #0000ff;
+    box-shadow: 0 0 15px #0000ff;
+  }
+}
+
+.blinking {
+  border: 2px solid #ff0000;
+  box-shadow: 0 0 5px #ff0000;
+  animation: blink-animation 1.5s infinite alternate;
 }
