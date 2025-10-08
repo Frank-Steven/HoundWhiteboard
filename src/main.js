@@ -14,6 +14,7 @@ const ipc = require("electron").ipcMain;
 
 app.whenReady().then(() => {
   IOManager.init(app);
+  boardManager.init(app);
 
   windows.MainMenu = winManager.createWindow("main-menu.html", {
     width: 800,

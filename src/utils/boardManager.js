@@ -4,6 +4,16 @@ const path = require("path");
 const fs = require("fs");
 const hidefile = require("hidefile");
 
+let userDataPath, templatesPath;
+
+function init(app) {
+  // 获取用户数据目录（类似 VSCode 的 ~/.config/YourApp/）
+  userDataPath = app.getPath("userData");
+  templatesPath = path.join(userDataPath, "templates");
+  // 读取templates目录，如果没有就创建
+  fs.mkdirSync(templatesPath, { recursive: true });
+}
+
 const boardMeta = {
   type: "board",
   version: "0.1.0",
@@ -86,7 +96,7 @@ function createEmptyBoard(boardInfo) {
     { recursive: true }
   );
   // 创建 .hmq 文件（打包）
-  compressFile(tempDir, boardInfo.filePath);
+  IOManager.compressFile(tempDir, boardInfo.filePath);
   // 隐藏刚刚创建的临时目录
   hidefile.hideSync(tempDir);
 }
@@ -165,4 +175,5 @@ module.exports = {
 	saveBoard,
   createEmptyBoard,
   addPage,
+  init,
 };

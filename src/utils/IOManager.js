@@ -3,7 +3,6 @@ const fs = require("fs");
 const path = require("path");
 const AdmZip = require("adm-zip");
 const { dialog } = require("electron");
-const hidefile = require('hidefile');
 
 function setupFileOperationIPC(ipc, windows) {
   ipc.on("open-hwb-file", (event, windowNow) => {
