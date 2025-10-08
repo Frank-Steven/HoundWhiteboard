@@ -50,6 +50,7 @@
   margin-left: 10px;
   border-radius: 5px;
   background-color: var(--bg1);
+  z-index: 1;
 }
 
 #app-controls-side-controls-left img {
@@ -64,6 +65,7 @@
   margin-right: 10px;
   border-radius: 5px;
   background-color: var(--bg1);
+  z-index: 1;
 }
 
 #app-controls-side-controls-right img {
@@ -79,6 +81,7 @@
   background-color: var(--bg1);
   margin-bottom: 10px;
   border-radius: 5px;
+  z-index: 1;
 }
 
 #app-controls-bottom-controls img {
@@ -92,7 +95,7 @@
   height: 100%;
   top: 0;
   left: 0;
-  z-index: -1;
+  z-index: -2;
   object-fit: cover;
 }
 
@@ -110,6 +113,7 @@
   left: 0;
   width: 100%;
   height: 100%;
+  z-index: -1;
 }
 
 #floating-canvas {
@@ -118,5 +122,6 @@
   left: 0;
   width: 100%;
   height: 100%;
+  z-index: 0;
   touch-action: none; /* 防止触摸时的默认行为（滚动、缩放等） */
 }

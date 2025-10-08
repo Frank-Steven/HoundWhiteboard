@@ -15,8 +15,6 @@
 
 #new-file-template-select {
   width: 100%;
-  /* NOTE: Use margin else */
-  /* height: calc(100% - 200px); */
   height: 100%;
   display: flex;
   overflow-y: auto;

@@ -46,8 +46,8 @@ ipc.on("open-modal-window", (event, windowNow, windowNew, windowNewHTML) => {
     height: 600,
     minWidth: 800,
     minHeight: 600,
-  })
-})
+  });
+});
 
 ipc.on("close-window", (event, windowNow) => {
   windows[windowNow].close();
@@ -65,7 +65,7 @@ ipc.on("new-template-result", (event, result) => {
   // result: {texture, backgroundColor, backgroundImage, name}
   console.log(result);
   const templateInfo = IOManager.saveTemplate(result);
-  windows.NewFile.webContents.send("new-template-adding", 
+  windows.NewFile.webContents.send("new-template-adding",
     { info: templateInfo, result: result });
 });
 
@@ -76,15 +76,15 @@ ipc.on("load-buttons", (event, windowNow) => {
 
 ipc.on("create-new-board-templated", (event, boardInfo) => {
   console.log("create-new-board-templated: %s At %s", boardInfo.templateID, boardInfo.filePath);
-  IOManager.createEmptyBoard(boardInfo);
+  boardManager.createEmptyBoard(boardInfo);
   BrowserWindow.getAllWindows().forEach((win) => { win.close(); });
   windows.FullScreen = boardManager.openBoard(boardInfo.filePath);
 });
 
 ipc.on("open-board-templated", (event, filePath) => {
-  BrowserWindow.getAllWindows().forEach((win) => { win.close(); })
+  BrowserWindow.getAllWindows().forEach((win) => { win.close(); });
   windows.FullScreen = boardManager.openBoard(filePath);
-})
+});
 
 ipc.on("save-board-templated", (event, dirPath) => {
   windows.FullScreen.close();
@@ -95,4 +95,4 @@ ipc.on("save-board-templated", (event, dirPath) => {
     minHeight: 600,
   });
   boardManager.saveBoard(dirPath);
-})
+});
