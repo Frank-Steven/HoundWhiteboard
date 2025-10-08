@@ -5,7 +5,7 @@ const { fileNameRandomPool } = require("../../utils/IOManager");
 const boardManager = require("../../utils/boardManager");
 
 let currentPageIndex = 0;
-let pagesInfos = [];
+let pages = [];
 
 let pagePool, templatePool;
 
@@ -213,7 +213,7 @@ class pageClass {
 }
 
 let tempDir;
-let pages;
+let pagesInfo;
 
 ipc.on("board-opened", (event, dir) => {
   init(dir);
@@ -224,13 +224,14 @@ ipc.on("board-opened", (event, dir) => {
 // 监听窗口关闭事件
 window.addEventListener('beforeunload', (event) => {
   // 停用当前页面并保存所有页面数据
-  if (pagesInfos[currentPageIndex]) {
-    pagesInfos[currentPageIndex].deactivate();
+  if (pages[currentPageIndex]) {
+    pages[currentPageIndex].deactivate();
   }
 
-  pagesInfos.forEach(info => {
+  pages.forEach(info => {
     info.saveToFile();
   });
+  pagesSaveToFile();
 
   // 发送 IPC 消息到主进程
   ipc.send("save-board-templated", tempDir);
@@ -242,30 +243,30 @@ function init(dir) {
   tempDir = dir;
   pagePool = new fileNameRandomPool(path.join(tempDir, "pages"), (_) => true);
   templatePool = new fileNameRandomPool(path.join(tempDir, "templates"), (_) => true);
-  pages = JSON.parse(fs.readFileSync(path.join(tempDir, "pages.json")));
-  pagesInfos = [];
-  pages.forEach((pge) => {
+  pagesInfo = JSON.parse(fs.readFileSync(path.join(tempDir, "pages.json")));
+  pages = [];
+  pagesInfo.forEach((pge) => {
     // 在 pages.json 中定义每一个页面用什么 template
-    pagesInfos.push(new pageClass(pge.templateID, pge.pageID));
+    pages.push(new pageClass(pge.templateID, pge.pageID));
   });
 }
 
 // 加载指定页面
 function loadPage(pageNo) {
-  if (pageNo < 0 || pageNo >= pagesInfos.length) {
+  if (pageNo < 0 || pageNo >= pages.length) {
     console.error("Invalid page number: %d", pageNo);
     return;
   }
 
   // 停用当前页面
-  if (pagesInfos[currentPageIndex]) {
-    pagesInfos[currentPageIndex].deactivate();
+  if (pages[currentPageIndex]) {
+    pages[currentPageIndex].deactivate();
   }
 
   // 更新当前页面索引
   currentPageIndex = pageNo;
 
-  let info = pagesInfos[pageNo];
+  let info = pages[pageNo];
   let backgroundImg = document.getElementById("app-background-layer");
 
   // 加载模板信息
@@ -303,13 +304,28 @@ function loadPage(pageNo) {
 function addPage(templateID) {
   const newPage = boardManager.addPage(pagePool, templateID);
   pagePool = newPage.pool;
-  pagesInfos.push(new pageClass(templateID, newPage.pageID));
-  switchPage(pagesInfos.length - 1);
+  pages.push(new pageClass(templateID, newPage.pageID));
+  switchPage(pages.length - 1);
+}
+
+function pagesSaveToFile() {
+  fs.rmSync(path.join(tempDir, "pages.json"));
+  let pagesJson = [];
+  pages.forEach((pge) => {
+    pagesJson.push({
+      "templateID": pge.templateID,
+      "pageID": pge.pageID
+    })
+  });
+  fs.writeFileSync(
+    path.join(tempDir, "pages.json"),
+    JSON.stringify(pagesJson, null, 2)
+  );
 }
 
 // 切换到指定页面
 function switchPage(newPageIndex) {
-  if (newPageIndex < 0 || newPageIndex >= pagesInfos.length) {
+  if (newPageIndex < 0 || newPageIndex >= pages.length) {
     console.warn("Cannot switch to page:", newPageIndex);
     return;
   }
@@ -322,11 +338,12 @@ function updatePageNumber() {
   const leftPageNumber = document.getElementById('app-controls-side-controls-left-page-number');
   const rightPageNumber = document.getElementById('app-controls-side-controls-right-page-number');
 
-  const pageText = `${currentPageIndex + 1}/${pagesInfos.length}`;
+  const pageText = `${currentPageIndex + 1}/${pages.length}`;
 
   if (leftPageNumber) {
     leftPageNumber.textContent = pageText;
   }
+
   if (rightPageNumber) {
     rightPageNumber.textContent = pageText;
   }
@@ -350,10 +367,10 @@ function setupPageControls() {
   }
 
   const gotoNextPage = () => {
-    if (currentPageIndex < pagesInfos.length - 1) {
+    if (currentPageIndex < pages.length - 1) {
       switchPage(currentPageIndex + 1);
-    } else if (currentPageIndex == pagesInfos.length - 1) {
-      addPage(pagesInfos[currentPageIndex].templateID);
+    } else if (currentPageIndex == pages.length - 1) {
+      addPage(pages[currentPageIndex].templateID);
       console.log("Add page");
     }
     console.log("Next page")
