@@ -1,102 +1,155 @@
 const path = require("path");
 const fs = require("fs");
 const { getStroke } = require("perfect-freehand");
-const { info } = require("console");
+const { fileNameRandomPool } = require("../../utils/IOManager");
+const boardManager = require("../../utils/boardManager");
 
-let currentPoints = [];
-let storingStrokes = [];
+let currentPageIndex = 0;
+let pagesInfos = [];
 
-function setupDrawing(floatingCanvas, storingCanvas) {
-  // init
-  const ctxFloat = floatingCanvas.getContext("2d");
-  const ctxStore = storingCanvas.getContext("2d");
-  let isDrawing = false;
-  drawStoringStroks();
+let pagePool, templatePool;
 
-  // prefect-freehandwrite 参数
-  const strokeOption = {
-    size: 16,
-    thinning: 0.5,
-    smoothing: 0.5,
-    streamline: 0.5,
-    easing: (t) => t,
-    simulatePressure: true,
-    last: true,
-    start: {
-      cap: true,
-      taper: 0,
+// 每一页的 info - 包含所有绘画相关功能
+class pageClass {
+  constructor(templateID, pageID) {
+    this.templateID = templateID;
+    this.pageID = pageID;
+    this.strokes = JSON.parse(
+      fs.readFileSync(
+        path.join(tempDir, "pages", this.pageID, "page.json")
+      )
+    ).strokes;
+
+    // 绘画相关属性
+    this.currentPoints = [];
+    this.isDrawing = false;
+    this.floatingCanvas = null;
+    this.storingCanvas = null;
+    this.ctxFloat = null;
+    this.ctxStore = null;
+
+    // 事件监听器引用
+    this.eventListeners = {
+      pointerdown: null,
+      pointermove: null,
+      pointerup: null,
+      pointercancel: null
+    };
+
+    // prefect-freehand 参数
+    this.strokeOption = {
+      size: 16,
+      thinning: 0.5,
+      smoothing: 0.5,
+      streamline: 0.5,
       easing: (t) => t,
-    },
-    end: {
-      cap: true,
-      taper: 0,
-      easing: (t) => t,
-    },
-  };
+      simulatePressure: true,
+      last: true,
+      start: {
+        cap: true,
+        taper: 0,
+        easing: (t) => t,
+      },
+      end: {
+        cap: true,
+        taper: 0,
+        easing: (t) => t,
+      },
+    };
 
-  floatingCanvas.addEventListener("pointerdown", (event) => {
-    // 阻止默认行为
-    event.preventDefault();
+    console.log("open page: %s", this.pageID);
+  }
 
-    isDrawing = true;
-    currentPoints = [[event.clientX, event.clientY, event.pressure ?? 0.5]];
-    redrawFloat();
-  });
+  // 初始化绘图功能
+  setupDrawing(floatingCanvas, storingCanvas) {
+    this.floatingCanvas = floatingCanvas;
+    this.storingCanvas = storingCanvas;
+    this.ctxFloat = floatingCanvas.getContext("2d");
+    this.ctxStore = storingCanvas.getContext("2d");
 
-  floatingCanvas.addEventListener("pointermove", (event) => {
-    if (!isDrawing) return;
-    // 阻止默认行为
-    event.preventDefault();
+    // 设置画布尺寸
+    this.floatingCanvas.width = window.innerWidth;
+    this.floatingCanvas.height = window.innerHeight;
+    this.storingCanvas.width = window.innerWidth;
+    this.storingCanvas.height = window.innerHeight;
 
-    currentPoints.push([event.clientX, event.clientY, event.pressure ?? 0.5]);
-    redrawFloat();
-  });
+    // 绘制已保存的笔画
+    this.drawStoringStrokes();
 
-  floatingCanvas.addEventListener("pointerup", (event) => {
-    // 阻止默认行为
-    event.preventDefault();
+    // 绑定事件监听器
+    this.bindEventListeners();
+  }
 
-    isDrawing = false;
-    applyFloat();
-  });
+  // 绑定事件监听器
+  bindEventListeners() {
+    this.eventListeners.pointerdown = (event) => {
+      event.preventDefault();
+      this.isDrawing = true;
+      this.currentPoints = [[event.clientX, event.clientY, event.pressure ?? 0.5]];
+      this.redrawFloat();
+    };
 
-  // 触摸被取消（如系统手势、来电等）
-  floatingCanvas.addEventListener("pointercancel", (event) => {
-    // 阻止默认行为
-    event.preventDefault();
+    this.eventListeners.pointermove = (event) => {
+      if (!this.isDrawing) return;
+      event.preventDefault();
+      this.currentPoints.push([event.clientX, event.clientY, event.pressure ?? 0.5]);
+      this.redrawFloat();
+    };
 
-    isDrawing = false;
-    applyFloat();
-  });
+    this.eventListeners.pointerup = (event) => {
+      event.preventDefault();
+      this.isDrawing = false;
+      this.applyFloat();
+    };
+
+    this.eventListeners.pointercancel = (event) => {
+      event.preventDefault();
+      this.isDrawing = false;
+      this.applyFloat();
+    };
+
+    this.floatingCanvas.addEventListener("pointerdown", this.eventListeners.pointerdown);
+    this.floatingCanvas.addEventListener("pointermove", this.eventListeners.pointermove);
+    this.floatingCanvas.addEventListener("pointerup", this.eventListeners.pointerup);
+    this.floatingCanvas.addEventListener("pointercancel", this.eventListeners.pointercancel);
+  }
+
+  // 移除事件监听器
+  removeEventListeners() {
+    if (this.floatingCanvas) {
+      this.floatingCanvas.removeEventListener("pointerdown", this.eventListeners.pointerdown);
+      this.floatingCanvas.removeEventListener("pointermove", this.eventListeners.pointermove);
+      this.floatingCanvas.removeEventListener("pointerup", this.eventListeners.pointerup);
+      this.floatingCanvas.removeEventListener("pointercancel", this.eventListeners.pointercancel);
+    }
+  }
 
   // 将当前 floating canvas 里的一笔添加到 storing canvas 里
-  function applyFloat() {
-    ctxFloat.clearRect(0, 0, floatingCanvas.width, floatingCanvas.height);
+  applyFloat() {
+    this.ctxFloat.clearRect(0, 0, this.floatingCanvas.width, this.floatingCanvas.height);
 
-    if (currentPoints.length > 1) {
-      const currentStroke = getStroke(currentPoints, strokeOption);
-      drawStroke(ctxStore, currentStroke);
-      storingStrokes.push(currentStroke);
-      // console.log("apply");
-      // console.log(currentStroke);
-      // console.log(storingStrokes);
+    if (this.currentPoints.length > 1) {
+      const currentStroke = getStroke(this.currentPoints, this.strokeOption);
+      this.drawStroke(this.ctxStore, currentStroke);
+      this.strokes.push(currentStroke);
     }
 
     // 重置当前点
-    currentPoints = [];
+    this.currentPoints = [];
   }
 
   // 重绘 floating canvas
-  function redrawFloat() {
-    ctxFloat.clearRect(0, 0, floatingCanvas.width, floatingCanvas.height);
+  redrawFloat() {
+    this.ctxFloat.clearRect(0, 0, this.floatingCanvas.width, this.floatingCanvas.height);
 
-    if (currentPoints.length > 1) {
-      const currentStroke = getStroke(currentPoints, strokeOption);
-      drawStroke(ctxFloat, currentStroke);
+    if (this.currentPoints.length > 1) {
+      const currentStroke = getStroke(this.currentPoints, this.strokeOption);
+      this.drawStroke(this.ctxFloat, currentStroke);
     }
   }
 
-  function drawStroke(ctx, points) {
+  // 绘制单个笔画
+  drawStroke(ctx, points) {
     if (points.length === 0) return;
 
     ctx.fillStyle = "black";
@@ -109,26 +162,33 @@ function setupDrawing(floatingCanvas, storingCanvas) {
     ctx.fill();
   }
 
-  function drawStoringStroks() {
-    storingStrokes.forEach((stroke) => {
-      drawStroke(ctxStore, stroke);
-    })
-  }
-}
-
-// 每一页的 info
-class pageInfo {
-  constructor(templateID, pageID) {
-    this.templateID = templateID;
-    this.pageID = pageID;
-    this.strokes = JSON.parse(
-      fs.readFileSync(
-        path.join(tempDir, "pages", this.pageID, "page.json")
-      )
-    ).strokes;
-    console.log(path.join(tempDir, "pages", this.pageID, "page.json"));
+  // 绘制所有已保存的笔画
+  drawStoringStrokes() {
+    this.strokes.forEach((stroke) => {
+      this.drawStroke(this.ctxStore, stroke);
+    });
   }
 
+  // 清空画布
+  clearCanvas() {
+    if (this.ctxFloat) {
+      this.ctxFloat.clearRect(0, 0, this.floatingCanvas.width, this.floatingCanvas.height);
+    }
+    if (this.ctxStore) {
+      this.ctxStore.clearRect(0, 0, this.storingCanvas.width, this.storingCanvas.height);
+    }
+  }
+
+  // 撤销最后一笔
+  undo() {
+    if (this.strokes.length > 0) {
+      this.strokes.pop();
+      this.ctxStore.clearRect(0, 0, this.storingCanvas.width, this.storingCanvas.height);
+      this.drawStoringStrokes();
+    }
+  }
+
+  // 保存到文件
   saveToFile() {
     fs.writeFileSync(
       path.join(tempDir, "pages", this.pageID, "page.json"),
@@ -139,63 +199,87 @@ class pageInfo {
     );
   }
 
-  saveToInfo(strokes) {
-    this.strokes = strokes;
+  // 激活此页面
+  activate(floatingCanvas, storingCanvas) {
+    // 显示并绑定事件
+    this.setupDrawing(floatingCanvas, storingCanvas);
+  }
+
+  // 停用此页面
+  deactivate() {
+    // 移除事件监听器
+    this.removeEventListeners();
   }
 }
 
 let tempDir;
 let pages;
-let pagesInfos;
 
 ipc.on("board-opened", (event, dir) => {
-  console.log(dir);
-  tempDir = dir;
-  init();
-  load();
+  init(dir);
+  loadPage(0);
+  setupPageControls();
 });
 
 // 监听窗口关闭事件
 window.addEventListener('beforeunload', (event) => {
-  // 保存当前笔画数据到文件
-  pagesInfos[0].saveToInfo(storingStrokes);
+  // 停用当前页面并保存所有页面数据
+  if (pagesInfos[currentPageIndex]) {
+    pagesInfos[currentPageIndex].deactivate();
+  }
+
   pagesInfos.forEach(info => {
     info.saveToFile();
   });
-  
+
   // 发送 IPC 消息到主进程
   ipc.send("save-board-templated", tempDir);
 });
 
-
-function init() {
-  // init from tempDir.
+// 初始化页面数据
+function init(dir) {
+  console.log("init: %s", dir)
+  tempDir = dir;
+  pagePool = new fileNameRandomPool(path.join(tempDir, "pages"), (_) => true);
+  templatePool = new fileNameRandomPool(path.join(tempDir, "templates"), (_) => true);
   pages = JSON.parse(fs.readFileSync(path.join(tempDir, "pages.json")));
-  pagesInfos = new Array(0);
+  pagesInfos = [];
   pages.forEach((pge) => {
-    pagesInfos.push(new pageInfo(pge.templateID, pge.pageID));
+    // 在 pages.json 中定义每一个页面用什么 template
+    pagesInfos.push(new pageClass(pge.templateID, pge.pageID));
   });
 }
 
-// 加载第一页
-// NOTE: 现在只有一页
-function load() {
-  let pageNo = 0;
+// 加载指定页面
+function loadPage(pageNo) {
+  if (pageNo < 0 || pageNo >= pagesInfos.length) {
+    console.error("Invalid page number: %d", pageNo);
+    return;
+  }
+
+  // 停用当前页面
+  if (pagesInfos[currentPageIndex]) {
+    pagesInfos[currentPageIndex].deactivate();
+  }
+
+  // 更新当前页面索引
+  currentPageIndex = pageNo;
+
   let info = pagesInfos[pageNo];
   let backgroundImg = document.getElementById("app-background-layer");
 
+  // 加载模板信息
   let templateInfo = JSON.parse(
     fs.readFileSync(
       path.join(tempDir, "templates", info.templateID, "template.json")
     )
   );
 
+  // 设置背景
   if (templateInfo.backgroundType === "solid") {
-    // 加载背景色
     backgroundImg.style.background = templateInfo.background;
     console.log(templateInfo.background);
   } else {
-    // 加载图片
     backgroundImg.src = path.join(
       tempDir,
       "templates",
@@ -205,15 +289,78 @@ function load() {
     console.log(backgroundImg.src);
   }
 
-  // 初始化绘图功能
-  storingStrokes = info.strokes
+  // 激活新页面的绘图功能
   const floatingCanvas = document.getElementById("floating-canvas");
   const storingCanvas = document.getElementById("storing-canvas");
-  if (floatingCanvas) {
-    floatingCanvas.width = window.innerWidth;
-    floatingCanvas.height = window.innerHeight;
-    storingCanvas.width = window.innerWidth;
-    storingCanvas.height = window.innerHeight;
-    setupDrawing(floatingCanvas, storingCanvas);
+  if (floatingCanvas && storingCanvas) {
+    info.activate(floatingCanvas, storingCanvas);
   }
+
+  // 更新页码显示
+  updatePageNumber();
+}
+
+function addPage(templateID) {
+  const newPage = boardManager.addPage(pagePool, templateID);
+  pagePool = newPage.pool;
+  pagesInfos.push(new pageClass(templateID, newPage.pageID));
+  switchPage(pagesInfos.length - 1);
+}
+
+// 切换到指定页面
+function switchPage(newPageIndex) {
+  if (newPageIndex < 0 || newPageIndex >= pagesInfos.length) {
+    console.warn("Cannot switch to page:", newPageIndex);
+    return;
+  }
+
+  loadPage(newPageIndex);
+}
+
+// 更新页码显示
+function updatePageNumber() {
+  const leftPageNumber = document.getElementById('app-controls-side-controls-left-page-number');
+  const rightPageNumber = document.getElementById('app-controls-side-controls-right-page-number');
+
+  const pageText = `${currentPageIndex + 1}/${pagesInfos.length}`;
+
+  if (leftPageNumber) {
+    leftPageNumber.textContent = pageText;
+  }
+  if (rightPageNumber) {
+    rightPageNumber.textContent = pageText;
+  }
+}
+
+// 绑定翻页按钮事件
+function setupPageControls() {
+  // 左侧控制
+  const leftPrev = document.getElementById('app-controls-side-controls-left-previous');
+  const leftNext = document.getElementById('app-controls-side-controls-left-next');
+
+  // 右侧控制
+  const rightPrev = document.getElementById('app-controls-side-controls-right-previous');
+  const rightNext = document.getElementById('app-controls-side-controls-right-next');
+
+  const gotoPrevPage = () => {
+    if (currentPageIndex > 0) {
+      switchPage(currentPageIndex - 1);
+    }
+    console.log("Previous page");
+  }
+
+  const gotoNextPage = () => {
+    if (currentPageIndex < pagesInfos.length - 1) {
+      switchPage(currentPageIndex + 1);
+    } else if (currentPageIndex == pagesInfos.length - 1) {
+      addPage(pagesInfos[currentPageIndex].templateID);
+      console.log("Add page");
+    }
+    console.log("Next page")
+  }
+
+  leftPrev.addEventListener("click", gotoPrevPage);
+  leftNext.addEventListener('click', gotoNextPage);
+  rightPrev.addEventListener("click", gotoPrevPage);
+  rightNext.addEventListener('click', gotoNextPage);
 }

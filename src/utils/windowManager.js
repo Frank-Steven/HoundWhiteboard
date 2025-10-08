@@ -16,7 +16,7 @@ function createWindow(template, size = { width: 800, height: 600, minWidth: 800,
       contextIsolation: false,
     },
   });
-  win.loadFile(__dirname + "/../templates/" + template);
+  win.loadFile(__dirname + "/../templates/html/" + template);
   // win.webContents.openDevTools();
 
   win.webContents.on("did-finish-load", () => {
@@ -31,13 +31,14 @@ function createFullScreenWindow(template) {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
+      nodeIntegrationInSubFrames: true,
     },
     fullscreen: true,
     autoHideMenuBar: true,
     frame: false,
     transparent: true,
   });
-  win.loadFile(__dirname + "/../templates/" + template);
+  win.loadFile(__dirname + "/../templates/html/" + template);
   return win;
 }
 
@@ -55,7 +56,7 @@ function createModalWindow(template, parent, size = { width: 800, height: 600, m
       contextIsolation: false,
     },
   });
-  modalWin.loadFile(__dirname + "/../templates/" + template);
+  modalWin.loadFile(__dirname + "/../templates/html/" + template);
 
   modalWin.webContents.on("did-finish-load", () => {
     const settings = IOManager.loadSettings();
