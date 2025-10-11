@@ -14,6 +14,7 @@
     "hidefile": "^3.0.0",
     "electron-packager": "^17.1.0",
     "electron": "^38.0.0",
-    "perfect-freehand": "^1.2.2"
+    "perfect-freehand": "^1.2.2",
+    "mathjs": "^14.8.2"
   }
 }
