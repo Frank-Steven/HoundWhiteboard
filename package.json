@@ -4,16 +4,13 @@
   "description": "A whiteboard app",
   "main": "./src/main.js",
   "scripts": {
-    "start": "electron .",
-    "packager": "electron-packager ./ MyApp --ignore=^(data|defaults|\\..+) --out=./dist"
+    "start": "electron ."
   },
   "author": "Frank Steven",
   "license": "MIT",
   "dependencies": {
     "adm-zip": "^0.5.16",
     "hidefile": "^3.0.0",
-    "electron-packager": "^17.1.0",
-    "electron": "^38.0.0",
     "perfect-freehand": "^1.2.2"
   }
 }
