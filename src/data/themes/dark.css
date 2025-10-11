@@ -1,3 +1,9 @@
+@font-face {
+  font-family: 'HarmonyOS_Sans';
+  src: url('../../asset/fonts/HarmonyOS Sans/HarmonyOS_Sans_SC/HarmonyOS_Sans_SC.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
 :root {
   --bg0: #000000;
   --bg1: #333333;
@@ -17,7 +23,7 @@
   --fs3: 16px;
   --fs4: 14px;
   --fs5: 12px;
-  --ff0: Arial, sans-serif;
-  --ff1: Arial, sans-serif;
-  --ff2: Arial, sans-serif;
+  --ff0: 'HarmonyOS_Sans', sans-serif;
+  --ff1: 'HarmonyOS_Sans', sans-serif;
+  --ff2: 'HarmonyOS_Sans', sans-serif;
 }
