@@ -3,6 +3,8 @@ const fs = require("fs");
 const path = require("path");
 const AdmZip = require("adm-zip");
 const { dialog } = require("electron");
+const { dir } = require("console");
+const { directory, file } = require("./classes");
 
 function setupFileOperationIPC(ipc, windows) {
   ipc.on("open-hwb-file", (event, windowNow) => {
@@ -94,52 +96,60 @@ function setupFileOperationIPC(ipc, windows) {
   });
 }
 
-function extractFile(from, dest) {
-  const zip = new AdmZip(from);
-  zip.extractAllTo(dest, true);
+// 解压文件
+// directory source: 要解压的文件路径
+// directory dest: 解压到的目录路径
+function extractFile(source, dest) {
+  const zip = new AdmZip(source.getPath());
+  zip.extractAllTo(dest.getPath(), true);
 }
 
-function compressFile(directory, file, remove = false) {
+// 压缩文件
+// directory source: 要压缩的文件夹路径
+// file dest: 压缩后的文件路径
+// boolean remove: 是否删除原文件
+function compressFile(source, dest, remove = false) {
   const zip = new AdmZip();
-  zip.addLocalFolder(directory);
-  zip.writeZip(file);
+  zip.addLocalFolder(source);
+  zip.writeZip(dest.getPath());
   if (remove) {
-    fs.rm(directory, {recursive: true, force: true}, (err) => {
+    fs.rm(source.getPath(), { recursive: true, force: true }, (err) => {
       if (err) throw err;
       console.log("Directory deleted");
     });
   }
 }
 
-class fileNameRandomPool {
-  constructor(directory, filter) {
-    this.directory = directory;
-    // 读取目录下所有文件名
-    const files = fs.readdirSync(directory);
-    const filteredFiles = files.filter(filter);
-    const numbers = filteredFiles.map(parseInt);
-    this.existance = {};
-    numbers.forEach((num) => {
-      if (!isNaN(num)) {
-        this.existance[num] = true;
-      }
-    });
-  }
+// // 文件名随机池
+// class fileNameRandomPool {
+//   constructor(directory, filter) {
+//     this.directory = directory;
+//     // 读取目录下所有文件名
+//     const files = fs.readdirSync(directory);
+//     const filteredFiles = files.filter(filter);
+//     const numbers = filteredFiles.map(parseInt);
+//     this.existance = {};
+//     numbers.forEach((num) => {
+//       if (!isNaN(num)) {
+//         this.existance[num] = true;
+//       }
+//     });
+//   }
 
-  //新建文件
-  generate() {
-    let randomNum;
-    while (this.existance[(randomNum = randomInt(0, 1145141919810))]) ;
-    this.existance[randomNum] = true;
-    return randomNum.toString();
-  }
+//   //新建文件
+//   generate() {
+//     let randomNum;
+//     while (this.existance[(randomNum = randomInt(0, 1145141919810))]) ;
+//     this.existance[randomNum] = true;
+//     return randomNum.toString();
+//   }
 
-  //删除文件夹
-  delete(ID) {
-    fs.unlinkSync(path.join(this.directory, ID));
-    delete this.existance[parseInt(filename)];
-  }
-}
+//   //删除文件夹
+//   delete(ID) {
+//     fs.unlinkSync(path.join(this.directory, ID));
+//     delete this.existance[parseInt(filename)];
+//   }
+// }
 
 let userDataPath, settingsPath, templatesPath;
 let templatePool;
