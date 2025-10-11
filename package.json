@@ -11,6 +11,9 @@
   "dependencies": {
     "adm-zip": "^0.5.16",
     "hidefile": "^3.0.0",
+    "electron-packager": "^17.1.0",
+    "electron": "^38.0.0",
+    "mathjs": "^14.8.2"
     "perfect-freehand": "^1.2.2"
   }
 }

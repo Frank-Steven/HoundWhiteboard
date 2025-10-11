@@ -3,11 +3,66 @@ const fs = require("fs");
 const { getStroke } = require("perfect-freehand");
 const { fileNameRandomPool } = require("../../utils/IOManager");
 const boardManager = require("../../utils/boardManager");
+const math = require("mathjs");
+
+// prefect-freehand 参数
+const strokeOption = {
+  size: 16,
+  thinning: 0.5,
+  smoothing: 0.5,
+  streamline: 0.5,
+  easing: (t) => t,
+  simulatePressure: true,
+  last: true,
+  start: {
+    cap: true,
+    taper: 0,
+    easing: (t) => t,
+  },
+  end: {
+    cap: true,
+    taper: 0,
+    easing: (t) => t,
+  },
+};
 
 let currentPageIndex = 0;
 let pages = [];
 
 let pagePool, templatePool;
+
+class strokeClass {
+  constructor(innerPoints) {
+    this.innerPoints = innerPoints;
+    this.outerPoints = getStroke(innerPoints, strokeOption);
+    this.transformation = math.matrix([[1, 0], [0, 1]]);
+
+    let maxX = 0, minX = 0x1f2f3f4f;
+    let maxY = 0, minY = 0x1f2f3f4f;
+    let width = 0, height = 0;
+    innerPoints.forEach(p => {
+      minX = math.min(minX, p[0]);
+      minY = math.min(minY, p[1]);
+      maxX = math.max(maxX, p[0]);
+      maxY = math.max(maxY, p[1]);
+    });
+
+    innerPoints.forEach(p => {
+      p[0] -= minX;
+      p[1] -= minY;
+    });
+
+    width = maxX - minX;
+    height = maxY - minY;
+  }
+
+  rotate(theta) {
+    this.transformation *= math.matrix(
+      [[math.cos(theta), math.sin(theta)],
+      [-math.sin(theta), math.cos(theta)]]
+    );
+  }
+}
 
 // 每一页的 info - 包含所有绘画相关功能
 class pageClass {
@@ -34,27 +89,6 @@ class pageClass {
       pointermove: null,
       pointerup: null,
       pointercancel: null
-    };
-
-    // prefect-freehand 参数
-    this.strokeOption = {
-      size: 16,
-      thinning: 0.5,
-      smoothing: 0.5,
-      streamline: 0.5,
-      easing: (t) => t,
-      simulatePressure: true,
-      last: true,
-      start: {
-        cap: true,
-        taper: 0,
-        easing: (t) => t,
-      },
-      end: {
-        cap: true,
-        taper: 0,
-        easing: (t) => t,
-      },
     };
 
     console.log("open page: %s", this.pageID);
@@ -129,7 +163,7 @@ class pageClass {
     this.ctxFloat.clearRect(0, 0, this.floatingCanvas.width, this.floatingCanvas.height);
 
     if (this.currentPoints.length > 1) {
-      const currentStroke = getStroke(this.currentPoints, this.strokeOption);
+      const currentStroke = getStroke(this.currentPoints, strokeOption);
       this.drawStroke(this.ctxStore, currentStroke);
       this.strokes.push(currentStroke);
     }
@@ -143,7 +177,7 @@ class pageClass {
     this.ctxFloat.clearRect(0, 0, this.floatingCanvas.width, this.floatingCanvas.height);
 
     if (this.currentPoints.length > 1) {
-      const currentStroke = getStroke(this.currentPoints, this.strokeOption);
+      const currentStroke = getStroke(this.currentPoints, strokeOption);
       this.drawStroke(this.ctxFloat, currentStroke);
     }
   }
