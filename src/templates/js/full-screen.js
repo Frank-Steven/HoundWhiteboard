@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const { getStroke } = require("perfect-freehand");
-const { fileNameRandomPool } = require("../../utils/IOManager");
+const { fileNameRandomPool } = require("../../classes/io");
 const boardManager = require("../../utils/boardManager");
 const math = require("mathjs");
 
