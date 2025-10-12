@@ -1,8 +1,5 @@
 const { BrowserWindow } = require("electron");
 const IOManager = require("./IOManager");
-const fs = require("fs");
-const path = require("path");
-const hidefile = require('hidefile');
 
 function createWindow(template, size = { width: 800, height: 600, minWidth: 800, minHeight: 600 }) {
   const win = new BrowserWindow({
