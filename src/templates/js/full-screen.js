@@ -1,7 +1,6 @@
 const path = require("path");
-const fs = require("fs");
 const { getStroke } = require("perfect-freehand");
-const { fileNameRandomPool } = require("../../classes/io");
+const { fileNameRandomPool, file, directory } = require("../../classes/io");
 const boardManager = require("../../utils/boardManager");
 const math = require("mathjs");
 
@@ -69,11 +68,7 @@ class pageClass {
   constructor(templateID, pageID) {
     this.templateID = templateID;
     this.pageID = pageID;
-    this.strokes = JSON.parse(
-      fs.readFileSync(
-        path.join(tempDir, "pages", this.pageID, "page.json")
-      )
-    ).strokes;
+    this.strokes = tempDir.cd("pages").cd(this.pageID).peek("page", "json").catJSON().strokes;
 
     // 绘画相关属性
     this.currentPoints = [];
@@ -224,13 +219,13 @@ class pageClass {
 
   // 保存到文件
   saveToFile() {
-    fs.writeFileSync(
-      path.join(tempDir, "pages", this.pageID, "page.json"),
-      JSON.stringify({
-        "strokes": this.strokes,
-        "assets": []
-      }, null, 2)
-    );
+    tempDir.cd("pages")
+           .cd(this.pageID)
+           .peek("page", "json")
+           .writeJSON({
+             strokes: this.strokes,
+             assets: []
+           })
   }
 
   // 激活此页面
@@ -268,16 +263,16 @@ window.addEventListener('beforeunload', (event) => {
   pagesSaveToFile();
 
   // 发送 IPC 消息到主进程
-  ipc.send("save-board-templated", tempDir);
+  ipc.send("save-board-templated", tempDir.getPath());
 });
 
 // 初始化页面数据
-function init(dir) {
-  console.log("init: %s", dir)
-  tempDir = dir;
-  pagePool = new fileNameRandomPool(path.join(tempDir, "pages"), (_) => true);
-  templatePool = new fileNameRandomPool(path.join(tempDir, "templates"), (_) => true);
-  pagesInfo = JSON.parse(fs.readFileSync(path.join(tempDir, "pages.json")));
+function init(dirPath) {
+  console.log("init: %s", dirPath)
+  tempDir = directory.parse(dirPath);
+  pagePool = new fileNameRandomPool(tempDir.cd("pages"));
+  templatePool = new fileNameRandomPool(tempDir.cd("templates"));
+  pagesInfo = tempDir.peek("pages", "json").catJSON();
   pages = [];
   pagesInfo.forEach((pge) => {
     // 在 pages.json 中定义每一个页面用什么 template
@@ -304,11 +299,7 @@ function loadPage(pageNo) {
   let backgroundImg = document.getElementById("app-background-layer");
 
   // 加载模板信息
-  let templateInfo = JSON.parse(
-    fs.readFileSync(
-      path.join(tempDir, "templates", info.templateID, "template.json")
-    )
-  );
+  let templateInfo = tempDir.cd("templates").cd(info.templateID).peek("template", "json").catJSON();
 
   // 设置背景
   if (templateInfo.backgroundType === "solid") {
@@ -343,7 +334,6 @@ function addPage(templateID) {
 }
 
 function pagesSaveToFile() {
-  fs.rmSync(path.join(tempDir, "pages.json"));
   let pagesJson = [];
   pages.forEach((pge) => {
     pagesJson.push({
@@ -351,10 +341,7 @@ function pagesSaveToFile() {
       "pageID": pge.pageID
     })
   });
-  fs.writeFileSync(
-    path.join(tempDir, "pages.json"),
-    JSON.stringify(pagesJson, null, 2)
-  );
+  tempDir.peek("pages", "json").writeJSON(pagesJson);
 }
 
 // 切换到指定页面

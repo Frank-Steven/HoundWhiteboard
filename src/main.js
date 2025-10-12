@@ -2,6 +2,7 @@ const { app, BrowserWindow } = require("electron");
 const IOManager = require("./utils/IOManager");
 const winManager = require("./utils/windowManager");
 const boardManager = require("./utils/boardManager");
+const { file, directory } = require("./classes/io");
 
 let windows = {
   MainMenu: null,
@@ -75,16 +76,22 @@ ipc.on("load-buttons", (event, windowNow) => {
   windows[windowNow].webContents.send("buttons-loaded", result);
 });
 
+// @param {
+//          {string} templateID
+//          {file} boardFile
+//        } boardInfo
 ipc.on("create-new-board-templated", (event, boardInfo) => {
   console.log("create-new-board-templated: %s At %s", boardInfo.templateID, boardInfo.filePath);
   boardManager.createEmptyBoard(boardInfo);
   BrowserWindow.getAllWindows().forEach((win) => { win.close(); });
-  windows.FullScreen = boardManager.openBoard(boardInfo.filePath);
+  windows.FullScreen = boardManager.openBoard(file.parse(boardInfo.filePath));
 });
 
 ipc.on("open-board-templated", (event, filePath) => {
+  console.log(filePath);
+  console.log("open-board-templated: At %s", filePath);
   BrowserWindow.getAllWindows().forEach((win) => { win.close(); });
-  windows.FullScreen = boardManager.openBoard(filePath);
+  windows.FullScreen = boardManager.openBoard(file.parse(filePath));
 });
 
 ipc.on("save-board-templated", (event, dirPath) => {
@@ -95,5 +102,6 @@ ipc.on("save-board-templated", (event, dirPath) => {
     minWidth: 800,
     minHeight: 600,
   });
-  boardManager.saveBoard(dirPath);
+  boardManager.saveBoard(directory.parse(dirPath));
 });
+

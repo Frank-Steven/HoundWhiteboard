@@ -24,6 +24,7 @@ let result = {
 };
 
 let backgroundImage = "";
+let backgroundImageFile;
 
 // 初始化
 previewScreenFlush()

@@ -1,18 +1,14 @@
 const winManager = require("./windowManager");
 const IOManager = require("./IOManager");
-const { fileNameRandomPool } = require("../../classes/io");
+const { fileNameRandomPool, directory, file } = require("../classes/io");
 const path = require("path");
-const fs = require("fs");
 const hidefile = require("hidefile");
 
-let userDataPath, templatesPath;
+let templatesDir;
 
 function init(app) {
-  // 获取用户数据目录（类似 VSCode 的 ~/.config/YourApp/）
-  userDataPath = app.getPath("userData");
-  templatesPath = path.join(userDataPath, "templates");
   // 读取templates目录，如果没有就创建
-  fs.mkdirSync(templatesPath, { recursive: true });
+  templatesDir = new directory(app.getPath("userData"), "templates").make();
 }
 
 const boardMeta = {
@@ -34,141 +30,107 @@ const pageMeta = {
 function createEmptyBoard(boardInfo) {
   /// ROOT DIR ///
   // 创建临时目录
-  const tempDir = boardInfo.filePath.replace(".hwb", "");
-  fs.mkdirSync(tempDir, { recursive: true });
+  const boardFile = file.parse(boardInfo.filePath);
+  const tempDir = new directory(boardFile.address, boardFile.name).rmWhenExist().make();
 
-  // 创建 meta.json 文件
-  fs.writeFileSync(
-    path.join(tempDir, "meta.json"),
-    JSON.stringify(boardMeta, null, 2)
-  );
-
-  // 创建 history.json 文件
-  fs.writeFileSync(
-    path.join(tempDir, "history.json"),
-    JSON.stringify([], null, 2)
-  );
+  // 创建 meta.json 文件 和 history.json 文件
+  tempDir.peek("meta", "json").writeJSON(boardMeta);
+  tempDir.peek("histroy", "json").writeJSON([]);
 
   /// PAGES ///
   // 创建 pages 目录
-  fs.mkdirSync(path.join(tempDir, "pages"), { recursive: true });
+  tempDir.cd("pages").make();
 
-  // 生成 pageID
-  let pagePool = new fileNameRandomPool(path.join(tempDir, "pages"), (_) => true)
-  let firstPageID = pagePool.generate();
-  fs.mkdirSync(path.join(tempDir, "pages", firstPageID), { recursive: true });
+  // 生成 pageID 并创建临时目录
+  const pagePool = new fileNameRandomPool(tempDir.cd("pages"));
+  const firstPageDir = pagePool.generate();
+  const firstPageID = firstPageDir.name;
 
   // 创建 meta.json（元数据）
-  fs.writeFileSync(
-    path.join(tempDir, "pages", firstPageID, "meta.json"),
-    JSON.stringify(pageMeta, null, 2)
-  );
+  firstPageDir.peek("meta", "json").writeJSON(pageMeta);
 
   // 创建 page.json（页数据）
-  fs.mkdirSync(path.join(tempDir, "pages", firstPageID, "assets"), { recursive: true });
-  fs.writeFileSync(
-    path.join(tempDir, "pages", firstPageID, "page.json"),
-    JSON.stringify({
-      strokes: [],
-      assets: [],
-    }, null, 2)
-  );
+  firstPageDir.cd("assets").make();
+  firstPageDir.peek("page", "json").writeJSON({
+    strokes: [],
+    assets: [],
+  });
 
   // 创建 pages.json 文件（page 列表）
-  fs.writeFileSync(
-    path.join(tempDir, "pages.json"),
-    JSON.stringify([
-      {
-        "templateID": boardInfo.templateID,
-        "pageID": firstPageID
-      }
-    ], null, 2)
-  );
+  tempDir.peek("pages", "json").writeJSON([
+    {
+      "templateID": boardInfo.templateID,
+      "pageID": firstPageID
+    }
+  ]);
 
   /// TEMPLATES ///
   // 创建 templates 目录
-  fs.mkdirSync(path.join(tempDir, "templates"), { recursive: true });
-  // 把样式从 templatesPath 中拷过来，不需要 Pool
-  // let tpltPool = new fileNameRandomPool(path.join(tempDir, "templates"), (_) => true)
-  fs.mkdirSync(path.join(tempDir, "templates", boardInfo.templateID), { recursive: true });
-  fs.cpSync(
-    path.join(templatesPath, boardInfo.templateID),
-    path.join(tempDir, "templates", boardInfo.templateID),
-    { recursive: true }
-  );
+  tempDir.cd("templates");
+  // 把样式从 templatesPath 中拷过来
+  templatesDir.cd(boardInfo.templateID)
+              .cp(tempDir.cd("templates").cd(boardInfo.templateID));
   // 创建 .hmq 文件（打包）
-  IOManager.compressFile(tempDir, boardInfo.filePath);
+  tempDir.compress(boardFile, false);
   // 隐藏刚刚创建的临时目录
-  hidefile.hideSync(tempDir);
+  tempDir.hide();
 }
 
-// @param pool
-// type: fileNameRandomPool
-// @return
-// JSON: {
-//   pool: fileNameRandomPool,
-//   pageID: string
+// @param {fileNameRandomPool} pool
+// @return {
+//   {fileNameRandomPool} pool,
+//   {string} pageID
 // }
+// TODO: apply template
+// BUG: 如果是从其他机器拷过来的 .hwb 文件，它里面的 templateID 可能与本机
+// 的 templateID 一样，此时会有 .hwb 里的 template 被本机 template 覆盖的
+// 可能。
 function addPage(pool, templateID) {
   // 创建新页面文件夹
-  const tempDir = path.join(pool.directory, "..");
-  const newPageID = pool.generate();
-  fs.mkdirSync(path.join(tempDir, "pages", newPageID), { recursive: true });
+  // const tempDir = pool.directory.father();
+  const newPageDir = pool.generate();
 
   // 创建 meta.json（元数据）
-  fs.writeFileSync(
-    path.join(tempDir, "pages", newPageID, "meta.json"),
-    JSON.stringify(pageMeta, null, 2)
-  );
+  newPageDir.peek("meta", "json").writeJSON(pageMeta);
 
   // 创建 page.json（页数据）
-  fs.mkdirSync(path.join(tempDir, "pages", newPageID, "assets"), { recursive: true });
-  fs.writeFileSync(
-    path.join(tempDir, "pages", newPageID, "page.json"),
-    JSON.stringify({
-      strokes: [],
-      assets: [],
-    }, null, 2)
-  );
-
+  newPageDir.peek("page", "json").writeJSON({
+    strokes: [],
+    assets: [],
+  })
+  newPageDir.cd("assets").make();
 
   return {
     "pool": pool,
-    "pageID": newPageID,
+    "pageID": newPageDir.name,
   };
 }
 
-function openBoard(filePath) {
+// @param {file} boardFile: .hwb file
+// @return {BrowserWindow}
+function openBoard(boardFile) {
   let win = winManager.createFullScreenWindow("full-screen.html");
-  console.log("open board: " + filePath);
+  console.log("open board: " + boardFile.getPath());
 
-  let fileDir = filePath.replace(".hwb", "");
-  let tempDir = path.join(path.dirname(fileDir), "." + path.basename(fileDir));
-  if (fs.existsSync(tempDir)) {
-    fs.rmSync(tempDir, {recursive: true, force: true});
-  }
+  const fileDir = new directory(boardFile.address, boardFile.name);
+  directory.getHideResult(fileDir).rmWhenExist();
  
   // 解压临时文件夹
-  IOManager.extractFile(filePath, fileDir);
-  hidefile.hideSync(fileDir);
+  const tempDir = boardFile.extract(fileDir).hide();
 
-  // 在 win 完成加载时，给渲染进程发送 tempDir
+  // 在 win 完成加载时，给渲染进程发送 tempDir 的 pathString
   win.webContents.on("did-finish-load", () => {
-    win.webContents.send("board-opened", tempDir);
+    win.webContents.send("board-opened", tempDir.getPath());
   });
   return win;
 }
 
-function saveBoard(dirPath) {
-  console.log("save board: " + dirPath);
+function saveBoard(boardDir) {
+  console.log("save board: " + boardDir.getPath());
 
-  let filePath = path.join(path.dirname(dirPath), path.basename(dirPath).substring(1) + ".hwb");
+  const boardFile = new file(boardDir.address, boardDir.name.substring(1), "hwb").rmWhenExist();
 
-  if(fs.existsSync(filePath)) {
-    fs.rmSync(filePath, { force: true });
-  }
-
-  IOManager.compressFile(dirPath, filePath, true);
+  boardDir.compress(boardFile, true);
 }
 
 module.exports = {

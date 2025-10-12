@@ -43,7 +43,7 @@ startOpenBtn.addEventListener("click", () => {
 });
 
 ipc.on("open-hwb-file-result", (event, filePath) => {
-  console.log("open: %s", filePath);
+  console.log(filePath);
   ipc.send("open-board-templated", filePath[0]);
 })
 
@@ -98,6 +98,12 @@ saveBtn.addEventListener("click", () => {
   window.settings.theme = themeSelect.value;
   window.settings.language = languageSelect.value;
   ipc.send("settings-changed", window.settings);
+});
+
+
+ipc.on("settings-loaded", (event, settings) => {
+  window.settings.theme = settings.theme;
+  window.settings.language = settings.language;
 });
 
 cancelBtn.addEventListener("click", () => {
