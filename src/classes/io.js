@@ -10,14 +10,15 @@ class directory {
     this.name = name;
   }
 
-  constructor (src) {
-    this.address = path.dirname(src);
-    this.name = path.basename(src);
-  }
-  
   // @return {string}
   getPath() {
     return path.join(this.address, this.name);
+  }
+
+  // @param {string} dir: 要 cd 到的目录
+  // @return {directory}
+  cd(dir) {
+    return new directory(this.getPath(), dir);
   }
 }
 
@@ -41,14 +42,14 @@ class file {
 class fpClass {
   // 创建目录
   // @param {directory} dir: 要创建的目录
-  static mkdir(dir) {
+  mkdir(dir) {
     fs.mkdirSync(dir.getPath(), { recursive: true });
   }
 
   // 读取目录中的文件夹
   // @param {directory} dir: 要读取的目录
   // @return {Array<directory>}
-  static lsDirs(dir) {
+  lsDirs(dir) {
     return fs.readdirSync(dir.getPath())
              .map((name) => new directory(dir.getPath(), name));
   }
@@ -56,7 +57,7 @@ class fpClass {
   // 读取目录中的文件
   // @param {directory} dir: 要读取的目录
   // @return {Array<file>}
-  static lsFiles(dir) {
+  lsFiles(dir) {
     return fs.readdirSync(dir.getPath())
              .map((name) => {
                 const nameWithoutExt = name.split(".").slice(0, -1).join(".");
@@ -68,67 +69,67 @@ class fpClass {
   // 读取目录中的内容
   // @param {directory} dir: 要读取的目录
   // @return {Array<string>}
-  static ls(dir) {
+  ls(dir) {
     return fs.readdirSync(dir.getPath());
   }
 
   // 判断文件是否存在
   // @param {file/directory} file: 要判断的文件
   // @return {bool}
-  static exist(file) {
+  exist(file) {
     return fs.existsSync(file.getPath());
   }
 
   // 读取文件内容
   // @param {file} file: 要读取的文件
   // @return {string}
-  static readFile(file) {
+  readFile(file) {
     return fs.readFileSync(file.getPath(), "utf8");
   }
 
   // 写入文件内容
   // @param {file} file: 要写入的文件
   // @param {string} content: 要写入的内容
-  static writeFile(file, content) {
+  writeFile(file, content) {
     fs.writeFileSync(file.getPath(), content, "utf8");
   }
 
   // 创建文件
   // @param {file} file: 要创建的文件
-  static touch(file) {
+  touch(file) {
     this.writeFile(file, "");
   }
 
   // 删除文件
   // @param {file} file: 要删除的文件
-  static rm(file) {
+  rm(file) {
     fs.unlinkSync(file.getPath());
   }
 
   // 删除目录
   // @param {directory} dir: 要删除的目录
-  static rmdir(dir) {
+  rmdir(dir) {
     fs.rmdirSync(dir.getPath());
   }
 
   // 复制文件
   // @param {file} source: 要复制的文件
   // @param {file} dest: 复制到的文件
-  static cp(source, dest) {
+  cp(source, dest) {
     fs.copyFileSync(source.getPath(), dest.getPath());
   }
 
   // 移动文件
   // @param {file} source: 要移动的文件
   // @param {file} dest: 移动到的文件
-  static mv(source, dest) {
+  mv(source, dest) {
     fs.renameSync(source.getPath(), dest.getPath());
   }
 
   // 解压文件
   // @param {directory} source: 要解压的文件路径
   // @param {directory} dest: 解压到的目录路径
-  static extractFile(source, dest) {
+  extractFile(source, dest) {
     const zip = new AdmZip(source.getPath());
     zip.extractAllTo(dest.getPath(), true);
   }
@@ -137,7 +138,7 @@ class fpClass {
   // @param {directory} source: 要压缩的文件夹路径
   // @param {file} dest: 压缩后的文件路径
   // @param {boolean} remove: 是否删除原文件
-  static compressFile(source, dest, remove = false) {
+  compressFile(source, dest, remove = false) {
     const zip = new AdmZip();
     zip.addLocalFolder(source);
     zip.writeZip(dest.getPath());
@@ -152,21 +153,21 @@ class fpClass {
 
 const fp = new fpClass();
 
-const { randomNumberPool } = require("./randomNumberPool");
+const { randomNumberPool } = require("./algorithm").default;
 
 class fileNameRandomPool {
   // @param {directory} dir: 要创建随机池的目录
   constructor(dir, type = "directory") {
     this.dir = dir;
     this.type = type;
-    min = 1, max = 1145141919810; // Homo Manager
-    pool = new randomNumberPool(min, max);
-    const numbers = fp.readdir(dir)
+    const min = 1, max = 1145141919810; // Homo Manager
+    const pool = new randomNumberPool(min, max);
+    const numbers = fp.lsDirs(dir)
                       .map(parseInt)
                       .filter(t => min <= t && t <= max);
     pool.initFromArray(numbers);
   }
-  
+
   // 创建随机文件
   // @return {directory/file}
   generate() {

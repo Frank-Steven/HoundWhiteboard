@@ -1,10 +1,6 @@
-const { randomInt } = require("crypto");
-const fs = require("fs");
 const path = require("path");
-const AdmZip = require("adm-zip");
 const { dialog } = require("electron");
-const { dir } = require("console");
-const { directory, file, fp } = require("../classes/io");
+const { directory, file, fp, fileNameRandomPool } = require("../classes/io");
 
 function setupFileOperationIPC(ipc, windows) {
   ipc.on("open-hwb-file", (event, windowNow) => {
@@ -101,7 +97,8 @@ let userDataDir, settingsFile, templatesDir, templatePool;
 // 初始化
 function init(app) {
   // 获取用户数据目录（类似 VSCode 的 ~/.config/YourApp/）
-  userDataDir = new directory(app.getPath("userData"));
+  userDataDir = new directory(path.dirname(app.getPath("userData")),
+                              path.basename(app.getPath("userData")));
   settingsFile = new file(userDataDir.getPath(), "settings", "json");
   templatesDir = new directory(userDataDir.getPath(), "templates");
   // 读取templates目录，如果没有就创建
@@ -112,16 +109,28 @@ function init(app) {
 
 // 读取设置文件
 function loadSettings() {
-  if (fp.lsFile(userDataDir).includes(settingsFile)) {
-    // 如果文件存在，读取设置
+  // console.log(fp.lsFiles(userDataDir));
+  // console.log(settingsFile);
+  // NOTE: 这个 .includes 方法用的 === 来比较，即使两个 file 对象的属性值完全相同，它们也是不同的对象引用，因此 === 比较永远返回 false。
+  // console.log(fp.lsFiles(userDataDir).includes(settingsFile));
+  if (fp.exist(settingsFile)) {
     const data = fp.readFile(settingsFile);
     return JSON.parse(data);
   } else {
-    // 如果文件不存在，创建默认设置
     const defaultSettings = {theme: "light", language: "zh-CN"};
     fp.writeFile(settingsFile, JSON.stringify(defaultSettings, null, 2));
     return defaultSettings;
   }
+  // if (fp.lsFiles(userDataDir).includes(settingsFile)) {
+  //   // 如果文件存在，读取设置
+  //   const data = fp.readFile(settingsFile);
+  //   return JSON.parse(data);
+  // } else {
+  //   // 如果文件不存在，创建默认设置
+  //   const defaultSettings = {theme: "light", language: "zh-CN"};
+  //   fp.writeFile(settingsFile, JSON.stringify(defaultSettings, null, 2));
+  //   return defaultSettings;
+  // }
 }
 
 // 保存设置文件
@@ -131,7 +140,7 @@ function loadSettings() {
 //        }
 function saveSettings(settings) {
   try {
-    fp.writeFile(settingsFile, settings);
+    fp.writeFile(settingsFile, JSON.stringify(settings, null, 2));
     console.log("Settings saved successfully");
   } catch (err) {
     console.error("Error saving settings:", err);
@@ -182,15 +191,16 @@ function saveTemplate(template) {
       type: "template",
       version: "0.1.0",
     }, null, 2));
-  fs.writeFileSync(
-    path.join(tempDir, "template.json"),
-    JSON.stringify(templateData, null, 2));
+  fp.writeFile(
+    new file(tempDir.getPath(), "template.json"),
+    JSON.stringify(templateData, null, 2)
+  );
 
   return {
     id: templateID,
     data: templateData,
     imgPath: path.join(
-      templatesPath,
+      tempDir.getPath(),
       templateID,
       `backgroundImage.${templateData.background}`
     ),
@@ -199,27 +209,23 @@ function saveTemplate(template) {
 
 function loadTemplateAll() {
   // 获取 templatesPath 里所有文件夹，保留文件夹中 meta.json 的 type 是 template 的那些，保存到一个数组中
-  const templateDirs = fs.readdirSync(templatesPath).filter((dir) => {
-    const metaPath = path.join(templatesPath, dir, "meta.json");
-    if (!fs.existsSync(metaPath)) return false;
-    const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-    return meta.type === "template";
-  });
+  const templateDirs = fp.lsDirs(tempDir)
+                         .filter(dir => {
+                            const metaFile = new file(dir.getPath(), "meta", "json");
+                            if (!fp.exist(metaFile)) return false;
+                            const meta = JSON.parse(fp.readFile(metaFile));
+                            return meta.type === "template";
+                          })
   // 遍历数组，读取每个文件夹中的 {id, data: template.json, imgPath}，组成一个对象数组返回
-  const templates = templateDirs.map((dir) => {
-    const templatePath = path.join(templatesPath, dir, "template.json");
-    const templateData = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
+  return templateDirs.map((dir) => {
+    const templateFile = new file(dir.getPath(), "template", "json");
+    const templateData = JSON.parse(fp.readFile(templateFile));
     return {
       id: dir,
       data: templateData,
-      imgPath: path.join(
-        templatesPath,
-        dir,
-        `backgroundImage.${templateData.background}`
-      ),
+      imgPath: (new file(dir, "backgroundImage", templateData.background)).getPath(),
     };
   });
-  return templates;
 }
 
 function setupSettingsIPC(ipc, BrowserWindow) {
@@ -241,7 +247,4 @@ module.exports = {
   saveTemplate,
   loadTemplateAll,
   setupFileOperationIPC,
-  extractFile,
-  compressFile,
-  fileNameRandomPool,
 };

@@ -1,18 +1,15 @@
 const winManager = require("./windowManager");
 const IOManager = require("./IOManager");
-const { fileNameRandomPool } = require("../../classes/io");
+const { fileNameRandomPool, fp } = require("../classes/io");
 const path = require("path");
-const fs = require("fs");
 const hidefile = require("hidefile");
 
-let userDataPath, templatesPath;
+let templatesDir;
 
 function init(app) {
-  // 获取用户数据目录（类似 VSCode 的 ~/.config/YourApp/）
-  userDataPath = app.getPath("userData");
-  templatesPath = path.join(userDataPath, "templates");
+  templatesDir = new directory(app.getPath("userData"), "templates");
   // 读取templates目录，如果没有就创建
-  fs.mkdirSync(templatesPath, { recursive: true });
+  fp.mkdir(templatesDir);
 }
 
 const boardMeta = {
