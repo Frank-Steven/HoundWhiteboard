@@ -4,7 +4,7 @@ const path = require("path");
 const AdmZip = require("adm-zip");
 const { dialog } = require("electron");
 const { dir } = require("console");
-const { directory, file } = require("./classes");
+const { directory, file, fp } = require("../classes/io");
 
 function setupFileOperationIPC(ipc, windows) {
   ipc.on("open-hwb-file", (event, windowNow) => {
@@ -96,110 +96,67 @@ function setupFileOperationIPC(ipc, windows) {
   });
 }
 
-// 解压文件
-// directory source: 要解压的文件路径
-// directory dest: 解压到的目录路径
-function extractFile(source, dest) {
-  const zip = new AdmZip(source.getPath());
-  zip.extractAllTo(dest.getPath(), true);
-}
+let userDataDir, settingsFile, templatesDir, templatePool;
 
-// 压缩文件
-// directory source: 要压缩的文件夹路径
-// file dest: 压缩后的文件路径
-// boolean remove: 是否删除原文件
-function compressFile(source, dest, remove = false) {
-  const zip = new AdmZip();
-  zip.addLocalFolder(source);
-  zip.writeZip(dest.getPath());
-  if (remove) {
-    fs.rm(source.getPath(), { recursive: true, force: true }, (err) => {
-      if (err) throw err;
-      console.log("Directory deleted");
-    });
-  }
-}
-
-// // 文件名随机池
-// class fileNameRandomPool {
-//   constructor(directory, filter) {
-//     this.directory = directory;
-//     // 读取目录下所有文件名
-//     const files = fs.readdirSync(directory);
-//     const filteredFiles = files.filter(filter);
-//     const numbers = filteredFiles.map(parseInt);
-//     this.existance = {};
-//     numbers.forEach((num) => {
-//       if (!isNaN(num)) {
-//         this.existance[num] = true;
-//       }
-//     });
-//   }
-
-//   //新建文件
-//   generate() {
-//     let randomNum;
-//     while (this.existance[(randomNum = randomInt(0, 1145141919810))]) ;
-//     this.existance[randomNum] = true;
-//     return randomNum.toString();
-//   }
-
-//   //删除文件夹
-//   delete(ID) {
-//     fs.unlinkSync(path.join(this.directory, ID));
-//     delete this.existance[parseInt(filename)];
-//   }
-// }
-
-let userDataPath, settingsPath, templatesPath;
-let templatePool;
-
+// 初始化
 function init(app) {
   // 获取用户数据目录（类似 VSCode 的 ~/.config/YourApp/）
-  userDataPath = app.getPath("userData");
-  settingsPath = path.join(userDataPath, "settings.json");
-  templatesPath = path.join(userDataPath, "templates");
+  userDataDir = new directory(app.getPath("userData"));
+  settingsFile = new file(userDataDir.getPath(), "settings", "json");
+  templatesDir = new directory(userDataDir.getPath(), "templates");
   // 读取templates目录，如果没有就创建
-  fs.mkdirSync(templatesPath, { recursive: true });
-  templatePool = new fileNameRandomPool(templatesPath, (_) => true);
+  fp.mkdir(templatesDir);
+  // 读取模板文件名随机池
+  templatePool = new fileNameRandomPool(templatesDir);
 }
 
 // 读取设置文件
 function loadSettings() {
-  if (fs.existsSync(settingsPath)) {
-    const data = fs.readFileSync(settingsPath, "utf-8");
+  if (fp.lsFile(userDataDir).includes(settingsFile)) {
+    // 如果文件存在，读取设置
+    const data = fp.readFile(settingsFile);
     return JSON.parse(data);
   } else {
     // 如果文件不存在，创建默认设置
     const defaultSettings = {theme: "light", language: "zh-CN"};
-    fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2));
+    fp.writeFile(settingsFile, JSON.stringify(defaultSettings, null, 2));
     return defaultSettings;
   }
 }
 
+// 保存设置文件
+// @param {
+//          {string} theme: 主题;
+//          {string} language: 语言;
+//        }
 function saveSettings(settings) {
   try {
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    fp.writeFile(settingsFile, settings);
     console.log("Settings saved successfully");
   } catch (err) {
     console.error("Error saving settings:", err);
   }
 }
 
+// @param {
+//          {file} texture: 还没用到呢，气不气;
+//          {string} backgroundColor: RGB 16进制;
+//          {string} backgroundImage: 图片文件的后缀名;
+//          {string} name: 模板名称;
+//        } template
+// @return {
+//           {string} id: templateID;
+//           {
+//             {string} name: 模版名称;
+//             {string} background: RGB 16进制 或 文件后缀名
+//             {string} backgroundType: solid 或 image
+//           } data:;
+//           {file} imgPath:;
+//         }
 function saveTemplate(template) {
-  /*
-    template 结构：
-    {
-      texture;
-      backgroundColor;
-      backgroundImage;
-      name;
-    }
-   */
-  const templateID = templatePool.generate();
-  // 创建临时目录
-  const tempDir = path.join(templatesPath, templateID);
-  fs.mkdirSync(tempDir);
+  // 创建目录
+  const tempDir = templatePool.generate();
+  const templateID = tempDir.name;
 
   let templateData = {
     name: template.name,
@@ -210,22 +167,25 @@ function saveTemplate(template) {
   if (template.backgroundImage) {
     // 从 url 获取图片，复制到 tempDir，文件名改为 backgroundImage
     const imgUrl = template.backgroundImage;
-    const suffix = imgUrl.split(".").pop();
-    const imgName = "backgroundImage." + suffix;
-    const imgPath = path.join(tempDir, imgName);
-    fs.cpSync(imgUrl, imgPath);
-    templateData.background = suffix;
+    const imgFile = new file(imgUrl);
+    const destImgFile = new file(tempDir.getPath(), "backgroundImage", imgFile.extension);
+    fp.cp(imgFile, destImgFile);
+    templateData.background = imgFile.extension;
     templateData.backgroundType = "image";
     console.log(templateData);
   }
+
   // 写入文件
-  fs.writeFileSync(
-    path.join(tempDir, "meta.json"),
+  fp.writeFile(
+    new file(tempDir.getPath(), "meta.json"),
     JSON.stringify(meta = {
       type: "template",
       version: "0.1.0",
     }, null, 2));
-  fs.writeFileSync(path.join(tempDir, "template.json"), JSON.stringify(templateData, null, 2));
+  fs.writeFileSync(
+    path.join(tempDir, "template.json"),
+    JSON.stringify(templateData, null, 2));
+
   return {
     id: templateID,
     data: templateData,

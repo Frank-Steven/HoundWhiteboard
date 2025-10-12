@@ -1,5 +1,6 @@
 const winManager = require("./windowManager");
 const IOManager = require("./IOManager");
+const { fileNameRandomPool } = require("../../classes/io");
 const path = require("path");
 const fs = require("fs");
 const hidefile = require("hidefile");
@@ -53,7 +54,7 @@ function createEmptyBoard(boardInfo) {
   fs.mkdirSync(path.join(tempDir, "pages"), { recursive: true });
 
   // 生成 pageID
-  let pagePool = new IOManager.fileNameRandomPool(path.join(tempDir, "pages"), (_) => true)
+  let pagePool = new fileNameRandomPool(path.join(tempDir, "pages"), (_) => true)
   let firstPageID = pagePool.generate();
   fs.mkdirSync(path.join(tempDir, "pages", firstPageID), { recursive: true });
 
