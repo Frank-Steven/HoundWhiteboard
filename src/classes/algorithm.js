@@ -5,13 +5,13 @@ class randomNumberPool {
     this.max = max;
   }
 
-  // @param {Array} arr - An array of numbers to initialize the pool with.
+  // @param {Array<number>} arr: 用以初始化 randomNumberPool 的数字数组
   initFromArray(arr) {
-    arr.foreach(t => {
-      this.pool[t] = true;
-    });
+    for (let i = 0; i < arr.length; i++) {
+      this.pool[arr[i]] = true;
+    }
   }
-  
+
   // @retrun {number}
   generate() {
     let num;

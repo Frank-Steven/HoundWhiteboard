@@ -105,6 +105,7 @@ cancelBtn.addEventListener("click", () => {
 
 // 确认
 // TODO: 不能有同名
+// TODO: 把 boardInfo 里的 filePath 改成 file 类
 confirmBtn.addEventListener("click", () => {
   if (boardInfo.templateID === null) {
     console.log("No template selected");

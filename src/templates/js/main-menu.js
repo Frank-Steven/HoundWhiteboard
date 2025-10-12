@@ -100,6 +100,12 @@ saveBtn.addEventListener("click", () => {
   ipc.send("settings-changed", window.settings);
 });
 
+
+ipc.on("settings-loaded", (event, settings) => {
+  window.settings.theme = settings.theme;
+  window.settings.language = settings.language;
+});
+
 cancelBtn.addEventListener("click", () => {
   resetSelects();
 });
