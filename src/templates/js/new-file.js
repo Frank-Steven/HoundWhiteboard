@@ -3,7 +3,7 @@
 // ipc has been decleared in global.js
 
 const path = require("path");
-const { file } = require("../../classes/io");
+const { file, directory } = require("../../classes/io");
 
 const newTemplateBtn = document.getElementById("new-file-template-select-new-template");
 const input = document.getElementById("new-file-save-form-input");
@@ -104,28 +104,38 @@ cancelBtn.addEventListener("click", () => {
 
 // 确认
 confirmBtn.addEventListener("click", () => {
+  let canConfirm = true;
   if (!boardInfo.templateID) {
-    console.log("未选择样式");
     blink(document.getElementById("new-file-template-select-buttons"));
-    return;
+    toast.warning("请选择样式");
+    console.log("未选择样式");
+    canConfirm = false;
   }
-  if (filePath === "" || input.value === "") {
-    if (input.value === "") {
+  if (input.value === "") {
+    input.focus();
+    blink(input);
+    toast.warning("请填写文件名");
+    console.log("未填写文件名");
+    canConfirm = false;
+  }
+  if (filePath === "") {
+    choosePathBtn.focus();
+    blink(choosePathBtn);
+    toast.warning("请选择路径");
+    console.log("未选择路径");
+    canConfirm = false;
+  }
+  if (input.value !== "" && filePath !== "") {
+    if (directory.parse(boardInfo.filePath).peek(input.value, "hwb").exist()) {
+      // 不能有同名
       input.focus();
       blink(input);
-      console.log("未填写文件名");
+      toast.warning("已有同名文件存在");
+      console.log("已有同名文件存在");
+      canConfirm = false;
     }
-    if (filePath === "") {
-      choosePathBtn.focus();
-      blink(choosePathBtn);
-      console.log("未选择路径");
-    }
-    return;
   }
-  // 不能有同名
-  if (file.parse(boardInfo.filePath).exist()) {
-    console.log("已有同名文件存在")
-  }
+  if (!canConfirm) return;
   console.log(boardInfo);
   ipc.send("create-new-board-templated", boardInfo);
 });

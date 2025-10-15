@@ -3,22 +3,31 @@ function generateRndInt(min, max) {
 }
 
 class randomNumberPool {
+  /**
+   * 
+   * @param {number} min 随机数的最小值
+   * @param {number} max 随机数的最大值
+   */
   constructor(min, max) {
     this.min = min;
     this.max = max;
     this.pool = {};
   }
 
-  // 用数组 arr 来初始化
-  // @param {Array<number>} arr: 用以初始化 randomNumberPool 的数字数组
+  /**
+   * 用数组 arr 来初始化
+   * @param {number[]} arr
+   */
   initFromArray(arr) {
     for (let i = 0; i < arr.length; i++) {
       this.pool[arr[i]] = true;
     }
   }
 
-  // 生成一个随机数
-  // @retrun {number}
+  /**
+   * 生成随机数
+   * @returns {number} 生成的随机数
+   */
   generate() {
     let num;
     do {
@@ -28,8 +37,11 @@ class randomNumberPool {
     return num;
   }
 
-  // @param {number} num
-  // @return {boolean} 是否删除成功
+  /**
+   * 从随机池中删除一数
+   * @param {number} num
+   * @returns 是否删除成功
+   */
   remove(num) {
     if (this.pool[num]){
       delete this.pool[num];
@@ -38,8 +50,11 @@ class randomNumberPool {
     return false;
   }
 
-  // @param {number} num
-  // @return {newNum} 重命名的结果
+  /**
+   * 在池中重命名一数
+   * @param {number} num 欲重命名的数
+   * @returns 重命名后的数
+   */
   rename(num) {
     let newNum = this.generate();
     this.remove(num);

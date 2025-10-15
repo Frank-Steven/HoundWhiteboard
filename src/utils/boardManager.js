@@ -1,13 +1,14 @@
 const winManager = require("./windowManager");
-const IOManager = require("./IOManager");
 const { fileNameRandomPool, directory, file } = require("../classes/io");
-const path = require("path");
-const hidefile = require("hidefile");
 
 let templatesDir;
 
+/**
+ * 初始化白板管理器
+ * @param {Object} app - Electron app 对象
+ */
 function init(app) {
-  // 读取templates目录，如果没有就创建
+  // 读取templates目录,如果没有就创建
   templatesDir = new directory(app.getPath("userData"), "templates").make();
 }
 
@@ -21,14 +22,15 @@ const pageMeta = {
   version: "0.1.0",
 }
 
-// 创建一个空的白板
-// @param boardInfo
-// JSON: {
-//    filePath: string,
-//    templateID: string
-// }
+/**
+ * 创建一个空的白板
+ * @param {JSON} boardInfo {
+ *    {string} filePath,
+ *    {string} templateID
+ * }
+ */
 function createEmptyBoard(boardInfo) {
-  /// ROOT DIR ///
+  /// ROOT DIR
   // 创建临时目录
   const boardFile = file.parse(boardInfo.filePath);
   const tempDir = new directory(boardFile.address, boardFile.name).rmWhenExist().make();
@@ -37,7 +39,7 @@ function createEmptyBoard(boardInfo) {
   tempDir.peek("meta", "json").writeJSON(boardMeta);
   tempDir.peek("histroy", "json").writeJSON([]);
 
-  /// PAGES ///
+  /// PAGES
   // 创建 pages 目录
   tempDir.cd("pages").make();
 
@@ -64,7 +66,7 @@ function createEmptyBoard(boardInfo) {
     }
   ]);
 
-  /// TEMPLATES ///
+  /// TEMPLATES
   // 创建 templates 目录
   tempDir.cd("templates");
   // 把样式从 templatesPath 中拷过来
@@ -76,15 +78,21 @@ function createEmptyBoard(boardInfo) {
   tempDir.hide();
 }
 
-// @param {fileNameRandomPool} pool
-// @return {
-//   {fileNameRandomPool} pool,
-//   {string} pageID
-// }
-// TODO: apply template
-// BUG: 如果是从其他机器拷过来的 .hwb 文件，它里面的 templateID 可能与本机
-// 的 templateID 一样，此时会有 .hwb 里的 template 被本机 template 覆盖的
-// 可能。
+/**
+ * 添加新页面
+ * 
+ * TODO: apply template
+ * 
+ * BUG: 如果是从其他机器拷过来的 .hwb 文件，它里面的 templateID 可能与本机
+ * 的 templateID 一样，此时会有 .hwb 里的 template 被本机 template 覆盖的
+ * 可能。
+ * @param {fileNameRandomPool} pool
+ * @param {string} templateID
+ * @returns {JSON} {
+ *   {fileNameRandomPool} pool,
+ *   {string} pageID
+ * }
+ */
 function addPage(pool, templateID) {
   // 创建新页面文件夹
   // const tempDir = pool.directory.father();
@@ -106,8 +114,11 @@ function addPage(pool, templateID) {
   };
 }
 
-// @param {file} boardFile: .hwb file
-// @return {BrowserWindow}
+/**
+ * 打开白板文件
+ * @param {file} boardFile - .hwb 文件
+ * @returns {BrowserWindow} 浏览器窗口对象
+ */
 function openBoard(boardFile) {
   let win = winManager.createFullScreenWindow("full-screen.html");
   console.log("open board: " + boardFile.getPath());
@@ -125,6 +136,10 @@ function openBoard(boardFile) {
   return win;
 }
 
+/**
+ * 保存白板
+ * @param {directory} boardDir - 白板目录
+ */
 function saveBoard(boardDir) {
   console.log("save board: " + boardDir.getPath());
 
