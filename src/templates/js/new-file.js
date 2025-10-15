@@ -3,6 +3,7 @@
 // ipc has been decleared in global.js
 
 const path = require("path");
+const { file } = require("../../classes/io");
 
 const newTemplateBtn = document.getElementById("new-file-template-select-new-template");
 const input = document.getElementById("new-file-save-form-input");
@@ -102,24 +103,28 @@ cancelBtn.addEventListener("click", () => {
 });
 
 // 确认
-// TODO: 不能有同名
 confirmBtn.addEventListener("click", () => {
-  if (boardInfo.templateID === null) {
-    console.log("No template selected");
+  if (!boardInfo.templateID) {
+    console.log("未选择样式");
+    blink(document.getElementById("new-file-template-select-buttons"));
     return;
   }
   if (filePath === "" || input.value === "") {
     if (input.value === "") {
       input.focus();
       blink(input);
-      console.log("No file name selected");
+      console.log("未填写文件名");
     }
     if (filePath === "") {
       choosePathBtn.focus();
       blink(choosePathBtn);
-      console.log("No file path selected");
+      console.log("未选择路径");
     }
     return;
+  }
+  // 不能有同名
+  if (file.parse(boardInfo.filePath).exist()) {
+    console.log("已有同名文件存在")
   }
   console.log(boardInfo);
   ipc.send("create-new-board-templated", boardInfo);
@@ -158,22 +163,6 @@ function buttonLoadAdd(element) {
   };
   choose(); // Init
   btn.addEventListener("click", choose);
-}
-
-// 删除模版及其按钮
-// @param {Node} templateButton
-function templateRemove(templateButton) {
-  buttonList.removeChild(templateButton);
-  ipc.send("template-remove", templateButton.id);
-}
-
-// 重命名模版
-function templateRename(templateButton) {
-  showRenameEditor(templateButton);
-}
-
-// 复制模版
-function templateCopy(templateButton) {
 }
 
 /// 加载按钮

@@ -3,6 +3,23 @@
 const contextMenu = document.getElementById("context-menu");
 let currentContextButton = null;
 
+// 重命名模版
+function templateRename(templateButton) {
+  showRenameEditor(templateButton);
+}
+
+// 删除模版及其按钮
+// @param {Node} templateButton
+function templateRemove(templateButton) {
+  boardInfo.templateID = null;
+  buttonList.removeChild(templateButton);
+  ipc.send("template-remove", templateButton.id);
+}
+
+// 复制模版
+function templateCopy(templateButton) {
+}
+
 // 显示上下文菜单
 function showContextMenu(x, y, button) {
   // 如果菜单已经显示,先隐藏并等待动画完成

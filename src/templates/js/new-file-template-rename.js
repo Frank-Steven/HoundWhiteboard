@@ -17,7 +17,6 @@ const RENAME_FILTER_CONFIG = {
   replaceChar: '_'
 };
 
-
 // 加载国际化文本
 function loadRenameTexts() {
   const language = require(`../../data/languages/${window.settings.language}.json`);
