@@ -1,6 +1,11 @@
 const { dialog } = require("electron");
 const { directory, file, fileNameRandomPool } = require("../classes/io");
 
+/**
+ * 设置文件操作 IPC 通信
+ * @param {Object} ipc - IPC 主进程对象
+ * @param {Object} windows - 窗口对象集合
+ */
 function setupFileOperationIPC(ipc, windows) {
   ipc.on("open-hwb-file", (event, windowNow) => {
     // 调用系统默认打开文件对话框
@@ -16,7 +21,7 @@ function setupFileOperationIPC(ipc, windows) {
         if (!result.canceled) {
           windows[windowNow].webContents.send(
             "open-hwb-file-result",
-            result.filePaths // NOTE: IPC 会自动序列化，所以这里就不 parse 了
+            result.filePaths
           );
         }
       });
@@ -35,7 +40,7 @@ function setupFileOperationIPC(ipc, windows) {
         if (!result.canceled) {
           windows[windowNow].webContents.send(
             "open-hmq-file-result",
-            result.filePaths // NOTE: IPC 会自动序列化，所以这里就不 parse 了
+            result.filePaths
           );
         }
       });
@@ -69,7 +74,7 @@ function setupFileOperationIPC(ipc, windows) {
         if (!result.canceled) {
           windows[windowNow].webContents.send(
             "open-hmq-file-result",
-            result.filePaths // NOTE: IPC 会自动序列化，所以这里就不 parse 了
+            result.filePaths
           );
         }
       });
@@ -78,13 +83,13 @@ function setupFileOperationIPC(ipc, windows) {
   ipc.on("path-choose", (event) => {
     dialog
       .showOpenDialog(windows["NewFile"], {
-        properties: ["openDirectory"], // 仅选择目录，无文件过滤
+        properties: ["openDirectory"], // 仅选择目录,无文件过滤
       })
       .then((result) => {
         if (!result.canceled) {
           windows["NewFile"].webContents.send(
             "path-choose-result",
-            result.filePaths // NOTE: IPC 会自动序列化，所以这里就不 parse 了
+            result.filePaths
           );
         }
       });
@@ -98,7 +103,10 @@ const templateMeta = {
   version: "0.1.0",
 };
 
-// 初始化
+/**
+ * 初始化 IO 管理器
+ * @param {Object} app - Electron app 对象
+ */
 function init(app) {
   // 获取用户数据目录（类似 VSCode 的 ~/.config/YourApp/）
   userDataDir = directory.parse(app.getPath("userData"));
@@ -108,17 +116,20 @@ function init(app) {
   templatePool = new fileNameRandomPool(templatesDir);
 }
 
-// 读取设置文件
-// @return {JSON}
+/**
+ * 读取设置文件
+ * @returns {Object} 设置对象
+ */
 function loadSettings() {
   return settingsFile.existOrWriteJSON(defaultSettings).catJSON();
 }
 
-// 保存设置文件
-// @param {
-//          {string} theme: 主题;
-//          {string} language: 语言;
-//        }
+/**
+ * 保存设置文件
+ * @param {Object} settings - 设置对象
+ * @param {string} settings.theme - 主题
+ * @param {string} settings.language - 语言
+ */
 function saveSettings(settings) {
   try {
     settingsFile.writeJSON(settings);
@@ -128,23 +139,21 @@ function saveSettings(settings) {
   }
 }
 
-// 保存模版
-// @param {
-//          {file} texture: 还没用到呢，气不气
-//          {string} backgroundColor: RGB 16进制
-//          {string} backgroundImage: 图片文件的地址
-//          {string} name: 模板名称
-//        } template
-//
-// @return {
-//           {string} id: templateID
-//           {
-//             {string} name: 模版名称
-//             {string} background: RGB 16进制 或 文件后缀名
-//             {string} backgroundType: "solid" 或 "image"
-//           } data
-//           {file} imgFile: 图片文件
-//         }
+/**
+ * 保存模版
+ * @param {Object} template - 模板对象
+ * @param {file} template.texture - 还没用到呢,气不气
+ * @param {string} template.backgroundColor - RGB 16进制
+ * @param {string} template.backgroundImage - 图片文件的地址
+ * @param {string} template.name - 模板名称
+ * @returns {Object} 返回对象
+ * @returns {string} returns.id - templateID
+ * @returns {Object} returns.data - 模板数据
+ * @returns {string} returns.data.name - 模版名称
+ * @returns {string} returns.data.background - RGB 16进制 或 文件后缀名
+ * @returns {string} returns.data.backgroundType - "solid" 或 "image"
+ * @returns {file} returns.imgFile - 图片文件
+ */
 function saveTemplate(template) {
   // 创建目录
   const tempDir = templatePool.generate();
@@ -157,7 +166,7 @@ function saveTemplate(template) {
   };
 
   if (template.backgroundImage) {
-    // 从 url 获取图片，复制到 tempDir，文件名改为 backgroundImage
+    // 从 url 获取图片,复制到 tempDir,文件名改为 backgroundImage
     const imgFile = file.parse(template.backgroundImage);
     const destImgFile = tempDir.peek("backgroundImage", imgFile.extension);
     imgFile.cp(destImgFile);
@@ -177,18 +186,18 @@ function saveTemplate(template) {
   };
 }
 
-// 加载所有的模版
-// @return {
-//           {string} id: templateID
-//           {
-//             {string} name: 模版名称
-//             {string} background: RGB 16进制 或 文件后缀名
-//             {string} backgroundType: "solid" 或 "image"
-//           } data
-//           {string} imgPath: 图片文件的路径
-//         }
+/**
+ * 加载所有的模版
+ * @returns {Array<Object>} 模板数组
+ * @returns {string} returns[].id - templateID
+ * @returns {Object} returns[].data - 模板数据
+ * @returns {string} returns[].data.name - 模版名称
+ * @returns {string} returns[].data.background - RGB 16进制 或 文件后缀名
+ * @returns {string} returns[].data.backgroundType - "solid" 或 "image"
+ * @returns {string} returns[].imgPath - 图片文件的路径
+ */
 function loadTemplateAll() {
-  // 获取 templatesPath 里所有文件夹，保留文件夹中 meta.json 的 type 是 template 的那些，保存到一个数组中
+  /** 获取 templatesPath 里所有文件夹,保留文件夹中 meta.json 的 type 是 template 的那些,保存到一个数组中 */
   const templateDirs = templatesDir.lsDir()
                                    .filter(dir => {
                                      const metaFile = dir.peek("meta", "json");
@@ -206,17 +215,23 @@ function loadTemplateAll() {
   });
 }
 
-// 删除某模版
-// @param {string} templateID
+/**
+ * 删除某模版
+ * @param {string} templateID - 模板 ID
+ */
 function removeTemplate(templateID) {
   templatePool.remove(templateID);
 }
 
-// 重命名某模版，会换一个 ID
-// BUG: 还是一样，有可能新模版进来占用原 ID，导致用原 ID 的所有白板出问题
-// @param {string} templateID: 原始的模版 ID
-// @param {string} newName: 新文件的名字
-// @return {string} 新的模版 ID
+/**
+ * 重命名某模版,会换一个 ID
+ *
+ * BUG: 还是一样,有可能新模版进来占用原 ID,导致用原 ID 的所有白板出问题
+ *
+ * @param {string} templateID - 原始的模版 ID
+ * @param {string} newName - 新文件的名字
+ * @returns {string} 新的模版 ID
+ */
 function renameTemplate(templateID, newName) {
   const newDir = templatePool.rename(templateID);
   const infoFile = newDir.peek("template", "json");
@@ -226,6 +241,11 @@ function renameTemplate(templateID, newName) {
   return newDir.name;
 }
 
+/**
+ * 设置设置相关的 IPC 通信
+ * @param {Object} ipc - IPC 主进程对象
+ * @param {Object} BrowserWindow - BrowserWindow 对象
+ */
 function setupSettingsIPC(ipc, BrowserWindow) {
   ipc.handle('get-current-settings', async () => { return loadSettings(); });
 

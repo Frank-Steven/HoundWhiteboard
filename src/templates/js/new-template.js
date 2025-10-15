@@ -1,5 +1,3 @@
-const { app } = require("electron");
-
 const chooseTextureBtn = document.getElementById("new-template-foreground-import");
 
 const solidOpt = document.getElementById("new-template-background-options-solid");
@@ -24,7 +22,6 @@ let result = {
 };
 
 let backgroundImage = "";
-let backgroundImageFile;
 
 // 初始化
 previewScreenFlush()
@@ -98,3 +95,5 @@ ipc.on("open-hmq-file-result", (event, result) => {
   previewScreenFlush();
 });
 
+// TODO: 这个 ipc 可以用来实现模版的复制和更改
+ipc.on("init-new-template-from-other-template", (event, result) => {})
