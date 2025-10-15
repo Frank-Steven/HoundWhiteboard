@@ -19,6 +19,7 @@ const buttonList = document.getElementById("new-file-template-select-buttons");
 
 let filePath = "";
 
+// NOTE: 由于 IPC 会自动序列化参数，所以此处就不用 file 类型的文件了
 let boardInfo = {
   templateID: null,
   filePath: null,
@@ -79,7 +80,6 @@ function updateFilePathDisplay(fileName) {
   filePathSpan.textContent = boardInfo.filePath || "未选择路径";
 }
 
-
 // 选择保存文件夹
 choosePathBtn.addEventListener("click", () => {
   ipc.send("path-choose");
@@ -105,6 +105,7 @@ cancelBtn.addEventListener("click", () => {
 
 // 确认
 // TODO: 不能有同名
+// TODO: 把 boardInfo 里的 filePath 改成 file 类
 confirmBtn.addEventListener("click", () => {
   if (boardInfo.templateID === null) {
     console.log("No template selected");
