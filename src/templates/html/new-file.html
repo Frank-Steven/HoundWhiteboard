@@ -43,6 +43,22 @@
       <button id="yes-or-no-button-no"></button>
       <button id="yes-or-no-button-yes"></button>
     </div>
+    
+    <div id="context-menu" class="context-menu">
+      <div class="context-menu-item" data-action="copy">
+        <span class="context-menu-icon">📋</span>
+        <span id="context-menu-copy" class="context-menu-text"></span>
+      </div>
+      <div class="context-menu-item" data-action="rename">
+        <span class="context-menu-icon">✏️</span>
+        <span id="context-menu-rename" class="context-menu-text"></span>
+      </div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item context-menu-item-danger" data-action="remove">
+        <span class="context-menu-icon">🗑️</span>
+        <span id="context-menu-remove" class="context-menu-text"></span>
+      </div>
+    </div>
   </body>
 
   <script src="../js/global.js"></script>

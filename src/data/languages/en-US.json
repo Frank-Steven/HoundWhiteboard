@@ -88,6 +88,11 @@
     "yes-or-no-button": {
       "yes": "Confirm",
       "no": "Cancel"
+    },
+    "context-menu": {
+      "copy": "Copy",
+      "rename": "Rename",
+      "remove": "Remove"
     }
   }
 }

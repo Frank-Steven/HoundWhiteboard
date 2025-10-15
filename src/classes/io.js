@@ -457,9 +457,9 @@ class fileNameRandomPool {
   // @param {string} ID: 文件ID
   remove(ID) {
     if (this.type === "directory") {
-      fp.rm(path.join(this.dir.getPath(), ID));
+      this.dir.cd(ID).rm();
     } else {
-      fp.rmDir(path.join(this.dir.getPath(), ID));
+      this.dir.peek(ID, type).rm();
     }
     this.pool.remove(parseInt(ID));
   }
