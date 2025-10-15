@@ -212,6 +212,20 @@ function removeTemplate(templateID) {
   templatePool.remove(templateID);
 }
 
+// 重命名某模版，会换一个 ID
+// BUG: 还是一样，有可能新模版进来占用原 ID，导致用原 ID 的所有白板出问题
+// @param {string} templateID: 原始的模版 ID
+// @param {string} newName: 新文件的名字
+// @return {string} 新的模版 ID
+function renameTemplate(templateID, newName) {
+  const newDir = templatePool.rename(templateID);
+  const infoFile = newDir.peek("template", "json");
+  let templateJSON = infoFile.catJSON();
+  templateJSON.name = newName;
+  infoFile.writeJSON(templateJSON);
+  return newDir.name;
+}
+
 function setupSettingsIPC(ipc, BrowserWindow) {
   ipc.handle('get-current-settings', async () => { return loadSettings(); });
 
@@ -230,6 +244,7 @@ module.exports = {
   setupSettingsIPC,
   saveTemplate,
   removeTemplate,
+  renameTemplate,
   loadTemplateAll,
   setupFileOperationIPC,
 };

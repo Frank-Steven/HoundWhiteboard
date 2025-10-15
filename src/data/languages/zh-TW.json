@@ -15,7 +15,6 @@
           "description": "歡迎使用獵犬白板，這是一款開源的白板應用程式。你可以在這裡繪製、寫字、做筆記、分享你的想法。",
           "buttons": {
             "new-text": "新建白板",
-            "new-edit-text": "新建（編輯模式）",
             "open-text": "開啟白板"
           }
         },
@@ -55,7 +54,8 @@
           "prompt": "檔案名稱：",
           "submit": "提交"
         }
-      }
+      },
+      "template-select-new-template-text": "新建樣式"
     },
     "new-template": {
       "title": "新建樣式",
@@ -93,6 +93,18 @@
       "copy": "複製",
       "rename": "重新命名",
       "remove": "刪除"
+    },
+    "rename-editor": {
+      "title": "重新命名樣式",
+      "hint": "按 Enter 確認，Esc 取消",
+      "confirm": "確認",
+      "cancel": "取消",
+      "errors": {
+        "empty": "範本名稱不能為空",
+        "too-long": "範本名稱過長（最多{max}個字元）",
+        "illegal-chars": "範本名稱包含非法字元",
+        "same-name": "新名稱與原名稱相同"
+      }
     }
   }
 }

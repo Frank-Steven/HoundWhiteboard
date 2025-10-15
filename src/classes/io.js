@@ -95,6 +95,14 @@ class directory {
     return this;
   }
 
+  // @param {directory} dest
+  // @return {dest}
+  mv(dest) {
+    this.cp(dest);
+    this.rm();
+    return dest;
+  }
+
   // @return {array<directory/file>}
   ls() {
     return fp.ls(this);
@@ -427,6 +435,7 @@ const { randomNumberPool } = require("./algorithm");
 
 class fileNameRandomPool {
   // @param {directory} dir: 要创建随机池的目录
+  // @param {string} type: "directory" -> 文件夹，其它 -> 文件后缀
   constructor(dir, type = "directory") {
     this.dir = dir;
     this.type = type;
@@ -438,7 +447,7 @@ class fileNameRandomPool {
     this.pool.initFromArray(numbers);
   }
 
-  // 创建随机文件
+  // 创建随机目录/文件
   // @return {directory/file}
   generate() {
     const name = this.pool.generate().toString();
@@ -453,8 +462,8 @@ class fileNameRandomPool {
     }
   }
 
-  // 删除文件
-  // @param {string} ID: 文件ID
+  // 删除目录/文件
+  // @param {string} ID: 目录/文件 ID
   remove(ID) {
     if (this.type === "directory") {
       this.dir.cd(ID).rm();
@@ -462,6 +471,20 @@ class fileNameRandomPool {
       this.dir.peek(ID, type).rm();
     }
     this.pool.remove(parseInt(ID));
+  }
+
+  // 重命名目录/文件
+  // @param {string} ID: 目录/文件 ID
+  // @return {directory/file} 重命名到文件或目录
+  rename(ID) {
+    let newID = this.pool.rename(ID).toString();
+    if (this.type === "directory") {
+      this.dir.cd(ID).mv(this.dir.cd(newID));
+      return this.dir.cd(newID);
+    } else {
+      this.dir.peek(ID, type).mv(this.dir.peek(newID, type));
+      return this.dir.peek(newID, type);
+    }
   }
 }
 

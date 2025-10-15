@@ -54,7 +54,8 @@
           "prompt": "nimi lipu:",
           "submit": "pana"
         }
-      }
+      },
+      "template-select-new-template-text": "nasin sin"
     },
     "new-template": {
       "title": "nasin sin",
@@ -92,6 +93,18 @@
       "copy": "sama",
       "rename": "nimi sin",
       "remove": "weka"
+    },
+    "rename-editor": {
+      "title": "nimi nasin sin",
+      "hint": "Enter li awen. Esc li pini",
+      "confirm": "awen",
+      "cancel": "pini",
+      "errors": {
+        "empty": "nimi li lon ala",
+        "too-long": "nimi li lon suli mute",
+        "illegal-chars": "nimi li lon pona ala",
+        "same-name": "nimi li sama" 
+      }
     }
   }
 }
