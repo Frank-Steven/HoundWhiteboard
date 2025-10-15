@@ -87,6 +87,11 @@
     "yes-or-no-button": {
       "yes": "pona",
       "no": "ala"
+    },
+    "context-menu": {
+      "copy": "sama",
+      "rename": "nimi sin",
+      "remove": "weka"
     }
   }
 }

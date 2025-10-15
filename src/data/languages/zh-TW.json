@@ -88,6 +88,11 @@
     "yes-or-no-button": {
       "yes": "確認",
       "no": "取消"
+    },
+    "context-menu": {
+      "copy": "複製",
+      "rename": "重新命名",
+      "remove": "刪除"
     }
   }
 }

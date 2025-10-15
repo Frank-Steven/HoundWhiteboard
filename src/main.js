@@ -76,6 +76,10 @@ ipc.on("load-buttons", (event, windowNow) => {
   windows[windowNow].webContents.send("buttons-loaded", result);
 });
 
+ipc.on("template-remove", (event, templateID) => {
+  IOManager.removeTemplate(templateID);
+});
+
 // @param {
 //          {string} templateID
 //          {file} boardFile

@@ -109,6 +109,7 @@ function init(app) {
 }
 
 // 读取设置文件
+// @return {JSON}
 function loadSettings() {
   return settingsFile.existOrWriteJSON(defaultSettings).catJSON();
 }
@@ -120,13 +121,14 @@ function loadSettings() {
 //        }
 function saveSettings(settings) {
   try {
-    settingsFile.WriteJSON(settings);
+    settingsFile.writeJSON(settings);
     console.log("Settings saved successfully");
   } catch (err) {
     console.error("Error saving settings:", err);
   }
 }
 
+// 保存模版
 // @param {
 //          {file} texture: 还没用到呢，气不气
 //          {string} backgroundColor: RGB 16进制
@@ -175,6 +177,7 @@ function saveTemplate(template) {
   };
 }
 
+// 加载所有的模版
 // @return {
 //           {string} id: templateID
 //           {
@@ -203,6 +206,12 @@ function loadTemplateAll() {
   });
 }
 
+// 删除某模版
+// @param {string} templateID
+function removeTemplate(templateID) {
+  templatePool.remove(templateID);
+}
+
 function setupSettingsIPC(ipc, BrowserWindow) {
   ipc.handle('get-current-settings', async () => { return loadSettings(); });
 
@@ -220,6 +229,7 @@ module.exports = {
   saveSettings,
   setupSettingsIPC,
   saveTemplate,
+  removeTemplate,
   loadTemplateAll,
   setupFileOperationIPC,
 };
