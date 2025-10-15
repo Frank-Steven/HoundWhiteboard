@@ -1,10 +1,5 @@
-const { randomInt } = require("crypto");
-const fs = require("fs");
-const path = require("path");
-const AdmZip = require("adm-zip");
 const { dialog } = require("electron");
-const { dir } = require("console");
-const { directory, file, fp } = require("../classes/io");
+const { directory, file, fileNameRandomPool } = require("../classes/io");
 
 function setupFileOperationIPC(ipc, windows) {
   ipc.on("open-hwb-file", (event, windowNow) => {
@@ -21,7 +16,7 @@ function setupFileOperationIPC(ipc, windows) {
         if (!result.canceled) {
           windows[windowNow].webContents.send(
             "open-hwb-file-result",
-            result.filePaths
+            result.filePaths // NOTE: IPC 会自动序列化，所以这里就不 parse 了
           );
         }
       });
@@ -40,7 +35,7 @@ function setupFileOperationIPC(ipc, windows) {
         if (!result.canceled) {
           windows[windowNow].webContents.send(
             "open-hmq-file-result",
-            result.filePaths
+            result.filePaths // NOTE: IPC 会自动序列化，所以这里就不 parse 了
           );
         }
       });
@@ -74,7 +69,7 @@ function setupFileOperationIPC(ipc, windows) {
         if (!result.canceled) {
           windows[windowNow].webContents.send(
             "open-hmq-file-result",
-            result.filePaths
+            result.filePaths // NOTE: IPC 会自动序列化，所以这里就不 parse 了
           );
         }
       });
@@ -89,7 +84,7 @@ function setupFileOperationIPC(ipc, windows) {
         if (!result.canceled) {
           windows["NewFile"].webContents.send(
             "path-choose-result",
-            result.filePaths
+            result.filePaths // NOTE: IPC 会自动序列化，所以这里就不 parse 了
           );
         }
       });
@@ -97,31 +92,25 @@ function setupFileOperationIPC(ipc, windows) {
 }
 
 let userDataDir, settingsFile, templatesDir, templatePool;
+const defaultSettings = {theme: "light", language: "zh-CN"};
+const templateMeta = {
+  type: "template",
+  version: "0.1.0",
+};
 
 // 初始化
 function init(app) {
   // 获取用户数据目录（类似 VSCode 的 ~/.config/YourApp/）
-  userDataDir = new directory(app.getPath("userData"));
-  settingsFile = new file(userDataDir.getPath(), "settings", "json");
-  templatesDir = new directory(userDataDir.getPath(), "templates");
-  // 读取templates目录，如果没有就创建
-  fp.mkdir(templatesDir);
+  userDataDir = directory.parse(app.getPath("userData"));
+  settingsFile = userDataDir.peek("settings", "json").existOrWriteJSON(defaultSettings);
+  templatesDir = userDataDir.cd("templates").make();
   // 读取模板文件名随机池
   templatePool = new fileNameRandomPool(templatesDir);
 }
 
 // 读取设置文件
 function loadSettings() {
-  if (fp.lsFile(userDataDir).includes(settingsFile)) {
-    // 如果文件存在，读取设置
-    const data = fp.readFile(settingsFile);
-    return JSON.parse(data);
-  } else {
-    // 如果文件不存在，创建默认设置
-    const defaultSettings = {theme: "light", language: "zh-CN"};
-    fp.writeFile(settingsFile, JSON.stringify(defaultSettings, null, 2));
-    return defaultSettings;
-  }
+  return settingsFile.existOrWriteJSON(defaultSettings).catJSON();
 }
 
 // 保存设置文件
@@ -131,7 +120,7 @@ function loadSettings() {
 //        }
 function saveSettings(settings) {
   try {
-    fp.writeFile(settingsFile, settings);
+    settingsFile.WriteJSON(settings);
     console.log("Settings saved successfully");
   } catch (err) {
     console.error("Error saving settings:", err);
@@ -139,19 +128,20 @@ function saveSettings(settings) {
 }
 
 // @param {
-//          {file} texture: 还没用到呢，气不气;
-//          {string} backgroundColor: RGB 16进制;
-//          {string} backgroundImage: 图片文件的后缀名;
-//          {string} name: 模板名称;
+//          {file} texture: 还没用到呢，气不气
+//          {string} backgroundColor: RGB 16进制
+//          {string} backgroundImage: 图片文件的地址
+//          {string} name: 模板名称
 //        } template
+//
 // @return {
-//           {string} id: templateID;
+//           {string} id: templateID
 //           {
-//             {string} name: 模版名称;
+//             {string} name: 模版名称
 //             {string} background: RGB 16进制 或 文件后缀名
-//             {string} backgroundType: solid 或 image
-//           } data:;
-//           {file} imgPath:;
+//             {string} backgroundType: "solid" 或 "image"
+//           } data
+//           {file} imgFile: 图片文件
 //         }
 function saveTemplate(template) {
   // 创建目录
@@ -166,60 +156,51 @@ function saveTemplate(template) {
 
   if (template.backgroundImage) {
     // 从 url 获取图片，复制到 tempDir，文件名改为 backgroundImage
-    const imgUrl = template.backgroundImage;
-    const imgFile = new file(imgUrl);
-    const destImgFile = new file(tempDir.getPath(), "backgroundImage", imgFile.extension);
-    fp.cp(imgFile, destImgFile);
+    const imgFile = file.parse(template.backgroundImage);
+    const destImgFile = tempDir.peek("backgroundImage", imgFile.extension);
+    imgFile.cp(destImgFile);
     templateData.background = imgFile.extension;
     templateData.backgroundType = "image";
     console.log(templateData);
   }
 
   // 写入文件
-  fp.writeFile(
-    new file(tempDir.getPath(), "meta.json"),
-    JSON.stringify(meta = {
-      type: "template",
-      version: "0.1.0",
-    }, null, 2));
-  fs.writeFileSync(
-    path.join(tempDir, "template.json"),
-    JSON.stringify(templateData, null, 2));
+  tempDir.peek("meta", "json").writeJSON(templateMeta);
+  tempDir.peek("template", "json").writeJSON(templateData);
 
   return {
     id: templateID,
     data: templateData,
-    imgPath: path.join(
-      templatesPath,
-      templateID,
-      `backgroundImage.${templateData.background}`
-    ),
+    imgFile: tempDir.cd(templateID).peek("backgroundImage", templateData.background),
   };
 }
 
+// @return {
+//           {string} id: templateID
+//           {
+//             {string} name: 模版名称
+//             {string} background: RGB 16进制 或 文件后缀名
+//             {string} backgroundType: "solid" 或 "image"
+//           } data
+//           {string} imgPath: 图片文件的路径
+//         }
 function loadTemplateAll() {
   // 获取 templatesPath 里所有文件夹，保留文件夹中 meta.json 的 type 是 template 的那些，保存到一个数组中
-  const templateDirs = fs.readdirSync(templatesPath).filter((dir) => {
-    const metaPath = path.join(templatesPath, dir, "meta.json");
-    if (!fs.existsSync(metaPath)) return false;
-    const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-    return meta.type === "template";
-  });
-  // 遍历数组，读取每个文件夹中的 {id, data: template.json, imgPath}，组成一个对象数组返回
-  const templates = templateDirs.map((dir) => {
-    const templatePath = path.join(templatesPath, dir, "template.json");
-    const templateData = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
+  const templateDirs = templatesDir.lsDir()
+                                   .filter(dir => {
+                                     const metaFile = dir.peek("meta", "json");
+                                     if (!metaFile.exist()) return false;
+                                     return metaFile.catJSON().type === "template";
+                                   })
+
+  return templateDirs.map(dir => {
+    const templateData = dir.peek("template", "json").catJSON();
     return {
-      id: dir,
+      id: dir.name,
       data: templateData,
-      imgPath: path.join(
-        templatesPath,
-        dir,
-        `backgroundImage.${templateData.background}`
-      ),
+      imgPath: dir.peek("backgroundImage", templateData.background).getPath(),
     };
   });
-  return templates;
 }
 
 function setupSettingsIPC(ipc, BrowserWindow) {
@@ -241,7 +222,4 @@ module.exports = {
   saveTemplate,
   loadTemplateAll,
   setupFileOperationIPC,
-  extractFile,
-  compressFile,
-  fileNameRandomPool,
 };

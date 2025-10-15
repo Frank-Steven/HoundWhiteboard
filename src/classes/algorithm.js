@@ -1,23 +1,29 @@
+function generateRndInt(min, max) {
+  return parseInt(Math.random() * (max - min + 1) + min, 10);
+}
+
 class randomNumberPool {
-  pool = {};
   constructor(min, max) {
     this.min = min;
     this.max = max;
+    this.pool = {};
   }
 
-  // @param {Array} arr - An array of numbers to initialize the pool with.
+  // 用数组 arr 来初始化
+  // @param {Array<number>} arr: 用以初始化 randomNumberPool 的数字数组
   initFromArray(arr) {
-    arr.foreach(t => {
-      this.pool[t] = true;
-    });
+    for (let i = 0; i < arr.length; i++) {
+      this.pool[arr[i]] = true;
+    }
   }
-  
+
+  // 生成一个随机数
   // @retrun {number}
   generate() {
     let num;
     do {
-      num = random.randomInt(this.min, this.max);
-    } while (pool[num]);
+      num = generateRndInt(this.min, this.max);
+    } while (this.pool[num]);
     this.pool[num] = true;
     return num;
   }
@@ -25,11 +31,15 @@ class randomNumberPool {
   // @param {number} num - The number to remove from the pool.
   // @return {boolean}
   remove(num) {
-    delete this.pool[num];
-    return true;
+    if(this.pool[num]){
+      delete this.pool[num];
+      return true;
+    }
+    return false;
   }
 }
 
 module.exports = {
+  generateRndInt,
   randomNumberPool,
 }
