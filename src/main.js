@@ -80,6 +80,12 @@ ipc.on("template-remove", (event, templateID) => {
   IOManager.removeTemplate(templateID);
 });
 
+ipc.on("template-rename", (event, templateID, name, windowNow) => {
+  const newID = IOManager.renameTemplate(templateID, name);
+  windows[windowNow].webContents
+                    .send("template-rename-result", newID);
+})
+
 // @param {
 //          {string} templateID
 //          {file} boardFile

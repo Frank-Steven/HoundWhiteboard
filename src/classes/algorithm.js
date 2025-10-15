@@ -28,14 +28,22 @@ class randomNumberPool {
     return num;
   }
 
-  // @param {number} num - The number to remove from the pool.
-  // @return {boolean}
+  // @param {number} num
+  // @return {boolean} 是否删除成功
   remove(num) {
-    if(this.pool[num]){
+    if (this.pool[num]){
       delete this.pool[num];
       return true;
     }
     return false;
+  }
+
+  // @param {number} num
+  // @return {newNum} 重命名的结果
+  rename(num) {
+    let newNum = this.generate();
+    this.remove(num);
+    return newNum;
   }
 }
 

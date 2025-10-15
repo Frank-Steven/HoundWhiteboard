@@ -15,7 +15,6 @@
           "description": "Welcome to Hound Whiteboard, an open-source whiteboard application. You can draw, write, take notes, and share your ideas here.",
           "buttons": {
             "new-text": "New Whiteboard",
-            "new-edit-text": "New (Edit Mode)",
             "open-text": "Open Whiteboard"
           }
         },
@@ -55,7 +54,8 @@
           "prompt": "File Name:",
           "submit": "Submit"
         }
-      }
+      },
+      "template-select-new-template-text": "New template"
     },
     "new-template": {
       "title": "New Template",
@@ -93,6 +93,18 @@
       "copy": "Copy",
       "rename": "Rename",
       "remove": "Remove"
+    },
+    "rename-editor": {
+      "title": "Rename Template",
+      "hint": "Press Enter to confirm, Esc to cancel",
+      "confirm": "Confirm",
+      "cancel": "Cancel",
+      "errors": {
+        "empty": "Template name cannot be empty",
+        "too-long": "Template name is too long (max {max} characters)",
+        "illegal-chars": "Template name contains illegal characters",
+        "same-name": "New name is the same as the original"
+      }
     }
   }
 }

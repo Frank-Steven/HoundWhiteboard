@@ -6,6 +6,8 @@
     <link id="theme-stylesheet" rel="stylesheet" href="" />
     <link rel="stylesheet" href="../css/global.css" />
     <link rel="stylesheet" href="../css/new-file.css" />
+    <link rel="stylesheet" href="../css/new-file-template-context-menu.css" />
+    <link rel="stylesheet" href="../css/new-file-template-rename.css" />
   </head>
   <body>
     <div id="new-file">
@@ -15,7 +17,7 @@
         <div id="new-file-template-select">
           <div id="new-file-template-select-buttons">
             <button id="new-file-template-select-new-template" class="big-flex-btn">
-              <img id="new-file-template-select-new-template-icon" src="../../asset/imgs/zhan.png"></img>
+              <img id="new-file-template-select-new-template-icon" src="../../asset/imgs/plus.png"></img>
               <span id="new-file-template-select-new-template-text"></span>
             </button>
           </div>
@@ -39,16 +41,17 @@
         </div>
       </div>
     </div>
+
     <div id="yes-or-no-button">
       <button id="yes-or-no-button-no"></button>
       <button id="yes-or-no-button-yes"></button>
     </div>
     
     <div id="context-menu" class="context-menu">
-      <div class="context-menu-item" data-action="copy">
+      <!-- <div class="context-menu-item" data-action="copy">
         <span class="context-menu-icon">📋</span>
         <span id="context-menu-copy" class="context-menu-text"></span>
-      </div>
+      </div> -->
       <div class="context-menu-item" data-action="rename">
         <span class="context-menu-icon">✏️</span>
         <span id="context-menu-rename" class="context-menu-text"></span>
@@ -59,8 +62,41 @@
         <span id="context-menu-remove" class="context-menu-text"></span>
       </div>
     </div>
+
+    <div id="rename-editor" class="rename-editor">
+      <div class="rename-editor-backdrop"></div>
+      <div class="rename-editor-container">
+        <div class="rename-editor-header">
+          <span class="rename-editor-icon">✏️</span>
+          <span id="rename-editor-title" class="rename-editor-title"></span>
+        </div>
+        <div class="rename-editor-body">
+          <input
+            id="rename-editor-input"
+            type="text"
+            class="rename-editor-input"
+            placeholder=""
+            maxlength="251"
+          />
+          <div id="rename-editor-error" class="rename-editor-error"></div>
+          <div class="rename-editor-hint">
+            <span id="rename-editor-hint"></span>
+          </div>
+        </div>
+        <div class="rename-editor-footer">
+          <button id="rename-editor-cancel-btn" class="rename-editor-btn rename-editor-btn-cancel">
+            <span id="rename-editor-cancel"></span>
+          </button>
+          <button id="rename-editor-confirm-btn" class="rename-editor-btn rename-editor-btn-confirm">
+            <span id="rename-editor-confirm"></span>
+          </button>
+        </div>
+      </div>
+    </div>
   </body>
 
   <script src="../js/global.js"></script>
   <script src="../js/new-file.js"></script>
+  <script src="../js/new-file-template-context-menu.js"></script>
+  <script src="../js/new-file-template-rename.js"></script>
 </html>

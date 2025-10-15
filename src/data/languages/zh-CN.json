@@ -15,7 +15,6 @@
           "description": "欢迎使用猎犬白板，这是一款开源的白板应用。你可以在这里绘制，写字，做笔记，分享你的想法。",
           "buttons": {
             "new-text": "新建白板",
-            "new-edit-text": "新建（编辑模式）",
             "open-text": "打开白板"
           }
         },
@@ -55,7 +54,8 @@
           "prompt": "文件名：",
           "submit": "提交"
         }
-      }
+      },
+      "template-select-new-template-text": "新建样式"
     },
     "new-template": {
       "title": "新建样式",
@@ -93,6 +93,18 @@
       "copy": "复制",
       "rename": "重命名",
       "remove": "删除"
+    },
+    "rename-editor": {
+      "title": "重命名样式",
+      "hint": "按 Enter 确认，Esc 取消",
+      "confirm": "确认",
+      "cancel": "取消",
+      "errors": {
+        "empty": "样式名称不能为空",
+        "too-long": "样式名称过长（最多{max}个字符）",
+        "illegal-chars": "样式名称包含非法字符",
+        "same-name": "新名称与原名称相同"
+      }
     }
   }
 }
