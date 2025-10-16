@@ -56,6 +56,9 @@ function createFullScreenWindow(template) {
 
 /**
  * 创建模态窗口
+ * 
+ * BUG: 这个模态窗口坏了，我也不知道为什么。
+ *
  * @param {string} template - 模板文件名
  * @param {BrowserWindow} parent - 父窗口对象
  * @param {Object} size - 窗口尺寸配置
