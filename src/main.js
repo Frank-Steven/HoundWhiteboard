@@ -76,20 +76,68 @@ ipc.on("load-buttons", (event, windowNow) => {
   windows[windowNow].webContents.send("buttons-loaded", result);
 });
 
-ipc.on("template-remove", (event, templateID) => {
+ipc.on("template-remove", (event, templateID, windowNow) => {
   IOManager.removeTemplate(templateID);
+  windows[windowNow]
+    .webContents
+    .send("template-remove-succeed", templateID);
 });
 
 ipc.on("template-rename", (event, templateID, name, windowNow) => {
   const newID = IOManager.renameTemplate(templateID, name);
-  windows[windowNow].webContents
-                    .send("template-rename-result", newID);
-})
+  windows[windowNow]
+    .webContents              
+    .send("template-rename-result", newID);
+});
 
-// @param {
-//          {string} templateID
-//          {file} boardFile
-//        } boardInfo
+ipc.on("template-edit", (event, templateID) => {
+  const info = IOManager.loadTemplateByID(templateID);
+  if (info) {
+    const pathStr = file.parse(info.imgPath).unPeek().getPath();
+    windows.NewTemplate =
+      winManager.createModalWindow("new-template.html", windows.NewFile, {
+        width: 800,
+        height: 600,
+        minWidth: 800,
+        minHeight: 600,
+      });
+    setTimeout(() => {
+      windows
+        .NewTemplate
+        .webContents
+        .send("init-new-template-from-other-template", info.data, pathStr, templateID);
+    }, 100);
+  } else {
+    console.error("No such file in directory.");
+  }
+});
+
+ipc.on("template-copy", (event, templateID) => {
+  const info = IOManager.loadTemplateByID(templateID);
+  if (info) {
+    const pathStr = file.parse(info.imgPath).unPeek().getPath();
+    windows.NewTemplate =
+      winManager.createModalWindow("new-template.html", windows.NewFile, {
+        width: 800,
+        height: 600,
+        minWidth: 800,
+        minHeight: 600,
+      });
+    setTimeout(() => {
+      windows
+        .NewTemplate
+        .webContents
+        .send("init-new-template-from-other-template", info.data, pathStr, null);
+    }, 100);
+  } else {
+    console.error("No such file in directory.");
+  }
+});
+
+// {
+//   {string} templateID
+//   {file} boardFile
+// } boardInfo
 ipc.on("create-new-board-templated", (event, boardInfo) => {
   console.log("create-new-board-templated: %s At %s", boardInfo.templateID, boardInfo.filePath);
   boardManager.createEmptyBoard(boardInfo);

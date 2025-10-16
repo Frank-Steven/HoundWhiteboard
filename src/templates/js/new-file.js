@@ -140,6 +140,18 @@ confirmBtn.addEventListener("click", () => {
   ipc.send("create-new-board-templated", boardInfo);
 });
 
+function chooseButton(templateID) {
+  console.log("Choose: " + templateID);
+  const button = document.getElementById(templateID);
+  if (boardInfo.templateID) {
+    document.getElementById(boardInfo.templateID)
+            .style.border = "2px solid transparent";
+  }
+  boardInfo.templateID = templateID;
+  // 选中当前按钮
+  button.style.border = "2px solid #007aff";
+}
+
 function buttonLoadAdd(element) {
   let btn = document.createElement("button");
   let span = document.createElement("span");
