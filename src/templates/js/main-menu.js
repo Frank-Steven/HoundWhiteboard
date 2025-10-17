@@ -37,15 +37,14 @@ startNewBtn.addEventListener("click", () => {
   ipc.send("open-modal-window", "MainMenu", "NewFile", "new-file.html");
 });
 
-startOpenBtn.addEventListener("click", () => {
+startOpenBtn.addEventListener("click", async () => {
   console.log("open.");
-  ipc.send("open-hwb-file", "MainMenu");
+  const filePath = await ipc.invoke("open-hwb-file", "MainMenu");
+  if (filePath) {
+    console.log(filePath);
+    ipc.send("open-board-templated", filePath[0]);
+  }
 });
-
-ipc.on("open-hwb-file-result", (event, filePath) => {
-  console.log(filePath);
-  ipc.send("open-board-templated", filePath[0]);
-})
 
 /// Settings screen buttons
 

@@ -55,13 +55,25 @@ imageOpt.addEventListener("change", () => {
   previewScreenFlush();
 });
 
-imageChooseBtn.addEventListener("click", () => {
+imageChooseBtn.addEventListener("click", async () => {
   console.log("image choose");
-  ipc.send("open-img-file", "NewTemplate");
+  const result = await ipc.invoke("open-img-file", "NewTemplate");
+  if (result) {
+    imagePath.innerHTML = result[0];
+    backgroundImage = result[0];
+    if (!imageOpt.checked) {
+      imageOpt.checked = true;
+    }
+    previewScreenFlush();
+  }
 });
 
-chooseTextureBtn.addEventListener("click", () => {
-  ipc.send("open-hmq-file", "NewTemplate");
+chooseTextureBtn.addEventListener("click", async () => {
+  const result = await ipc.invoke("open-hmq-file", "NewTemplate");
+  if (result) {
+    // TODO: 在此处实现纹理系统
+    previewScreenFlush();
+  }
 })
 
 color.addEventListener("change", () => {
@@ -76,10 +88,10 @@ cancelBtn.addEventListener("click", () => {
 });
 
 // 确认创建
-confirmBtn.addEventListener("click", () => {
+confirmBtn.addEventListener("click", async () => {
   console.log("confirm");
   result.texture = chooseTextureBtn.value;
-  if (nameInput.value === "") { 
+  if (nameInput.value === "") {
     nameInput.focus();
     blink(nameInput);
     toast.warning("请输入样式名");
@@ -87,25 +99,12 @@ confirmBtn.addEventListener("click", () => {
   }
   result.name = nameInput.value;
   if (deleteID) {
-    ipc.send("template-remove", deleteID, "NewFile");
+    await ipc.invoke("template-remove", deleteID, "NewFile");
   }
   ipc.send("new-template-result", result);
   ipc.send("close-window", "NewTemplate");
 });
 
-ipc.on("open-img-file-result", (event, result) => {
-  imagePath.innerHTML = result[0];
-  backgroundImage = result[0];
-  if (!imageOpt.checked) {
-    imageOpt.checked = true;
-  }
-  previewScreenFlush();
-});
-
-ipc.on("open-hmq-file-result", (event, result) => {
-  // TODO: 在此处实现纹理系统
-  previewScreenFlush();
-});
 
 // 这个 ipc 可以用来实现模版的复制和更改
 // TODO: 实现纹理

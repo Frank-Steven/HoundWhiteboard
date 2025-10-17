@@ -133,7 +133,7 @@ function sanitizeTemplateName(value) {
 }
 
 // 执行重命名
-function performRename() {
+async function performRename() {
   chooseButton(currentRenameButton.id);
   const newName = renameInput.value.trim();
   
@@ -158,14 +158,13 @@ function performRename() {
   }
 
   // 发送IPC消息到主进程执行实际的重命名操作
-  ipc.send('template-rename', currentRenameButton.id, newName, "NewFile");
+  const newID = await ipc.invoke('template-rename', currentRenameButton.id, newName, "NewFile");
+  if (newID) {
+    currentRenameButton.id = newID;
+    hideRenameEditor();
+    // TODO: 根据实际IPC响应处理成功/失败，添加成功提示
+  }
 }
-
-ipc.on("template-rename-result", (event, newID) => {
-  currentRenameButton.id = newID;
-  hideRenameEditor();
-  // TODO: 根据实际IPC响应处理成功/失败，添加成功提示
-});
 
 // 输入框实时验证和清理
 renameInput.addEventListener('input', () => {

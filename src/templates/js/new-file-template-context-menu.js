@@ -15,19 +15,18 @@ function templateRename(templateButton) {
  * 删除模版及其按钮
  * @param {HTMLElement} templateButton
  */
-function templateRemove(templateButton) {
+async function templateRemove(templateButton) {
   // TODO: 添加一个确认删除的提示窗
-  ipc.send("template-remove", templateButton.id, "NewFile");
-}
-
-ipc.on("template-remove-succeed", (event, templateID) => {
-  const templateButton = document.getElementById(templateID);
-  if(!templateButton) return; // 按钮已移除
-  if(boardInfo.templateID === templateButton.id) {
-    boardInfo.templateID = null;
+  const templateID = await ipc.invoke("template-remove", templateButton.id, "NewFile");
+  if (templateID) {
+    const templateButton = document.getElementById(templateID);
+    if(!templateButton) return; // 按钮已移除
+    if(boardInfo.templateID === templateButton.id) {
+      boardInfo.templateID = null;
+    }
+    buttonList.removeChild(templateButton);
   }
-  buttonList.removeChild(templateButton);
-})
+}
 
 /**
  * 编辑模版
