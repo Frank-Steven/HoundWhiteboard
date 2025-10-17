@@ -68,9 +68,9 @@ function saveTemplate(template) {
 
 /**
  * 加载所有的模版
- * @returns {Array<Object>} 模板数组
+ * @returns {Array<JSON>} 模板数组
  * @returns {string} returns[].id - templateID
- * @returns {Object} returns[].data - 模板数据
+ * @returns {JSON} returns[].data - 模板数据
  * @returns {string} returns[].data.name - 模版名称
  * @returns {string} returns[].data.background - RGB 16进制 或 文件后缀名
  * @returns {string} returns[].data.backgroundType - "solid" 或 "image"
@@ -92,6 +92,28 @@ function loadTemplateAll() {
       imgPath: dir.peek("backgroundImage", templateData.background).getPath(),
     };
   });
+}
+
+/**
+ * 加载指定 ID 的模版
+ * @param {string} templateID 模版 ID
+ * @returns {JSON} 模板 JSON
+ * @returns {string} returns.id - templateID
+ * @returns {JSON} returns.data - 模板数据
+ * @returns {string} returns.data.name - 模版名称
+ * @returns {string} returns.data.background - RGB 16进制 或 文件后缀名
+ * @returns {string} returns.data.backgroundType - "solid" 或 "image"
+ * @returns {string} returns.imgPath - 图片文件的路径
+ */
+function loadTemplateByID(templateID) {
+  const tempDir = templatesDir.cd(templateID);
+  if (!tempDir.exist()) return null;
+  const templateData = tempDir.peek("template", "json").catJSON();
+  return {
+    id: templateID,
+    data: templateData,
+    imgPath: tempDir.peek("backgroundImage", templateData.background).getPath(),
+  };
 }
 
 /**
