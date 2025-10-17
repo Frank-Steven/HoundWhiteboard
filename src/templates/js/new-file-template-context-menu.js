@@ -3,46 +3,21 @@
 const contextMenu = document.getElementById("context-menu");
 let currentContextButton = null;
 
-/**
- * 重命名模版
- * @param {HTMLElement} templateButton 
- */
+// 重命名模版
 function templateRename(templateButton) {
   showRenameEditor(templateButton);
 }
 
-/** 
- * 删除模版及其按钮
- * @param {HTMLElement} templateButton
- */
+// 删除模版及其按钮
+// @param {Node} templateButton
 function templateRemove(templateButton) {
-  // TODO: 添加一个确认删除的提示窗
-  ipc.send("template-remove", templateButton.id, "NewFile");
-}
-
-ipc.on("template-remove-succeed", (event, templateID) => {
-  const templateButton = document.getElementById(templateID);
-  if(!templateButton) return; // 按钮已移除
-  if(boardInfo.templateID === templateButton.id) {
-    boardInfo.templateID = null;
-  }
+  boardInfo.templateID = null;
   buttonList.removeChild(templateButton);
-})
-
-/**
- * 编辑模版
- * @param {HTMLElement} templateButton
- */
-function templateEdit(templateButton) {
-  ipc.send("template-edit", templateButton.id);
+  ipc.send("template-remove", templateButton.id);
 }
 
-/**
- * 复制模版
- * @param {HTMLElement} templateButton
- */
+// 复制模版
 function templateCopy(templateButton) {
-  ipc.send("template-copy", templateButton.id);
 }
 
 // 显示上下文菜单
@@ -134,10 +109,6 @@ contextMenu.addEventListener("click", (e) => {
     case "copy":
       console.log("copy", currentContextButton);
       templateCopy(currentContextButton);
-      break;
-    case "edit":
-      console.log("edit", currentContextButton);
-      templateEdit(currentContextButton);
       break;
     case "rename":
       console.log("rename", currentContextButton);
