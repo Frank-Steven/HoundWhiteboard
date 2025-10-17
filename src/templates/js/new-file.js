@@ -80,16 +80,17 @@ function updateFilePathDisplay(fileName) {
 }
 
 // 选择保存文件夹
-choosePathBtn.addEventListener("click", () => {
-  ipc.send("path-choose");
-})
+choosePathBtn.addEventListener("click", async () => {
+  const result = await ipc.invoke("path-choose");
+  if (result) {
+    filePath = result[0];
 
-ipc.on("path-choose-result", (event, result) => {
-  filePath = result[0];
-
-  console.log("Path:" + filePath);
-  boardInfo.filePath = path.join(filePath, input.value === "" ? "" : input.value + ".hwb");
-  filePathSpan.textContent = boardInfo.filePath;
+    console.log("Path:" + filePath);
+    boardInfo.filePath = path.join(filePath, input.value === "" ? "" : input.value + ".hwb");
+    filePathSpan.textContent = boardInfo.filePath;
+  } else {
+    console.log("未选择路径");
+  }
 });
 
 // 新建主题
@@ -188,16 +189,15 @@ function buttonLoadAdd(element) {
 }
 
 /// 加载按钮
-ipc.send("load-buttons", "NewFile");
-
-ipc.on("buttons-loaded", (event, result) => {
+(async () => {
+  const result = await ipc.invoke("template-load-buttons", "NewFile");
   console.log(result);
   buttonList.innerHTML = "";
   buttonList.appendChild(newTemplateBtn);
   result.forEach((element) => {
     buttonLoadAdd(element);
   });
-});
+})();
 
 ipc.on("new-template-adding", (event, result) => {
   buttonLoadAdd(result.info);

@@ -1,8 +1,10 @@
 const { app, BrowserWindow } = require("electron");
-const IOManager = require("./utils/IOManager");
+const settingManager = require("./utils/settingManager");
 const winManager = require("./utils/windowManager");
 const boardManager = require("./utils/boardManager");
+const templateManager = require("./utils/templateManager");
 const { file, directory } = require("./classes/io");
+const ipc = require("electron").ipcMain;
 
 let windows = {
   MainMenu: null,
@@ -11,11 +13,10 @@ let windows = {
   FullScreen: null
 };
 
-const ipc = require("electron").ipcMain;
-
 app.whenReady().then(() => {
-  IOManager.init(app);
+  settingManager.init(app);
   boardManager.init(app);
+  templateManager.init(app);
 
   windows.MainMenu = winManager.createWindow("main-menu.html", {
     width: 800,
@@ -36,24 +37,13 @@ app.whenReady().then(() => {
   });
 
   // 设置 IPC 处理器
-  IOManager.setupSettingsIPC(ipc, BrowserWindow);
-  IOManager.setupFileOperationIPC(ipc, windows);
+  settingManager.setupSettingsIPC(ipc, BrowserWindow);
+  settingManager.setupFileOperationIPC(ipc, windows);
+  winManager.setupFileOpenCloseIPC(ipc, windows);
+  templateManager.setupTemplateOperationIPC(ipc, windows);
 
   // console.log(windows);
 });
-
-ipc.on("open-modal-window", (event, windowNow, windowNew, windowNewHTML) => {
-  windows[windowNew] = winManager.createModalWindow(windowNewHTML, windows[windowNow], {
-    width: 800,
-    height: 600,
-    minWidth: 800,
-    minHeight: 600,
-  });
-});
-
-ipc.on("close-window", (event, windowNow) => {
-  windows[windowNow].close();
-})
 
 app.on("window-all-closed", () => {
   setTimeout(() => {
@@ -61,77 +51,6 @@ app.on("window-all-closed", () => {
       app.quit();
     }
   }, 1000);
-});
-
-ipc.on("new-template-result", (event, result) => {
-  // result: {texture, backgroundColor, backgroundImage, name}
-  console.log(result);
-  const templateInfo = IOManager.saveTemplate(result);
-  windows.NewFile.webContents.send("new-template-adding",
-    { info: templateInfo, result: result });
-});
-
-ipc.on("load-buttons", (event, windowNow) => {
-  const result = IOManager.loadTemplateAll();
-  windows[windowNow].webContents.send("buttons-loaded", result);
-});
-
-ipc.on("template-remove", (event, templateID, windowNow) => {
-  IOManager.removeTemplate(templateID);
-  windows[windowNow]
-    .webContents
-    .send("template-remove-succeed", templateID);
-});
-
-ipc.on("template-rename", (event, templateID, name, windowNow) => {
-  const newID = IOManager.renameTemplate(templateID, name);
-  windows[windowNow]
-    .webContents              
-    .send("template-rename-result", newID);
-});
-
-ipc.on("template-edit", (event, templateID) => {
-  const info = IOManager.loadTemplateByID(templateID);
-  if (info) {
-    const pathStr = file.parse(info.imgPath).unPeek().getPath();
-    windows.NewTemplate =
-      winManager.createModalWindow("new-template.html", windows.NewFile, {
-        width: 800,
-        height: 600,
-        minWidth: 800,
-        minHeight: 600,
-      });
-    setTimeout(() => {
-      windows
-        .NewTemplate
-        .webContents
-        .send("init-new-template-from-other-template", info.data, pathStr, templateID);
-    }, 100);
-  } else {
-    console.error("No such file in directory.");
-  }
-});
-
-ipc.on("template-copy", (event, templateID) => {
-  const info = IOManager.loadTemplateByID(templateID);
-  if (info) {
-    const pathStr = file.parse(info.imgPath).unPeek().getPath();
-    windows.NewTemplate =
-      winManager.createModalWindow("new-template.html", windows.NewFile, {
-        width: 800,
-        height: 600,
-        minWidth: 800,
-        minHeight: 600,
-      });
-    setTimeout(() => {
-      windows
-        .NewTemplate
-        .webContents
-        .send("init-new-template-from-other-template", info.data, pathStr, null);
-    }, 100);
-  } else {
-    console.error("No such file in directory.");
-  }
 });
 
 // {
