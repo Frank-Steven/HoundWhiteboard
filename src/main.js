@@ -53,40 +53,10 @@ app.on("window-all-closed", () => {
   }, 1000);
 });
 
-<<<<<<< HEAD
-ipc.on("new-template-result", (event, result) => {
-  // result: {texture, backgroundColor, backgroundImage, name}
-  console.log(result);
-  const templateInfo = IOManager.saveTemplate(result);
-  windows.NewFile.webContents.send("new-template-adding",
-    { info: templateInfo, result: result });
-});
-
-ipc.on("load-buttons", (event, windowNow) => {
-  const result = IOManager.loadTemplateAll();
-  windows[windowNow].webContents.send("buttons-loaded", result);
-});
-
-ipc.on("template-remove", (event, templateID) => {
-  IOManager.removeTemplate(templateID);
-});
-
-ipc.on("template-rename", (event, templateID, name, windowNow) => {
-  const newID = IOManager.renameTemplate(templateID, name);
-  windows[windowNow].webContents
-                    .send("template-rename-result", newID);
-})
-
-// @param {
-//          {string} templateID
-//          {file} boardFile
-//        } boardInfo
-=======
 // {
 //   {string} templateID
 //   {file} boardFile
 // } boardInfo
->>>>>>> 5dc2cc767ed3ef2c5f10a99b56fd901634c55b37
 ipc.on("create-new-board-templated", (event, boardInfo) => {
   console.log("create-new-board-templated: %s At %s", boardInfo.templateID, boardInfo.filePath);
   boardManager.createEmptyBoard(boardInfo);
