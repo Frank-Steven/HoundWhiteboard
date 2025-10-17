@@ -134,7 +134,6 @@ function sanitizeTemplateName(value) {
 
 // 执行重命名
 function performRename() {
-  chooseButton(currentRenameButton.id);
   const newName = renameInput.value.trim();
   
   // 验证名称

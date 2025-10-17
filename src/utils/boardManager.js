@@ -86,7 +86,6 @@ function createEmptyBoard(boardInfo) {
  * BUG: 如果是从其他机器拷过来的 .hwb 文件，它里面的 templateID 可能与本机
  * 的 templateID 一样，此时会有 .hwb 里的 template 被本机 template 覆盖的
  * 可能。
- *
  * @param {fileNameRandomPool} pool
  * @param {string} templateID
  * @returns {JSON} {

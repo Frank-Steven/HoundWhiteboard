@@ -92,8 +92,7 @@
     "context-menu": {
       "copy": "Copy",
       "rename": "Rename",
-      "remove": "Remove",
-      "edit": "Edit"
+      "remove": "Remove"
     },
     "rename-editor": {
       "title": "Rename Template",

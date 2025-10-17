@@ -92,8 +92,7 @@
     "context-menu": {
       "copy": "複製",
       "rename": "重新命名",
-      "remove": "刪除",
-      "edit": "編輯"
+      "remove": "刪除"
     },
     "rename-editor": {
       "title": "重新命名樣式",

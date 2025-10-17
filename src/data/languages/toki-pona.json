@@ -90,10 +90,9 @@
       "no": "ala"
     },
     "context-menu": {
-      "copy": "sama en ante",
+      "copy": "sama",
       "rename": "nimi sin",
-      "remove": "weka",
-      "edit": "ante"
+      "remove": "weka"
     },
     "rename-editor": {
       "title": "nimi nasin sin",
@@ -103,7 +102,7 @@
       "errors": {
         "empty": "nimi li lon ala",
         "too-long": "nimi li lon suli mute",
-        "illegal-chars": "nimi li lon e toki ike",
+        "illegal-chars": "nimi li lon pona ala",
         "same-name": "nimi li sama" 
       }
     }
