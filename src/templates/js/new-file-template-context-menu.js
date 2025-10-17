@@ -8,12 +8,29 @@ function templateRename(templateButton) {
   showRenameEditor(templateButton);
 }
 
-// 删除模版及其按钮
-// @param {Node} templateButton
-function templateRemove(templateButton) {
-  boardInfo.templateID = null;
-  buttonList.removeChild(templateButton);
-  ipc.send("template-remove", templateButton.id);
+/** 
+ * 删除模版及其按钮
+ * @param {HTMLElement} templateButton
+ */
+async function templateRemove(templateButton) {
+  // TODO: 添加一个确认删除的提示窗
+  const templateID = await ipc.invoke("template-remove", templateButton.id, "NewFile");
+  if (templateID) {
+    const templateButton = document.getElementById(templateID);
+    if(!templateButton) return; // 按钮已移除
+    if(boardInfo.templateID === templateButton.id) {
+      boardInfo.templateID = null;
+    }
+    buttonList.removeChild(templateButton);
+  }
+}
+
+/**
+ * 编辑模版
+ * @param {HTMLElement} templateButton
+ */
+function templateEdit(templateButton) {
+  ipc.send("template-edit", templateButton.id);
 }
 
 // 复制模版
