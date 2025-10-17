@@ -1,7 +1,3 @@
-// const { ipcRenderer } = require("electron")
-// const ipc = ipcRenderer
-// ipc has been decleared in global.js
-
 const path = require("path");
 const { file, directory } = require("../../classes/io");
 
@@ -140,6 +136,18 @@ confirmBtn.addEventListener("click", () => {
   console.log(boardInfo);
   ipc.send("create-new-board-templated", boardInfo);
 });
+
+function chooseButton(templateID) {
+  console.log("Choose: " + templateID);
+  const button = document.getElementById(templateID);
+  if (boardInfo.templateID) {
+    document.getElementById(boardInfo.templateID)
+            .style.border = "2px solid transparent";
+  }
+  boardInfo.templateID = templateID;
+  // 选中当前按钮
+  button.style.border = "2px solid #007aff";
+}
 
 function buttonLoadAdd(element) {
   let btn = document.createElement("button");

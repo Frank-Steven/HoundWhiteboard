@@ -81,4 +81,3 @@ ipc.on("save-board-templated", (event, dirPath) => {
   });
   boardManager.saveBoard(directory.parse(dirPath));
 });
-

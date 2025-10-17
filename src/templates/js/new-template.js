@@ -23,6 +23,9 @@ let result = {
 
 let backgroundImage = "";
 
+/** 这个模版创建后，欲删除的另一个模版，为 null 则不删除 */
+let deleteID = null;
+
 // 初始化
 previewScreenFlush()
 
@@ -35,6 +38,11 @@ function previewScreenFlush() {
     previewScreen.style.background = color.value;
     result.backgroundColor = color.value;
   }
+}
+
+function blink(element) {
+  element.classList.add('blinking');
+  setTimeout(() => element.classList.remove('blinking'), 500);
 }
 
 // 当option发生变化时，刷新预览屏幕
@@ -73,6 +81,7 @@ color.addEventListener("change", () => {
   }
 });
 
+// 取消（不创建）
 cancelBtn.addEventListener("click", () => {
   ipc.send("close-window", "NewTemplate");
 });
@@ -83,16 +92,19 @@ confirmBtn.addEventListener("click", async () => {
   result.texture = chooseTextureBtn.value;
   if (nameInput.value === "") {
     nameInput.focus();
+    blink(nameInput);
+    toast.warning("请输入样式名");
     return;
   }
   result.name = nameInput.value;
+  console.log(deleteID);
   if (deleteID) {
+    // BUG: 删除不成功
     await ipc.invoke("template-remove", deleteID, "NewFile");
   }
   ipc.send("new-template-result", result);
   ipc.send("close-window", "NewTemplate");
 });
-
 
 // 这个 ipc 可以用来实现模版的复制和更改
 // TODO: 实现纹理
@@ -101,15 +113,20 @@ ipc.on("init-new-template-from-other-template", (event, templateInfo, pathStr, p
   console.log("init new template from other template.")
   console.log(templateInfo);
   console.log("path: ", pathStr);
-  result.name = templateInfo.name;
+  nameInput.value = templateInfo.name;
+  result.name = nameInput.value;
   if (templateInfo.backgroundType === "solid") {
     solidOpt.checked = true;
     color.value = templateInfo.background;
   } else {
     imageOpt.checked = true;
+    backgroundImage = require("../../classes/io")
+      .directory
+      .parse(pathStr)
+      .peek("backgroundImage", templateInfo.background)
+      .getPath();
+    console.log("imagePath: ", backgroundImage);
   }
+  deleteID = prevID;
   previewScreenFlush();
 });
-
-// TODO: 这个 ipc 可以用来实现模版的复制和更改
-ipc.on("init-new-template-from-other-template", (event, result) => {})

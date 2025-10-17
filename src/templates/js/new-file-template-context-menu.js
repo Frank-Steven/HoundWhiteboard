@@ -3,7 +3,10 @@
 const contextMenu = document.getElementById("context-menu");
 let currentContextButton = null;
 
-// 重命名模版
+/**
+ * 重命名模版
+ * @param {HTMLElement} templateButton 
+ */
 function templateRename(templateButton) {
   showRenameEditor(templateButton);
 }
@@ -33,8 +36,12 @@ function templateEdit(templateButton) {
   ipc.send("template-edit", templateButton.id);
 }
 
-// 复制模版
+/**
+ * 复制模版
+ * @param {HTMLElement} templateButton
+ */
 function templateCopy(templateButton) {
+  ipc.send("template-copy", templateButton.id);
 }
 
 // 显示上下文菜单
@@ -126,6 +133,10 @@ contextMenu.addEventListener("click", (e) => {
     case "copy":
       console.log("copy", currentContextButton);
       templateCopy(currentContextButton);
+      break;
+    case "edit":
+      console.log("edit", currentContextButton);
+      templateEdit(currentContextButton);
       break;
     case "rename":
       console.log("rename", currentContextButton);
