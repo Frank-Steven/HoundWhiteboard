@@ -1,8 +1,10 @@
 const { app, BrowserWindow } = require("electron");
-const IOManager = require("./utils/IOManager");
+const settingManager = require("./utils/settingManager");
 const winManager = require("./utils/windowManager");
 const boardManager = require("./utils/boardManager");
+const templateManager = require("./utils/templateManager");
 const { file, directory } = require("./classes/io");
+const ipc = require("electron").ipcMain;
 
 let windows = {
   MainMenu: null,
@@ -11,11 +13,10 @@ let windows = {
   FullScreen: null
 };
 
-const ipc = require("electron").ipcMain;
-
 app.whenReady().then(() => {
-  IOManager.init(app);
+  settingManager.init(app);
   boardManager.init(app);
+  templateManager.init(app);
 
   windows.MainMenu = winManager.createWindow("main-menu.html", {
     width: 800,
@@ -36,24 +37,13 @@ app.whenReady().then(() => {
   });
 
   // 设置 IPC 处理器
-  IOManager.setupSettingsIPC(ipc, BrowserWindow);
-  IOManager.setupFileOperationIPC(ipc, windows);
+  settingManager.setupSettingsIPC(ipc, BrowserWindow);
+  settingManager.setupFileOperationIPC(ipc, windows);
+  winManager.setupFileOpenCloseIPC(ipc, windows);
+  templateManager.setupTemplateOperationIPC(ipc, windows);
 
   // console.log(windows);
 });
-
-ipc.on("open-modal-window", (event, windowNow, windowNew, windowNewHTML) => {
-  windows[windowNew] = winManager.createModalWindow(windowNewHTML, windows[windowNow], {
-    width: 800,
-    height: 600,
-    minWidth: 800,
-    minHeight: 600,
-  });
-});
-
-ipc.on("close-window", (event, windowNow) => {
-  windows[windowNow].close();
-})
 
 app.on("window-all-closed", () => {
   setTimeout(() => {
@@ -63,6 +53,7 @@ app.on("window-all-closed", () => {
   }, 1000);
 });
 
+<<<<<<< HEAD
 ipc.on("new-template-result", (event, result) => {
   // result: {texture, backgroundColor, backgroundImage, name}
   console.log(result);
@@ -90,6 +81,12 @@ ipc.on("template-rename", (event, templateID, name, windowNow) => {
 //          {string} templateID
 //          {file} boardFile
 //        } boardInfo
+=======
+// {
+//   {string} templateID
+//   {file} boardFile
+// } boardInfo
+>>>>>>> 5dc2cc767ed3ef2c5f10a99b56fd901634c55b37
 ipc.on("create-new-board-templated", (event, boardInfo) => {
   console.log("create-new-board-templated: %s At %s", boardInfo.templateID, boardInfo.filePath);
   boardManager.createEmptyBoard(boardInfo);

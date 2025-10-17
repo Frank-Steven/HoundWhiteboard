@@ -1,5 +1,5 @@
 const { BrowserWindow } = require("electron");
-const IOManager = require("./IOManager");
+const settingManager = require("./settingManager");
 
 /**
  * 创建窗口
@@ -27,7 +27,7 @@ function createWindow(template, size = { width: 800, height: 600, minWidth: 800,
   // win.webContents.openDevTools();
 
   win.webContents.on("did-finish-load", () => {
-    const settings = IOManager.loadSettings();
+    const settings = settingManager.loadSettings();
     win.webContents.send("settings-loaded", settings);
   });
   return win;
@@ -56,6 +56,9 @@ function createFullScreenWindow(template) {
 
 /**
  * 创建模态窗口
+ *
+ * BUG: 这个模态窗口坏了，我也不知道为什么。
+ *
  * @param {string} template - 模板文件名
  * @param {BrowserWindow} parent - 父窗口对象
  * @param {Object} size - 窗口尺寸配置
@@ -82,15 +85,44 @@ function createModalWindow(template, parent, size = { width: 800, height: 600, m
   modalWin.loadFile(__dirname + "/../templates/html/" + template);
 
   modalWin.webContents.on("did-finish-load", () => {
-    const settings = IOManager.loadSettings();
+    const settings = settingManager.loadSettings();
     modalWin.webContents.send("settings-loaded", settings);
   });
 
   return modalWin;
 }
 
+/**
+ * @param {Object} ipc 主进程的 IPC
+ * @param {Object} windows 窗口对象集合
+ */
+function setupFileOpenCloseIPC(ipc, windows) {
+  ipc.on("open-window", (event, windowNew, windowNewHTML) => {
+    windows[windowNew] = createWindow(windowNewHTML, {
+      width: 800,
+      height: 600,
+      minWidth: 800,
+      minHeight: 600,
+    });
+  });
+
+  ipc.on("open-modal-window", (event, windowNow, windowNew, windowNewHTML) => {
+    windows[windowNew] = createModalWindow(windowNewHTML, windows[windowNow], {
+      width: 800,
+      height: 600,
+      minWidth: 800,
+      minHeight: 600,
+    });
+  });
+
+  ipc.on("close-window", (event, windowNow) => {
+    windows[windowNow].close();
+  })
+}
+
 module.exports = {
   createWindow,
   createFullScreenWindow,
   createModalWindow,
+  setupFileOpenCloseIPC,
 };
