@@ -13,37 +13,43 @@
 ✅ **自定义样式**：支持自定义背景色、文字颜色、图标大小等  
 ✅ **事件回调**：支持点击和关闭事件回调  
 ✅ **响应式设计**：兼容移动端和桌面端  
-✅ **浏览器兼容**：支持所有主流现代浏览器
+✅ **浏览器兼容**：支持所有主流现代浏览器  
+✅ **模块化设计**：使用 CommonJS 模块系统，易于集成  
+✅ **零依赖**：纯原生 JavaScript 实现
 
 ## 文件结构
 
 ```
-src/templates/
-├── css/
-│   └── inline-toast.css           # 样式文件
-└── js/
-    └── inline-toast.js            # 核心组件
+src/utils/ui/
+└── toast.js            # 核心组件（样式已内联）
 ```
 
 ## 快速开始
 
-### 1. 引入文件
+### 1. 引入模块
 
-在HTML中引入必要的CSS和JS文件：
+在 JavaScript 文件中使用 `require` 引入类并创建实例：
 
-```html
-<!DOCTYPE html>
-<html>
-<head>
-  <link rel="stylesheet" href="../css/inline-toast.css"/>
-</head>
-<body>
-  <!-- 提示框容器（可选，组件会自动创建） -->
-  <div id="toast-container"></div>
-  
-  <script src="../js/inline-toast.js"></script>
-</body>
-</html>
+```javascript
+const Toast = require('./utils/ui/toast');
+const toast = new Toast();
+
+// 使用提示框
+toast.success('操作成功！');
+```
+
+**特性**：
+- ✅ 样式已内联到 JS 文件中，自动注入到页面
+- ✅ 无需手动引入 CSS 文件
+- ✅ 打包友好，不依赖文件系统
+- ✅ 支持自定义父容器
+
+### 1.1 自定义父容器（可选）
+
+```javascript
+const Toast = require('./utils/ui/toast');
+const customToast = new Toast(document.getElementById('my-container'));
+customToast.success('操作成功！');
 ```
 
 ### 2. 基础使用
@@ -145,6 +151,9 @@ toast.closeAll();
 ### 1. 基础类型
 
 ```javascript
+const Toast = require('./utils/ui/toast');
+const toast = new Toast();
+
 // 成功提示
 toast.success('数据保存成功！', {
   duration: 3000,
@@ -310,6 +319,34 @@ setTimeout(() => {
 }, 1000);
 ```
 
+### 8. 在 Electron 渲染进程中使用
+
+```javascript
+// 在渲染进程的 JavaScript 文件中
+const Toast = require('./utils/ui/toast');
+const toast = new Toast();
+
+// 监听主进程消息
+const { ipcRenderer } = require('electron');
+
+ipcRenderer.on('show-notification', (event, message) => {
+  toast.success(message, {
+    duration: 3000,
+    showProgress: true
+  });
+});
+
+// 表单提交示例
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  try {
+    await saveData();
+    toast.success('保存成功', { showProgress: true });
+  } catch (error) {
+    toast.error('保存失败：' + error.message);
+  }
+});
+```
+
 ## 样式自定义
 
 ### 通过CSS变量自定义
@@ -351,6 +388,23 @@ toast.show({
 }
 ```
 
+## 模块化优势
+
+### 1. 简化集成
+- 无需在 HTML 中手动引入 CSS 文件
+- 一行代码即可引入并使用
+- 样式自动加载，避免遗漏
+
+### 2. 更好的依赖管理
+- 使用 CommonJS 模块系统
+- 明确的依赖关系
+- 易于维护和更新
+
+### 3. 适用场景
+- Electron 应用
+- Node.js 环境（配合打包工具）
+- 使用 Webpack/Browserify 等打包工具的项目
+
 ## 浏览器兼容性
 
 - Chrome 60+
@@ -366,10 +420,32 @@ toast.show({
 3. 自定义图标时，SVG需要是完整的字符串
 4. 图片图标建议使用相对路径或绝对URL
 5. 进度条仅在设置了自动关闭时间时有效
+6. 样式会在模块加载时自动注入到页面
+7. 模块导出的是类，需要实例化后使用
+8. 支持创建多个独立的 toast 实例
 
 ## 演示页面
 
-打开 `dev/toast/inline-toast.html` 查看完整的使用示例和效果演示。
+打开 `dev/toast/inline-toast-standalone.html` 查看完整的使用示例和效果演示。
+
+## 技术细节
+
+### 模块结构
+- **toast.js**: 核心逻辑，导出 `InlineToast` 类
+- 样式已内联到 JS 文件中，无需单独的 CSS 文件
+
+### 样式加载机制
+模块在加载时自动将内联的 CSS 内容注入到页面的 `<head>` 中：
+- 使用 `<style>` 标签注入样式
+- 通过 ID 检查避免重复注入
+- 打包友好，不依赖文件系统读取
+- 适用于 Electron 和各种打包工具
+
+### 实例化模式
+模块导出的是 `InlineToast` 类，而非单例实例：
+- 支持创建多个独立的 toast 管理器
+- 每个实例可以有自己的父容器
+- 灵活性更高，适用于复杂场景
 
 ## 许可证
 
