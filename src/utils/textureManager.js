@@ -1,21 +1,18 @@
 const { directory, file, fileNameRandomPool } = require("../classes/io");
 
-// 两种，一种是“线条”，一种是“填充”
-
 // 线条模式配置示例
 const lineConfig = {
   svg:
-    "M 10,30\
-     A 20,20 0,0,1 50,30\
-     A 20,20 0,0,1 90,30\
-     Q 90,60 50,90\
-     Q 10,60 10,30 z",
+    "M 0,50\
+     l 100,0\
+     M 50,0\
+     l 0,100",
   type: "line",
-  thickness: 3,
+  thickness: 5,
   color: "#ff0000",
   size: 0.6,
-  width: 200,
-  height: 200,
+  width: 50,
+  height: 50,
   offset_x: 0,
   offset_y: 0,
 }
@@ -31,11 +28,11 @@ const fillConfig = {
   type: "fill",
   thickness: 0.2,
   color: "#ff0000",
-  size: 1.2,
-  width: 200,
-  height: 200,
-  offset_x: 100,
-  offset_y: 100,
+  size: 0.8,
+  width: 100,
+  height: 100,
+  offset_x: 0,
+  offset_y: 0,
 }
 
 /**
@@ -67,7 +64,7 @@ function generateSVG(config) {
   if (config.type === "line") {
     // 线条模式：设置描边粗细
     path.setAttribute("stroke", config.color);
-    path.setAttribute("stroke-width", config.thickness);
+    path.setAttribute("stroke-width", config.thickness / config.size);
     path.setAttribute("fill", "none");
     path.setAttribute("stroke-linecap", "round");
     path.setAttribute("stroke-linejoin", "round");
@@ -97,13 +94,80 @@ function generateSVG(config) {
     transfrom.push(`translate(50, 50) scale(${config.thickness}) translate(-50, -50)`);
   }
 
-  transfrom.push(`translate(${config.offset_x * acturalWidth / 100}, ${config.offset_y * acturalHeight / 100})`)
-
-  path.setAttribute("transform", transfrom.join(' '));
+  if (transfrom.length !== 0) {
+    path.setAttribute("transform", transfrom.join(' '));
+  }
 
   return svg;
 }
 
+/**
+ * 创建平铺纹理容器,将纹理单元铺满整个容器,并在各方向额外平铺2个单元,整体居中显示
+ *
+ * @param {JSON} config - 纹理配置
+ * @param {number} containerWidth - 容器宽度
+ * @param {number} containerHeight - 容器高度
+ * @returns {HTMLDivElement}
+ */
+function createTiledTexture(config, containerWidth, containerHeight) {
+  const container = document.createElement("div");
+  container.style.position = "relative";
+  container.style.width = `${containerWidth}px`;
+  container.style.height = `${containerHeight}px`;
+  container.style.overflow = "hidden";
+  container.style.border = "2px solid #333";
+
+  // 计算单个纹理单元的实际尺寸
+  let unitWidth = config.width;
+  let unitHeight = config.height;
+
+  if (config.type === "line") {
+    unitWidth *= config.size;
+    unitHeight *= config.size;
+  } else if (config.type === "fill") {
+    // 填充模式需要考虑 margin
+    const marginX = unitWidth * (config.size - 1);
+    const marginY = unitHeight * (config.size - 1);
+    unitWidth += marginX * 2;
+    unitHeight += marginY * 2;
+  }
+
+  // 计算需要多少行和列来填满容器
+  const baseCols = Math.ceil(containerWidth / unitWidth);
+  const baseRows = Math.ceil(containerHeight / unitHeight);
+
+  // 在各方向额外增加2个单元
+  const extraUnits = 2;
+  const cols = baseCols + extraUnits * 2;
+  const rows = baseRows + extraUnits * 2;
+
+  // 计算整个平铺图案的总尺寸
+  const totalWidth = cols * unitWidth;
+  const totalHeight = rows * unitHeight;
+
+  // 计算居中偏移量
+  let offsetX = (containerWidth - totalWidth) / 2;
+  let offsetY = (containerHeight - totalHeight) / 2;
+
+  // 添加配置中的偏移量（将百分比转换为像素）
+  offsetX += (config.offset_x / 100) * unitWidth;
+  offsetY += (config.offset_y / 100) * unitHeight;
+
+  // 创建平铺的纹理单元
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const svg = generateSVG(config);
+      svg.style.position = "absolute";
+      svg.style.left = `${offsetX + col * unitWidth}px`;
+      svg.style.top = `${offsetY + row * unitHeight}px`;
+      container.appendChild(svg);
+    }
+  }
+
+  return container;
+}
+
 module.exports = {
-  generatePath: generateSVG
+  generateSVG,
+  createTiledTexture,
 };
