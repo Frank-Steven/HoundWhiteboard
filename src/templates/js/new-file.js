@@ -1,6 +1,9 @@
 const path = require("path");
 const { file, directory } = require("../../classes/io");
 
+const Toast = require("../../utils/ui/toast");
+const toast = new Toast();
+
 const newTemplateBtn = document.getElementById("new-file-template-select-new-template");
 const input = document.getElementById("new-file-save-form-input");
 

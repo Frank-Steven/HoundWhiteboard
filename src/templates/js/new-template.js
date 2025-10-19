@@ -1,3 +1,6 @@
+const Toast = require("../../utils/ui/toast");
+const toast = new Toast();
+
 const chooseTextureBtn = document.getElementById("new-template-foreground-import");
 
 const solidOpt = document.getElementById("new-template-background-options-solid");

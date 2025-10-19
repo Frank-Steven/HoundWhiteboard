@@ -2,28 +2,28 @@
 
 ## 🚀 集成到项目
 
-```html
-<!DOCTYPE html>
-<html>
-<head>
-  <link rel="stylesheet" href="../css/inline-toast.css"/>
-</head>
-<body>
-  <!-- 你的页面内容 -->
-  
-  <script src="../js/inline-toast.js"></script>
-  <script>
-    // 使用提示框
-    toast.success('操作成功！');
-  </script>
-</body>
-</html>
+在 JavaScript 文件中使用 `require` 引入模块：
+
+```javascript
+const toast = require('./utils/ui/toast');
+
+// 使用提示框
+toast.success('操作成功！');
 ```
+
+**优势**：
+- ✅ 无需在 HTML 中手动引入 CSS 文件
+- ✅ 样式自动加载
+- ✅ 更好的依赖管理
+- ✅ 适用于 Electron 和现代前端项目
 
 ## 💡 基础用法
 
 ### 1. 简单提示
 ```javascript
+const Toast = require('./utils/ui/toast');
+const toast = new Toast();
+
 // 成功
 toast.success('保存成功！');
 
@@ -136,6 +136,9 @@ toast.show({
 
 ### 表单验证提示
 ```javascript
+const Toast = require('./utils/ui/toast');
+const toast = new Toast();
+
 function validateForm() {
   if (!username) {
     toast.error('请输入用户名', { showProgress: true });
@@ -189,6 +192,32 @@ function processSteps() {
 }
 ```
 
+### Electron 应用集成
+```javascript
+// 在渲染进程的 JavaScript 文件中
+const Toast = require('./utils/ui/toast');
+const toast = new Toast();
+const { ipcRenderer } = require('electron');
+
+// 监听主进程消息
+ipcRenderer.on('show-notification', (event, message) => {
+  toast.success(message, {
+    duration: 3000,
+    showProgress: true
+  });
+});
+
+// 按钮点击事件
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  try {
+    const result = await ipcRenderer.invoke('save-data', data);
+    toast.success('保存成功', { showProgress: true });
+  } catch (error) {
+    toast.error('保存失败：' + error.message);
+  }
+});
+```
+
 ## 🔧 高级技巧
 
 ### 1. 关闭所有提示框
@@ -223,6 +252,21 @@ toast.show({
 }
 ```
 
+### 4. 动态加载提示
+```javascript
+// 加载状态
+const loadingToast = toast.info('正在加载...', {
+  duration: 0,
+  showClose: false
+});
+
+// 加载完成后关闭并显示结果
+setTimeout(() => {
+  toast.close(loadingToast);
+  toast.success('加载完成！', { showProgress: true });
+}, 2000);
+```
+
 ## 📱 响应式支持
 
 组件自动适配移动端和桌面端：
@@ -239,29 +283,44 @@ toast.show({
 
 ## 📚 更多信息
 
-查看完整文档：`README-inline-toast.md`
+查看完整文档：[`README-inline-toast.md`](./README-inline-toast.md)
 
 ## 🎯 快速测试
 
-在浏览器控制台中运行：
+在项目中创建测试文件：
 
 ```javascript
+// test-toast.js
+const Toast = require('./utils/ui/toast');
+const toast = new Toast();
+
 // 测试所有类型
 toast.success('成功提示', { showProgress: true });
-toast.warning('警告提示', { showProgress: true });
-toast.error('错误提示', { showProgress: true });
-toast.info('信息提示', { showProgress: true });
+
+setTimeout(() => {
+  toast.warning('警告提示', { showProgress: true });
+}, 500);
+
+setTimeout(() => {
+  toast.error('错误提示', { showProgress: true });
+}, 1000);
+
+setTimeout(() => {
+  toast.info('信息提示', { showProgress: true });
+}, 1500);
 
 // 测试自定义
-toast.show({
-  type: 'info',
-  message: '🎉 自定义提示',
-  icon: '🚀',
-  iconSize: 32,
-  backgroundColor: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  duration: 3000,
-  showProgress: true
-});
+setTimeout(() => {
+  toast.show({
+    type: 'info',
+    message: '🎉 自定义提示',
+    icon: '🚀',
+    iconSize: 32,
+    backgroundColor: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    duration: 3000,
+    showProgress: true
+  });
+}, 2000);
 ```
 
 ## ✨ 特色功能
@@ -274,6 +333,65 @@ toast.show({
 6. ✅ **响应式** - 自适应各种屏幕
 7. ✅ **多实例** - 支持同时显示多个提示框
 8. ✅ **事件支持** - 完整的回调机制
+9. ✅ **模块化** - CommonJS 模块系统
+10. ✅ **自动加载样式** - 无需手动引入 CSS
+
+## 💡 最佳实践
+
+### 1. 统一管理
+```javascript
+// utils/notification.js
+const Toast = require('./ui/toast');
+const toast = new Toast();
+
+module.exports = {
+  success: (msg) => toast.success(msg, { showProgress: true }),
+  error: (msg) => toast.error(msg, { duration: 4000 }),
+  warning: (msg) => toast.warning(msg, { showProgress: true }),
+  info: (msg) => toast.info(msg, { duration: 3000 })
+};
+```
+
+### 2. 错误处理
+```javascript
+const Toast = require('./utils/ui/toast');
+const toast = new Toast();
+
+async function handleRequest() {
+  try {
+    const result = await apiCall();
+    toast.success('操作成功');
+    return result;
+  } catch (error) {
+    toast.error(`操作失败：${error.message}`);
+    throw error;
+  }
+}
+```
+
+### 3. 加载状态
+```javascript
+const Toast = require('./utils/ui/toast');
+const toast = new Toast();
+
+async function loadData() {
+  const loading = toast.info('加载中...', {
+    duration: 0,
+    showClose: false
+  });
+  
+  try {
+    const data = await fetchData();
+    toast.close(loading);
+    toast.success('加载成功', { showProgress: true });
+    return data;
+  } catch (error) {
+    toast.close(loading);
+    toast.error('加载失败');
+    throw error;
+  }
+}
+```
 
 ---
 

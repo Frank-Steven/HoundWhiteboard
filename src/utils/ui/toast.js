@@ -1,10 +1,350 @@
 /**
- * 内联提示框组件
+ * 内联提示框组件 - 模块化版本
  * 功能完整的通用提示框系统
+ *
+ * @module toast
+ * @description 零依赖、轻量级的提示框组件，支持多种自定义选项和动画效果
+ * @example
+ * const Toast = require('./utils/ui/toast');
+ * const toast = new Toast();
+ * toast.success('操作成功！');
+ *
+ * // 或者指定父容器
+ * const customToast = new Toast(document.getElementById('my-container'));
  */
 
+// 内联样式内容
+const CSS_CONTENT = `
+/* 提示框容器 */
+#toast-container {
+  position: fixed;
+  display: block;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+/* 提示框基础样式 */
+.inline-toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 8px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 400px;
+  min-width: 200px;
+  pointer-events: auto;
+  position: absolute;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.toast-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.toast-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.toast-message {
+  flex: 1;
+  word-wrap: break-word;
+  user-select: text;
+}
+
+.toast-close {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
+.toast-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.toast-success {
+  background-color: rgba(76, 175, 80, 0.95);
+  color: white;
+}
+
+.toast-warning {
+  background-color: rgba(255, 152, 0, 0.95);
+  color: white;
+}
+
+.toast-error {
+  background-color: rgba(244, 67, 54, 0.95);
+  color: white;
+}
+
+.toast-info {
+  background-color: rgba(33, 150, 243, 0.95);
+  color: white;
+}
+
+.toast-position-top-center {
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.toast-position-top-right {
+  top: 20px;
+  right: 20px;
+}
+
+.toast-position-top-left {
+  top: 20px;
+  left: 20px;
+}
+
+.toast-position-bottom-center {
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.toast-position-bottom-right {
+  bottom: 20px;
+  right: 20px;
+}
+
+.toast-position-bottom-left {
+  bottom: 20px;
+  left: 20px;
+}
+
+@keyframes slideInTop {
+  from {
+    opacity: 0;
+    transform: translateY(-100%) translateX(-50%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) translateX(-50%);
+  }
+}
+
+@keyframes slideInTopNoCenter {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInBottom {
+  from {
+    opacity: 0;
+    transform: translateY(100%) translateX(-50%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) translateX(-50%);
+  }
+}
+
+@keyframes slideInBottomNoCenter {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeInCenter {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateX(-50%);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateX(-50%);
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+@keyframes fadeOutCenter {
+  from {
+    opacity: 1;
+    transform: scale(1) translateX(-50%);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.9) translateX(-50%);
+  }
+}
+
+.toast-animation-slideInTop {
+  animation: slideInTop 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast-animation-slideInTopNoCenter {
+  animation: slideInTopNoCenter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast-animation-slideInBottom {
+  animation: slideInBottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast-animation-slideInBottomNoCenter {
+  animation: slideInBottomNoCenter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast-animation-slideInLeft {
+  animation: slideInLeft 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast-animation-slideInRight {
+  animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast-animation-fadeIn {
+  animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast-animation-fadeInCenter {
+  animation: fadeInCenter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast-animation-fadeOut {
+  animation: fadeOut 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast-animation-fadeOutCenter {
+  animation: fadeOutCenter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toast-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background-color: rgba(255, 255, 255, 0.5);
+  transition: width linear;
+}
+
+@media (max-width: 768px) {
+  .inline-toast {
+    max-width: calc(100vw - 40px);
+    margin: 8px 20px;
+  }
+}
+`;
+
+// 自动注入样式表
+(function injectStyles() {
+  // 检查样式是否已经注入
+  if (document.getElementById('inline-toast-styles')) {
+    return;
+  }
+
+  const styleElement = document.createElement('style');
+  styleElement.id = 'inline-toast-styles';
+  styleElement.textContent = CSS_CONTENT;
+  document.head.appendChild(styleElement);
+})();
+
+/**
+ * 零依赖、轻量级的提示框组件，支持多种自定义选项和动画效果
+ * @example
+ * const Toast = require('./utils/ui/toast');
+ * const toast = new Toast();
+ * toast.success('操作成功！');
+ *
+ * // 或者指定父容器
+ * const customToast = new Toast(document.getElementById('my-container'));
+ */
 class InlineToast {
-  constructor() {
+  /**
+   * 创建 Toast 实例
+   * @param {HTMLElement} [parentElement=null] - 可选的父容器元素。如果不提供，将创建全屏容器
+   */
+  constructor(parentElement = null) {
+    this.parentElement = parentElement;
     this.container = null;
     this.toasts = [];
     this.defaultOptions = {
@@ -32,11 +372,27 @@ class InlineToast {
    */
   init() {
     if (!this.container) {
-      this.container = document.getElementById('toast-container');
-      if (!this.container) {
-        this.container = document.createElement('div');
-        this.container.id = 'toast-container';
-        document.body.appendChild(this.container);
+      // 如果指定了父元素，在父元素中查找或创建容器
+      if (this.parentElement) {
+        this.container = this.parentElement.querySelector('.toast-container');
+        if (!this.container) {
+          this.container = document.createElement('div');
+          this.container.className = 'toast-container';
+          // 为自定义父容器设置相对定位样式
+          this.container.style.position = 'relative';
+          this.container.style.width = '100%';
+          this.container.style.height = '100%';
+          this.container.style.pointerEvents = 'none';
+          this.parentElement.appendChild(this.container);
+        }
+      } else {
+        // 默认行为：创建全屏容器
+        this.container = document.getElementById('toast-container');
+        if (!this.container) {
+          this.container = document.createElement('div');
+          this.container.id = 'toast-container';
+          document.body.appendChild(this.container);
+        }
       }
     }
   }
@@ -379,6 +735,9 @@ class InlineToast {
 
   /**
    * 快捷方法：成功提示
+   * @param {string} message - 提示消息
+   * @param {Object} options - 配置选项
+   * @returns {Object} 提示框实例
    */
   success(message, options = {}) {
     return this.show({ ...options, type: 'success', message });
@@ -386,6 +745,9 @@ class InlineToast {
 
   /**
    * 快捷方法：警告提示
+   * @param {string} message - 提示消息
+   * @param {Object} options - 配置选项
+   * @returns {Object} 提示框实例
    */
   warning(message, options = {}) {
     return this.show({ ...options, type: 'warning', message });
@@ -393,6 +755,9 @@ class InlineToast {
 
   /**
    * 快捷方法：错误提示
+   * @param {string} message - 提示消息
+   * @param {Object} options - 配置选项
+   * @returns {Object} 提示框实例
    */
   error(message, options = {}) {
     return this.show({ ...options, type: 'error', message });
@@ -400,11 +765,14 @@ class InlineToast {
 
   /**
    * 快捷方法：信息提示
+   * @param {string} message - 提示消息
+   * @param {Object} options - 配置选项
+   * @returns {Object} 提示框实例
    */
   info(message, options = {}) {
     return this.show({ ...options, type: 'info', message });
   }
 }
 
-// 创建全局实例
-window.toast = new InlineToast();
+// 导出类
+module.exports = InlineToast;
