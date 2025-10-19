@@ -26,4 +26,8 @@
   --ff0: 'HarmonyOS_Sans', sans-serif;
   --ff1: 'HarmonyOS_Sans', sans-serif;
   --ff2: 'HarmonyOS_Sans', sans-serif;
+  --success: #00cc00f3;
+  --error: #ff0000cc;
+  --warning: #ffcc00cc;
+  --info: #0099ffcc;
 }

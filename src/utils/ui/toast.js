@@ -34,6 +34,7 @@ const CSS_CONTENT = `
   padding: 12px 16px;
   margin: 8px;
   border-radius: 8px;
+  -electron-corner-smoothing: 60%;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   font-size: 14px;
   line-height: 1.5;
@@ -97,22 +98,22 @@ const CSS_CONTENT = `
 }
 
 .toast-success {
-  background-color: rgba(76, 175, 80, 0.95);
+  background-color: var(--success);
   color: white;
 }
 
 .toast-warning {
-  background-color: rgba(255, 152, 0, 0.95);
+  background-color: var(--warning);
   color: white;
 }
 
 .toast-error {
-  background-color: rgba(244, 67, 54, 0.95);
+  background-color: var(--error);
   color: white;
 }
 
 .toast-info {
-  background-color: rgba(33, 150, 243, 0.95);
+  background-color: var(--info);
   color: white;
 }
 
