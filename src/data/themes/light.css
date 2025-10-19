@@ -26,4 +26,8 @@
   --ff0: 'HarmonyOS_Sans', sans-serif;
   --ff1: 'HarmonyOS_Sans', sans-serif;
   --ff2: 'HarmonyOS_Sans', sans-serif;
+  --success: rgba(76, 175, 80, 0.95);
+  --error: rgba(244, 67, 54, 0.95);
+  --warning: rgba(255, 152, 0, 0.95);
+  --info: rgba(33, 150, 243, 0.95);
 }

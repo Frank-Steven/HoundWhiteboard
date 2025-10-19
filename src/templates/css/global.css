@@ -17,6 +17,7 @@ body {
   padding: 10px;
   border: none;
   border-radius: 5px;
+  -electron-corner-smoothing: 60%;
   background-color: var(--bg1);
   color: var(--fg1);
   font-size: 1.2em;

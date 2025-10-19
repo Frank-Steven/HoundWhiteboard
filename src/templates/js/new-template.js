@@ -102,7 +102,6 @@ confirmBtn.addEventListener("click", async () => {
   result.name = nameInput.value;
   console.log(deleteID);
   if (deleteID) {
-    // BUG: 删除不成功
     await ipc.invoke("template-remove", deleteID, "NewFile");
   }
   ipc.send("new-template-result", result);

@@ -4,6 +4,7 @@
   background-color: var(--bg1);
   border: 1px solid var(--fg1);
   border-radius: 8px;
+  -electron-corner-smoothing: 60%;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   padding: 6px 0;
   min-width: 180px;

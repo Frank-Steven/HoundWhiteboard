@@ -58,6 +58,7 @@
   font-size: var(--fs4);
   padding: 10px 20px;
   border-radius: 5px;
+  -electron-corner-smoothing: 60%;
   cursor: pointer;
 }
 
