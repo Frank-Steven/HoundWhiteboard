@@ -6,15 +6,11 @@
  * @description 轻量级窗口管理工具，支持居中和自定义位置两种显示模式
  * @example
  * const FakeWindow = require('./utils/ui/fake-window');
- * 
- * // 居中显示
- * FakeWindow.showCentered('my-window', { modal: true });
- * 
- * // 自定义位置显示
- * FakeWindow.showAt('my-window', 100, 200);
- * 
- * // 隐藏窗口
- * FakeWindow.hide('my-window');
+ * const myWindow = new FakeWindow(document.getElementById('my-window'), {
+ *   mode: 'centered',
+ *   modal: true
+ * });
+ * myWindow.show();
  */
 
 // 内联样式内容 - 仅处理外层容器的基础定位
@@ -67,394 +63,269 @@ const CSS_CONTENT = `
   document.head.appendChild(styleElement);
 })();
 
+// 全局 z-index 管理器
+let globalMaxZIndex = 10000;
+
 /**
- * 伪窗口管理对象
+ * 伪窗口类
  */
-const FakeWindow = {
+class FakeWindow {
   /**
-   * 活动窗口列表
-   * @private
-   */
-  _activeWindows: new Set(),
-
-  /**
-   * 窗口配置缓存
-   * @private
-   */
-  _windowConfigs: new Map(),
-
-  /**
-   * 事件处理器缓存
-   * @private
-   */
-  _eventHandlers: new Map(),
-
-  /**
-   * 当前最大 z-index
-   * @private
-   */
-  _maxZIndex: 10000,
-
-  /**
-   * 居中显示窗口
-   * @param {string} elementId - 窗口元素的 ID
+   * 创建伪窗口实例
+   * @param {HTMLElement} element - 窗口元素
    * @param {Object} options - 配置选项
-   * @param {boolean} [options.modal=true] - 是否为模态窗口（阻止背景交互）
-   * @param {boolean} [options.backdropClose=true] - 点击背景是否关闭窗口
+   * @param {string} [options.mode='centered'] - 显示模式：'centered' 或 'positioned'
+   * @param {boolean} [options.modal=true] - 是否为模态窗口
+   * @param {boolean} [options.backdropClose=true] - 点击背景/外部是否关闭
+   * @param {boolean} [options.quadrantMode=false] - 是否启用象限模式（仅positioned模式）
+   * @param {number} [options.primaryQuadrant=4] - 主象限 (1-4)
+   * @param {number} [options.minMargin=10] - 最小边距
    * @param {number} [options.zIndex] - 自定义 z-index
-   * @param {Function} [options.onShow] - 显示时的回调函数
-   * @param {Function} [options.onHide] - 隐藏时的回调函数
-   * @returns {boolean} 是否成功显示
+   * @param {Function} [options.onShow] - 显示回调
+   * @param {Function} [options.onHide] - 隐藏回调
    */
-  showCentered(elementId, options = {}) {
-    const element = document.getElementById(elementId);
+  constructor(element, options = {}) {
     if (!element) {
-      console.warn(`FakeWindow: Element with id "${elementId}" not found`);
-      return false;
+      throw new Error('FakeWindow: element is required');
     }
 
-    // 合并默认配置
-    const config = {
+    this.element = element;
+    this.config = {
+      mode: 'centered',
       modal: true,
       backdropClose: true,
-      zIndex: null,
-      onShow: null,
-      onHide: null,
-      ...options,
-      mode: 'centered'
-    };
-
-    // 保存配置
-    this._windowConfigs.set(elementId, config);
-
-    // 添加基础类
-    element.classList.add('fake-window-wrapper');
-    element.classList.add('centered');
-    
-    // 设置模态
-    if (config.modal) {
-      element.classList.add('modal');
-    } else {
-      element.classList.remove('modal');
-    }
-
-    // 设置 z-index
-    if (config.zIndex) {
-      element.style.zIndex = config.zIndex;
-    } else {
-      element.style.zIndex = ++this._maxZIndex;
-    }
-
-    // 显示窗口
-    element.classList.add('show');
-
-    // 添加到活动窗口列表
-    this._activeWindows.add(elementId);
-
-    // 清理旧的事件处理器
-    this._removeEventListeners(elementId);
-
-    // 设置背景点击关闭
-    if (config.modal && config.backdropClose) {
-      this._setupBackdropClose(element, elementId);
-    }
-
-    // 设置 ESC 键关闭
-    this._setupEscClose(elementId);
-
-    // 执行显示回调
-    if (config.onShow) {
-      config.onShow(element);
-    }
-
-    return true;
-  },
-
-  /**
-   * 在指定位置显示窗口
-   * @param {string} elementId - 窗口元素的 ID
-   * @param {number} x - X 坐标
-   * @param {number} y - Y 坐标
-   * @param {Object} options - 配置选项
-   * @param {boolean} [options.modal=false] - 是否为模态窗口
-   * @param {boolean} [options.backdropClose=false] - 点击外部是否关闭窗口
-   * @param {boolean} [options.adjustPosition=true] - 是否自动调整位置以适应视口
-   * @param {boolean} [options.quadrantMode=false] - 是否启用象限模式
-   * @param {number} [options.primaryQuadrant=4] - 主象限 (1=右上, 2=左上, 3=左下, 4=右下)
-   * @param {number} [options.minMargin=10] - 最小边距（像素）
-   * @param {number} [options.zIndex] - 自定义 z-index
-   * @param {Function} [options.onShow] - 显示时的回调函数
-   * @param {Function} [options.onHide] - 隐藏时的回调函数
-   * @returns {boolean} 是否成功显示
-   */
-  showAt(elementId, x, y, options = {}) {
-    const element = document.getElementById(elementId);
-    if (!element) {
-      console.warn(`FakeWindow: Element with id "${elementId}" not found`);
-      return false;
-    }
-
-    // 合并默认配置
-    const config = {
-      modal: false,
-      backdropClose: false,
-      adjustPosition: true,
       quadrantMode: false,
       primaryQuadrant: 4,
       minMargin: 10,
       zIndex: null,
       onShow: null,
       onHide: null,
-      ...options,
-      mode: 'positioned',
-      x,
-      y
+      ...options
     };
 
-    // 保存配置
-    this._windowConfigs.set(elementId, config);
+    this.eventHandlers = {};
+    this.isVisible = false;
 
     // 添加基础类
-    element.classList.add('fake-window-wrapper');
-    element.classList.add('positioned');
-    element.classList.remove('centered');
+    this.element.classList.add('fake-window-wrapper');
+  }
+
+  /**
+   * 显示窗口（居中模式）
+   * @returns {FakeWindow} 返回实例以支持链式调用
+   */
+  showCentered() {
+    this.config.mode = 'centered';
+    return this._show();
+  }
+
+  /**
+   * 在指定位置显示窗口
+   * @param {number} x - X 坐标
+   * @param {number} y - Y 坐标
+   * @param {Object} options - 可选的配置覆盖
+   * @returns {FakeWindow} 返回实例以支持链式调用
+   */
+  showAt(x, y, options = {}) {
+    this.config = { ...this.config, ...options, mode: 'positioned', x, y };
+    return this._show();
+  }
+
+  /**
+   * 显示窗口（通用方法）
+   * @private
+   */
+  _show() {
+    // 清理旧的事件处理器
+    this._removeEventListeners();
+
+    // 设置模式类
+    if (this.config.mode === 'centered') {
+      this.element.classList.add('centered');
+      this.element.classList.remove('positioned');
+    } else {
+      this.element.classList.add('positioned');
+      this.element.classList.remove('centered');
+    }
 
     // 设置模态
-    if (config.modal) {
-      element.classList.add('modal');
+    if (this.config.modal) {
+      this.element.classList.add('modal');
     } else {
-      element.classList.remove('modal');
+      this.element.classList.remove('modal');
     }
 
     // 设置 z-index
-    if (config.zIndex) {
-      element.style.zIndex = config.zIndex;
+    if (this.config.zIndex) {
+      this.element.style.zIndex = this.config.zIndex;
     } else {
-      element.style.zIndex = ++this._maxZIndex;
+      this.element.style.zIndex = ++globalMaxZIndex;
     }
 
-    // 显示窗口（先显示以获取尺寸）
-    element.classList.add('show');
+    // 显示窗口
+    this.element.classList.add('show');
+    this.isVisible = true;
 
-    // 设置位置
-    const contentElement = element.firstElementChild;
-    if (contentElement) {
-      if (config.quadrantMode) {
-        // 象限模式定位
-        this._positionByQuadrant(contentElement, x, y, config);
-      } else {
-        // 普通模式定位
-        contentElement.style.left = `${x}px`;
-        contentElement.style.top = `${y}px`;
-
-        // 调整位置以适应视口
-        if (config.adjustPosition) {
-          this._adjustPositionToViewport(contentElement);
+    // 处理定位模式
+    if (this.config.mode === 'positioned') {
+      const contentElement = this.element.firstElementChild;
+      if (contentElement) {
+        if (this.config.quadrantMode) {
+          this._positionByQuadrant(contentElement, this.config.x, this.config.y);
+        } else {
+          contentElement.style.left = `${this.config.x}px`;
+          contentElement.style.top = `${this.config.y}px`;
         }
       }
     }
 
-    // 添加到活动窗口列表
-    this._activeWindows.add(elementId);
-
-    // 清理旧的事件处理器
-    this._removeEventListeners(elementId);
-
-    // 设置点击外部关闭
-    if (config.backdropClose) {
-      this._setupOutsideClick(element, elementId);
+    // 设置事件监听器
+    if (this.config.backdropClose) {
+      if (this.config.mode === 'centered') {
+        this._setupBackdropClose();
+      } else {
+        this._setupOutsideClick();
+      }
     }
 
-    // 设置 ESC 键关闭
-    this._setupEscClose(elementId);
+    this._setupEscClose();
 
     // 执行显示回调
-    if (config.onShow) {
-      config.onShow(element);
+    if (this.config.onShow) {
+      this.config.onShow(this.element);
     }
 
-    return true;
-  },
+    return this;
+  }
 
   /**
    * 隐藏窗口
-   * @param {string} elementId - 窗口元素的 ID
-   * @returns {boolean} 是否成功隐藏
+   * @returns {FakeWindow} 返回实例以支持链式调用
    */
-  hide(elementId) {
-    const element = document.getElementById(elementId);
-    if (!element) {
-      console.warn(`FakeWindow: Element with id "${elementId}" not found`);
-      return false;
+  hide() {
+    this.element.classList.remove('show');
+    this.isVisible = false;
+
+    // 清理事件监听器
+    this._removeEventListeners();
+
+    // 执行隐藏回调
+    if (this.config.onHide) {
+      this.config.onHide(this.element);
     }
 
-    // 移除显示类
-    element.classList.remove('show');
-
-    // 从活动窗口列表移除
-    this._activeWindows.delete(elementId);
-
-    // 获取配置并执行隐藏回调
-    const config = this._windowConfigs.get(elementId);
-    if (config && config.onHide) {
-      config.onHide(element);
-    }
-
-    // 移除事件监听器
-    this._removeEventListeners(elementId);
-
-    return true;
-  },
+    return this;
+  }
 
   /**
-   * 检查窗口是否可见
-   * @param {string} elementId - 窗口元素的 ID
-   * @returns {boolean} 是否可见
+   * 切换显示/隐藏
+   * @returns {FakeWindow}
    */
-  isVisible(elementId) {
-    const element = document.getElementById(elementId);
-    if (!element) {
-      return false;
+  toggle() {
+    if (this.isVisible) {
+      this.hide();
+    } else {
+      this._show();
     }
-    return element.classList.contains('show');
-  },
+    return this;
+  }
 
   /**
    * 将窗口置于最前
-   * @param {string} elementId - 窗口元素的 ID
-   * @returns {boolean} 是否成功
+   * @returns {FakeWindow}
    */
-  bringToFront(elementId) {
-    const element = document.getElementById(elementId);
-    if (!element) {
-      console.warn(`FakeWindow: Element with id "${elementId}" not found`);
-      return false;
-    }
-
-    element.style.zIndex = ++this._maxZIndex;
-    return true;
-  },
-
-  /**
-   * 隐藏所有窗口
-   */
-  hideAll() {
-    this._activeWindows.forEach(elementId => {
-      this.hide(elementId);
-    });
-  },
+  bringToFront() {
+    this.element.style.zIndex = ++globalMaxZIndex;
+    return this;
+  }
 
   /**
    * 设置背景点击关闭（居中模式）
    * @private
    */
-  _setupBackdropClose(element, elementId) {
+  _setupBackdropClose() {
     const handler = (e) => {
-      // 只有点击背景容器本身时才关闭
-      if (e.target === element && this.isVisible(elementId)) {
-        this.hide(elementId);
+      if (e.target === this.element && this.isVisible) {
+        this.hide();
       }
     };
 
-    element.addEventListener('click', handler);
-    
-    if (!this._eventHandlers.has(elementId)) {
-      this._eventHandlers.set(elementId, {});
-    }
-    this._eventHandlers.get(elementId).backdropClickHandler = handler;
-  },
+    this.element.addEventListener('click', handler);
+    this.eventHandlers.backdropClickHandler = handler;
+  }
 
   /**
    * 设置点击外部关闭（自定义位置模式）
    * @private
    */
-  _setupOutsideClick(element, elementId) {
+  _setupOutsideClick() {
     const handler = (e) => {
-      const contentElement = element.firstElementChild;
-      if (contentElement && !contentElement.contains(e.target) && this.isVisible(elementId)) {
-        this.hide(elementId);
+      const contentElement = this.element.firstElementChild;
+      if (contentElement && !contentElement.contains(e.target) && this.isVisible) {
+        this.hide();
       }
     };
 
     // 延迟添加监听器，避免立即触发
     setTimeout(() => {
       document.addEventListener('click', handler);
-      
-      if (!this._eventHandlers.has(elementId)) {
-        this._eventHandlers.set(elementId, {});
-      }
-      this._eventHandlers.get(elementId).outsideClickHandler = handler;
+      this.eventHandlers.outsideClickHandler = handler;
     }, 0);
-  },
+  }
 
   /**
    * 设置 ESC 键关闭
    * @private
    */
-  _setupEscClose(elementId) {
+  _setupEscClose() {
     const handler = (e) => {
-      if (e.key === 'Escape' && this.isVisible(elementId)) {
-        this.hide(elementId);
+      if (e.key === 'Escape' && this.isVisible) {
+        this.hide();
       }
     };
 
     document.addEventListener('keydown', handler);
-    
-    if (!this._eventHandlers.has(elementId)) {
-      this._eventHandlers.set(elementId, {});
-    }
-    this._eventHandlers.get(elementId).escKeyHandler = handler;
-  },
+    this.eventHandlers.escKeyHandler = handler;
+  }
 
   /**
    * 移除事件监听器
    * @private
    */
-  _removeEventListeners(elementId) {
-    const element = document.getElementById(elementId);
-    const handlers = this._eventHandlers.get(elementId);
-    
-    if (handlers) {
-      // 移除背景点击监听器
-      if (handlers.backdropClickHandler && element) {
-        element.removeEventListener('click', handlers.backdropClickHandler);
-      }
-
-      // 移除外部点击监听器
-      if (handlers.outsideClickHandler) {
-        document.removeEventListener('click', handlers.outsideClickHandler);
-      }
-
-      // 移除 ESC 键监听器
-      if (handlers.escKeyHandler) {
-        document.removeEventListener('keydown', handlers.escKeyHandler);
-      }
-
-      this._eventHandlers.delete(elementId);
+  _removeEventListeners() {
+    // 移除背景点击监听器
+    if (this.eventHandlers.backdropClickHandler) {
+      this.element.removeEventListener('click', this.eventHandlers.backdropClickHandler);
+      delete this.eventHandlers.backdropClickHandler;
     }
-  },
+
+    // 移除外部点击监听器
+    if (this.eventHandlers.outsideClickHandler) {
+      document.removeEventListener('click', this.eventHandlers.outsideClickHandler);
+      delete this.eventHandlers.outsideClickHandler;
+    }
+
+    // 移除 ESC 键监听器
+    if (this.eventHandlers.escKeyHandler) {
+      document.removeEventListener('keydown', this.eventHandlers.escKeyHandler);
+      delete this.eventHandlers.escKeyHandler;
+    }
+  }
 
   /**
    * 象限模式定位
    * @private
-   * @param {HTMLElement} element - 内容元素
-   * @param {number} originX - 原点X坐标
-   * @param {number} originY - 原点Y坐标
-   * @param {Object} config - 配置选项
    */
-  _positionByQuadrant(element, originX, originY, config) {
-    // 先设置初始位置以获取元素尺寸
+  _positionByQuadrant(element, originX, originY) {
     element.style.left = `${originX}px`;
     element.style.top = `${originY}px`;
     
-    // 等待下一帧以确保元素已渲染
     requestAnimationFrame(() => {
       const rect = element.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
-      const minMargin = config.minMargin;
+      const minMargin = this.config.minMargin;
       
-      // 检测各个方向是否有足够空间
       const hasRightSpace = (originX + rect.width + minMargin) <= viewportWidth;
       const hasLeftSpace = (originX - rect.width - minMargin) >= 0;
       const hasBottomSpace = (originY + rect.height + minMargin) <= viewportHeight;
@@ -462,29 +333,24 @@ const FakeWindow = {
       
       let finalX, finalY;
       
-      // 根据主象限和空间情况决定最终象限
-      switch (config.primaryQuadrant) {
-        case 4: // 主象限：右下（第四象限）
+      switch (this.config.primaryQuadrant) {
+        case 4: // 主象限：右下
           if (hasRightSpace && hasBottomSpace) {
-            // 第四象限：右下
             finalX = originX;
             finalY = originY;
           } else if (!hasRightSpace && hasBottomSpace) {
-            // 第三象限：左下
             finalX = originX - rect.width;
             finalY = originY;
           } else if (hasRightSpace && !hasBottomSpace) {
-            // 第一象限：右上
             finalX = originX;
             finalY = originY - rect.height;
           } else {
-            // 第二象限：左上
             finalX = originX - rect.width;
             finalY = originY - rect.height;
           }
           break;
           
-        case 1: // 主象限：右上（第一象限）
+        case 1: // 主象限：右上
           if (hasRightSpace && hasTopSpace) {
             finalX = originX;
             finalY = originY - rect.height;
@@ -500,7 +366,7 @@ const FakeWindow = {
           }
           break;
           
-        case 2: // 主象限：左上（第二象限）
+        case 2: // 主象限：左上
           if (hasLeftSpace && hasTopSpace) {
             finalX = originX - rect.width;
             finalY = originY - rect.height;
@@ -516,7 +382,7 @@ const FakeWindow = {
           }
           break;
           
-        case 3: // 主象限：左下（第三象限）
+        case 3: // 主象限：左下
           if (hasLeftSpace && hasBottomSpace) {
             finalX = originX - rect.width;
             finalY = originY;
@@ -533,51 +399,11 @@ const FakeWindow = {
           break;
       }
       
-      // 应用最终位置
       element.style.left = `${finalX}px`;
       element.style.top = `${finalY}px`;
-      
-      // 存储象限信息（可用于调试或其他用途）
-      element.dataset.quadrant = config.primaryQuadrant;
     });
-  },
-
-  /**
-   * 调整位置以适应视口
-   * @private
-   */
-  _adjustPositionToViewport(element) {
-    const rect = element.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-
-    let left = parseInt(element.style.left) || 0;
-    let top = parseInt(element.style.top) || 0;
-
-    // 右边界检测
-    if (rect.right > viewportWidth) {
-      left = viewportWidth - rect.width - 10;
-    }
-
-    // 左边界检测
-    if (left < 10) {
-      left = 10;
-    }
-
-    // 下边界检测
-    if (rect.bottom > viewportHeight) {
-      top = viewportHeight - rect.height - 10;
-    }
-
-    // 上边界检测
-    if (top < 10) {
-      top = 10;
-    }
-
-    element.style.left = `${left}px`;
-    element.style.top = `${top}px`;
   }
-};
+}
 
-// 导出模块
+// 导出类
 module.exports = FakeWindow;
