@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>伪窗口工具 - 独立示例</title>
+  <style>
+    /* 基础样式 */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      max-width: 800px;
+      margin: 0 auto;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .section-title {
+      color: #333;
+      font-size: 16px;
+      margin: 25px 0 15px;
+      font-weight: 600;
+    }
+
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .demo-button {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s;
+      color: white;
+    }
+
+    .demo-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .demo-button:active {
+      transform: translateY(0);
+    }
+
+    .btn-primary { background: #667eea; }
+    .btn-success { background: #4CAF50; }
+    .btn-warning { background: #FF9800; }
+    .btn-danger { background: #F44336; }
+    .btn-info { background: #2196F3; }
+
+    /* FakeWindow 外层容器样式（内联） */
+    .fake-window-wrapper {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10000;
+      display: none;
+      pointer-events: none;
+    }
+
+    .fake-window-wrapper.show {
+      display: block;
+    }
+
+    .fake-window-wrapper.modal {
+      pointer-events: auto;
+    }
+
+    .fake-window-wrapper.show.centered {
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .fake-window-wrapper.positioned > * {
+      position: fixed;
+    }
+
+    /* 背景遮罩 */
+    .fake-window-wrapper.modal::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+      animation: fadeIn 0.2s ease;
+    }
+
+    /* 对话框样式 */
+    .dialog-box {
+      position: relative;
+      z-index: 1;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      max-width: 500px;
+      width: 90%;
+      overflow: hidden;
+      animation: slideUp 0.25s ease;
+    }
+
+    .dialog-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .dialog-icon {
+      font-size: 24px;
+    }
+
+    .dialog-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+      flex: 1;
+    }
+
+    .dialog-close {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      font-size: 24px;
+      color: #999;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .dialog-close:hover {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .dialog-body {
+      padding: 24px;
+      color: #666;
+      line-height: 1.6;
+    }
+
+    .dialog-footer {
+      padding: 16px 24px;
+      border-top: 1px solid #eee;
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .dialog-btn {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .dialog-btn-cancel {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .dialog-btn-cancel:hover {
+      background: #e0e0e0;
+    }
+
+    .dialog-btn-confirm {
+      background: #667eea;
+      color: white;
+    }
+
+    .dialog-btn-confirm:hover {
+      background: #5568d3;
+    }
+
+    /* 右键菜单样式 */
+    .context-menu-content {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      min-width: 180px;
+      padding: 6px 0;
+      animation: slideIn 0.15s ease;
+    }
+
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+      color: #333;
+    }
+
+    .menu-item:hover {
+      background: #f0f0f0;
+    }
+
+    .menu-icon {
+      font-size: 16px;
+      width: 20px;
+      text-align: center;
+    }
+
+    .menu-divider {
+      height: 1px;
+      background: #ddd;
+      margin: 6px 0;
+    }
+
+    .menu-item.danger {
+      color: #ff3b30;
+    }
+
+    .menu-item.danger:hover {
+      background: rgba(255, 59, 48, 0.1);
+    }
+
+    /* 图片预览样式 */
+    .preview-content {
+      position: relative;
+      z-index: 1;
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      max-width: 90vw;
+      max-height: 90vh;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .preview-close {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: rgba(0, 0, 0, 0.5);
+      color: white;
+      border-radius: 50%;
+      font-size: 20px;
+      cursor: pointer;
+      z-index: 1;
+      transition: all 0.2s;
+    }
+
+    .preview-close:hover {
+      background: rgba(0, 0, 0, 0.7);
+    }
+
+    .preview-image {
+      max-width: 100%;
+      max-height: 80vh;
+      display: block;
+      border-radius: 8px;
+    }
+
+    /* 表单编辑器样式 */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 500;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    /* 加载动画 */
+    .loading-content {
+      position: relative;
+      z-index: 1;
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #f0f0f0;
+      border-top-color: #667eea;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    .loading-text {
+      color: #666;
+      font-size: 14px;
+    }
+
+    /* 动画定义 */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* 响应式 */
+    @media (max-width: 600px) {
+      .container {
+        padding: 20px;
+      }
+
+      .button-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .dialog-footer {
+        flex-direction: column-reverse;
+      }
+
+      .dialog-btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🪟 伪窗口工具</h1>
+    <p class="subtitle">灵活的窗口管理工具，支持居中和自定义位置显示</p>
+
+    <div class="section-title">居中模态窗口</div>
+    <div class="button-grid">
+      <button class="demo-button btn-primary" onclick="showConfirmDialog()">
+        确认对话框
+      </button>
+      <button class="demo-button btn-info" onclick="showAlertDialog()">
+        提示对话框
+      </button>
+      <button class="demo-button btn-success" onclick="showFormDialog()">
+        表单编辑器
+      </button>
+      <button class="demo-button btn-warning" onclick="showImagePreview()">
+        图片预览
+      </button>
+    </div>
+
+    <div class="section-title">自定义位置窗口</div>
+    <div class="button-grid">
+      <button class="demo-button btn-info" onclick="showContextMenu(event)">
+        右键菜单
+      </button>
+      <button class="demo-button btn-primary" onclick="showTooltip(event)">
+        工具提示
+      </button>
+      <button class="demo-button btn-success" onclick="showDropdown(event)">
+        下拉菜单
+      </button>
+    </div>
+
+    <div class="section-title">象限模式测试</div>
+    <div class="button-grid">
+      <button class="demo-button btn-primary" onclick="testQuadrant(event, 1)">
+        主象限1（右上）
+      </button>
+      <button class="demo-button btn-success" onclick="testQuadrant(event, 2)">
+        主象限2（左上）
+      </button>
+      <button class="demo-button btn-warning" onclick="testQuadrant(event, 3)">
+        主象限3（左下）
+      </button>
+      <button class="demo-button btn-info" onclick="testQuadrant(event, 4)">
+        主象限4（右下）
+      </button>
+    </div>
+
+    <div class="section-title">特殊功能</div>
+    <div class="button-grid">
+      <button class="demo-button btn-warning" onclick="showLoading()">
+        加载提示
+      </button>
+      <button class="demo-button btn-primary" onclick="showMultiple()">
+        多窗口
+      </button>
+      <button class="demo-button btn-danger" onclick="FakeWindow.hideAll()">
+        关闭所有
+      </button>
+    </div>
+  </div>
+
+  <!-- 确认对话框 -->
+  <div id="confirm-dialog" class="fake-window-wrapper">
+    <div class="dialog-box">
+      <div class="dialog-header">
+        <span class="dialog-icon">❓</span>
+        <span class="dialog-title">确认操作</span>
+        <button class="dialog-close" onclick="FakeWindow.hide('confirm-dialog')">×</button>
+      </div>
+      <div class="dialog-body">
+        <p>确定要执行这个操作吗？此操作不可撤销。</p>
+      </div>
+      <div class="dialog-footer">
+        <button class="dialog-btn dialog-btn-cancel" onclick="FakeWindow.hide('confirm-dialog')">
+          取消
+        </button>
+        <button class="dialog-btn dialog-btn-confirm" onclick="handleConfirm()">
+          确定
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 提示对话框 -->
+  <div id="alert-dialog" class="fake-window-wrapper">
+    <div class="dialog-box">
+      <div class="dialog-header">
+        <span class="dialog-icon">ℹ️</span>
+        <span class="dialog-title">提示</span>
+        <button class="dialog-close" onclick="FakeWindow.hide('alert-dialog')">×</button>
+      </div>
+      <div class="dialog-body">
+        <p>这是一个提示信息对话框。</p>
+      </div>
+      <div class="dialog-footer">
+        <button class="dialog-btn dialog-btn-confirm" onclick="FakeWindow.hide('alert-dialog')">
+          确定
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 表单编辑器 -->
+  <div id="form-dialog" class="fake-window-wrapper">
+    <div class="dialog-box">
+      <div class="dialog-header">
+        <span class="dialog-icon">✏️</span>
+        <span class="dialog-title">编辑信息</span>
+        <button class="dialog-close" onclick="FakeWindow.hide('form-dialog')">×</button>
+      </div>
+      <div class="dialog-body">
+        <div class="form-group">
+          <label class="form-label">姓名</label>
+          <input type="text" class="form-input" id="form-name" placeholder="请输入姓名">
+        </div>
+        <div class="form-group">
+          <label class="form-label">邮箱</label>
+          <input type="email" class="form-input" id="form-email" placeholder="请输入邮箱">
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button class="dialog-btn dialog-btn-cancel" onclick="FakeWindow.hide('form-dialog')">
+          取消
+        </button>
+        <button class="dialog-btn dialog-btn-confirm" onclick="handleFormSubmit()">
+          保存
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 图片预览 -->
+  <div id="image-preview" class="fake-window-wrapper">
+    <div class="preview-content">
+      <button class="preview-close" onclick="FakeWindow.hide('image-preview')">×</button>
+      <img class="preview-image" src="https://picsum.photos/800/600" alt="预览图片">
+    </div>
+  </div>
+
+  <!-- 右键菜单 -->
+  <div id="context-menu" class="fake-window-wrapper">
+    <div class="context-menu-content">
+      <div class="menu-item" onclick="handleMenuAction('edit')">
+        <span class="menu-icon">✏️</span>
+        <span>编辑</span>
+      </div>
+      <div class="menu-item" onclick="handleMenuAction('copy')">
+        <span class="menu-icon">📋</span>
+        <span>复制</span>
+      </div>
+      <div class="menu-item" onclick="handleMenuAction('rename')">
+        <span class="menu-icon">🏷️</span>
+        <span>重命名</span>
+      </div>
+      <div class="menu-divider"></div>
+      <div class="menu-item danger" onclick="handleMenuAction('delete')">
+        <span class="menu-icon">🗑️</span>
+        <span>删除</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 加载提示 -->
+  <div id="loading" class="fake-window-wrapper">
+    <div class="loading-content">
+      <div class="spinner"></div>
+      <div class="loading-text">加载中，请稍候...</div>
+    </div>
+  </div>
+
+  <script>
+    // FakeWindow 工具（精简版）
+    const FakeWindow = {
+      _activeWindows: new Set(),
+      _maxZIndex: 10000,
+      _eventHandlers: new Map(),
+
+      showCentered(elementId, options = {}) {
+        const element = document.getElementById(elementId);
+        if (!element) return false;
+
+        const config = {
+          modal: true,
+          backdropClose: true,
+          ...options
+        };
+
+        element.classList.add('fake-window-wrapper', 'centered', 'show');
+        if (config.modal) {
+          element.classList.add('modal');
+        }
+
+        element.style.zIndex = ++this._maxZIndex;
+        this._activeWindows.add(elementId);
+
+        // 清理旧的事件处理器
+        this._removeEventHandlers(elementId);
+
+        // 背景点击关闭
+        if (config.modal && config.backdropClose) {
+          const clickHandler = (e) => {
+            if (e.target === element) {
+              this.hide(elementId);
+            }
+          };
+          element.addEventListener('click', clickHandler);
+          
+          if (!this._eventHandlers.has(elementId)) {
+            this._eventHandlers.set(elementId, {});
+          }
+          this._eventHandlers.get(elementId).clickHandler = clickHandler;
+        }
+
+        // ESC键关闭
+        const escHandler = (e) => {
+          if (e.key === 'Escape' && this.isVisible(elementId)) {
+            this.hide(elementId);
+          }
+        };
+        document.addEventListener('keydown', escHandler);
+        
+        if (!this._eventHandlers.has(elementId)) {
+          this._eventHandlers.set(elementId, {});
+        }
+        this._eventHandlers.get(elementId).escHandler = escHandler;
+
+        if (config.onShow) config.onShow(element);
+        return true;
+      },
+
+      showAt(elementId, x, y, options = {}) {
+        const element = document.getElementById(elementId);
+        if (!element) return false;
+
+        const config = {
+          modal: false,
+          backdropClose: false,
+          adjustPosition: true,
+          quadrantMode: false,
+          primaryQuadrant: 4,
+          minMargin: 10,
+          ...options
+        };
+
+        element.classList.add('fake-window-wrapper', 'positioned', 'show');
+        if (config.modal) {
+          element.classList.add('modal');
+        }
+
+        element.style.zIndex = ++this._maxZIndex;
+
+        const contentElement = element.firstElementChild;
+        if (contentElement) {
+          if (config.quadrantMode) {
+            // 象限模式定位
+            this._positionByQuadrant(contentElement, x, y, config);
+          } else {
+            // 普通模式定位
+            contentElement.style.left = `${x}px`;
+            contentElement.style.top = `${y}px`;
+
+            if (config.adjustPosition) {
+              setTimeout(() => {
+                const rect = contentElement.getBoundingClientRect();
+                let newX = x, newY = y;
+
+                if (rect.right > window.innerWidth) {
+                  newX = window.innerWidth - rect.width - 10;
+                }
+                if (rect.bottom > window.innerHeight) {
+                  newY = window.innerHeight - rect.height - 10;
+                }
+                if (newX < 10) newX = 10;
+                if (newY < 10) newY = 10;
+
+                contentElement.style.left = `${newX}px`;
+                contentElement.style.top = `${newY}px`;
+              }, 0);
+            }
+          }
+        }
+
+        this._activeWindows.add(elementId);
+        
+        // 清理旧的事件处理器
+        this._removeEventHandlers(elementId);
+
+        // 外部点击关闭
+        if (config.backdropClose) {
+          setTimeout(() => {
+            const outsideClickHandler = (e) => {
+              const contentElement = element.firstElementChild;
+              if (contentElement && !contentElement.contains(e.target) && this.isVisible(elementId)) {
+                this.hide(elementId);
+              }
+            };
+            document.addEventListener('click', outsideClickHandler);
+            
+            if (!this._eventHandlers.has(elementId)) {
+              this._eventHandlers.set(elementId, {});
+            }
+            this._eventHandlers.get(elementId).outsideClickHandler = outsideClickHandler;
+          }, 0);
+        }
+
+        // ESC键关闭
+        const escHandler = (e) => {
+          if (e.key === 'Escape' && this.isVisible(elementId)) {
+            this.hide(elementId);
+          }
+        };
+        document.addEventListener('keydown', escHandler);
+        
+        if (!this._eventHandlers.has(elementId)) {
+          this._eventHandlers.set(elementId, {});
+        }
+        this._eventHandlers.get(elementId).escHandler = escHandler;
+
+        if (config.onShow) config.onShow(element);
+        return true;
+      },
+
+      hide(elementId) {
+        const element = document.getElementById(elementId);
+        if (!element) return false;
+
+        element.classList.remove('show');
+        this._activeWindows.delete(elementId);
+        
+        // 清理事件处理器
+        this._removeEventHandlers(elementId);
+        
+        return true;
+      },
+
+      hideAll() {
+        this._activeWindows.forEach(id => this.hide(id));
+      },
+
+      isVisible(elementId) {
+        const element = document.getElementById(elementId);
+        return element && element.classList.contains('show');
+      },
+
+      _removeEventHandlers(elementId) {
+        const element = document.getElementById(elementId);
+        const handlers = this._eventHandlers.get(elementId);
+        
+        if (handlers) {
+          // 移除点击事件
+          if (handlers.clickHandler) {
+            element.removeEventListener('click', handlers.clickHandler);
+          }
+          
+          // 移除ESC键事件
+          if (handlers.escHandler) {
+            document.removeEventListener('keydown', handlers.escHandler);
+          }
+          
+          // 移除外部点击事件
+          if (handlers.outsideClickHandler) {
+            document.removeEventListener('click', handlers.outsideClickHandler);
+          }
+          
+          this._eventHandlers.delete(elementId);
+        }
+      },
+
+      _positionByQuadrant(element, originX, originY, config) {
+        element.style.left = `${originX}px`;
+        element.style.top = `${originY}px`;
+        
+        requestAnimationFrame(() => {
+          const rect = element.getBoundingClientRect();
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+          const minMargin = config.minMargin;
+          
+          const hasRightSpace = (originX + rect.width + minMargin) <= viewportWidth;
+          const hasLeftSpace = (originX - rect.width - minMargin) >= 0;
+          const hasBottomSpace = (originY + rect.height + minMargin) <= viewportHeight;
+          const hasTopSpace = (originY - rect.height - minMargin) >= 0;
+          
+          let finalX, finalY;
+          
+          switch (config.primaryQuadrant) {
+            case 4: // 主象限：右下
+              if (hasRightSpace && hasBottomSpace) {
+                finalX = originX;
+                finalY = originY;
+              } else if (!hasRightSpace && hasBottomSpace) {
+                finalX = originX - rect.width;
+                finalY = originY;
+              } else if (hasRightSpace && !hasBottomSpace) {
+                finalX = originX;
+                finalY = originY - rect.height;
+              } else {
+                finalX = originX - rect.width;
+                finalY = originY - rect.height;
+              }
+              break;
+              
+            case 1: // 主象限：右上
+              if (hasRightSpace && hasTopSpace) {
+                finalX = originX;
+                finalY = originY - rect.height;
+              } else if (!hasRightSpace && hasTopSpace) {
+                finalX = originX - rect.width;
+                finalY = originY - rect.height;
+              } else if (hasRightSpace && !hasTopSpace) {
+                finalX = originX;
+                finalY = originY;
+              } else {
+                finalX = originX - rect.width;
+                finalY = originY;
+              }
+              break;
+              
+            case 2: // 主象限：左上
+              if (hasLeftSpace && hasTopSpace) {
+                finalX = originX - rect.width;
+                finalY = originY - rect.height;
+              } else if (hasLeftSpace && !hasTopSpace) {
+                finalX = originX - rect.width;
+                finalY = originY;
+              } else if (!hasLeftSpace && hasTopSpace) {
+                finalX = originX;
+                finalY = originY - rect.height;
+              } else {
+                finalX = originX;
+                finalY = originY;
+              }
+              break;
+              
+            case 3: // 主象限：左下
+              if (hasLeftSpace && hasBottomSpace) {
+                finalX = originX - rect.width;
+                finalY = originY;
+              } else if (!hasLeftSpace && hasBottomSpace) {
+                finalX = originX;
+                finalY = originY;
+              } else if (hasLeftSpace && !hasBottomSpace) {
+                finalX = originX - rect.width;
+                finalY = originY - rect.height;
+              } else {
+                finalX = originX;
+                finalY = originY - rect.height;
+              }
+              break;
+          }
+          
+          element.style.left = `${finalX}px`;
+          element.style.top = `${finalY}px`;
+        });
+      }
+    };
+
+    // 示例函数
+    function showConfirmDialog() {
+      FakeWindow.showCentered('confirm-dialog', {
+        modal: true,
+        backdropClose: false
+      });
+    }
+
+    function showAlertDialog() {
+      FakeWindow.showCentered('alert-dialog', {
+        modal: true,
+        backdropClose: true
+      });
+    }
+
+    function showFormDialog() {
+      document.getElementById('form-name').value = '';
+      document.getElementById('form-email').value = '';
+      FakeWindow.showCentered('form-dialog', {
+        modal: true,
+        backdropClose: false,
+        onShow: () => {
+          document.getElementById('form-name').focus();
+        }
+      });
+    }
+
+    function showImagePreview() {
+      FakeWindow.showCentered('image-preview', {
+        modal: true,
+        backdropClose: true
+      });
+    }
+
+    function showContextMenu(event) {
+      event.preventDefault();
+      const rect = event.target.getBoundingClientRect();
+      FakeWindow.showAt('context-menu', event.clientX, event.clientY, {
+        backdropClose: true,
+        quadrantMode: true,
+        primaryQuadrant: 4,
+        minMargin: 10
+      });
+    }
+
+    function showTooltip(event) {
+      const rect = event.target.getBoundingClientRect();
+      alert('工具提示功能演示（可自定义实现）');
+    }
+
+    function showDropdown(event) {
+      showContextMenu(event);
+    }
+
+    function showLoading() {
+      FakeWindow.showCentered('loading', {
+        modal: true,
+        backdropClose: false
+      });
+
+      setTimeout(() => {
+        FakeWindow.hide('loading');
+        showAlertDialog();
+      }, 2000);
+    }
+
+    function showMultiple() {
+      FakeWindow.showCentered('alert-dialog', { zIndex: 10001 });
+      setTimeout(() => {
+        FakeWindow.showCentered('confirm-dialog', { zIndex: 10002 });
+      }, 300);
+    }
+
+    function handleConfirm() {
+      console.log('已确认');
+      FakeWindow.hide('confirm-dialog');
+    }
+
+    function handleFormSubmit() {
+      const name = document.getElementById('form-name').value;
+      const email = document.getElementById('form-email').value;
+      console.log('保存数据:', { name, email });
+      FakeWindow.hide('form-dialog');
+    }
+
+    function handleMenuAction(action) {
+      console.log('菜单操作:', action);
+      FakeWindow.hide('context-menu');
+    }
+
+    function testQuadrant(event, quadrant) {
+      const quadrantNames = {
+        1: '右上',
+        2: '左上',
+        3: '左下',
+        4: '右下'
+      };
+      
+      console.log(`测试主象限 ${quadrant}（${quadrantNames[quadrant]}）`);
+      
+      FakeWindow.showAt('context-menu', event.clientX, event.clientY, {
+        backdropClose: true,
+        quadrantMode: true,
+        primaryQuadrant: quadrant,
+        minMargin: 10
+      });
+    }
+
+    // 欢迎消息
+    setTimeout(() => {
+      showAlertDialog();
+    }, 500);
+  </script>
+</body>
+</html>

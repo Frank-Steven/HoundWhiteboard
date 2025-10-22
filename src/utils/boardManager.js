@@ -24,10 +24,9 @@ const pageMeta = {
 
 /**
  * 创建一个空的白板
- * @param {JSON} boardInfo {
- *    {string} filePath,
- *    {string} templateID
- * }
+ * @param {object} boardInfo
+ * @param {string} [boardInfo.filePath] - 文件路径
+ * @param {string} [boardInfo.templateID] - 模版 ID
  */
 function createEmptyBoard(boardInfo) {
   /// ROOT DIR
@@ -80,18 +79,18 @@ function createEmptyBoard(boardInfo) {
 
 /**
  * 添加新页面
- * 
+ *
  * TODO: apply template
- * 
+ *
  * BUG: 如果是从其他机器拷过来的 .hwb 文件，它里面的 templateID 可能与本机
  * 的 templateID 一样，此时会有 .hwb 里的 template 被本机 template 覆盖的
  * 可能。
- * @param {fileNameRandomPool} pool
- * @param {string} templateID
- * @returns {JSON} {
- *   {fileNameRandomPool} pool,
- *   {string} pageID
- * }
+ *
+ * @param {fileNameRandomPool} pool - 文件名随机池
+ * @param {string} templateID - 模板 ID
+ * @returns {Object} 返回对象
+ * @returns {fileNameRandomPool} returns.pool - 文件名随机池
+ * @returns {string} returns.pageID - 新创建的页面 ID
  */
 function addPage(pool, templateID) {
   // 创建新页面文件夹

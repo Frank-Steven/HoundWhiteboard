@@ -27,8 +27,8 @@ function init(app) {
  * @param {string} template.backgroundImage - 图片文件的地址
  * @param {string} template.name - 模板名称
  * @returns {Object} 返回对象
- * @returns {string} returns.id - templateID
- * @returns {Object} returns.data - 模板数据
+ * @returns {string} [returns.id] - templateID
+ * @returns {Object} [returns.data] - 模板数据
  * @returns {string} returns.data.name - 模版名称
  * @returns {string} returns.data.background - RGB 16进制 或 文件后缀名
  * @returns {string} returns.data.backgroundType - "solid" 或 "image"
