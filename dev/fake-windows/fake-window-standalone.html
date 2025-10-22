@@ -462,7 +462,7 @@
       <button class="demo-button btn-primary" onclick="showMultiple()">
         多窗口
       </button>
-      <button class="demo-button btn-danger" onclick="FakeWindow.hideAll()">
+      <button class="demo-button btn-danger" onclick="hideAllWindows()">
         关闭所有
       </button>
     </div>
@@ -474,13 +474,13 @@
       <div class="dialog-header">
         <span class="dialog-icon">❓</span>
         <span class="dialog-title">确认操作</span>
-        <button class="dialog-close" onclick="FakeWindow.hide('confirm-dialog')">×</button>
+        <button class="dialog-close" onclick="windows.confirm.hide()">×</button>
       </div>
       <div class="dialog-body">
         <p>确定要执行这个操作吗？此操作不可撤销。</p>
       </div>
       <div class="dialog-footer">
-        <button class="dialog-btn dialog-btn-cancel" onclick="FakeWindow.hide('confirm-dialog')">
+        <button class="dialog-btn dialog-btn-cancel" onclick="windows.confirm.hide()">
           取消
         </button>
         <button class="dialog-btn dialog-btn-confirm" onclick="handleConfirm()">
@@ -496,13 +496,13 @@
       <div class="dialog-header">
         <span class="dialog-icon">ℹ️</span>
         <span class="dialog-title">提示</span>
-        <button class="dialog-close" onclick="FakeWindow.hide('alert-dialog')">×</button>
+        <button class="dialog-close" onclick="windows.alert.hide()">×</button>
       </div>
       <div class="dialog-body">
         <p>这是一个提示信息对话框。</p>
       </div>
       <div class="dialog-footer">
-        <button class="dialog-btn dialog-btn-confirm" onclick="FakeWindow.hide('alert-dialog')">
+        <button class="dialog-btn dialog-btn-confirm" onclick="windows.alert.hide()">
           确定
         </button>
       </div>
@@ -515,7 +515,7 @@
       <div class="dialog-header">
         <span class="dialog-icon">✏️</span>
         <span class="dialog-title">编辑信息</span>
-        <button class="dialog-close" onclick="FakeWindow.hide('form-dialog')">×</button>
+        <button class="dialog-close" onclick="windows.form.hide()">×</button>
       </div>
       <div class="dialog-body">
         <div class="form-group">
@@ -528,7 +528,7 @@
         </div>
       </div>
       <div class="dialog-footer">
-        <button class="dialog-btn dialog-btn-cancel" onclick="FakeWindow.hide('form-dialog')">
+        <button class="dialog-btn dialog-btn-cancel" onclick="windows.form.hide()">
           取消
         </button>
         <button class="dialog-btn dialog-btn-confirm" onclick="handleFormSubmit()">
@@ -541,7 +541,7 @@
   <!-- 图片预览 -->
   <div id="image-preview" class="fake-window-wrapper">
     <div class="preview-content">
-      <button class="preview-close" onclick="FakeWindow.hide('image-preview')">×</button>
+      <button class="preview-close" onclick="windows.preview.hide()">×</button>
       <img class="preview-image" src="https://picsum.photos/800/600" alt="预览图片">
     </div>
   </div>
@@ -577,340 +577,73 @@
     </div>
   </div>
 
+  <script src="../../src/utils/ui/fake-window.js"></script>
   <script>
-    // FakeWindow 工具（精简版）
-    const FakeWindow = {
-      _activeWindows: new Set(),
-      _maxZIndex: 10000,
-      _eventHandlers: new Map(),
-
-      showCentered(elementId, options = {}) {
-        const element = document.getElementById(elementId);
-        if (!element) return false;
-
-        const config = {
-          modal: true,
-          backdropClose: true,
-          ...options
-        };
-
-        element.classList.add('fake-window-wrapper', 'centered', 'show');
-        if (config.modal) {
-          element.classList.add('modal');
-        }
-
-        element.style.zIndex = ++this._maxZIndex;
-        this._activeWindows.add(elementId);
-
-        // 清理旧的事件处理器
-        this._removeEventHandlers(elementId);
-
-        // 背景点击关闭
-        if (config.modal && config.backdropClose) {
-          const clickHandler = (e) => {
-            if (e.target === element) {
-              this.hide(elementId);
-            }
-          };
-          element.addEventListener('click', clickHandler);
-          
-          if (!this._eventHandlers.has(elementId)) {
-            this._eventHandlers.set(elementId, {});
-          }
-          this._eventHandlers.get(elementId).clickHandler = clickHandler;
-        }
-
-        // ESC键关闭
-        const escHandler = (e) => {
-          if (e.key === 'Escape' && this.isVisible(elementId)) {
-            this.hide(elementId);
-          }
-        };
-        document.addEventListener('keydown', escHandler);
-        
-        if (!this._eventHandlers.has(elementId)) {
-          this._eventHandlers.set(elementId, {});
-        }
-        this._eventHandlers.get(elementId).escHandler = escHandler;
-
-        if (config.onShow) config.onShow(element);
-        return true;
-      },
-
-      showAt(elementId, x, y, options = {}) {
-        const element = document.getElementById(elementId);
-        if (!element) return false;
-
-        const config = {
-          modal: false,
-          backdropClose: false,
-          adjustPosition: true,
-          quadrantMode: false,
-          primaryQuadrant: 4,
-          minMargin: 10,
-          ...options
-        };
-
-        element.classList.add('fake-window-wrapper', 'positioned', 'show');
-        if (config.modal) {
-          element.classList.add('modal');
-        }
-
-        element.style.zIndex = ++this._maxZIndex;
-
-        const contentElement = element.firstElementChild;
-        if (contentElement) {
-          if (config.quadrantMode) {
-            // 象限模式定位
-            this._positionByQuadrant(contentElement, x, y, config);
-          } else {
-            // 普通模式定位
-            contentElement.style.left = `${x}px`;
-            contentElement.style.top = `${y}px`;
-
-            if (config.adjustPosition) {
-              setTimeout(() => {
-                const rect = contentElement.getBoundingClientRect();
-                let newX = x, newY = y;
-
-                if (rect.right > window.innerWidth) {
-                  newX = window.innerWidth - rect.width - 10;
-                }
-                if (rect.bottom > window.innerHeight) {
-                  newY = window.innerHeight - rect.height - 10;
-                }
-                if (newX < 10) newX = 10;
-                if (newY < 10) newY = 10;
-
-                contentElement.style.left = `${newX}px`;
-                contentElement.style.top = `${newY}px`;
-              }, 0);
-            }
-          }
-        }
-
-        this._activeWindows.add(elementId);
-        
-        // 清理旧的事件处理器
-        this._removeEventHandlers(elementId);
-
-        // 外部点击关闭
-        if (config.backdropClose) {
-          setTimeout(() => {
-            const outsideClickHandler = (e) => {
-              const contentElement = element.firstElementChild;
-              if (contentElement && !contentElement.contains(e.target) && this.isVisible(elementId)) {
-                this.hide(elementId);
-              }
-            };
-            document.addEventListener('click', outsideClickHandler);
-            
-            if (!this._eventHandlers.has(elementId)) {
-              this._eventHandlers.set(elementId, {});
-            }
-            this._eventHandlers.get(elementId).outsideClickHandler = outsideClickHandler;
-          }, 0);
-        }
-
-        // ESC键关闭
-        const escHandler = (e) => {
-          if (e.key === 'Escape' && this.isVisible(elementId)) {
-            this.hide(elementId);
-          }
-        };
-        document.addEventListener('keydown', escHandler);
-        
-        if (!this._eventHandlers.has(elementId)) {
-          this._eventHandlers.set(elementId, {});
-        }
-        this._eventHandlers.get(elementId).escHandler = escHandler;
-
-        if (config.onShow) config.onShow(element);
-        return true;
-      },
-
-      hide(elementId) {
-        const element = document.getElementById(elementId);
-        if (!element) return false;
-
-        element.classList.remove('show');
-        this._activeWindows.delete(elementId);
-        
-        // 清理事件处理器
-        this._removeEventHandlers(elementId);
-        
-        return true;
-      },
-
-      hideAll() {
-        this._activeWindows.forEach(id => this.hide(id));
-      },
-
-      isVisible(elementId) {
-        const element = document.getElementById(elementId);
-        return element && element.classList.contains('show');
-      },
-
-      _removeEventHandlers(elementId) {
-        const element = document.getElementById(elementId);
-        const handlers = this._eventHandlers.get(elementId);
-        
-        if (handlers) {
-          // 移除点击事件
-          if (handlers.clickHandler) {
-            element.removeEventListener('click', handlers.clickHandler);
-          }
-          
-          // 移除ESC键事件
-          if (handlers.escHandler) {
-            document.removeEventListener('keydown', handlers.escHandler);
-          }
-          
-          // 移除外部点击事件
-          if (handlers.outsideClickHandler) {
-            document.removeEventListener('click', handlers.outsideClickHandler);
-          }
-          
-          this._eventHandlers.delete(elementId);
-        }
-      },
-
-      _positionByQuadrant(element, originX, originY, config) {
-        element.style.left = `${originX}px`;
-        element.style.top = `${originY}px`;
-        
-        requestAnimationFrame(() => {
-          const rect = element.getBoundingClientRect();
-          const viewportWidth = window.innerWidth;
-          const viewportHeight = window.innerHeight;
-          const minMargin = config.minMargin;
-          
-          const hasRightSpace = (originX + rect.width + minMargin) <= viewportWidth;
-          const hasLeftSpace = (originX - rect.width - minMargin) >= 0;
-          const hasBottomSpace = (originY + rect.height + minMargin) <= viewportHeight;
-          const hasTopSpace = (originY - rect.height - minMargin) >= 0;
-          
-          let finalX, finalY;
-          
-          switch (config.primaryQuadrant) {
-            case 4: // 主象限：右下
-              if (hasRightSpace && hasBottomSpace) {
-                finalX = originX;
-                finalY = originY;
-              } else if (!hasRightSpace && hasBottomSpace) {
-                finalX = originX - rect.width;
-                finalY = originY;
-              } else if (hasRightSpace && !hasBottomSpace) {
-                finalX = originX;
-                finalY = originY - rect.height;
-              } else {
-                finalX = originX - rect.width;
-                finalY = originY - rect.height;
-              }
-              break;
-              
-            case 1: // 主象限：右上
-              if (hasRightSpace && hasTopSpace) {
-                finalX = originX;
-                finalY = originY - rect.height;
-              } else if (!hasRightSpace && hasTopSpace) {
-                finalX = originX - rect.width;
-                finalY = originY - rect.height;
-              } else if (hasRightSpace && !hasTopSpace) {
-                finalX = originX;
-                finalY = originY;
-              } else {
-                finalX = originX - rect.width;
-                finalY = originY;
-              }
-              break;
-              
-            case 2: // 主象限：左上
-              if (hasLeftSpace && hasTopSpace) {
-                finalX = originX - rect.width;
-                finalY = originY - rect.height;
-              } else if (hasLeftSpace && !hasTopSpace) {
-                finalX = originX - rect.width;
-                finalY = originY;
-              } else if (!hasLeftSpace && hasTopSpace) {
-                finalX = originX;
-                finalY = originY - rect.height;
-              } else {
-                finalX = originX;
-                finalY = originY;
-              }
-              break;
-              
-            case 3: // 主象限：左下
-              if (hasLeftSpace && hasBottomSpace) {
-                finalX = originX - rect.width;
-                finalY = originY;
-              } else if (!hasLeftSpace && hasBottomSpace) {
-                finalX = originX;
-                finalY = originY;
-              } else if (hasLeftSpace && !hasBottomSpace) {
-                finalX = originX - rect.width;
-                finalY = originY - rect.height;
-              } else {
-                finalX = originX;
-                finalY = originY - rect.height;
-              }
-              break;
-          }
-          
-          element.style.left = `${finalX}px`;
-          element.style.top = `${finalY}px`;
-        });
-      }
-    };
-
-    // 示例函数
-    function showConfirmDialog() {
-      FakeWindow.showCentered('confirm-dialog', {
+    // 创建窗口实例
+    const windows = {
+      confirm: new FakeWindow(document.getElementById('confirm-dialog'), {
+        mode: 'centered',
         modal: true,
         backdropClose: false
-      });
-    }
-
-    function showAlertDialog() {
-      FakeWindow.showCentered('alert-dialog', {
+      }),
+      alert: new FakeWindow(document.getElementById('alert-dialog'), {
+        mode: 'centered',
         modal: true,
         backdropClose: true
-      });
-    }
-
-    function showFormDialog() {
-      document.getElementById('form-name').value = '';
-      document.getElementById('form-email').value = '';
-      FakeWindow.showCentered('form-dialog', {
+      }),
+      form: new FakeWindow(document.getElementById('form-dialog'), {
+        mode: 'centered',
         modal: true,
         backdropClose: false,
         onShow: () => {
           document.getElementById('form-name').focus();
         }
-      });
-    }
-
-    function showImagePreview() {
-      FakeWindow.showCentered('image-preview', {
+      }),
+      preview: new FakeWindow(document.getElementById('image-preview'), {
+        mode: 'centered',
         modal: true,
         backdropClose: true
-      });
-    }
-
-    function showContextMenu(event) {
-      event.preventDefault();
-      const rect = event.target.getBoundingClientRect();
-      FakeWindow.showAt('context-menu', event.clientX, event.clientY, {
+      }),
+      contextMenu: new FakeWindow(document.getElementById('context-menu'), {
+        mode: 'positioned',
+        modal: false,
         backdropClose: true,
         quadrantMode: true,
         primaryQuadrant: 4,
         minMargin: 10
-      });
+      }),
+      loading: new FakeWindow(document.getElementById('loading'), {
+        mode: 'centered',
+        modal: true,
+        backdropClose: false
+      })
+    };
+
+    // 示例函数
+    function showConfirmDialog() {
+      windows.confirm.showCentered();
+    }
+
+    function showAlertDialog() {
+      windows.alert.showCentered();
+    }
+
+    function showFormDialog() {
+      document.getElementById('form-name').value = '';
+      document.getElementById('form-email').value = '';
+      windows.form.showCentered();
+    }
+
+    function showImagePreview() {
+      windows.preview.showCentered();
+    }
+
+    function showContextMenu(event) {
+      event.preventDefault();
+      windows.contextMenu.showAt(event.clientX, event.clientY);
     }
 
     function showTooltip(event) {
-      const rect = event.target.getBoundingClientRect();
       alert('工具提示功能演示（可自定义实现）');
     }
 
@@ -919,39 +652,39 @@
     }
 
     function showLoading() {
-      FakeWindow.showCentered('loading', {
-        modal: true,
-        backdropClose: false
-      });
-
+      windows.loading.showCentered();
       setTimeout(() => {
-        FakeWindow.hide('loading');
+        windows.loading.hide();
         showAlertDialog();
       }, 2000);
     }
 
     function showMultiple() {
-      FakeWindow.showCentered('alert-dialog', { zIndex: 10001 });
+      windows.alert.showCentered();
       setTimeout(() => {
-        FakeWindow.showCentered('confirm-dialog', { zIndex: 10002 });
+        windows.confirm.showCentered();
       }, 300);
+    }
+
+    function hideAllWindows() {
+      Object.values(windows).forEach(w => w.hide());
     }
 
     function handleConfirm() {
       console.log('已确认');
-      FakeWindow.hide('confirm-dialog');
+      windows.confirm.hide();
     }
 
     function handleFormSubmit() {
       const name = document.getElementById('form-name').value;
       const email = document.getElementById('form-email').value;
       console.log('保存数据:', { name, email });
-      FakeWindow.hide('form-dialog');
+      windows.form.hide();
     }
 
     function handleMenuAction(action) {
       console.log('菜单操作:', action);
-      FakeWindow.hide('context-menu');
+      windows.contextMenu.hide();
     }
 
     function testQuadrant(event, quadrant) {
@@ -964,12 +697,9 @@
       
       console.log(`测试主象限 ${quadrant}（${quadrantNames[quadrant]}）`);
       
-      FakeWindow.showAt('context-menu', event.clientX, event.clientY, {
-        backdropClose: true,
-        quadrantMode: true,
-        primaryQuadrant: quadrant,
-        minMargin: 10
-      });
+      // 临时修改配置
+      windows.contextMenu.config.primaryQuadrant = quadrant;
+      windows.contextMenu.showAt(event.clientX, event.clientY);
     }
 
     // 欢迎消息
