@@ -80,7 +80,7 @@
     .btn-danger { background: #F44336; }
     .btn-info { background: #2196F3; }
 
-    /* FakeWindow 外层容器样式（内联） */
+    /* FakeWindow 外层容器样式 */
     .fake-window-wrapper {
       position: fixed;
       top: 0;
@@ -577,8 +577,263 @@
     </div>
   </div>
 
-  <script src="../../src/utils/ui/fake-window.js"></script>
   <script>
+    // FakeWindow 类（内联完整版 - standalone）
+    let globalMaxZIndex = 10000;
+    
+    class FakeWindow {
+      constructor(element, options = {}) {
+        if (!element) {
+          throw new Error('FakeWindow: element is required');
+        }
+
+        this.element = element;
+        this.config = {
+          mode: 'centered',
+          modal: true,
+          backdropClose: true,
+          quadrantMode: false,
+          primaryQuadrant: 4,
+          minMargin: 10,
+          zIndex: null,
+          onShow: null,
+          onHide: null,
+          ...options
+        };
+
+        this.eventHandlers = {};
+        this.isVisible = false;
+        this.element.classList.add('fake-window-wrapper');
+      }
+
+      showCentered() {
+        this.config.mode = 'centered';
+        return this._show();
+      }
+
+      showAt(x, y, options = {}) {
+        this.config = { ...this.config, ...options, mode: 'positioned', x, y };
+        return this._show();
+      }
+
+      _show() {
+        this._removeEventListeners();
+
+        if (this.config.mode === 'centered') {
+          this.element.classList.add('centered');
+          this.element.classList.remove('positioned');
+        } else {
+          this.element.classList.add('positioned');
+          this.element.classList.remove('centered');
+        }
+
+        if (this.config.modal) {
+          this.element.classList.add('modal');
+        } else {
+          this.element.classList.remove('modal');
+        }
+
+        if (this.config.zIndex) {
+          this.element.style.zIndex = this.config.zIndex;
+        } else {
+          this.element.style.zIndex = ++globalMaxZIndex;
+        }
+
+        this.element.classList.add('show');
+        this.isVisible = true;
+
+        if (this.config.mode === 'positioned') {
+          const contentElement = this.element.firstElementChild;
+          if (contentElement) {
+            if (this.config.quadrantMode) {
+              this._positionByQuadrant(contentElement, this.config.x, this.config.y);
+            } else {
+              contentElement.style.left = `${this.config.x}px`;
+              contentElement.style.top = `${this.config.y}px`;
+            }
+          }
+        }
+
+        if (this.config.backdropClose) {
+          if (this.config.mode === 'centered') {
+            this._setupBackdropClose();
+          } else {
+            this._setupOutsideClick();
+          }
+        }
+
+        this._setupEscClose();
+
+        if (this.config.onShow) {
+          this.config.onShow(this.element);
+        }
+
+        return this;
+      }
+
+      hide() {
+        this.element.classList.remove('show');
+        this.isVisible = false;
+        this._removeEventListeners();
+
+        if (this.config.onHide) {
+          this.config.onHide(this.element);
+        }
+
+        return this;
+      }
+
+      toggle() {
+        if (this.isVisible) {
+          this.hide();
+        } else {
+          this._show();
+        }
+        return this;
+      }
+
+      bringToFront() {
+        this.element.style.zIndex = ++globalMaxZIndex;
+        return this;
+      }
+
+      _setupBackdropClose() {
+        const handler = (e) => {
+          if (e.target === this.element && this.isVisible) {
+            this.hide();
+          }
+        };
+        this.element.addEventListener('click', handler);
+        this.eventHandlers.backdropClickHandler = handler;
+      }
+
+      _setupOutsideClick() {
+        const handler = (e) => {
+          const contentElement = this.element.firstElementChild;
+          if (contentElement && !contentElement.contains(e.target) && this.isVisible) {
+            this.hide();
+          }
+        };
+        setTimeout(() => {
+          document.addEventListener('click', handler);
+          this.eventHandlers.outsideClickHandler = handler;
+        }, 0);
+      }
+
+      _setupEscClose() {
+        const handler = (e) => {
+          if (e.key === 'Escape' && this.isVisible) {
+            this.hide();
+          }
+        };
+        document.addEventListener('keydown', handler);
+        this.eventHandlers.escKeyHandler = handler;
+      }
+
+      _removeEventListeners() {
+        if (this.eventHandlers.backdropClickHandler) {
+          this.element.removeEventListener('click', this.eventHandlers.backdropClickHandler);
+          delete this.eventHandlers.backdropClickHandler;
+        }
+        if (this.eventHandlers.outsideClickHandler) {
+          document.removeEventListener('click', this.eventHandlers.outsideClickHandler);
+          delete this.eventHandlers.outsideClickHandler;
+        }
+        if (this.eventHandlers.escKeyHandler) {
+          document.removeEventListener('keydown', this.eventHandlers.escKeyHandler);
+          delete this.eventHandlers.escKeyHandler;
+        }
+      }
+
+      _positionByQuadrant(element, originX, originY) {
+        element.style.left = `${originX}px`;
+        element.style.top = `${originY}px`;
+        
+        requestAnimationFrame(() => {
+          const rect = element.getBoundingClientRect();
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+          const minMargin = this.config.minMargin;
+          
+          const hasRightSpace = (originX + rect.width + minMargin) <= viewportWidth;
+          const hasLeftSpace = (originX - rect.width - minMargin) >= 0;
+          const hasBottomSpace = (originY + rect.height + minMargin) <= viewportHeight;
+          const hasTopSpace = (originY - rect.height - minMargin) >= 0;
+          
+          let finalX, finalY;
+          
+          switch (this.config.primaryQuadrant) {
+            case 4:
+              if (hasRightSpace && hasBottomSpace) {
+                finalX = originX;
+                finalY = originY;
+              } else if (!hasRightSpace && hasBottomSpace) {
+                finalX = originX - rect.width;
+                finalY = originY;
+              } else if (hasRightSpace && !hasBottomSpace) {
+                finalX = originX;
+                finalY = originY - rect.height;
+              } else {
+                finalX = originX - rect.width;
+                finalY = originY - rect.height;
+              }
+              break;
+              
+            case 1:
+              if (hasRightSpace && hasTopSpace) {
+                finalX = originX;
+                finalY = originY - rect.height;
+              } else if (!hasRightSpace && hasTopSpace) {
+                finalX = originX - rect.width;
+                finalY = originY - rect.height;
+              } else if (hasRightSpace && !hasTopSpace) {
+                finalX = originX;
+                finalY = originY;
+              } else {
+                finalX = originX - rect.width;
+                finalY = originY;
+              }
+              break;
+              
+            case 2:
+              if (hasLeftSpace && hasTopSpace) {
+                finalX = originX - rect.width;
+                finalY = originY - rect.height;
+              } else if (hasLeftSpace && !hasTopSpace) {
+                finalX = originX - rect.width;
+                finalY = originY;
+              } else if (!hasLeftSpace && hasTopSpace) {
+                finalX = originX;
+                finalY = originY - rect.height;
+              } else {
+                finalX = originX;
+                finalY = originY;
+              }
+              break;
+              
+            case 3:
+              if (hasLeftSpace && hasBottomSpace) {
+                finalX = originX - rect.width;
+                finalY = originY;
+              } else if (!hasLeftSpace && hasBottomSpace) {
+                finalX = originX;
+                finalY = originY;
+              } else if (hasLeftSpace && !hasBottomSpace) {
+                finalX = originX - rect.width;
+                finalY = originY - rect.height;
+              } else {
+                finalX = originX;
+                finalY = originY - rect.height;
+              }
+              break;
+          }
+          
+          element.style.left = `${finalX}px`;
+          element.style.top = `${finalY}px`;
+        });
+      }
+    }
+
     // 创建窗口实例
     const windows = {
       confirm: new FakeWindow(document.getElementById('confirm-dialog'), {
