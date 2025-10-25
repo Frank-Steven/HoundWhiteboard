@@ -65,8 +65,6 @@ class randomNumberPool {
 /**
  * 获取二指操作的变换矩阵
  *
- * @todo TODO: 验证算法的正确性
- *
  * @param {number} x1 原始点一的横坐标
  * @param {number} y1 原始点一的纵坐标
  * @param {number} x2 原始点二的横坐标
@@ -75,9 +73,13 @@ class randomNumberPool {
  * @param {number} y1q 变换后的点一的纵坐标
  * @param {number} x2q 变换后的点二的横坐标
  * @param {number} y2q 变换后的点二的纵坐标
- * @returns {Object} a, b, c, d, dx, dy, 为 ctx.transform() 的参数
+ * @param {number} aq 原矩阵的 a
+ * @param {number} bq 原矩阵的 b
+ * @param {number} cq 原矩阵的 c
+ * @param {number} dq 原矩阵的 d
+ * @returns {Object} a, b, c, d, e, f, 为 ctx.transform() 的参数
  */
-function getDualFingerResult(x1, y1, x2, y2, x1q, y1q, x2q, y2q) {
+function getDualFingerResult(x1, y1, x2, y2, x1q, y1q, x2q, y2q, aq, bq, cq, dq) {
   let a = (x1 - x2) * (x1q - x2q) + (y1 - y2) * (y1q - y2q); // a 的分子
   let b = (x1 - x2) * (x1  - x2 ) + (y1 - y2) * (y1  - y2 ); // 分母
   let c = (x1 - x2) * (y1q - y2q) - (y1 - y2) * (x1q - x2q); // c 的分子
@@ -87,20 +89,20 @@ function getDualFingerResult(x1, y1, x2, y2, x1q, y1q, x2q, y2q) {
   b = -c; // get b = -c
   let dx = x1q - a * x1 - b * y1;
   let dy = y1q - c * x1 - d * y1;
+  let e = (dq * dx - bq * dy) / (dq * aq - bq * cq);
+  let f = (cq * dx - aq * dy) / (cq * bq - aq * dq);
   return {
     "a": a,
     "b": b,
     "c": c,
     "d": d,
-    "dx": dx,
-    "dy": dy,
-  }
+    "e": e,
+    "f": f,
+  };
 }
 
 /**
  * 获取三指操作的变换矩阵
- *
- * @todo TODO:
  *
  * @param {number} x1 原始点一的横坐标
  * @param {number} y1 原始点一的纵坐标
@@ -114,9 +116,34 @@ function getDualFingerResult(x1, y1, x2, y2, x1q, y1q, x2q, y2q) {
  * @param {number} y2q 变换后的点二的纵坐标
  * @param {number} x3q 变换后的点三的横坐标
  * @param {number} y3q 变换后的点三的纵坐标
- * @returns {Object} a, b, c, d, dx, dy, 为 ctx.transform() 的参数
+ * @param {number} aq 原矩阵的 a
+ * @param {number} bq 原矩阵的 b
+ * @param {number} cq 原矩阵的 c
+ * @param {number} dq 原矩阵的 d
+ * @returns {Object} a, b, c, d, e, f, 为 ctx.transform() 的参数
  */
-function getTriFingerResult(x1, y1, x2, y2, x3, y3, x1q, y1q, x2q, y2q, x3q, y3q) {
+function getTriFingerResult(x1, y1, x2, y2, x3, y3, x1q, y1q, x2q, y2q, x3q, y3q, aq, bq) {
+  let delta = x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2);
+  let a = (x1q * (y2 - y3) + x2q * (y3 - y1) + x3q * (y1 - y2));
+  let b = (x1q * (x2 - x3) + x2q * (x3 - x1) + x3q * (x1 - x2));
+  let c = (y1q * (y2 - y3) + y2q * (y3 - y1) + y3q * (y1 - y2));
+  let d = (y1q * (x2 - x3) + y2q * (x3 - x1) + y3q * (x1 - x2));
+  a /= delta;
+  b /= delta;
+  c /= delta;
+  d /= -delta
+  let dx = x1q - a * x1 - b * y1;
+  let dy = y1q - c * x1 - d * y1;
+  let e = (dq * dx - bq * dy) / (dq * aq - bq * cq);
+  let f = (cq * dx - aq * dy) / (cq * bq - aq * dq);
+  return {
+    "a": a,
+    "b": b,
+    "c": c,
+    "d": d,
+    "e": e,
+    "f": f,
+  };
 }
 
 module.exports = {
