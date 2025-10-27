@@ -77,20 +77,33 @@ class randomNumberPool {
  * @param {number} bq 原矩阵的 b
  * @param {number} cq 原矩阵的 c
  * @param {number} dq 原矩阵的 d
+ * @param {number} eq 原矩阵的 e
+ * @param {number} fq 原矩阵的 f
  * @returns {Object} a, b, c, d, e, f, 为 ctx.transform() 的参数
  */
-function getDualFingerResult(x1, y1, x2, y2, x1q, y1q, x2q, y2q, aq, bq, cq, dq) {
-  let a = (x1 - x2) * (x1q - x2q) + (y1 - y2) * (y1q - y2q); // a 的分子
-  let b = (x1 - x2) * (x1  - x2 ) + (y1 - y2) * (y1  - y2 ); // 分母
-  let c = (x1 - x2) * (y1q - y2q) - (y1 - y2) * (x1q - x2q); // c 的分子
-  a /= b; // get a = a 的分子 / 分母
-  c /= b; // get c = c 的分子 / 分母
-  let d = a; // get d = a
-  b = -c; // get b = -c
-  let dx = x1q - a * x1 - b * y1;
-  let dy = y1q - c * x1 - d * y1;
-  let e = (dq * dx - bq * dy) / (dq * aq - bq * cq);
-  let f = (cq * dx - aq * dy) / (cq * bq - aq * dq);
+function getDualFingerResult(x1, y1, x2, y2, x1q, y1q, x2q, y2q, aq, bq, cq, dq, eq, fq) {
+  // 计算矩阵 A = [[a c][b d]] 使 A * [[x1 - x2][y1 - y2]] = [[x1q - x2q][y1q - y2q]]
+  let delta = (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
+  let a = ((x1 - x2) * (x1q - x2q) + (y1 - y2) * (y1q - y2q)) / delta;
+  let b = ((x1 - x2) * (y1q - y2q) - (y1 - y2) * (x1q - x2q)) / delta;
+  let c = -b;
+  let d = a;
+  // [[ap cp][bp dp]] 是对其中单个向量而言的变换矩阵
+  let deltap = aq * dq - bq * cq;
+  let ap = (dq * (aq * a + cq * b) - bq * (aq * c + cq * d)) / deltap;
+  let bp = (dq * (bq * a + dq * b) - bq * (bq * c + dq * d)) / deltap;
+  let cp = (aq * (aq * c + cq * d) - cq * (aq * a + cq * b)) / deltap;
+  let dp = (aq * (bq * c + dq * d) - cq * (bq * a + dq * b)) / deltap;
+  // [[x2][y2]] 仅经过缩放和旋转时所得到的点为 [[x2p][y2p]]
+  let x2p = ap * (x2 - eq) + cp * (y2 - fq) + eq;
+  let y2p = bp * (x2 - eq) + dp * (y2 - fq) + fq;
+  // dx 和 dy 是相对于屏幕的绝对坐标系而言的
+  let dx = x2q - x2p;
+  let dy = y2q - y2p;
+  // e 和 f 是相对于上一个变换的坐标系而言的
+  let e = (dq * dx - cq * dy) / (dq * aq - cq * bq);
+  let f = (bq * dx - aq * dy) / (bq * cq - aq * dq);
+  // 返回矩阵 [[a c e][b d f][0 0 1]] 中的 a, b, c, d, e, f
   return {
     "a": a,
     "b": b,
@@ -120,22 +133,35 @@ function getDualFingerResult(x1, y1, x2, y2, x1q, y1q, x2q, y2q, aq, bq, cq, dq)
  * @param {number} bq 原矩阵的 b
  * @param {number} cq 原矩阵的 c
  * @param {number} dq 原矩阵的 d
+ * @param {number} eq 原矩阵的 e
+ * @param {number} fq 原矩阵的 f
  * @returns {Object} a, b, c, d, e, f, 为 ctx.transform() 的参数
  */
-function getTriFingerResult(x1, y1, x2, y2, x3, y3, x1q, y1q, x2q, y2q, x3q, y3q, aq, bq) {
-  let delta = x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2);
-  let a = (x1q * (y2 - y3) + x2q * (y3 - y1) + x3q * (y1 - y2));
-  let b = (x1q * (x2 - x3) + x2q * (x3 - x1) + x3q * (x1 - x2));
-  let c = (y1q * (y2 - y3) + y2q * (y3 - y1) + y3q * (y1 - y2));
-  let d = (y1q * (x2 - x3) + y2q * (x3 - x1) + y3q * (x1 - x2));
-  a /= delta;
-  b /= delta;
-  c /= delta;
-  d /= -delta
-  let dx = x1q - a * x1 - b * y1;
-  let dy = y1q - c * x1 - d * y1;
-  let e = (dq * dx - bq * dy) / (dq * aq - bq * cq);
-  let f = (cq * dx - aq * dy) / (cq * bq - aq * dq);
+function getTriFingerResult(x1, y1, x2, y2, x3, y3, x1q, y1q, x2q, y2q, x3q, y3q, aq, bq, cq, dq, eq, fq) {
+  // 计算矩阵 A = [[a c][b d]] 使：
+  // A * [[x1 - x2][y1 - y2]] = [[x1q - x2q][y1q - y2q]]
+  // A * [[x1 - x3][y1 - y3]] = [[x1q - x3q][y1q - y3q]]
+  let delta = (x1 - x2) * (y1 - y3) - (x1 - x3) * (y1 - y2);
+  let a = ((x1q - x2q) * (y1 - y3) - (x1q - x3q) * (y1 - y2)) / delta;
+  let b = ((x1q - x2q) * (x1 - x3) - (x1q - x3q) * (x1 - x2)) / delta;
+  let c = ((y1q - y2q) * (y1 - y3) - (y1q - y3q) * (y1 - y2)) / -delta;
+  let d = ((y1q - y2q) * (x1 - x3) - (y1q - y3q) * (x1 - x2)) / -delta;
+  // [[ap cp][bp dp]] 是对其中单个向量而言的变换矩阵
+  let deltaq = aq * dq - bq * cq;
+  let ap = (dq * (aq * a + cq * b) - bq * (aq * c + cq * d)) / deltaq;
+  let bp = (dq * (bq * a + dq * b) - bq * (bq * c + dq * d)) / deltaq;
+  let cp = (aq * (aq * c + cq * d) - cq * (aq * a + cq * b)) / deltaq;
+  let dp = (aq * (bq * c + dq * d) - cq * (bq * a + dq * b)) / deltaq;
+  // [[x2][y2]] 仅经过缩放和旋转时所得到的点为 [[x2p][y2p]]
+  let x2p = ap * (x2 - eq) + cp * (y2 - fq) + eq;
+  let y2p = bp * (x2 - eq) + dp * (y2 - fq) + fq;
+  // dx 和 dy 是相对于屏幕的绝对坐标系而言的
+  let dx = x2q - x2p;
+  let dy = y2q - y2p;
+  // e 和 f 是相对于上一个变换的坐标系而言的
+  let e = (dq * dx - cq * dy) / (dq * aq - cq * bq);
+  let f = (bq * dx - aq * dy) / (bq * cq - aq * dq);
+  // 返回矩阵 [[a c e][b d f][0 0 1]] 中的 a, b, c, d, e, f
   return {
     "a": a,
     "b": b,
