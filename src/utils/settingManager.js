@@ -1,10 +1,10 @@
 /**
- * @file Settings management module
+ * @file 设置管理模块
  * @module SettingManager
- * @description Handles:
- * - Application settings persistence
- * - File operation dialogs (open/save)
- * - Settings change notifications
+ * @description 功能包括:
+ * - 应用设置持久化
+ * - 文件操作对话框(打开/保存)
+ * - 设置变更通知
  */
 
 const { dialog } = require('electron');
@@ -14,15 +14,15 @@ let userDataDir, settingsFile;
 const defaultSettings = { theme: 'light', language: 'zh-CN' };
 
 /**
- * Sets up file operation IPC handlers
+ * 设置文件操作IPC处理器
  * @function setupFileOperationIPC
- * @param {Object} ipc - IPC main process object
- * @param {Object} windows - Collection of window objects
+ * @param {Object} ipc - IPC主进程对象
+ * @param {Object} windows - 窗口对象集合
  * @returns {void}
  */
 function setupFileOperationIPC(ipc, windows) {
   /**
-   * IPC handler for opening HWB files
+   * 打开HWB文件的IPC处理器
    * @event open-hwb-file
    * @listens ipc#open-hwb-file
    */
@@ -30,8 +30,8 @@ function setupFileOperationIPC(ipc, windows) {
     const result = await dialog.showOpenDialog(windows[windowNow], {
       properties: ['openFile'],
       filters: [
-        { name: 'All Files', extensions: ['*'] },
-        { name: 'HoundWhiteboard Files', extensions: ['hwb'] }
+        { name: '所有文件', extensions: ['*'] },
+        { name: 'HoundWhiteboard文件', extensions: ['hwb'] }
       ]
     });
 
@@ -42,7 +42,7 @@ function setupFileOperationIPC(ipc, windows) {
   });
 
   /**
-   * IPC handler for opening HMQ files
+   * 打开HMQ文件的IPC处理器
    * @event open-hmq-file
    * @listens ipc#open-hmq-file
    */
@@ -50,8 +50,8 @@ function setupFileOperationIPC(ipc, windows) {
     const result = await dialog.showOpenDialog(windows[windowNow], {
       properties: ['openFile'],
       filters: [
-        { name: 'All Files', extensions: ['*'] },
-        { name: 'HoundWhiteboard Module Quark Files', extensions: ['hmq'] }
+        { name: '所有文件', extensions: ['*'] },
+        { name: 'HoundWhiteboard模块文件', extensions: ['hmq'] }
       ]
     });
 
@@ -62,7 +62,7 @@ function setupFileOperationIPC(ipc, windows) {
   });
 
   /**
-   * IPC handler for opening image files
+   * 打开图片文件的IPC处理器
    * @event open-img-file
    * @listens ipc#open-img-file
    */
@@ -71,7 +71,7 @@ function setupFileOperationIPC(ipc, windows) {
       properties: ['openFile'],
       filters: [
         {
-          name: 'Image Files',
+          name: '图片文件',
           extensions: [
             'jpg', 'jpeg', 'png', 'gif', 'bmp', 'ico', 
             'tif', 'tiff', 'svg', 'webp', 'apng', 'avif'
@@ -87,7 +87,7 @@ function setupFileOperationIPC(ipc, windows) {
   });
 
   /**
-   * IPC handler for choosing directory path
+   * 选择目录路径的IPC处理器
    * @event path-choose
    * @listens ipc#path-choose
    */
@@ -104,9 +104,9 @@ function setupFileOperationIPC(ipc, windows) {
 }
 
 /**
- * Initializes the settings manager
+ * 初始化设置管理器
  * @function init
- * @param {Object} app - Electron app object
+ * @param {Object} app - Electron应用对象
  * @returns {void}
  */
 function init(app) {
@@ -115,40 +115,40 @@ function init(app) {
 }
 
 /**
- * Loads settings from file
+ * 从文件加载设置
  * @function loadSettings
- * @returns {Object} Settings object
+ * @returns {Object} 设置对象
  */
 function loadSettings() {
   return settingsFile.existOrWriteJSON(defaultSettings).catJSON();
 }
 
 /**
- * Saves settings to file
+ * 保存设置到文件
  * @function saveSettings
- * @param {Object} settings - Settings object to save
- * @param {string} settings.theme - Current theme
- * @param {string} settings.language - Current language
+ * @param {Object} settings - 要保存的设置对象
+ * @param {string} settings.theme - 当前主题
+ * @param {string} settings.language - 当前语言
  * @returns {void}
  */
 function saveSettings(settings) {
   try {
     settingsFile.writeJSON(settings);
   } catch (err) {
-    console.error('Error saving settings:', err);
+    console.error('保存设置时出错:', err);
   }
 }
 
 /**
- * Sets up settings-related IPC handlers
+ * 设置与设置相关的IPC处理器
  * @function setupSettingsIPC
- * @param {Object} ipc - IPC main process object
- * @param {Object} BrowserWindow - BrowserWindow class
+ * @param {Object} ipc - IPC主进程对象
+ * @param {Object} BrowserWindow - BrowserWindow类
  * @returns {void}
  */
 function setupSettingsIPC(ipc, BrowserWindow) {
   /**
-   * IPC handler for getting current settings
+   * 获取当前设置的IPC处理器
    * @event get-current-settings
    * @listens ipc#get-current-settings
    */
@@ -157,7 +157,7 @@ function setupSettingsIPC(ipc, BrowserWindow) {
   });
 
   /**
-   * IPC handler for settings changed
+   * 设置变更的IPC处理器
    * @event settings-changed
    * @listens ipc#settings-changed
    */

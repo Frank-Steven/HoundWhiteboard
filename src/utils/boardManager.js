@@ -1,10 +1,10 @@
 /**
- * @file Board management module
+ * @file 白板管理模块
  * @module BoardManager
- * @description Handles:
- * - Board lifecycle (create, open, save)
- * - Page management
- * - Template application
+ * @description 功能包括:
+ * - 白板生命周期管理(创建、打开、保存)
+ * - 页面管理
+ * - 模板应用
  */
 
 const winManager = require('./windowManager');
@@ -12,7 +12,7 @@ const { fileNameRandomPool, directory, file } = require('../classes/io');
 
 let templatesDir;
 
-// Metadata constants
+// 元数据常量
 const boardMeta = {
   type: 'board',
   version: '0.1.0'
@@ -24,9 +24,9 @@ const pageMeta = {
 };
 
 /**
- * Initializes board manager
+ * 初始化白板管理器
  * @function init
- * @param {Object} app - Electron app object
+ * @param {Object} app - Electron应用对象
  * @returns {void}
  */
 function init(app) {
@@ -34,31 +34,31 @@ function init(app) {
 }
 
 /**
- * Creates an empty board
+ * 创建空白白板
  * @function createEmptyBoard
- * @param {Object} boardInfo - Board information
- * @param {string} [boardInfo.filePath] - File path for the board
- * @param {string} [boardInfo.templateID] - Template ID to apply
+ * @param {Object} boardInfo - 白板信息
+ * @param {string} [boardInfo.filePath] - 白板文件路径
+ * @param {string} [boardInfo.templateID] - 要应用的模板ID
  * @returns {void}
  */
 function createEmptyBoard(boardInfo) {
-  // Create root directory
+  // 创建根目录
   const boardFile = file.parse(boardInfo.filePath);
   const tempDir = new directory(boardFile.address, boardFile.name).rmWhenExist().make();
 
-  // Create metadata files
+  // 创建元数据文件
   tempDir.peek('meta', 'json').writeJSON(boardMeta);
   tempDir.peek('histroy', 'json').writeJSON([]);
 
-  // Create pages directory
+  // 创建页面目录
   tempDir.cd('pages').make();
 
-  // Generate first page
+  // 生成第一页
   const pagePool = new fileNameRandomPool(tempDir.cd('pages'));
   const firstPageDir = pagePool.generate();
   const firstPageID = firstPageDir.name;
 
-  // Create page metadata and data
+  // 创建页面元数据和数据
   firstPageDir.peek('meta', 'json').writeJSON(pageMeta);
   firstPageDir.cd('assets').make();
   firstPageDir.peek('page', 'json').writeJSON({
@@ -66,7 +66,7 @@ function createEmptyBoard(boardInfo) {
     assets: []
   });
 
-  // Create pages list
+  // 创建页面列表
   tempDir.peek('pages', 'json').writeJSON([
     {
       templateID: boardInfo.templateID,
@@ -74,29 +74,29 @@ function createEmptyBoard(boardInfo) {
     }
   ]);
 
-  // Copy template assets
+  // 复制模板资源
   tempDir.cd('templates');
   templatesDir.cd(boardInfo.templateID)
               .cp(tempDir.cd('templates').cd(boardInfo.templateID));
 
-  // Compress and hide temporary directory
+  // 压缩并隐藏临时目录
   tempDir.compress(boardFile, false);
   tempDir.hide();
 }
 
 /**
- * Adds a new page to the board
+ * 向白板添加新页面
  * @function addPage
- * @param {fileNameRandomPool} pool - Filename random pool instance
- * @param {string} templateID - Template ID to apply
- * @returns {Object} Result object
- * @returns {fileNameRandomPool} pool - Updated filename random pool
- * @returns {string} pageID - New page ID
+ * @param {fileNameRandomPool} pool - 文件名随机池实例
+ * @param {string} templateID - 要应用的模板ID
+ * @returns {Object} 结果对象
+ * @returns {fileNameRandomPool} pool - 更新后的文件名随机池
+ * @returns {string} pageID - 新页面ID
  */
 function addPage(pool, templateID) {
   const newPageDir = pool.generate();
 
-  // Create page metadata and data
+  // 创建页面元数据和数据
   newPageDir.peek('meta', 'json').writeJSON(pageMeta);
   newPageDir.peek('page', 'json').writeJSON({
     strokes: [],
@@ -111,10 +111,10 @@ function addPage(pool, templateID) {
 }
 
 /**
- * Opens a board file
+ * 打开白板文件
  * @function openBoard
- * @param {file} boardFile - .hwb file to open
- * @returns {BrowserWindow} Browser window instance
+ * @param {file} boardFile - 要打开的.hwb文件
+ * @returns {BrowserWindow} 浏览器窗口实例
  */
 function openBoard(boardFile) {
   let win = winManager.createFullScreenWindow('full-screen.html');
@@ -122,10 +122,10 @@ function openBoard(boardFile) {
   const fileDir = new directory(boardFile.address, boardFile.name);
   directory.getHideResult(fileDir).rmWhenExist();
 
-  // Extract and hide temporary directory
+  // 提取并隐藏临时目录
   const tempDir = boardFile.extract(fileDir).hide();
 
-  // Send path to renderer when loaded
+  // 加载完成后发送路径到渲染进程
   win.webContents.on('did-finish-load', () => {
     win.webContents.send('board-opened', tempDir.getPath());
   });
@@ -133,9 +133,9 @@ function openBoard(boardFile) {
 }
 
 /**
- * Saves a board
+ * 保存白板
  * @function saveBoard
- * @param {directory} boardDir - Board directory to save
+ * @param {directory} boardDir - 要保存的白板目录
  * @returns {void}
  */
 function saveBoard(boardDir) {
