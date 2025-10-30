@@ -8,9 +8,6 @@
  * - Rename operation execution
  */
 
-const { ipcRenderer } = require('electron');
-const ipc = ipcRenderer;
-
 // DOM elements
 const renameEditor = document.getElementById('rename-editor');
 const renameInput = document.getElementById('rename-editor-input');

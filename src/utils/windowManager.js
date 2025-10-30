@@ -1,128 +1,158 @@
-const { BrowserWindow } = require("electron");
-const settingManager = require("./settingManager");
+/**
+ * @file Window management module
+ * @module WindowManager
+ * @description Handles:
+ * - Window creation (normal, fullscreen, modal)
+ * - Window lifecycle management
+ * - Window IPC communication
+ */
+
+const { BrowserWindow } = require('electron');
+const settingManager = require('./settingManager');
 
 /**
- * 创建窗口
- * @param {string} template - 模板文件名
- * @param {Object} size - 窗口尺寸配置
- * @param {number} size.width - 窗口宽度
- * @param {number} size.height - 窗口高度
- * @param {number} size.minWidth - 最小宽度
- * @param {number} size.minHeight - 最小高度
- * @returns {BrowserWindow} 浏览器窗口对象
+ * Creates a standard browser window
+ * @function createWindow
+ * @param {string} template - Template filename
+ * @param {Object} [size] - Window size configuration
+ * @param {number} [size.width=800] - Window width
+ * @param {number} [size.height=600] - Window height
+ * @param {number} [size.minWidth=800] - Minimum width
+ * @param {number} [size.minHeight=600] - Minimum height
+ * @returns {BrowserWindow} Browser window instance
  */
 function createWindow(template, size = { width: 800, height: 600, minWidth: 800, minHeight: 600 }) {
   const win = new BrowserWindow({
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    },
     width: size.width,
     height: size.height,
     minWidth: size.minWidth,
     minHeight: size.minHeight,
-    autoHideMenuBar: true,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-    },
+    autoHideMenuBar: true
   });
-  win.loadFile(__dirname + "/../templates/html/" + template);
-  // win.webContents.openDevTools();
+  win.loadFile(__dirname + '/../templates/html/' + template);
 
-  win.webContents.on("did-finish-load", () => {
+  win.webContents.on('did-finish-load', () => {
     const settings = settingManager.loadSettings();
-    win.webContents.send("settings-loaded", settings);
+    win.webContents.send('settings-loaded', settings);
   });
   return win;
 }
 
 /**
- * 创建全屏窗口
- * @param {string} template - 模板文件名
- * @returns {BrowserWindow} 浏览器窗口对象
+ * Creates a fullscreen window
+ * @function createFullScreenWindow
+ * @param {string} template - Template filename
+ * @returns {BrowserWindow} Browser window instance
  */
 function createFullScreenWindow(template) {
   const win = new BrowserWindow({
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      nodeIntegrationInSubFrames: true,
+      nodeIntegrationInSubFrames: true
     },
     fullscreen: true,
     autoHideMenuBar: true,
     frame: false,
-    transparent: true,
+    transparent: true
   });
-  win.loadFile(__dirname + "/../templates/html/" + template);
+  win.loadFile(__dirname + '/../templates/html/' + template);
   return win;
 }
 
 /**
- * 创建模态窗口
- *
- * BUG: 这个模态窗口坏了，我也不知道为什么。
- *
- * @param {string} template - 模板文件名
- * @param {BrowserWindow} parent - 父窗口对象
- * @param {Object} size - 窗口尺寸配置
- * @param {number} size.width - 窗口宽度
- * @param {number} size.height - 窗口高度
- * @param {number} size.minWidth - 最小宽度
- * @param {number} size.minHeight - 最小高度
- * @returns {BrowserWindow} 模态窗口对象
+ * Creates a modal window (currently has known issues)
+ * @function createModalWindow
+ * @param {string} template - Template filename
+ * @param {BrowserWindow} parent - Parent window instance
+ * @param {Object} [size] - Window size configuration
+ * @param {number} [size.width=800] - Window width
+ * @param {number} [size.height=600] - Window height
+ * @param {number} [size.minWidth=800] - Minimum width
+ * @param {number} [size.minHeight=600] - Minimum height
+ * @returns {BrowserWindow} Modal window instance
  */
 function createModalWindow(template, parent, size = { width: 800, height: 600, minWidth: 800, minHeight: 600 }) {
   const modalWin = new BrowserWindow({
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    },
     width: size.width,
     height: size.height,
     minWidth: size.minWidth,
     minHeight: size.minHeight,
     parent: parent,
     modal: true,
-    autoHideMenuBar: true,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-    },
+    autoHideMenuBar: true
   });
-  modalWin.loadFile(__dirname + "/../templates/html/" + template);
+  modalWin.loadFile(__dirname + '/../templates/html/' + template);
 
-  modalWin.webContents.on("did-finish-load", () => {
+  modalWin.webContents.on('did-finish-load', () => {
     const settings = settingManager.loadSettings();
-    modalWin.webContents.send("settings-loaded", settings);
+    modalWin.webContents.send('settings-loaded', settings);
   });
 
   return modalWin;
 }
 
 /**
- * @param {Object} ipc 主进程的 IPC
- * @param {Object} windows 窗口对象集合
+ * Sets up window open/close IPC handlers
+ * @function setupFileOpenCloseIPC
+ * @param {Object} ipc - IPC main process object
+ * @param {Object} windows - Collection of window objects
+ * @returns {void}
  */
 function setupFileOpenCloseIPC(ipc, windows) {
-  ipc.on("open-window", (event, windowNew, windowNewHTML) => {
+  /**
+   * IPC handler for opening a new window
+   * @event open-window
+   * @listens ipc#open-window
+   */
+  ipc.on('open-window', (event, windowNew, windowNewHTML) => {
     windows[windowNew] = createWindow(windowNewHTML, {
       width: 800,
       height: 600,
       minWidth: 800,
-      minHeight: 600,
+      minHeight: 600
     });
   });
 
-  ipc.on("open-modal-window", (event, windowNow, windowNew, windowNewHTML) => {
-    windows[windowNew] = createModalWindow(windowNewHTML, windows[windowNow], {
-      width: 800,
-      height: 600,
-      minWidth: 800,
-      minHeight: 600,
-    });
+  /**
+   * IPC handler for opening a modal window
+   * @event open-modal-window
+   * @listens ipc#open-modal-window
+   */
+  ipc.on('open-modal-window', (event, windowNow, windowNew, windowNewHTML) => {
+    windows[windowNew] = createModalWindow(
+      windowNewHTML,
+      windows[windowNow],
+      {
+        width: 800,
+        height: 600,
+        minWidth: 800,
+        minHeight: 600
+      }
+    );
   });
 
-  ipc.on("close-window", (event, windowNow) => {
+  /**
+   * IPC handler for closing a window
+   * @event close-window
+   * @listens ipc#close-window
+   */
+  ipc.on('close-window', (event, windowNow) => {
     windows[windowNow].close();
-  })
+  });
 }
 
 module.exports = {
   createWindow,
   createFullScreenWindow,
   createModalWindow,
-  setupFileOpenCloseIPC,
+  setupFileOpenCloseIPC
 };

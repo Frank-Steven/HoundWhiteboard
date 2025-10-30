@@ -8,8 +8,6 @@
  * - Template creation confirmation
  */
 
-const { ipcRenderer } = require('electron');
-const ipc = ipcRenderer;
 const { directory } = require('../../classes/io');
 
 const Toast = require('../../utils/ui/toast');

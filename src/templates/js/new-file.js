@@ -10,8 +10,6 @@
 
 const path = require('path');
 const { file, directory } = require('../../classes/io');
-const { ipcRenderer } = require('electron');
-const ipc = ipcRenderer;
 
 const Toast = require('../../utils/ui/toast');
 const toast = new Toast();
