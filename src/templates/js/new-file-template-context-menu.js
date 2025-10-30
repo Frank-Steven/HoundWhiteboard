@@ -1,23 +1,23 @@
 /**
- * @file Template context menu module
+ * @file 模板上下文菜单模块
  * @module TemplateContextMenu
- * @description Handles:
- * - Right-click context menu for templates
- * - Template operations (rename, delete, edit, copy)
- * - Menu positioning and visibility
+ * @description 处理:
+ * - 模板的右键上下文菜单
+ * - 模板操作（重命名、删除、编辑、复制）
+ * - 菜单定位和可见性
  */
 
 const { ipcRenderer } = require('electron');
 const ipc = ipcRenderer;
 
-// DOM elements
+// DOM 元素
 const contextMenu = document.getElementById('context-menu');
 let currentContextButton = null;
 
 /**
- * Renames a template
+ * 重命名模板
  * @function templateRename
- * @param {HTMLElement} templateButton - The template button element
+ * @param {HTMLElement} templateButton - 模板按钮元素
  * @returns {void}
  */
 function templateRename(templateButton) {
@@ -25,16 +25,16 @@ function templateRename(templateButton) {
 }
 
 /**
- * Removes a template and its button
+ * 删除模板及其按钮
  * @function templateRemove
- * @param {HTMLElement} templateButton - The template button element
+ * @param {HTMLElement} templateButton - 模板按钮元素
  * @returns {Promise<void>}
  */
 async function templateRemove(templateButton) {
   const templateID = await ipc.invoke('template-remove', templateButton.id, 'NewFile');
   if (templateID) {
     const templateButton = document.getElementById(templateID);
-    if (!templateButton) return; // Button already removed
+    if (!templateButton) return; // 按钮已被删除
     if (boardInfo.templateID === templateButton.id) {
       boardInfo.templateID = null;
     }
@@ -43,9 +43,9 @@ async function templateRemove(templateButton) {
 }
 
 /**
- * Edits a template
+ * 编辑模板
  * @function templateEdit
- * @param {HTMLElement} templateButton - The template button element
+ * @param {HTMLElement} templateButton - 模板按钮元素
  * @returns {void}
  */
 function templateEdit(templateButton) {
@@ -53,9 +53,9 @@ function templateEdit(templateButton) {
 }
 
 /**
- * Copies a template
+ * 复制模板
  * @function templateCopy
- * @param {HTMLElement} templateButton - The template button element
+ * @param {HTMLElement} templateButton - 模板按钮元素
  * @returns {void}
  */
 function templateCopy(templateButton) {
@@ -63,11 +63,11 @@ function templateCopy(templateButton) {
 }
 
 /**
- * Shows context menu at specified coordinates
+ * 在指定坐标显示上下文菜单
  * @function showContextMenu
- * @param {number} x - X coordinate
- * @param {number} y - Y coordinate
- * @param {HTMLElement} button - The button element that triggered the menu
+ * @param {number} x - X 坐标
+ * @param {number} y - Y 坐标
+ * @param {HTMLElement} button - 触发菜单的按钮元素
  * @returns {void}
  */
 function showContextMenu(x, y, button) {
@@ -82,11 +82,11 @@ function showContextMenu(x, y, button) {
 }
 
 /**
- * Displays context menu with position adjustments
+ * 显示上下文菜单并调整位置
  * @function displayContextMenu
- * @param {number} x - X coordinate
- * @param {number} y - Y coordinate
- * @param {HTMLElement} button - The button element that triggered the menu
+ * @param {number} x - X 坐标
+ * @param {number} y - Y 坐标
+ * @param {HTMLElement} button - 触发菜单的按钮元素
  * @returns {void}
  */
 function displayContextMenu(x, y, button) {
@@ -118,7 +118,7 @@ function displayContextMenu(x, y, button) {
 }
 
 /**
- * Hides the context menu
+ * 隐藏上下文菜单
  * @function hideContextMenu
  * @returns {void}
  */
@@ -132,9 +132,9 @@ function hideContextMenu() {
 }
 
 /**
- * Adds context menu functionality to a button
+ * 为按钮添加上下文菜单功能
  * @function addContextMenuToButton
- * @param {HTMLElement} button - The button element to add context menu to
+ * @param {HTMLElement} button - 要添加上下文菜单的按钮元素
  * @returns {void}
  */
 function addContextMenuToButton(button) {
@@ -150,7 +150,7 @@ function addContextMenuToButton(button) {
 }
 
 /**
- * IPC event listener for context menu actions
+ * 上下文菜单操作的 IPC 事件监听器
  * @event context-menu-action
  * @listens HTMLElement#click
  */
@@ -178,7 +178,7 @@ contextMenu.addEventListener('click', (e) => {
   hideContextMenu();
 });
 
-// Global event listeners
+// 全局事件监听器
 document.addEventListener('click', (e) => {
   if (!contextMenu.contains(e.target)) {
     hideContextMenu();
@@ -197,7 +197,7 @@ document.getElementById('new-file-template-select')
 
 window.addEventListener('resize', hideContextMenu);
 
-// Extend buttonLoadAdd to include context menu for new buttons
+// 扩展 buttonLoadAdd 以为新按钮包含上下文菜单
 const originalButtonLoadAdd = buttonLoadAdd;
 buttonLoadAdd = function(element) {
   originalButtonLoadAdd(element);
