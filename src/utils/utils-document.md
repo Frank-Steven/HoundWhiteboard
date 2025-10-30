@@ -4,12 +4,12 @@
 
 ## [Window Manager](window-manager.js)
 
-处理Electron应用中的窗口创建和管理。
+处理 Electron 应用中的窗口创建和管理。
 
 ### 功能:
 - 创建标准窗口、全屏窗口和模态窗口
 - 管理窗口生命周期  
-- 处理窗口进程间通信(IPC)
+- 处理窗口进程间通信 (IPC)
 
 ### 主要方法:
 - `createWindow(template, size)` - 创建标准浏览器窗口
@@ -18,8 +18,8 @@
 - `setupFileOpenCloseIPC(ipc, windows)` - 设置窗口打开/关闭的IPC处理器
 
 ### 依赖:
-- Electron的`BrowserWindow`
-- `settingManager`用于加载设置
+- Electron 的 `BrowserWindow`
+- `settingManager` 用于加载设置
 
 ---
 
@@ -40,8 +40,8 @@
 - `setupTemplateOperationIPC(ipc, windows)` - 设置模板IPC处理器
 
 ### 依赖:
-- `window-manager`用于窗口操作
-- `io`类用于文件操作
+- `window-manager` 用于窗口操作
+- `io` 类用于文件操作
 
 ---
 
@@ -51,7 +51,6 @@
 
 ### 功能:
 - 设置持久化
-- 文件操作对话框
 - 设置变更通知
 
 ### 主要方法:
@@ -59,28 +58,40 @@
 - `loadSettings()` - 从文件加载设置
 - `saveSettings(settings)` - 保存设置到文件
 - `setupSettingsIPC(ipc, BrowserWindow)` - 设置设置IPC处理器
+
+### 依赖:
+- `io` 类用于文件操作
+
+---
+
+## [File Open Manager](file-open-manager.js)
+
+### 功能
+- 文件操作对话框
+
+### 主要方法
+
 - `setupFileOperationIPC(ipc, windows)` - 设置文件操作IPC处理器
 
 ### 依赖:
-- Electron的`dialog`
-- `io`类用于文件操作
+- Electron 的 `dialog`
 
 ---
 
 ## [Texture Manager](texture-manager.js)
 
-处理SVG纹理生成和拼接。
+处理 SVG 纹理生成和拼接。
 
 ### 功能:
-- SVG纹理生成
+- SVG 纹理生成
 - 拼接纹理创建
 
 ### 主要方法:
-- `generateSVG(config)` - 生成SVG纹理单元
+- `generateSVG(config)` - 生成 SVG 纹理单元
 - `createTiledTexture(config, containerWidth, containerHeight)` - 创建拼接纹理
 
 ### 依赖:
-- 无(纯DOM操作)
+- 无 (纯 DOM 操作)
 
 ---
 
@@ -101,8 +112,8 @@
 - `saveBoard(boardDir)` - 保存白板
 
 ### 依赖:
-- `window-manager`用于窗口操作
-- `io`类用于文件操作
+- `window-manager` 用于窗口操作
+- `io` 类用于文件操作
 
 ---
 
@@ -122,7 +133,7 @@
 - `toggle()` - 切换窗口可见性
 
 ### 依赖:
-- 无(纯DOM操作)
+- 无 (纯 DOM 操作)
 
 ---
 
@@ -131,7 +142,7 @@
 提供内联通知系统。
 
 ### 功能:
-- 多种通知类型(成功、警告、错误、信息)
+- 多种通知类型 (成功、警告、错误、信息)
 - 多种显示位置
 - 自定义动画
 - 进度指示器
@@ -144,7 +155,7 @@
   - `info(message, options)`
 
 ### 依赖:
-- 无(纯DOM操作)
+- 无 (纯 DOM 操作)
 
 ---
 

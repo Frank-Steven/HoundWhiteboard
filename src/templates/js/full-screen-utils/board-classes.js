@@ -17,13 +17,13 @@ const { randomNumberPool } = require("../../../classes/algorithm");
  * 所有白板对象的基类，提供通用属性和方法
  * @class
  * @abstract
- * @property {math.matrix} transform - 对象的2D变换矩阵
- * @property {math.matrix} position - 对象的当前位置[x,y]
- * @property {string} type - 对象类型('ink', 'graph', 'solid', 'combination')
+ * @property {math.matrix} transform - 对象的二维变换矩阵
+ * @property {math.matrix} position - 对象的当前位置 [x, y]
+ * @property {string} type - 对象类型 ('ink', 'graph', 'solid', 'combination')
  */
 class object {
   /**
-   * 默认2D变换矩阵(单位矩阵)
+   * 默认二维变换矩阵 (单位矩阵)
    * @type {math.matrix}
    */
   transform = math.matrix([
@@ -34,8 +34,8 @@ class object {
   /**
    * 创建新的白板对象
    * @constructor
-   * @param {number} x - 初始x坐标
-   * @param {number} y - 初始y坐标
+   * @param {number} x - 初始 x 坐标
+   * @param {number} y - 初始 y 坐标
    * @param {string} type - 对象类型
    * @throws {TypeError} 如果坐标不是数字
    */
@@ -47,9 +47,9 @@ class object {
   /**
    * 对对象应用变换矩阵
    * @method
-   * @param {math.matrix} transform - 要应用的2D变换矩阵
+   * @param {math.matrix} transform - 要应用的二维变换矩阵
    * @returns {void}
-   * @throws {TypeError} 如果transform不是有效的2D矩阵
+   * @throws {TypeError} 当 transform 不是有效的二维矩阵
    * @example
    * const obj = new object(10, 20, 'graph');
    * const matrix = math.matrix([[1,0],[0,1]]);
@@ -79,10 +79,10 @@ class ink extends object {
   /**
    * 向墨迹对象添加新点
    * @method
-   * @param {number} x - 点的x坐标
-   * @param {number} y - 点的y坐标
+   * @param {number} x - 点的 x 坐标
+   * @param {number} y - 点的 y 坐标
    * @returns {void}
-   * @throws {TypeError} 如果坐标不是数字
+   * @throws {TypeError} 当坐标不是数字
    * @example
    * const inkObj = new ink(0, 0, 'ink');
    * inkObj.addInnerPoint(10, 20);
@@ -101,7 +101,7 @@ class ink extends object {
    * @method
    * @param {graph} obj - 用于初始化的源图形对象
    * @returns {void}
-   * @throws {TypeError} 如果obj不是有效的图形对象
+   * @throws {TypeError} 当 obj 不是有效的图形对象
    */
   initFromGraph(obj) {
     if (this.position == undefined) {
@@ -131,8 +131,8 @@ class graph extends object {
   /**
    * 向矢量图形添加新点
    * @method
-   * @param {number} x - 点的x坐标
-   * @param {number} y - 点的y坐标
+   * @param {number} x - 点的 x 坐标
+   * @param {number} y - 点的 y 坐标
    * @returns {void}
    * @throws {TypeError} 如果坐标不是数字
    * @example
@@ -154,7 +154,7 @@ class graph extends object {
    * @method
    * @param {ink} obj - 用于初始化的源墨迹对象
    * @returns {void}
-   * @throws {TypeError} 如果obj不是有效的墨迹对象
+   * @throws {TypeError} 当 obj 不是有效的墨迹对象
    */
   initFromInk(obj) {
     if (this.position == undefined) {
@@ -185,8 +185,8 @@ class solid extends object {
   /**
    * 初始化矩形实体形状
    * @method
-   * @param {number} x - 左上角x坐标
-   * @param {number} y - 左上角y坐标
+   * @param {number} x - 左上角 x 坐标
+   * @param {number} y - 左上角 y 坐标
    * @param {number} width - 矩形宽度
    * @param {number} height - 矩形高度
    * @returns {void}
@@ -218,7 +218,7 @@ class solid extends object {
    * @method
    * @param {graph} obj - 用于初始化的源图形对象
    * @returns {void}
-   * @throws {TypeError} 如果obj不是有效的图形对象
+   * @throws {TypeError} 当 obj 不是有效的图形对象
    */
   initFromGraph(obj) {
     if (this.position == undefined) {
@@ -236,7 +236,7 @@ class solid extends object {
    * @method
    * @param {ink} obj - 用于初始化的源墨迹对象
    * @returns {void}
-   * @throws {TypeError} 如果obj不是有效的墨迹对象
+   * @throws {TypeError} 当 obj 不是有效的墨迹对象
    */
   initFromInk(obj) {
     if (this.position == undefined) {
@@ -275,7 +275,7 @@ class combination extends object {
    * 创建新的白板对象组合
    * @constructor
    * @param {object[]} children - 要组合的白板对象数组
-   * @throws {TypeError} 如果children不是有效的白板对象数组
+   * @throws {TypeError} 当 children 不是有效的白板对象数组
    * @example
    * const circle = new graph(10, 10, 'graph');
    * const square = new solid(20, 20, 'solid');
@@ -301,12 +301,12 @@ class combination extends object {
 /**
  * 页面类，表示白板对象的集合
  * @class
- * @property {randomNumberPool} idPool - 对象ID生成器
+ * @property {randomNumberPool} idPool - 对象 ID 生成器
  * @property {object[]} objects - 此页面上的对象数组
  */
 class page {
   /**
-   * 对象ID生成器
+   * 对象 ID 生成器
    * @type {randomNumberPool}
    */
   idPool = new randomNumberPool(1, 1000000000000);
@@ -322,7 +322,7 @@ class page {
    * @method
    * @param {object} obj - 要添加的白板对象
    * @returns {void}
-   * @throws {TypeError} 如果obj不是有效的白板对象
+   * @throws {TypeError} 当 obj 不是有效的白板对象
    */
   appendObject(obj) {
     this.objects.push(obj);

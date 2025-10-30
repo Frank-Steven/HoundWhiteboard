@@ -1,5 +1,6 @@
 const { app, BrowserWindow } = require("electron");
 const settingManager = require("./utils/setting-manager");
+const foManager = require("./utils/file-open-manager");
 const winManager = require("./utils/window-manager");
 const boardManager = require("./utils/board-manager");
 const templateManager = require("./utils/template-manager");
@@ -38,7 +39,7 @@ app.whenReady().then(() => {
 
   // 设置进程间通信(IPC)处理器
   settingManager.setupSettingsIPC(ipc, BrowserWindow);  // 设置处理器
-  settingManager.setupFileOperationIPC(ipc, windows);  // 文件操作处理器
+  foManager.setupFileOpenIPC(ipc, windows);
   winManager.setupFileOpenCloseIPC(ipc, windows);      // 窗口开关处理器
   templateManager.setupTemplateOperationIPC(ipc, windows); // 模板操作处理器
 
