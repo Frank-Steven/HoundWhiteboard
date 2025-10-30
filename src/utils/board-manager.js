@@ -7,7 +7,7 @@
  * - 模板应用
  */
 
-const winManager = require('./windowManager');
+const winManager = require('./window-manager');
 const { fileNameRandomPool, directory, file } = require('../classes/io');
 
 let templatesDir;

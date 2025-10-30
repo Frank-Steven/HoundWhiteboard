@@ -1,29 +1,29 @@
 /**
- * @file Board classes module defining core objects for board manipulation
+ * @file 定义白板操作核心对象的模块
  * @module BoardClasses
- * @description Contains classes for different board objects:
- * - Base object class
- * - Ink objects (freehand drawing)
- * - Graph objects (vector graphics) 
- * - Solid objects (filled shapes)
- * - Combination objects (grouped elements)
- * - Page class (manages collections of objects)
+ * @description 包含不同白板对象的类:
+ * - 基础对象类
+ * - 墨迹对象(自由手绘)
+ * - 图形对象(矢量图形)
+ * - 实体对象(填充形状)
+ * - 组合对象(分组元素)
+ * - 页面类(管理对象集合)
  */
 
 const { math, min } = require("mathjs");
 const { randomNumberPool } = require("../../../classes/algorithm");
 
 /**
- * Base class for all board objects providing common properties and methods
+ * 所有白板对象的基类，提供通用属性和方法
  * @class
  * @abstract
- * @property {math.matrix} transform - 2D transformation matrix for the object
- * @property {math.matrix} position - Current position of the object [x,y]
- * @property {string} type - Type of the object ('ink', 'graph', 'solid', 'combination')
+ * @property {math.matrix} transform - 对象的2D变换矩阵
+ * @property {math.matrix} position - 对象的当前位置[x,y]
+ * @property {string} type - 对象类型('ink', 'graph', 'solid', 'combination')
  */
 class object {
   /**
-   * Default 2D transformation matrix (identity matrix)
+   * 默认2D变换矩阵(单位矩阵)
    * @type {math.matrix}
    */
   transform = math.matrix([
@@ -32,12 +32,12 @@ class object {
   ]);
 
   /**
-   * Creates a new board object
+   * 创建新的白板对象
    * @constructor
-   * @param {number} x - Initial x coordinate
-   * @param {number} y - Initial y coordinate
-   * @param {string} type - Type of the object
-   * @throws {TypeError} If coordinates are not numbers
+   * @param {number} x - 初始x坐标
+   * @param {number} y - 初始y坐标
+   * @param {string} type - 对象类型
+   * @throws {TypeError} 如果坐标不是数字
    */
   constructor(x, y, type) {
     this.position = math.matrix([x, y]);
@@ -45,11 +45,11 @@ class object {
   }
 
   /**
-   * Applies transformation matrix to the object
+   * 对对象应用变换矩阵
    * @method
-   * @param {math.matrix} transform - 2D transformation matrix to apply
+   * @param {math.matrix} transform - 要应用的2D变换矩阵
    * @returns {void}
-   * @throws {TypeError} If transform is not a valid 2D matrix
+   * @throws {TypeError} 如果transform不是有效的2D矩阵
    * @example
    * const obj = new object(10, 20, 'graph');
    * const matrix = math.matrix([[1,0],[0,1]]);
@@ -64,25 +64,25 @@ class object {
 }                                                                                 
 
 /**
- * Ink class representing freehand drawing objects
+ * 墨迹类，表示自由手绘对象
  * @class
  * @extends object
- * @property {math.matrix[]} innerPoints - Array of points relative to object position
+ * @property {math.matrix[]} innerPoints - 相对于对象位置的点数组
  */
 class ink extends object {
   /**
-   * Array of inner points relative to object position
+   * 相对于对象位置的内点数组
    * @type {math.matrix[]}
    */
   innerPoints = [];
 
   /**
-   * Adds a new point to the ink object
+   * 向墨迹对象添加新点
    * @method
-   * @param {number} x - X coordinate of the point
-   * @param {number} y - Y coordinate of the point
+   * @param {number} x - 点的x坐标
+   * @param {number} y - 点的y坐标
    * @returns {void}
-   * @throws {TypeError} If coordinates are not numbers
+   * @throws {TypeError} 如果坐标不是数字
    * @example
    * const inkObj = new ink(0, 0, 'ink');
    * inkObj.addInnerPoint(10, 20);
@@ -97,11 +97,11 @@ class ink extends object {
   }
 
   /**
-   * Initializes ink object from a graph object
+   * 从图形对象初始化墨迹对象
    * @method
-   * @param {graph} obj - Source graph object to initialize from
+   * @param {graph} obj - 用于初始化的源图形对象
    * @returns {void}
-   * @throws {TypeError} If obj is not a valid graph object
+   * @throws {TypeError} 如果obj不是有效的图形对象
    */
   initFromGraph(obj) {
     if (this.position == undefined) {
@@ -116,25 +116,25 @@ class ink extends object {
 }
 
 /**
- * Graph class representing vector graphic objects
+ * 图形类，表示矢量图形对象
  * @class
  * @extends object
- * @property {math.matrix[]} innerPoints - Array of points defining the vector shape
+ * @property {math.matrix[]} innerPoints - 定义矢量形状的点数组
  */
 class graph extends object {
   /**
-   * Array of points defining the vector shape
+   * 定义矢量形状的点数组
    * @type {math.matrix[]}
    */
   innerPoints = [];
 
   /**
-   * Adds a new point to the vector graphic
+   * 向矢量图形添加新点
    * @method
-   * @param {number} x - X coordinate of the point
-   * @param {number} y - Y coordinate of the point
+   * @param {number} x - 点的x坐标
+   * @param {number} y - 点的y坐标
    * @returns {void}
-   * @throws {TypeError} If coordinates are not numbers
+   * @throws {TypeError} 如果坐标不是数字
    * @example
    * const graphObj = new graph(0, 0, 'graph');
    * graphObj.addInnerPoint(10, 10);
@@ -150,11 +150,11 @@ class graph extends object {
   }
 
   /**
-   * Initializes graph object from an ink object
+   * 从墨迹对象初始化图形对象
    * @method
-   * @param {ink} obj - Source ink object to initialize from
+   * @param {ink} obj - 用于初始化的源墨迹对象
    * @returns {void}
-   * @throws {TypeError} If obj is not a valid ink object
+   * @throws {TypeError} 如果obj不是有效的墨迹对象
    */
   initFromInk(obj) {
     if (this.position == undefined) {
@@ -170,27 +170,27 @@ class graph extends object {
 }
 
 /**
- * Solid class representing filled shape objects
+ * 实体类，表示填充形状对象
  * @class
  * @extends object
- * @property {math.matrix[]} innerPoints - Array of points defining the shape boundaries
+ * @property {math.matrix[]} innerPoints - 定义形状边界的点数组
  */
 class solid extends object {
   /**
-   * Array of points defining the shape boundaries
+   * 定义形状边界的点数组
    * @type {math.matrix[]}
    */
   innerPoints = [];
 
   /**
-   * Initializes a rectangular solid shape
+   * 初始化矩形实体形状
    * @method
-   * @param {number} x - Top-left x coordinate
-   * @param {number} y - Top-left y coordinate
-   * @param {number} width - Width of the rectangle
-   * @param {number} height - Height of the rectangle
+   * @param {number} x - 左上角x坐标
+   * @param {number} y - 左上角y坐标
+   * @param {number} width - 矩形宽度
+   * @param {number} height - 矩形高度
    * @returns {void}
-   * @throws {TypeError} If any parameter is not a number
+   * @throws {TypeError} 如果任何参数不是数字
    * @example
    * const rect = new solid(0, 0, 'solid');
    * rect.initRect(10, 10, 100, 50);
@@ -214,11 +214,11 @@ class solid extends object {
   }
 
   /**
-   * Initializes solid object from a graph object
+   * 从图形对象初始化实体对象
    * @method
-   * @param {graph} obj - Source graph object to initialize from
+   * @param {graph} obj - 用于初始化的源图形对象
    * @returns {void}
-   * @throws {TypeError} If obj is not a valid graph object
+   * @throws {TypeError} 如果obj不是有效的图形对象
    */
   initFromGraph(obj) {
     if (this.position == undefined) {
@@ -232,11 +232,11 @@ class solid extends object {
   }
 
   /**
-   * Initializes solid object from an ink object
+   * 从墨迹对象初始化实体对象
    * @method
-   * @param {ink} obj - Source ink object to initialize from
+   * @param {ink} obj - 用于初始化的源墨迹对象
    * @returns {void}
-   * @throws {TypeError} If obj is not a valid ink object
+   * @throws {TypeError} 如果obj不是有效的墨迹对象
    */
   initFromInk(obj) {
     if (this.position == undefined) {
@@ -252,30 +252,30 @@ class solid extends object {
 }
 
 /**
- * Combination class representing grouped board objects
+ * 组合类，表示分组的白板对象
  * @class
  * @extends object
- * @property {object[]} children - Array of child objects in this combination
- * @property {math.matrix[]} innerPoints - Array of points representing child positions
+ * @property {object[]} children - 此组合中的子对象数组
+ * @property {math.matrix[]} innerPoints - 表示子对象位置的点数组
  */
 class combination extends object {
   /**
-   * Array of child objects in this combination
+   * 此组合中的子对象数组
    * @type {object[]}
    */
   children = [];
 
   /**
-   * Array of points representing child positions
+   * 表示子对象位置的点数组
    * @type {math.matrix[]}
    */
   innerPoints = [];
 
   /**
-   * Creates a new combination of board objects
+   * 创建新的白板对象组合
    * @constructor
-   * @param {object[]} children - Array of board objects to combine
-   * @throws {TypeError} If children is not an array of valid board objects
+   * @param {object[]} children - 要组合的白板对象数组
+   * @throws {TypeError} 如果children不是有效的白板对象数组
    * @example
    * const circle = new graph(10, 10, 'graph');
    * const square = new solid(20, 20, 'solid');
@@ -299,41 +299,41 @@ class combination extends object {
 
 
 /**
- * Page class representing a collection of board objects
+ * 页面类，表示白板对象的集合
  * @class
- * @property {randomNumberPool} idPool - ID generator for objects
- * @property {object[]} objects - Array of objects on this page
+ * @property {randomNumberPool} idPool - 对象ID生成器
+ * @property {object[]} objects - 此页面上的对象数组
  */
 class page {
   /**
-   * ID generator for objects
+   * 对象ID生成器
    * @type {randomNumberPool}
    */
   idPool = new randomNumberPool(1, 1000000000000);
 
   /**
-   * Array of objects on this page
+   * 此页面上的对象数组
    * @type {object[]}
    */
   objects = [];
 
   /**
-   * Adds an object to the page
+   * 向页面添加对象
    * @method
-   * @param {object} obj - Board object to add
+   * @param {object} obj - 要添加的白板对象
    * @returns {void}
-   * @throws {TypeError} If obj is not a valid board object
+   * @throws {TypeError} 如果obj不是有效的白板对象
    */
   appendObject(obj) {
     this.objects.push(obj);
   }
 
   /**
-   * Removes an object from the page
+   * 从页面移除对象
    * @method
-   * @param {object} obj - Board object to remove
+   * @param {object} obj - 要移除的白板对象
    * @returns {void}
-   * @throws {Error} If object is not found on the page
+   * @throws {Error} 如果在页面上找不到对象
    */
   rmObject(obj) {
     const index = this.objects.indexOf(obj);
@@ -342,3 +342,4 @@ class page {
     }
   }
 }
+

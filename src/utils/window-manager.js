@@ -8,7 +8,7 @@
  */
 
 const { BrowserWindow } = require('electron');
-const settingManager = require('./settingManager');
+const settingManager = require('./setting-manager');
 
 /**
  * 创建一个标准浏览器窗口
