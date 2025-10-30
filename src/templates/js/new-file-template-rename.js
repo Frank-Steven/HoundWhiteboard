@@ -1,5 +1,17 @@
-/// 内联重命名编辑器功能
+/**
+ * @file Template rename module
+ * @module TemplateRename
+ * @description Handles:
+ * - Inline template renaming functionality
+ * - Name validation and sanitization
+ * - Internationalized error messages
+ * - Rename operation execution
+ */
 
+const { ipcRenderer } = require('electron');
+const ipc = ipcRenderer;
+
+// DOM elements
 const renameEditor = document.getElementById('rename-editor');
 const renameInput = document.getElementById('rename-editor-input');
 const renameError = document.getElementById('rename-editor-error');
@@ -8,63 +20,78 @@ const renameCancelBtn = document.getElementById('rename-editor-cancel-btn');
 
 let currentRenameButton = null;
 let originalTemplateName = '';
-let renameTexts = {}; // 存储国际化文本
+let renameTexts = {};
 
-// 文件名验证配置（复用输入框的配置）
+/**
+ * Filename validation configuration
+ * @constant RENAME_FILTER_CONFIG
+ * @type {Object}
+ * @property {RegExp} illegalChars - Regex for illegal characters
+ * @property {number} maxLength - Maximum allowed length
+ * @property {string} replaceChar - Replacement character for illegal chars
+ */
 const RENAME_FILTER_CONFIG = {
   illegalChars: /[<>:"/\\.@|?*~$^'`\u0000-\u001F]/g,
   maxLength: 255 - '.hwb'.length,
   replaceChar: '_'
 };
 
-// 加载国际化文本
+/**
+ * Loads internationalized texts for the rename editor
+ * @function loadRenameTexts
+ * @returns {void}
+ */
 function loadRenameTexts() {
   const language = require(`../../data/languages/${window.settings.language}.json`);
   renameTexts = language.text['rename-editor'];
 }
 
-// 监听语言变化
+/**
+ * IPC event listener for language change
+ * @event languageChanged
+ * @listens document#languageChanged
+ */
 document.addEventListener('languageChanged', () => {
   loadRenameTexts();
 });
 
-// 初始加载（延迟执行以确保settings已加载）
+// Initial load
 setTimeout(() => {
   if (window.settings) {
     loadRenameTexts();
   }
 }, 100);
 
-// 显示重命名编辑器
+/**
+ * Shows the rename editor for a template button
+ * @function showRenameEditor
+ * @param {HTMLElement} templateButton - The template button element
+ * @returns {void}
+ */
 function showRenameEditor(templateButton) {
   if (!templateButton) return;
 
   currentRenameButton = templateButton;
-
-  // 获取当前模板名称
   const nameSpan = templateButton.querySelector('span');
   originalTemplateName = nameSpan ? nameSpan.textContent.trim() : '';
 
-  // 设置输入框初始值
   renameInput.value = originalTemplateName;
-
-  // 清除错误状态
   clearRenameError();
-
-  // 显示编辑器
   renameEditor.classList.add('show');
 
-  // 聚焦并选中文本
   setTimeout(() => {
     renameInput.focus();
     renameInput.select();
   }, 100);
 
-  // 隐藏上下文菜单
   hideContextMenu();
 }
 
-// 隐藏重命名编辑器
+/**
+ * Hides the rename editor
+ * @function hideRenameEditor
+ * @returns {void}
+ */
 function hideRenameEditor() {
   renameEditor.classList.remove('show');
   currentRenameButton = null;
@@ -75,45 +102,55 @@ function hideRenameEditor() {
   renameConfirmBtn.disabled = false;
 }
 
-// 清除错误提示
+/**
+ * Clears rename error state
+ * @function clearRenameError
+ * @returns {void}
+ */
 function clearRenameError() {
   renameError.textContent = '';
   renameError.classList.remove('show');
   renameInput.classList.remove('error');
 }
 
-// 显示错误提示
+/**
+ * Shows rename error message
+ * @function showRenameError
+ * @param {string} message - Error message to display
+ * @returns {void}
+ */
 function showRenameError(message) {
   renameError.textContent = message;
   renameError.classList.add('show');
   renameInput.classList.add('error');
-
-  // 抖动输入框
   renameInput.classList.add('shake');
   setTimeout(() => {
     renameInput.classList.remove('shake');
   }, 300);
 }
 
-// 验证文件名
+/**
+ * Validates template name
+ * @function validateTemplateName
+ * @param {string} name - Template name to validate
+ * @returns {Object} Validation result
+ * @property {boolean} valid - Whether name is valid
+ * @property {string} [error] - Error message if invalid
+ */
 function validateTemplateName(name) {
-  // 检查是否为空
   if (!name || name.trim() === '') {
     return { valid: false, error: renameTexts.errors?.empty || 'Template name cannot be empty' };
   }
 
-  // 检查长度
   if (name.length > RENAME_FILTER_CONFIG.maxLength) {
     const errorMsg = renameTexts.errors?.['too-long'] || 'Template name is too long (max {max} characters)';
     return { valid: false, error: errorMsg.replace('{max}', RENAME_FILTER_CONFIG.maxLength) };
   }
 
-  // 检查非法字符
   if (RENAME_FILTER_CONFIG.illegalChars.test(name)) {
     return { valid: false, error: renameTexts.errors?.['illegal-chars'] || 'Template name contains illegal characters' };
   }
 
-  // 检查是否与原名称相同
   if (name.trim() === originalTemplateName) {
     return { valid: false, error: renameTexts.errors?.['same-name'] || 'New name is the same as the original' };
   }
@@ -121,7 +158,12 @@ function validateTemplateName(name) {
   return { valid: true };
 }
 
-// 清理文件名
+/**
+ * Sanitizes template name
+ * @function sanitizeTemplateName
+ * @param {string} value - Raw template name
+ * @returns {string} Sanitized template name
+ */
 function sanitizeTemplateName(value) {
   let cleaned = value.trim()
                      .normalize('NFC')
@@ -132,41 +174,42 @@ function sanitizeTemplateName(value) {
   return cleaned;
 }
 
-// 执行重命名
+/**
+ * Performs the rename operation
+ * @function performRename
+ * @returns {Promise<void>}
+ */
 async function performRename() {
   chooseButton(currentRenameButton.id);
   const newName = renameInput.value.trim();
   
-  // 验证名称
   const validation = validateTemplateName(newName);
   if (!validation.valid) {
     showRenameError(validation.error);
     return;
   }
 
-  // 清除错误
   clearRenameError();
-
-  // 显示加载状态
   renameConfirmBtn.classList.add('loading');
   renameConfirmBtn.disabled = true;
 
-  // 更新按钮显示的名称
   const nameSpan = currentRenameButton.querySelector('span');
   if (nameSpan) {
     nameSpan.textContent = newName;
   }
 
-  // 发送IPC消息到主进程执行实际的重命名操作
   const newID = await ipc.invoke('template-rename', currentRenameButton.id, newName, "NewFile");
   if (newID) {
     currentRenameButton.id = newID;
     hideRenameEditor();
-    // TODO: 根据实际IPC响应处理成功/失败，添加成功提示
   }
 }
 
-// 输入框实时验证和清理
+/**
+ * Input event listener for real-time validation
+ * @event input
+ * @listens HTMLElement#input
+ */
 renameInput.addEventListener('input', () => {
   const newValue = sanitizeTemplateName(renameInput.value);
   
@@ -174,23 +217,34 @@ renameInput.addEventListener('input', () => {
     renameInput.value = newValue;
   }
 
-  // 清除错误提示（用户正在输入）
   if (renameError.classList.contains('show')) {
     clearRenameError();
   }
 });
 
-// 确认按钮点击
+/**
+ * IPC event listener for confirm button
+ * @event confirm-click
+ * @listens HTMLElement#click
+ */
 renameConfirmBtn.addEventListener('click', () => {
   performRename();
 });
 
-// 取消按钮点击
+/**
+ * IPC event listener for cancel button
+ * @event cancel-click
+ * @listens HTMLElement#click
+ */
 renameCancelBtn.addEventListener('click', () => {
   hideRenameEditor();
 });
 
-// 键盘事件处理
+/**
+ * Keyboard event listener for rename input
+ * @event keydown
+ * @listens HTMLElement#keydown
+ */
 renameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
@@ -201,14 +255,18 @@ renameInput.addEventListener('keydown', (e) => {
   }
 });
 
-// 点击背景关闭编辑器
+/**
+ * Click event listener for editor backdrop
+ * @event click
+ * @listens HTMLElement#click
+ */
 renameEditor.addEventListener('click', (e) => {
   if (e.target.classList.contains('rename-editor-backdrop')) {
     hideRenameEditor();
   }
 });
 
-// 防止编辑器内部点击冒泡
+// Prevent click propagation
 document.querySelector('.rename-editor-container').addEventListener('click', (e) => {
   e.stopPropagation();
 });

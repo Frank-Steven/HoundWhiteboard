@@ -1,77 +1,113 @@
-/// Sidebar buttons
+/**
+ * @file Main menu module for application navigation and settings
+ * @module MainMenu
+ * @description Handles:
+ * - Sidebar navigation
+ * - Start screen operations (new/open files)
+ * - Settings management (theme/language selection)
+ */
 
-const sidebarButtons = document.querySelectorAll(".sidebar-button");
-const contentScreens = document.querySelectorAll(".content-screen");
+const { ipcRenderer } = require('electron');
+const ipc = ipcRenderer;
+const fs = require('fs');
 
+// Sidebar elements
+const sidebarButtons = document.querySelectorAll('.sidebar-button');
+const contentScreens = document.querySelectorAll('.content-screen');
+
+/**
+ * Activates a content screen by adding 'content-active' class
+ * @function activateScreen
+ * @param {HTMLElement} screen - The screen element to activate
+ * @returns {void}
+ */
 function activateScreen(screen) {
   contentScreens.forEach((scr) => {
-    scr.classList.remove("content-active");
+    scr.classList.remove('content-active');
   });
-  screen.classList.add("content-active");
+  screen.classList.add('content-active');
 }
 
+/**
+ * Activates a sidebar button by adding 'content-active' class
+ * @function activateButton
+ * @param {HTMLElement} button - The button element to activate
+ * @returns {void}
+ */
 function activateButton(button) {
   sidebarButtons.forEach((btn) => {
-    btn.classList.remove("content-active");
-  })
-  button.classList.add("content-active");
+    btn.classList.remove('content-active');
+  });
+  button.classList.add('content-active');
 }
 
+// Setup sidebar navigation
 sidebarButtons.forEach((btn) => {
-  btn.addEventListener("click", () => {
+  btn.addEventListener('click', () => {
     const scr = document.getElementById(btn.dataset.targetScreen);
     activateScreen(scr);
     activateButton(btn);
   });
 });
 
-sidebarButtons[0].classList.add("content-active");
-contentScreens[0].classList.add("content-active");
+// Activate default screen
+sidebarButtons[0].classList.add('content-active');
+contentScreens[0].classList.add('content-active');
 
-/// Start screen buttons
+// Start screen elements
+const startNewBtn = document.getElementById('main-menu-content-start-buttons-new');
+const startOpenBtn = document.getElementById('main-menu-content-start-buttons-open');
 
-const startNewBtn = document.getElementById("main-menu-content-start-buttons-new");
-const startOpenBtn = document.getElementById("main-menu-content-start-buttons-open");
-
-startNewBtn.addEventListener("click", () => {
-  ipc.send("open-modal-window", "MainMenu", "NewFile", "new-file.html");
+/**
+ * IPC event listener for new file button click
+ * @event new-file-click
+ * @listens HTMLElement#click
+ */
+startNewBtn.addEventListener('click', () => {
+  ipc.send('open-modal-window', 'MainMenu', 'NewFile', 'new-file.html');
 });
 
-startOpenBtn.addEventListener("click", async () => {
-  console.log("open.");
-  const filePath = await ipc.invoke("open-hwb-file", "MainMenu");
+/**
+ * IPC event listener for open file button click
+ * @event open-file-click
+ * @listens HTMLElement#click
+ */
+startOpenBtn.addEventListener('click', async () => {
+  const filePath = await ipc.invoke('open-hwb-file', 'MainMenu');
   if (filePath) {
-    console.log(filePath);
-    ipc.send("open-board-templated", filePath[0]);
+    ipc.send('open-board-templated', filePath[0]);
   }
 });
 
-/// Settings screen buttons
+// Settings screen elements
+const themeSelect = document.getElementById('main-menu-content-settings-theme-select');
+const languageSelect = document.getElementById('main-menu-content-settings-language-select');
 
-const themeSelect = document.getElementById("main-menu-content-settings-theme-select");
-const languageSelect = document.getElementById("main-menu-content-settings-language-select");
-
-// 遍历 theme 目录，动态生成 theme 选项
-const themes = require("fs").readdirSync(`./src/data/themes`);
-for (let i = 0; i < themes.length; i++) {
-  const option = document.createElement("option");
-  option.value = themes[i].replace(".css", "");
-  option.text = themes[i].replace(".css", "");
-  console.log(option.value);
+// Populate theme options
+const themes = fs.readdirSync('./src/data/themes');
+themes.forEach((theme) => {
+  const option = document.createElement('option');
+  option.value = theme.replace('.css', '');
+  option.text = theme.replace('.css', '');
   themeSelect.add(option);
-}
+});
 
-const languages = require("fs").readdirSync(`./src/data/languages`);
-for (let i = 0; i < languages.length; i++) {
-  const option = document.createElement("option");
-  option.value = languages[i].replace(".json", "");
-  option.text = languages[i].replace(".json", "");
-  console.log(option.value);
+// Populate language options
+const languages = fs.readdirSync('./src/data/languages');
+languages.forEach((lang) => {
+  const option = document.createElement('option');
+  option.value = lang.replace('.json', '');
+  option.text = lang.replace('.json', '');
   languageSelect.add(option);
-}
+});
 
+/**
+ * Resets select elements to match current settings
+ * @function resetSelects
+ * @returns {void}
+ */
 function resetSelects() {
-  // 根据当前 theme 选择项，初始化 select 项
+  // Set theme selection
   for (let i = 0; i < themeSelect.options.length; i++) {
     if (themeSelect.options[i].value === window.settings.theme) {
       themeSelect.selectedIndex = i;
@@ -79,7 +115,7 @@ function resetSelects() {
     }
   }
 
-  // 根据当前 language 选择项，初始化 select 项
+  // Set language selection
   for (let i = 0; i < languageSelect.options.length; i++) {
     if (languageSelect.options[i].value === window.settings.language) {
       languageSelect.selectedIndex = i;
@@ -88,23 +124,36 @@ function resetSelects() {
   }
 }
 
-const saveBtn = document.getElementById("main-menu-content-settings-buttons-save");
-const cancelBtn = document.getElementById("main-menu-content-settings-buttons-cancel");
+// Settings buttons
+const saveBtn = document.getElementById('main-menu-content-settings-buttons-save');
+const cancelBtn = document.getElementById('main-menu-content-settings-buttons-cancel');
 
-saveBtn.addEventListener("click", () => {
-  console.log(themeSelect.value);
-  console.log(languageSelect.value);
+/**
+ * IPC event listener for settings save
+ * @event settings-save
+ * @listens HTMLElement#click
+ */
+saveBtn.addEventListener('click', () => {
   window.settings.theme = themeSelect.value;
   window.settings.language = languageSelect.value;
-  ipc.send("settings-changed", window.settings);
+  ipc.send('settings-changed', window.settings);
 });
 
-
-ipc.on("settings-loaded", (event, settings) => {
-  window.settings.theme = settings.theme;
-  window.settings.language = settings.language;
+/**
+ * IPC event listener for settings loaded
+ * @event settings-loaded
+ * @listens ipc#settings-loaded
+ */
+ipc.on('settings-loaded', (event, settings) => {
+  window.settings = settings;
+  resetSelects();
 });
 
-cancelBtn.addEventListener("click", () => {
+/**
+ * Event listener for settings cancel
+ * @event settings-cancel
+ * @listens HTMLElement#click
+ */
+cancelBtn.addEventListener('click', () => {
   resetSelects();
 });
