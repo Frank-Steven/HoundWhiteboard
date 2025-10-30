@@ -24,7 +24,7 @@ const templateMeta = {
  */
 function init(app) {
   const userDataDir = directory.parse(app.getPath('userData'));
-  templatesDir = userDataDir.cd('templates').make();
+  templatesDir = userDataDir.cd('data').cd('templates').make();
   templatePool = new fileNameRandomPool(templatesDir);
 }
 
