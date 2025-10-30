@@ -1,132 +1,169 @@
-const { dialog } = require("electron");
-const { directory } = require("../classes/io");
-
 /**
- * 设置文件操作 IPC 通信
- * @param {Object} ipc - IPC 主进程对象
- * @param {Object} windows - 窗口对象集合
+ * @file Settings management module
+ * @module SettingManager
+ * @description Handles:
+ * - Application settings persistence
+ * - File operation dialogs (open/save)
+ * - Settings change notifications
  */
-function setupFileOperationIPC(ipc, windows) {
-  ipc.handle("open-hwb-file", async (event, windowNow) => {
-    // 调用系统默认打开文件对话框
-    const result = await dialog.showOpenDialog(windows[windowNow], {
-      properties: ["openFile"],
-      filters: [
-        { name: "All Files", extensions: ["*"] },
-        { name: "HoundWhiteboard Files", extensions: ["hwb"] },
-      ],
-    });
 
-    if (!result.canceled) {
-      return result.filePaths;
-    }
-    return null;
-  });
-
-  ipc.handle("open-hmq-file", async (event, windowNow) => {
-    const result = await dialog.showOpenDialog(windows[windowNow], {
-      properties: ["openFile"],
-      filters: [
-        { name: "All Files", extensions: ["*"] },
-        { name: "HoundWhiteboard Module Quark Files", extensions: ["hmq"] },
-      ],
-    });
-
-    if (!result.canceled) {
-      return result.filePaths;
-    }
-    return null;
-  });
-
-  ipc.handle("open-img-file", async (event, windowNow) => {
-    const result = await dialog.showOpenDialog(windows[windowNow], {
-      properties: ["openFile"],
-      filters: [
-        {
-          name: "Image Files",
-          extensions: [
-            "jpg",
-            "jpeg",
-            "png",
-            "gif",
-            "bmp",
-            "ico",
-            "tif",
-            "tiff",
-            "svg",
-            "webp",
-            "apng",
-            "avif",
-          ],
-        },
-      ],
-    });
-
-    if (!result.canceled) {
-      return result.filePaths;
-    }
-    return null;
-  });
-
-  ipc.handle("path-choose", async (event) => {
-    const result = await dialog.showOpenDialog(windows["NewFile"], {
-      properties: ["openDirectory"], // 仅选择目录,无文件过滤
-    });
-
-    if (!result.canceled) {
-      return result.filePaths;
-    }
-    return null;
-  });
-}
+const { dialog } = require('electron');
+const { directory } = require('../classes/io');
 
 let userDataDir, settingsFile;
-const defaultSettings = { theme: "light", language: "zh-CN" };
+const defaultSettings = { theme: 'light', language: 'zh-CN' };
 
 /**
- * 初始化 IO 管理器
- * @param {Object} app - Electron app 对象
+ * Sets up file operation IPC handlers
+ * @function setupFileOperationIPC
+ * @param {Object} ipc - IPC main process object
+ * @param {Object} windows - Collection of window objects
+ * @returns {void}
  */
-function init(app) {
-  // 获取用户数据目录（类似 VSCode 的 ~/.config/YourApp/）
-  userDataDir = directory.parse(app.getPath("userData"));
-  settingsFile = userDataDir.peek("settings", "json").existOrWriteJSON(defaultSettings);
+function setupFileOperationIPC(ipc, windows) {
+  /**
+   * IPC handler for opening HWB files
+   * @event open-hwb-file
+   * @listens ipc#open-hwb-file
+   */
+  ipc.handle('open-hwb-file', async (event, windowNow) => {
+    const result = await dialog.showOpenDialog(windows[windowNow], {
+      properties: ['openFile'],
+      filters: [
+        { name: 'All Files', extensions: ['*'] },
+        { name: 'HoundWhiteboard Files', extensions: ['hwb'] }
+      ]
+    });
+
+    if (!result.canceled) {
+      return result.filePaths;
+    }
+    return null;
+  });
+
+  /**
+   * IPC handler for opening HMQ files
+   * @event open-hmq-file
+   * @listens ipc#open-hmq-file
+   */
+  ipc.handle('open-hmq-file', async (event, windowNow) => {
+    const result = await dialog.showOpenDialog(windows[windowNow], {
+      properties: ['openFile'],
+      filters: [
+        { name: 'All Files', extensions: ['*'] },
+        { name: 'HoundWhiteboard Module Quark Files', extensions: ['hmq'] }
+      ]
+    });
+
+    if (!result.canceled) {
+      return result.filePaths;
+    }
+    return null;
+  });
+
+  /**
+   * IPC handler for opening image files
+   * @event open-img-file
+   * @listens ipc#open-img-file
+   */
+  ipc.handle('open-img-file', async (event, windowNow) => {
+    const result = await dialog.showOpenDialog(windows[windowNow], {
+      properties: ['openFile'],
+      filters: [
+        {
+          name: 'Image Files',
+          extensions: [
+            'jpg', 'jpeg', 'png', 'gif', 'bmp', 'ico', 
+            'tif', 'tiff', 'svg', 'webp', 'apng', 'avif'
+          ]
+        }
+      ]
+    });
+
+    if (!result.canceled) {
+      return result.filePaths;
+    }
+    return null;
+  });
+
+  /**
+   * IPC handler for choosing directory path
+   * @event path-choose
+   * @listens ipc#path-choose
+   */
+  ipc.handle('path-choose', async (event) => {
+    const result = await dialog.showOpenDialog(windows['NewFile'], {
+      properties: ['openDirectory']
+    });
+
+    if (!result.canceled) {
+      return result.filePaths;
+    }
+    return null;
+  });
 }
 
 /**
- * 读取设置文件
- * @returns {Object} 设置对象
+ * Initializes the settings manager
+ * @function init
+ * @param {Object} app - Electron app object
+ * @returns {void}
+ */
+function init(app) {
+  userDataDir = directory.parse(app.getPath('userData'));
+  settingsFile = userDataDir.peek('settings', 'json').existOrWriteJSON(defaultSettings);
+}
+
+/**
+ * Loads settings from file
+ * @function loadSettings
+ * @returns {Object} Settings object
  */
 function loadSettings() {
   return settingsFile.existOrWriteJSON(defaultSettings).catJSON();
 }
 
 /**
- * 保存设置文件
- * @param {Object} settings - 设置对象
- * @param {string} settings.theme - 主题
- * @param {string} settings.language - 语言
+ * Saves settings to file
+ * @function saveSettings
+ * @param {Object} settings - Settings object to save
+ * @param {string} settings.theme - Current theme
+ * @param {string} settings.language - Current language
+ * @returns {void}
  */
 function saveSettings(settings) {
   try {
     settingsFile.writeJSON(settings);
-    console.log("Settings saved successfully");
   } catch (err) {
-    console.error("Error saving settings:", err);
+    console.error('Error saving settings:', err);
   }
 }
 
 /**
- * 设置设置相关的 IPC 通信
- * @param {Object} ipc - IPC 主进程对象
- * @param {Object} BrowserWindow - BrowserWindow 对象
+ * Sets up settings-related IPC handlers
+ * @function setupSettingsIPC
+ * @param {Object} ipc - IPC main process object
+ * @param {Object} BrowserWindow - BrowserWindow class
+ * @returns {void}
  */
 function setupSettingsIPC(ipc, BrowserWindow) {
-  ipc.handle('get-current-settings', async () => { return loadSettings(); });
+  /**
+   * IPC handler for getting current settings
+   * @event get-current-settings
+   * @listens ipc#get-current-settings
+   */
+  ipc.handle('get-current-settings', async () => {
+    return loadSettings();
+  });
 
-  ipc.on("settings-changed", (event, settings) => {
+  /**
+   * IPC handler for settings changed
+   * @event settings-changed
+   * @listens ipc#settings-changed
+   */
+  ipc.on('settings-changed', (event, settings) => {
     BrowserWindow.getAllWindows().forEach((win) => {
-      win.webContents.send("settings-changed", settings);
+      win.webContents.send('settings-changed', settings);
     });
     saveSettings(settings);
   });
@@ -137,5 +174,5 @@ module.exports = {
   loadSettings,
   saveSettings,
   setupSettingsIPC,
-  setupFileOperationIPC,
+  setupFileOperationIPC
 };
