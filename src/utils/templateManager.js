@@ -1,10 +1,10 @@
 /**
- * @file Template management module
+ * @file 模板管理模块
  * @module TemplateManager
- * @description Handles:
- * - Template lifecycle (create, read, update, delete)
- * - Template metadata management
- * - Template IPC communication
+ * @description 功能包括:
+ * - 模板生命周期管理(创建、读取、更新、删除)
+ * - 模板元数据管理
+ * - 模板IPC通信
  */
 
 const winManager = require('./windowManager');
@@ -17,9 +17,9 @@ const templateMeta = {
 };
 
 /**
- * Initializes template manager
+ * 初始化模板管理器
  * @function init
- * @param {Object} app - Electron app object
+ * @param {Object} app - Electron应用对象
  * @returns {void}
  */
 function init(app) {
@@ -29,20 +29,17 @@ function init(app) {
 }
 
 /**
- * Saves a template
+ * 保存模板
  * @function saveTemplate
- * @param {Object} template - Template object
- * @param {file} [template.texture] - Texture file (not currently used)
- * @param {string} [template.backgroundColor] - Background color in hex
- * @param {string} [template.backgroundImage] - Background image path
- * @param {string} template.name - Template name
- * @returns {Object} Result object
- * @returns {string} [returns.id] - Template ID
- * @returns {Object} [returns.data] - Template data
- * @returns {string} returns.data.name - Template name
- * @returns {string} returns.data.background - Background color or file extension
- * @returns {string} returns.data.backgroundType - "solid" or "image"
- * @returns {file} returns.imgFile - Image file reference
+ * @param {Object} template - 模板对象
+ * @param {file} [template.texture] - 纹理文件(当前未使用)
+ * @param {string} [template.backgroundColor] - 背景色(十六进制)
+ * @param {string} [template.backgroundImage] - 背景图片路径
+ * @param {string} template.name - 模板名称
+ * @returns {Object} 结果对象
+ * @returns {string} [returns.id] - 模板ID
+ * @returns {Object} [returns.data] - 模板数据
+ * @returns {string} returns.data.name - 模板名称
  */
 function saveTemplate(template) {
   const tempDir = templatePool.generate();
@@ -73,15 +70,9 @@ function saveTemplate(template) {
 }
 
 /**
- * Loads all templates
+ * 加载所有模板
  * @function loadTemplateAll
- * @returns {Array<Object>} Array of template objects
- * @returns {string} returns[].id - Template ID
- * @returns {Object} returns[].data - Template data
- * @returns {string} returns[].data.name - Template name
- * @returns {string} returns[].data.background - Background color or file extension
- * @returns {string} returns[].data.backgroundType - "solid" or "image"
- * @returns {string} returns[].imgPath - Image file path
+ * @returns {Array} 模板数组
  */
 function loadTemplateAll() {
   const templateDirs = templatesDir.lsDir().filter(dir => {
@@ -101,16 +92,10 @@ function loadTemplateAll() {
 }
 
 /**
- * Loads template by ID
+ * 根据ID加载模板
  * @function loadTemplateByID
- * @param {string} templateID - Template ID
- * @returns {Object|null} Template object or null if not found
- * @returns {string} returns.id - Template ID
- * @returns {Object} returns.data - Template data
- * @returns {string} returns.data.name - Template name
- * @returns {string} returns.data.background - Background color or file extension
- * @returns {string} returns.data.backgroundType - "solid" or "image"
- * @returns {string} returns.imgPath - Image file path
+ * @param {string} templateID - 模板ID
+ * @returns {Object|null} 模板信息对象或null
  */
 function loadTemplateByID(templateID) {
   const tempDir = templatesDir.cd(templateID);
@@ -124,9 +109,9 @@ function loadTemplateByID(templateID) {
 }
 
 /**
- * Removes a template
+ * 删除模板
  * @function removeTemplate
- * @param {string} templateID - Template ID to remove
+ * @param {string} templateID - 模板ID
  * @returns {void}
  */
 function removeTemplate(templateID) {
@@ -134,11 +119,11 @@ function removeTemplate(templateID) {
 }
 
 /**
- * Renames a template
+ * 重命名模板
  * @function renameTemplate
- * @param {string} templateID - Template ID to rename
- * @param {string} newName - New template name
- * @returns {string} New template ID
+ * @param {string} templateID - 模板ID
+ * @param {string} newName - 新名称
+ * @returns {string} 新模板ID
  */
 function renameTemplate(templateID, newName) {
   const newDir = templatePool.rename(templateID);
@@ -150,18 +135,13 @@ function renameTemplate(templateID, newName) {
 }
 
 /**
- * Sets up template operation IPC handlers
+ * 设置模板操作IPC处理器
  * @function setupTemplateOperationIPC
- * @param {Object} ipc - IPC main process object
- * @param {Object} windows - Collection of window objects
+ * @param {Object} ipc - IPC主进程对象
+ * @param {Object} windows - 窗口对象集合
  * @returns {void}
  */
 function setupTemplateOperationIPC(ipc, windows) {
-  /**
-   * IPC handler for new template result
-   * @event new-template-result
-   * @listens ipc#new-template-result
-   */
   ipc.on('new-template-result', (event, result) => {
     const templateInfo = saveTemplate(result);
     windows.NewFile.webContents.send('new-template-adding', {
@@ -170,40 +150,20 @@ function setupTemplateOperationIPC(ipc, windows) {
     });
   });
 
-  /**
-   * IPC handler for loading template buttons
-   * @event template-load-buttons
-   * @listens ipc#template-load-buttons
-   */
   ipc.handle('template-load-buttons', async (event, windowNow) => {
     return loadTemplateAll();
   });
 
-  /**
-   * IPC handler for removing template
-   * @event template-remove
-   * @listens ipc#template-remove
-   */
   ipc.handle('template-remove', async (event, templateID, windowNow) => {
     removeTemplate(templateID);
     return templateID;
   });
 
-  /**
-   * IPC handler for renaming template
-   * @event template-rename
-   * @listens ipc#template-rename
-   */
   ipc.handle('template-rename', async (event, templateID, name, windowNow) => {
     const newID = renameTemplate(templateID, name);
     return newID;
   });
 
-  /**
-   * IPC handler for editing template
-   * @event template-edit
-   * @listens ipc#template-edit
-   */
   ipc.on('template-edit', (event, templateID) => {
     const info = loadTemplateByID(templateID);
     if (info) {
@@ -229,11 +189,6 @@ function setupTemplateOperationIPC(ipc, windows) {
     }
   });
 
-  /**
-   * IPC handler for copying template
-   * @event template-copy
-   * @listens ipc#template-copy
-   */
   ipc.on('template-copy', (event, templateID) => {
     const info = loadTemplateByID(templateID);
     if (info) {

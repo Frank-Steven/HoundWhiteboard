@@ -8,9 +8,9 @@ class directory {
   name = "";
 
   /**
-   * 构造函数
-   * @param {string} address - 地址
-   * @param {string} name - 目录名
+   * 创建目录实例
+   * @param {string} address 目录所在路径
+   * @param {string} name 目录名称
    */
   constructor (address, name) {
     this.address = address;
@@ -18,62 +18,62 @@ class directory {
   }
 
   /**
-   * 获取完整路径
-   * @returns {string} 完整路径
+   * 获取目录的完整绝对路径
+   * @returns {string} 组合后的完整路径
    */
   getPath() {
     return path.join(this.address, this.name);
   }
 
   /**
-   * 进入子目录
-   * @param {string} pathStr - 路径字符串
-   * @returns {directory} 新的目录对象
+   * 进入指定子目录并返回新实例
+   * @param {string} pathStr 子目录路径(相对路径或目录名)
+   * @returns {directory} 新的目录实例
    */
   cd(pathStr) {
     return new directory(this.getPath(), pathStr);
   }
 
   /**
-   * 进入父目录
-   * @returns {directory} 父目录对象
+   * 获取当前目录的父目录实例
+   * @returns {directory} 父目录实例，如果是根目录则返回null
    */
   father() {
     return new directory(path.dirname(this.address), path.basename(this.address));
   }
 
   /**
-   * 获取文件对象
-   * @param {string} fileName - 文件名
-   * @param {string} fileExt - 文件扩展名
-   * @returns {file} 文件对象
+   * 创建并返回指定文件的实例
+   * @param {string} fileName 文件名(不含扩展名)
+   * @param {string} fileExt 文件扩展名(不含点)
+   * @returns {file} 文件实例
    */
   peek(fileName, fileExt) {
     return new file(this.getPath(), fileName, fileExt)
   }
 
   /**
-   * 判断目录是否在该目录中
-   * @param {file|directory} dirName - 目录名
-   * @returns {boolean} 是否存在
+   * 检查指定子目录是否存在
+   * @param {string} dirName 子目录名称
+   * @returns {boolean} 子目录是否存在
    */
   existDir(dirName) {
     return fp.exist(this.cd(dirName));
   }
 
   /**
-   * 判断文件是否在该目录中
-   * @param {string} fileName - 文件名
-   * @param {string} fileExt - 文件扩展名
-   * @returns {boolean} 是否存在
+   * 检查指定文件是否存在
+   * @param {string} fileName 文件名(不含扩展名)
+   * @param {string} fileExt 文件扩展名(不含点)
+   * @returns {boolean} 文件是否存在
    */
   existFile(fileName, fileExt) {
     return fp.exist(this.peek(fileName, fileExt));
   }
 
   /**
-   * 判断目录是否存在
-   * @returns {boolean} 是否存在
+   * 检查当前目录是否存在
+   * @returns {boolean} 目录是否存在
    */
   exist() {
     return fp.exist(this);
@@ -233,10 +233,10 @@ class file {
   extension = "";
 
   /**
-   * 构造函数
-   * @param {string} address - 地址
-   * @param {string} name - 文件名
-   * @param {string} extension - 文件扩展名
+   * 创建文件实例
+   * @param {string} address 文件所在路径
+   * @param {string} name 文件名(不含扩展名)
+   * @param {string} extension 文件扩展名(不含点)
    */
   constructor (address, name, extension = "") {
     this.address = address;
@@ -245,8 +245,8 @@ class file {
   }
 
   /**
-   * 获取完整路径
-   * @returns {string} 完整路径
+   * 获取文件的完整绝对路径
+   * @returns {string} 组合后的完整路径
    */
   getPath() {
     if (this.extension === "") return path.join(this.address, this.name);
@@ -254,16 +254,16 @@ class file {
   }
 
   /**
-   * 返回文件所在目录
-   * @returns {directory} 目录对象
+   * 获取文件所在的目录实例
+   * @returns {directory} 父目录实例
    */
   unPeek() {
     return new directory(path.dirname(this.address), path.basename(this.address));
   }
 
   /**
-   * 读取文件内容
-   * @returns {string} 文件内容
+   * 读取文件内容为字符串
+   * @returns {string} 文件内容字符串
    */
   cat() {
     return fp.readFile(this);
@@ -461,17 +461,17 @@ class file {
 
 class fpClass {
   /**
-   * 创建目录
-   * @param {directory} dir - 要创建的目录
+   * 创建指定目录
+   * @param {directory} dir 要创建的目录实例
    */
   mkdir(dir) {
     fs.mkdirSync(dir.getPath(), { recursive: true });
   }
 
   /**
-   * 读取目录中的文件夹
-   * @param {directory} dir - 要读取的目录
-   * @returns {Array<directory>} 目录数组
+   * 获取目录中的所有子目录
+   * @param {directory} dir 要读取的目录实例
+   * @returns {Array<directory>} 子目录实例数组
    */
   lsDir(dir) {
     return fs.readdirSync(dir.getPath())
@@ -616,9 +616,9 @@ const { randomNumberPool } = require("./algorithm");
 
 class fileNameRandomPool {
   /**
-   * 构造函数
-   * @param {directory} dir - 要创建随机池的目录
-   * @param {string} type - "directory" -> 文件夹，其它 -> 文件后缀
+   * 创建随机文件名池实例
+   * @param {directory} dir 目标目录实例
+   * @param {string} type "directory"表示目录池，其他值表示文件扩展名
    */
   constructor(dir, type = "directory") {
     this.dir = dir;
@@ -632,8 +632,8 @@ class fileNameRandomPool {
   }
 
   /**
-   * 创建随机目录/文件
-   * @returns {directory|file} 创建的目录或文件对象
+   * 生成随机目录/文件实例
+   * @returns {directory|file} 新创建的目录或文件实例
    */
   generate() {
     const name = this.pool.generate().toString();
@@ -679,8 +679,20 @@ class fileNameRandomPool {
 }
 
 module.exports = {
+  /**
+   * 目录操作类
+   */
   directory,
+  /**
+   * 文件操作类
+   */
   file,
+  /**
+   * 随机文件名生成器
+   */
   fileNameRandomPool,
+  /**
+   * 文件系统操作工具类
+   */
   fp,
 };

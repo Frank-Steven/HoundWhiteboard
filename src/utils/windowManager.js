@@ -1,25 +1,25 @@
 /**
- * @file Window management module
+ * @file 窗口管理模块
  * @module WindowManager
- * @description Handles:
- * - Window creation (normal, fullscreen, modal)
- * - Window lifecycle management
- * - Window IPC communication
+ * @description 功能包括:
+ * - 窗口创建(标准窗口、全屏窗口、模态窗口)
+ * - 窗口生命周期管理
+ * - 窗口进程间通信(IPC)
  */
 
 const { BrowserWindow } = require('electron');
 const settingManager = require('./settingManager');
 
 /**
- * Creates a standard browser window
+ * 创建一个标准浏览器窗口
  * @function createWindow
- * @param {string} template - Template filename
- * @param {Object} [size] - Window size configuration
- * @param {number} [size.width=800] - Window width
- * @param {number} [size.height=600] - Window height
- * @param {number} [size.minWidth=800] - Minimum width
- * @param {number} [size.minHeight=600] - Minimum height
- * @returns {BrowserWindow} Browser window instance
+ * @param {string} template - 模板文件名
+ * @param {Object} [size] - 窗口尺寸配置
+ * @param {number} [size.width=800] - 窗口宽度
+ * @param {number} [size.height=600] - 窗口高度
+ * @param {number} [size.minWidth=800] - 最小宽度
+ * @param {number} [size.minHeight=600] - 最小高度
+ * @returns {BrowserWindow} 浏览器窗口实例
  */
 function createWindow(template, size = { width: 800, height: 600, minWidth: 800, minHeight: 600 }) {
   const win = new BrowserWindow({
@@ -43,10 +43,10 @@ function createWindow(template, size = { width: 800, height: 600, minWidth: 800,
 }
 
 /**
- * Creates a fullscreen window
+ * 创建一个全屏窗口
  * @function createFullScreenWindow
- * @param {string} template - Template filename
- * @returns {BrowserWindow} Browser window instance
+ * @param {string} template - 模板文件名
+ * @returns {BrowserWindow} 浏览器窗口实例
  */
 function createFullScreenWindow(template) {
   const win = new BrowserWindow({
@@ -65,16 +65,16 @@ function createFullScreenWindow(template) {
 }
 
 /**
- * Creates a modal window (currently has known issues)
+ * 创建一个模态窗口(当前存在已知问题)
  * @function createModalWindow
- * @param {string} template - Template filename
- * @param {BrowserWindow} parent - Parent window instance
- * @param {Object} [size] - Window size configuration
- * @param {number} [size.width=800] - Window width
- * @param {number} [size.height=600] - Window height
- * @param {number} [size.minWidth=800] - Minimum width
- * @param {number} [size.minHeight=600] - Minimum height
- * @returns {BrowserWindow} Modal window instance
+ * @param {string} template - 模板文件名
+ * @param {BrowserWindow} parent - 父窗口实例
+ * @param {Object} [size] - 窗口尺寸配置
+ * @param {number} [size.width=800] - 窗口宽度
+ * @param {number} [size.height=600] - 窗口高度
+ * @param {number} [size.minWidth=800] - 最小宽度
+ * @param {number} [size.minHeight=600] - 最小高度
+ * @returns {BrowserWindow} 模态窗口实例
  */
 function createModalWindow(template, parent, size = { width: 800, height: 600, minWidth: 800, minHeight: 600 }) {
   const modalWin = new BrowserWindow({
@@ -101,15 +101,15 @@ function createModalWindow(template, parent, size = { width: 800, height: 600, m
 }
 
 /**
- * Sets up window open/close IPC handlers
+ * 设置窗口打开/关闭的IPC处理器
  * @function setupFileOpenCloseIPC
- * @param {Object} ipc - IPC main process object
- * @param {Object} windows - Collection of window objects
+ * @param {Object} ipc - IPC主进程对象
+ * @param {Object} windows - 窗口对象集合
  * @returns {void}
  */
 function setupFileOpenCloseIPC(ipc, windows) {
   /**
-   * IPC handler for opening a new window
+   * 打开新窗口的IPC处理器
    * @event open-window
    * @listens ipc#open-window
    */
@@ -123,7 +123,7 @@ function setupFileOpenCloseIPC(ipc, windows) {
   });
 
   /**
-   * IPC handler for opening a modal window
+   * 打开模态窗口的IPC处理器
    * @event open-modal-window
    * @listens ipc#open-modal-window
    */
@@ -141,7 +141,7 @@ function setupFileOpenCloseIPC(ipc, windows) {
   });
 
   /**
-   * IPC handler for closing a window
+   * 关闭窗口的IPC处理器
    * @event close-window
    * @listens ipc#close-window
    */
