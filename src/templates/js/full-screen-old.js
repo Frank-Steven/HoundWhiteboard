@@ -1,7 +1,7 @@
 const path = require("path");
 const { getStroke } = require("perfect-freehand");
 const { fileNameRandomPool, file, directory } = require("../../classes/io");
-const boardManager = require("../../utils/boardManager");
+const boardManager = require("../../utils/board-manager");
 const math = require("mathjs");
 
 // prefect-freehand 参数
@@ -25,10 +25,10 @@ const math = require("mathjs");
 //   },
 // };
 
-let currentPageIndex = 0;
-let pages = [];
+// let currentPageIndex = 0;
+// let pages = [];
 
-let pagePool, templatePool;
+// let pagePool, templatePool;
 
 // class strokeClass {
 //   constructor(innerPoints) {

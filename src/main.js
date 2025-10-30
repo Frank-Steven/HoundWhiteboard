@@ -1,8 +1,8 @@
 const { app, BrowserWindow } = require("electron");
-const settingManager = require("./utils/settingManager");
-const winManager = require("./utils/windowManager");
-const boardManager = require("./utils/boardManager");
-const templateManager = require("./utils/templateManager");
+const settingManager = require("./utils/setting-manager");
+const winManager = require("./utils/window-manager");
+const boardManager = require("./utils/board-manager");
+const templateManager = require("./utils/template-manager");
 const { file, directory } = require("./classes/io");
 const ipc = require("electron").ipcMain;
 

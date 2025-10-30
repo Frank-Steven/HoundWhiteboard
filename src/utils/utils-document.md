@@ -2,7 +2,7 @@
 
 本文档提供项目中所有工具模块的概述。
 
-## [Window Manager](windowManager.js)
+## [Window Manager](window-manager.js)
 
 处理Electron应用中的窗口创建和管理。
 
@@ -23,7 +23,7 @@
 
 ---
 
-## [Template Manager](templateManager.js)
+## [Template Manager](template-manager.js)
 
 处理模板生命周期和操作。
 
@@ -40,12 +40,12 @@
 - `setupTemplateOperationIPC(ipc, windows)` - 设置模板IPC处理器
 
 ### 依赖:
-- `windowManager`用于窗口操作
+- `window-manager`用于窗口操作
 - `io`类用于文件操作
 
 ---
 
-## [Setting Manager](settingManager.js)
+## [Setting Manager](setting-manager.js)
 
 管理应用设置和文件操作。
 
@@ -67,7 +67,7 @@
 
 ---
 
-## [Texture Manager](textureManager.js)
+## [Texture Manager](texture-manager.js)
 
 处理SVG纹理生成和拼接。
 
@@ -84,7 +84,7 @@
 
 ---
 
-## [Board Manager](boardManager.js)
+## [Board Manager](board-manager.js)
 
 管理白板生命周期和页面。
 
@@ -101,7 +101,7 @@
 - `saveBoard(boardDir)` - 保存白板
 
 ### 依赖:
-- `windowManager`用于窗口操作
+- `window-manager`用于窗口操作
 - `io`类用于文件操作
 
 ---
@@ -151,13 +151,13 @@
 ## 模块依赖关系图
 
 ```
-windowManager.js ────┐
-                     ├─ templateManager.js
-settingManager.js ───┘
+window-manager.js ────┐
+                      ├─ template-manager.js
+setting-manager.js ───┘
 
-textureManager.js ───┐
-                     ├─ boardManager.js
-fake-window.js ──────┘
+texture-manager.js ───┐
+                      ├─ board-manager.js
+fake-window.js ───────┘
 
 toast.js ──────────── (独立模块)
 ```

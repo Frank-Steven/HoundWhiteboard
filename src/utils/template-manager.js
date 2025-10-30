@@ -7,7 +7,7 @@
  * - 模板IPC通信
  */
 
-const winManager = require('./windowManager');
+const winManager = require('./window-manager');
 const { file, directory, fileNameRandomPool } = require('../classes/io');
 
 let templatesDir, templatePool;

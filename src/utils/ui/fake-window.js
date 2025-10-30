@@ -2,7 +2,7 @@
  * 伪窗口工具模块
  * 提供灵活的窗口显示和定位功能
  * 
- * @module fake-window
+ * @module FakeWindow
  * @description 轻量级窗口管理工具，支持居中和自定义位置两种显示模式
  * @example
  * const FakeWindow = require('./utils/ui/fake-window');
