@@ -111,7 +111,7 @@ function setupFileOperationIPC(ipc, windows) {
  */
 function init(app) {
   userDataDir = directory.parse(app.getPath('userData'));
-  settingsFile = userDataDir.peek('settings', 'json').existOrWriteJSON(defaultSettings);
+  settingsFile = userDataDir.cd("data").existOrMake().peek('settings', 'json').existOrWriteJSON(defaultSettings);
 }
 
 /**
