@@ -1,11 +1,11 @@
 /**
- * @file New template creation module
+ * @file 新建模板创建模块
  * @module NewTemplate
- * @description Handles:
- * - Template background configuration (solid color/image)
- * - Texture selection
- * - Template preview
- * - Template creation confirmation
+ * @description 处理:
+ * - 模板背景配置（纯色/图片）
+ * - 纹理选择
+ * - 模板预览
+ * - 模板创建确认
  */
 
 const { directory } = require('../../classes/io');
@@ -13,7 +13,7 @@ const { directory } = require('../../classes/io');
 const Toast = require('../../utils/ui/toast');
 const toast = new Toast();
 
-// DOM elements
+// DOM 元素
 const chooseTextureBtn = document.getElementById('new-template-foreground-import');
 const solidOpt = document.getElementById('new-template-background-options-solid');
 const imageOpt = document.getElementById('new-template-background-options-image');
@@ -26,12 +26,12 @@ const confirmBtn = document.getElementById('yes-or-no-button-yes');
 const cancelBtn = document.getElementById('yes-or-no-button-no');
 
 /**
- * Template creation result object
+ * 模板创建结果对象
  * @type {Object}
- * @property {string|null} texture - Selected texture path
- * @property {string|null} backgroundColor - Background color (if solid)
- * @property {string|null} backgroundImage - Background image path (if image)
- * @property {string|null} name - Template name
+ * @property {string|null} texture - 所选纹理路径
+ * @property {string|null} backgroundColor - 背景颜色（如果是纯色）
+ * @property {string|null} backgroundImage - 背景图片路径（如果是图片）
+ * @property {string|null} name - 模板名称
  */
 let result = {
   texture: null,
@@ -43,11 +43,11 @@ let result = {
 let backgroundImage = '';
 let deleteID = null;
 
-// Initialize preview
+// 初始化预览
 previewScreenFlush();
 
 /**
- * Updates the preview screen based on current settings
+ * 根据当前设置更新预览屏幕
  * @function previewScreenFlush
  * @returns {void}
  */
@@ -62,9 +62,9 @@ function previewScreenFlush() {
 }
 
 /**
- * Applies visual feedback by blinking an element
+ * 通过闪烁元素来应用视觉反馈
  * @function blink
- * @param {HTMLElement} element - The element to apply blink effect
+ * @param {HTMLElement} element - 要应用闪烁效果的元素
  * @returns {void}
  */
 function blink(element) {
@@ -72,7 +72,7 @@ function blink(element) {
   setTimeout(() => element.classList.remove('blinking'), 500);
 }
 
-// Background option change listeners
+// 背景选项更改监听器
 solidOpt.addEventListener('change', () => {
   previewScreenFlush();
 });
@@ -82,7 +82,7 @@ imageOpt.addEventListener('change', () => {
 });
 
 /**
- * IPC event listener for image selection
+ * 图片选择的 IPC 事件监听器
  * @event image-choose
  * @listens HTMLElement#click
  */
@@ -99,14 +99,14 @@ imageChooseBtn.addEventListener('click', async () => {
 });
 
 /**
- * IPC event listener for texture selection
+ * 纹理选择的 IPC 事件监听器
  * @event texture-choose
  * @listens HTMLElement#click
  */
 chooseTextureBtn.addEventListener('click', async () => {
   const result = await ipc.invoke('open-hmq-file', 'NewTemplate');
   if (result) {
-    // TODO: Implement texture system
+    // TODO: 实现纹理系统
     previewScreenFlush();
   }
 });
@@ -118,7 +118,7 @@ color.addEventListener('change', () => {
 });
 
 /**
- * IPC event listener for cancel button
+ * 取消按钮的 IPC 事件监听器
  * @event cancel-click
  * @listens HTMLElement#click
  */
@@ -127,7 +127,7 @@ cancelBtn.addEventListener('click', () => {
 });
 
 /**
- * IPC event listener for confirm button
+ * 确认按钮的 IPC 事件监听器
  * @event confirm-click
  * @listens HTMLElement#click
  */
@@ -152,12 +152,12 @@ confirmBtn.addEventListener('click', async () => {
 });
 
 /**
- * IPC event listener for template initialization from existing template
+ * 从现有模板初始化模板的 IPC 事件监听器
  * @event init-new-template-from-other-template
  * @listens ipc#init-new-template-from-other-template
- * @param {Object} templateInfo - Source template information
- * @param {string} pathStr - Path to template directory
- * @param {string} prevID - Previous template ID to delete (optional)
+ * @param {Object} templateInfo - 源模板信息
+ * @param {string} pathStr - 模板目录路径
+ * @param {string} prevID - 要删除的先前模板 ID（可选）
  */
 ipc.on('init-new-template-from-other-template', (event, templateInfo, pathStr, prevID) => {
   nameInput.value = templateInfo.name;

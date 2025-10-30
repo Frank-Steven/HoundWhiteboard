@@ -1,14 +1,14 @@
 /**
- * @file Template rename module
+ * @file 模板重命名模块
  * @module TemplateRename
- * @description Handles:
- * - Inline template renaming functionality
- * - Name validation and sanitization
- * - Internationalized error messages
- * - Rename operation execution
+ * @description 处理:
+ * - 内联模板重命名功能
+ * - 名称验证和清理
+ * - 国际化错误消息
+ * - 重命名操作执行
  */
 
-// DOM elements
+// DOM 元素
 const renameEditor = document.getElementById('rename-editor');
 const renameInput = document.getElementById('rename-editor-input');
 const renameError = document.getElementById('rename-editor-error');
@@ -20,12 +20,12 @@ let originalTemplateName = '';
 let renameTexts = {};
 
 /**
- * Filename validation configuration
+ * 文件名验证配置
  * @constant RENAME_FILTER_CONFIG
  * @type {Object}
- * @property {RegExp} illegalChars - Regex for illegal characters
- * @property {number} maxLength - Maximum allowed length
- * @property {string} replaceChar - Replacement character for illegal chars
+ * @property {RegExp} illegalChars - 非法字符的正则表达式
+ * @property {number} maxLength - 最大允许长度
+ * @property {string} replaceChar - 非法字符的替换字符
  */
 const RENAME_FILTER_CONFIG = {
   illegalChars: /[<>:"/\\.@|?*~$^'`\u0000-\u001F]/g,
@@ -34,17 +34,17 @@ const RENAME_FILTER_CONFIG = {
 };
 
 /**
- * Loads internationalized texts for the rename editor
+ * 为重命名编辑器加载国际化文本
  * @function loadRenameTexts
  * @returns {void}
  */
 function loadRenameTexts() {
-  const language = require(`../../data/languages/${window.settings.language}.json`);
+  const language = require(`../../../data/languages/${window.settings.language}.json`);
   renameTexts = language.text['rename-editor'];
 }
 
 /**
- * IPC event listener for language change
+ * 语言更改的 IPC 事件监听器
  * @event languageChanged
  * @listens document#languageChanged
  */
@@ -52,7 +52,7 @@ document.addEventListener('languageChanged', () => {
   loadRenameTexts();
 });
 
-// Initial load
+// 初始加载
 setTimeout(() => {
   if (window.settings) {
     loadRenameTexts();
@@ -60,9 +60,9 @@ setTimeout(() => {
 }, 100);
 
 /**
- * Shows the rename editor for a template button
+ * 为模板按钮显示重命名编辑器
  * @function showRenameEditor
- * @param {HTMLElement} templateButton - The template button element
+ * @param {HTMLElement} templateButton - 模板按钮元素
  * @returns {void}
  */
 function showRenameEditor(templateButton) {
@@ -85,7 +85,7 @@ function showRenameEditor(templateButton) {
 }
 
 /**
- * Hides the rename editor
+ * 隐藏重命名编辑器
  * @function hideRenameEditor
  * @returns {void}
  */
@@ -100,7 +100,7 @@ function hideRenameEditor() {
 }
 
 /**
- * Clears rename error state
+ * 清除重命名错误状态
  * @function clearRenameError
  * @returns {void}
  */
@@ -111,9 +111,9 @@ function clearRenameError() {
 }
 
 /**
- * Shows rename error message
+ * 显示重命名错误消息
  * @function showRenameError
- * @param {string} message - Error message to display
+ * @param {string} message - 要显示的错误消息
  * @returns {void}
  */
 function showRenameError(message) {
@@ -127,12 +127,12 @@ function showRenameError(message) {
 }
 
 /**
- * Validates template name
+ * 验证模板名称
  * @function validateTemplateName
- * @param {string} name - Template name to validate
- * @returns {Object} Validation result
- * @property {boolean} valid - Whether name is valid
- * @property {string} [error] - Error message if invalid
+ * @param {string} name - 要验证的模板名称
+ * @returns {Object} 验证结果
+ * @property {boolean} valid - 名称是否有效
+ * @property {string} [error] - 如果无效则返回错误消息
  */
 function validateTemplateName(name) {
   if (!name || name.trim() === '') {
@@ -156,10 +156,10 @@ function validateTemplateName(name) {
 }
 
 /**
- * Sanitizes template name
+ * 清理模板名称
  * @function sanitizeTemplateName
- * @param {string} value - Raw template name
- * @returns {string} Sanitized template name
+ * @param {string} value - 原始模板名称
+ * @returns {string} 清理后的模板名称
  */
 function sanitizeTemplateName(value) {
   let cleaned = value.trim()
@@ -172,7 +172,7 @@ function sanitizeTemplateName(value) {
 }
 
 /**
- * Performs the rename operation
+ * 执行重命名操作
  * @function performRename
  * @returns {Promise<void>}
  */
@@ -203,7 +203,7 @@ async function performRename() {
 }
 
 /**
- * Input event listener for real-time validation
+ * 实时验证的输入事件监听器
  * @event input
  * @listens HTMLElement#input
  */
@@ -220,7 +220,7 @@ renameInput.addEventListener('input', () => {
 });
 
 /**
- * IPC event listener for confirm button
+ * 确认按钮的 IPC 事件监听器
  * @event confirm-click
  * @listens HTMLElement#click
  */
@@ -229,7 +229,7 @@ renameConfirmBtn.addEventListener('click', () => {
 });
 
 /**
- * IPC event listener for cancel button
+ * 取消按钮的 IPC 事件监听器
  * @event cancel-click
  * @listens HTMLElement#click
  */
@@ -238,7 +238,7 @@ renameCancelBtn.addEventListener('click', () => {
 });
 
 /**
- * Keyboard event listener for rename input
+ * 重命名输入的键盘事件监听器
  * @event keydown
  * @listens HTMLElement#keydown
  */
@@ -253,7 +253,7 @@ renameInput.addEventListener('keydown', (e) => {
 });
 
 /**
- * Click event listener for editor backdrop
+ * 编辑器背景的点击事件监听器
  * @event click
  * @listens HTMLElement#click
  */
@@ -263,7 +263,7 @@ renameEditor.addEventListener('click', (e) => {
   }
 });
 
-// Prevent click propagation
+// 阻止点击传播
 document.querySelector('.rename-editor-container').addEventListener('click', (e) => {
   e.stopPropagation();
 });

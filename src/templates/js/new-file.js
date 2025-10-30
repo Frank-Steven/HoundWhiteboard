@@ -1,11 +1,11 @@
 /**
- * @file New file creation module
+ * @file 新建文件创建模块
  * @module NewFile
- * @description Handles:
- * - File name validation and sanitization
- * - Save path selection
- * - Template selection
- * - New file creation confirmation
+ * @description 处理:
+ * - 文件名验证和清理
+ * - 保存路径选择
+ * - 模板选择
+ * - 新建文件创建确认
  */
 
 const path = require('path');
@@ -14,7 +14,7 @@ const { file, directory } = require('../../classes/io');
 const Toast = require('../../utils/ui/toast');
 const toast = new Toast();
 
-// DOM elements
+// DOM 元素
 const newTemplateBtn = document.getElementById('new-file-template-select-new-template');
 const input = document.getElementById('new-file-save-form-input');
 const filePathSpan = document.getElementById('new-file-save-path');
@@ -30,9 +30,9 @@ const boardInfo = {
 };
 
 /**
- * Applies visual feedback by blinking an element
+ * 通过闪烁元素来应用视觉反馈
  * @function blink
- * @param {HTMLElement} element - The element to apply blink effect
+ * @param {HTMLElement} element - 要应用闪烁效果的元素
  * @returns {void}
  */
 function blink(element) {
@@ -41,12 +41,12 @@ function blink(element) {
 }
 
 /**
- * Sanitizes filename input according to OS restrictions
+ * 根据操作系统限制清理文件名输入
  * @function sanitizeFilename
- * @param {string} value - Raw filename input
- * @returns {string} Sanitized filename
+ * @param {string} value - 原始文件名输入
+ * @returns {string} 清理后的文件名
  * @example
- * sanitizeFilename('my<file>.hwb'); // Returns 'my_file_.hwb'
+ * sanitizeFilename('my<file>.hwb'); // 返回 'my_file_.hwb'
  */
 function sanitizeFilename(value) {
   const FILTER_CONFIG = {
@@ -69,9 +69,9 @@ function sanitizeFilename(value) {
 }
 
 /**
- * Updates the file path display based on current input
+ * 根据当前输入更新文件路径显示
  * @function updateFilePathDisplay
- * @param {string} fileName - Current filename input
+ * @param {string} fileName - 当前文件名输入
  * @returns {void}
  */
 function updateFilePathDisplay(fileName) {
@@ -82,7 +82,7 @@ function updateFilePathDisplay(fileName) {
   filePathSpan.textContent = boardInfo.filePath || "未选择路径";
 }
 
-// Input validation
+// 输入验证
 input.addEventListener('input', () => {
   const newValue = sanitizeFilename(input.value);
   
@@ -95,7 +95,7 @@ input.addEventListener('input', () => {
 });
 
 /**
- * IPC event listener for path selection
+ * 路径选择的 IPC 事件监听器
  * @event path-choose
  * @listens HTMLElement#click
  */
@@ -109,7 +109,7 @@ choosePathBtn.addEventListener('click', async () => {
 });
 
 /**
- * IPC event listener for new template button
+ * 新建模板按钮的 IPC 事件监听器
  * @event new-template-click
  * @listens HTMLElement#click
  */
@@ -118,7 +118,7 @@ newTemplateBtn.addEventListener('click', () => {
 });
 
 /**
- * IPC event listener for cancel button
+ * 取消按钮的 IPC 事件监听器
  * @event cancel-click
  * @listens HTMLElement#click
  */
@@ -127,7 +127,7 @@ cancelBtn.addEventListener('click', () => {
 });
 
 /**
- * IPC event listener for confirm button
+ * 确认按钮的 IPC 事件监听器
  * @event confirm-click
  * @listens HTMLElement#click
  */
@@ -168,9 +168,9 @@ confirmBtn.addEventListener('click', () => {
 });
 
 /**
- * Selects a template button visually
+ * 可视化地选择模板按钮
  * @function chooseButton
- * @param {string} templateID - ID of the selected template
+ * @param {string} templateID - 所选模板的 ID
  * @returns {void}
  */
 function chooseButton(templateID) {
@@ -184,12 +184,12 @@ function chooseButton(templateID) {
 }
 
 /**
- * Creates and adds a template selection button
+ * 创建并添加模板选择按钮
  * @function buttonLoadAdd
- * @param {Object} element - Template data object
- * @property {string} element.id - Template ID
- * @property {Object} element.data - Template metadata
- * @property {string} element.imgPath - Template preview image path
+ * @param {Object} element - 模板数据对象
+ * @property {string} element.id - 模板 ID
+ * @property {Object} element.data - 模板元数据
+ * @property {string} element.imgPath - 模板预览图片路径
  * @returns {void}
  */
 function buttonLoadAdd(element) {
@@ -223,7 +223,7 @@ function buttonLoadAdd(element) {
   btn.addEventListener('click', choose);
 }
 
-// Initialize template buttons
+// 初始化模板按钮
 (async () => {
   const result = await ipc.invoke('template-load-buttons', 'NewFile');
   buttonList.innerHTML = '';
@@ -234,7 +234,7 @@ function buttonLoadAdd(element) {
 })();
 
 /**
- * IPC event listener for new template addition
+ * 新建模板添加的 IPC 事件监听器
  * @event new-template-adding
  * @listens ipc#new-template-adding
  */

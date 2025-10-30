@@ -1,23 +1,23 @@
 /**
- * @file Global utilities module for theme and language management
+ * @file 主题和语言管理的全局工具模块
  * @module GlobalUtils
- * @description Handles:
- * - Theme switching functionality
- * - Language translation system
- * - IPC communication for settings changes
+ * @description 主要功能包括：
+ * - 主题切换功能
+ * - 多语言翻译系统
+ * - 设置变更的 IPC 通信处理
  */
 
 const { ipcRenderer } = require("electron");
 const ipc = ipcRenderer;
 
 /**
- * IPC event listener for initial settings load
+ * 初始化语言和主题的 IPC 事件监听
  * @event settings-loaded
  * @listens ipc#settings-loaded
- * @param {Event} event - IPC event object
- * @param {Object} settings - Application settings object
- * @property {string} settings.theme - Current theme name
- * @property {string} settings.language - Current language code
+ * @param {Event} event - IPC 事件对象
+ * @param {Object} settings - 应用程序设置对象
+ * @property {string} settings.theme - 当前主题名称
+ * @property {string} settings.language - 当前语言代码
  */
 ipc.on("settings-loaded", (event, settings) => {
   window.settings = settings;
@@ -26,37 +26,37 @@ ipc.on("settings-loaded", (event, settings) => {
 });
 
 /**
- * Sets the application theme by updating the theme stylesheet
+ * 通过更新 theme-stylesheet 的 HTMLElement 应用主题样式
  * @function setTheme
  * @returns {void}
- * @throws {Error} If theme stylesheet element is not found
+ * @throws {Error} 当找不到 ID 为 theme-stylesheet 的 HTML 元素时
  * @example
- * // Assuming window.settings.theme is 'dark'
- * setTheme(); // Loads '../../data/themes/dark.css'
+ * // 假设 window.settings.theme 为 'dark'
+ * setTheme(); // 加载 '../../../data/themes/dark.css'
  */
 function setTheme() {
   const stylesheet = document.getElementById("theme-stylesheet");
   if (!stylesheet) {
     throw new Error('Theme stylesheet element not found');
   }
-  stylesheet.href = `../../data/themes/${window.settings.theme}.css`;
+  stylesheet.href = `../../../data/themes/${window.settings.theme}.css`;
 }
 
 /**
- * Updates all text nodes in the DOM based on current language
+ * 根据当前语言更新 DOM 中所有文本节点
  * @function setLanguage
  * @returns {void}
- * @fires languageChanged
- * @throws {Error} If language file cannot be loaded
+ * @fires languageChanged 语言变更事件
+ * @throws {Error} 无法加载语言文件时抛出异常
  */
 function setLanguage() {
-  const language = require(`../../data/languages/${window.settings.language}.json`);
+  const language = require(`../../../data/languages/${window.settings.language}.json`);
 
   /**
-   * Recursively updates text nodes in the DOM
+   * 递归更新 DOM 中的文本节点
    * @function updateTextNodes
-   * @param {Object} obj - Language translation object
-   * @param {string} [parentId=""] - Parent element ID for nested translations
+   * @param {Object} obj - 语言翻译对象
+   * @param {string} [parentId=""] - 嵌套翻译的父元素 ID
    * @returns {void}
    */
   function updateTextNodes(obj, parentId = "") {
@@ -69,7 +69,7 @@ function setLanguage() {
         const element = document.getElementById(currentId);
         if (element) {
           element.innerText = obj[key];
-          // Special handling for input placeholders
+          // 特殊处理输入框（保留原逻辑）
           if (element.tagName === "INPUT" && element.placeholder) {
             element.placeholder = obj[key];
           }
@@ -81,11 +81,11 @@ function setLanguage() {
   updateTextNodes(language.text);
 
   /**
-   * Language changed event
+   * 语言变更事件
    * @event languageChanged
    * @type {CustomEvent}
-   * @property {Object} detail - Event details
-   * @property {string} detail.lang - New language code
+   * @property {Object} detail - 事件详情
+   * @property {string} detail.lang - 新语言代码
    */
   const langEvent = new CustomEvent("languageChanged", {
     detail: { lang: window.settings.language },
@@ -94,11 +94,11 @@ function setLanguage() {
 }
 
 /**
- * IPC event listener for settings changes
+ * 监听设置变更的 IPC 事件
  * @event settings-changed
  * @listens ipc#settings-changed
- * @param {Event} event - IPC event object
- * @param {Object} settings - Updated application settings
+ * @param {Event} event - IPC 事件对象
+ * @param {Object} settings - 更新后的应用程序设置
  */
 ipc.on("settings-changed", (event, settings) => {
   console.log("Settings changed.");
