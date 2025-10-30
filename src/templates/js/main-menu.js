@@ -7,8 +7,6 @@
  * - Settings management (theme/language selection)
  */
 
-const { ipcRenderer } = require('electron');
-const ipc = ipcRenderer;
 const fs = require('fs');
 
 // Sidebar elements
