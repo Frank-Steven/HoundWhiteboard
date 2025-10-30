@@ -1,4 +1,10 @@
-const { directory, file, fileNameRandomPool } = require("../classes/io");
+/**
+ * @file 纹理管理模块
+ * @module TextureManager
+ * @description 功能包括:
+ * - SVG纹理生成
+ * - 瓦片纹理创建
+ */
 
 // 线条模式配置示例
 const lineConfig = {

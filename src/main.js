@@ -1,8 +1,9 @@
 const { app, BrowserWindow } = require("electron");
-const settingManager = require("./utils/settingManager");
-const winManager = require("./utils/windowManager");
-const boardManager = require("./utils/boardManager");
-const templateManager = require("./utils/templateManager");
+const settingManager = require("./utils/setting-manager");
+const foManager = require("./utils/file-open-manager");
+const winManager = require("./utils/window-manager");
+const boardManager = require("./utils/board-manager");
+const templateManager = require("./utils/template-manager");
 const { file, directory } = require("./classes/io");
 const ipc = require("electron").ipcMain;
 
@@ -36,13 +37,13 @@ app.whenReady().then(() => {
     }
   });
 
-  // 设置 IPC 处理器
-  settingManager.setupSettingsIPC(ipc, BrowserWindow);
-  settingManager.setupFileOperationIPC(ipc, windows);
-  winManager.setupFileOpenCloseIPC(ipc, windows);
-  templateManager.setupTemplateOperationIPC(ipc, windows);
+  // 设置进程间通信(IPC)处理器
+  settingManager.setupSettingsIPC(ipc, BrowserWindow);  // 设置处理器
+  foManager.setupFileOpenIPC(ipc, windows);
+  winManager.setupFileOpenCloseIPC(ipc, windows);      // 窗口开关处理器
+  templateManager.setupTemplateOperationIPC(ipc, windows); // 模板操作处理器
 
-  // console.log(windows);
+  // 调试用：打印窗口对象
 });
 
 app.on("window-all-closed", () => {
@@ -53,10 +54,11 @@ app.on("window-all-closed", () => {
   }, 1000);
 });
 
+// 参数说明:
 // {
-//   {string} templateID
-//   {file} boardFile
-// } boardInfo
+//   {string} templateID - 模板ID
+//   {file} boardFile - 白板文件对象
+// } boardInfo - 白板信息对象
 ipc.on("create-new-board-templated", (event, boardInfo) => {
   console.log("create-new-board-templated: %s At %s", boardInfo.templateID, boardInfo.filePath);
   boardManager.createEmptyBoard(boardInfo);

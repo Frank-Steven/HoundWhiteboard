@@ -1,10 +1,8 @@
-function generateRndInt(min, max) {
-  return parseInt(Math.random() * (max - min + 1) + min, 10);
-}
+const { randomInt } = require("crypto");
 
 class randomNumberPool {
   /**
-   * 
+   * 创建随机数池
    * @param {number} min 随机数的最小值
    * @param {number} max 随机数的最大值
    */
@@ -15,8 +13,8 @@ class randomNumberPool {
   }
 
   /**
-   * 用数组 arr 来初始化
-   * @param {number[]} arr
+   * 用数组初始化随机数池
+   * @param {number[]} arr 用于初始化的数字数组
    */
   initFromArray(arr) {
     for (let i = 0; i < arr.length; i++) {
@@ -25,22 +23,22 @@ class randomNumberPool {
   }
 
   /**
-   * 生成随机数
+   * 生成不重复的随机数
    * @returns {number} 生成的随机数
    */
   generate() {
     let num;
     do {
-      num = generateRndInt(this.min, this.max);
+      num = randomInt(this.min, this.max);
     } while (this.pool[num]);
     this.pool[num] = true;
     return num;
   }
 
   /**
-   * 从随机池中删除一数
-   * @param {number} num
-   * @returns 是否删除成功
+   * 从随机池中删除指定数字
+   * @param {number} num 要删除的数字
+   * @returns {boolean} 是否删除成功
    */
   remove(num) {
     if (this.pool[num]){
@@ -51,9 +49,9 @@ class randomNumberPool {
   }
 
   /**
-   * 在池中重命名一数
-   * @param {number} num 欲重命名的数
-   * @returns 重命名后的数
+   * 在池中重新生成一个不重复的数字
+   * @param {number} num 要替换的数字
+   * @returns {number} 新生成的数字
    */
   rename(num) {
     let newNum = this.generate();
@@ -64,6 +62,8 @@ class randomNumberPool {
 
 /**
  * 获取二指操作的变换矩阵
+ * 
+ * @bug 这个算法其实有点问题，计算 a b c d 是对的，但是 e 和 f 是错的
  *
  * @param {number} x1 原始点一的横坐标
  * @param {number} y1 原始点一的纵坐标
@@ -116,6 +116,8 @@ function getDualFingerResult(x1, y1, x2, y2, x1q, y1q, x2q, y2q, aq, bq, cq, dq,
 
 /**
  * 获取三指操作的变换矩阵
+ * 
+ * @bug 这个算法其实有点问题，计算 a b c d 是对的，但是 e 和 f 是错的
  *
  * @param {number} x1 原始点一的横坐标
  * @param {number} y1 原始点一的纵坐标
@@ -173,7 +175,6 @@ function getTriFingerResult(x1, y1, x2, y2, x3, y3, x1q, y1q, x2q, y2q, x3q, y3q
 }
 
 module.exports = {
-  generateRndInt,
   getDualFingerResult,
   getTriFingerResult,
   randomNumberPool,
