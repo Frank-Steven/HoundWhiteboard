@@ -2,7 +2,7 @@
  * 内联提示框组件 - 模块化版本
  * 功能完整的通用提示框系统
  *
- * @module toast
+ * @module Toast
  * @description 零依赖、轻量级的提示框组件，支持多种自定义选项和动画效果
  * @example
  * const Toast = require('./utils/ui/toast');
