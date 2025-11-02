@@ -1,7 +1,6 @@
 /**
- * @file 新建模板创建模块
- * @module NewTemplate
- * @description 处理:
+ * @file 新建模板创建
+ * @description 功能:
  * - 模板背景配置（纯色/图片）
  * - 纹理选择
  * - 模板预览

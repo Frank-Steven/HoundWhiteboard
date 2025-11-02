@@ -1,7 +1,7 @@
 /**
  * @file 窗口管理模块
- * @module WindowManager
- * @description 功能包括:
+ * @module window-manager
+ * @description 功能:
  * - 窗口创建(标准窗口、全屏窗口、模态窗口)
  * - 窗口生命周期管理
  * - 窗口进程间通信(IPC)

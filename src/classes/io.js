@@ -282,7 +282,7 @@ class file {
 
   /**
    * 读取 JSON 文件内容
-   * @returns {Object} JSON 对象
+   * @returns {JSON} JSON 对象
    */
   catJSON() {
     return JSON.parse(this.cat());
@@ -300,7 +300,7 @@ class file {
 
   /**
    * 写入 JSON
-   * @param {Object} content - 要写入的内容
+   * @param {JSON} content - 要写入的内容
    * @returns {file} 当前文件对象
    */
   writeJSON(content) {

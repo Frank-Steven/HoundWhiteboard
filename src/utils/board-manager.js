@@ -1,7 +1,7 @@
 /**
  * @file 白板管理模块
- * @module BoardManager
- * @description 功能包括:
+ * @module board-manager
+ * @description 功能:
  * - 白板生命周期管理(创建、打开、保存)
  * - 页面管理
  * - 模板应用
@@ -12,12 +12,17 @@ const { fileNameRandomPool, directory, file } = require('../classes/io');
 
 let templatesDir;
 
-// 元数据常量
+/**
+ * 白板元数据常量
+ */
 const boardMeta = {
   type: 'board',
   version: '0.1.0'
 };
 
+/**
+ * 页面元数据常量
+ */
 const pageMeta = {
   type: 'page',
   version: '0.1.0'
@@ -37,8 +42,10 @@ function init(app) {
  * 创建空白白板
  * @function createEmptyBoard
  * @param {Object} boardInfo - 白板信息
- * @param {string} [boardInfo.filePath] - 白板文件路径
- * @param {string} [boardInfo.templateID] - 要应用的模板ID
+ * @param {string} boardInfo.filePath - 白板文件路径
+ * @param {string} boardInfo.templateID - 要应用的模板ID
+ * @param {number} boardInfo.width - 白板的宽度
+ * @param {number} boardInfo.height - 白板的高度
  * @returns {void}
  */
 function createEmptyBoard(boardInfo) {
@@ -47,27 +54,31 @@ function createEmptyBoard(boardInfo) {
   const tempDir = new directory(boardFile.address, boardFile.name).rmWhenExist().make();
 
   // 创建元数据文件
-  tempDir.peek('meta', 'json').writeJSON(boardMeta);
-  tempDir.peek('histroy', 'json').writeJSON([]);
+  tempDir.peek("meta", "json").writeJSON(boardMeta);
+  tempDir.peek("histroy", "json").writeJSON([]);
+  tempDir.peek("config", "json").writeJSON({
+    width: boardInfo.width,
+    height: boardInfo.height,
+  });
 
   // 创建页面目录
-  tempDir.cd('pages').make();
+  tempDir.cd("pages").make();
 
   // 生成第一页
-  const pagePool = new fileNameRandomPool(tempDir.cd('pages'));
+  const pagePool = new fileNameRandomPool(tempDir.cd("pages"));
   const firstPageDir = pagePool.generate();
   const firstPageID = firstPageDir.name;
 
   // 创建页面元数据和数据
-  firstPageDir.peek('meta', 'json').writeJSON(pageMeta);
-  firstPageDir.cd('assets').make();
-  firstPageDir.peek('page', 'json').writeJSON({
+  firstPageDir.peek("meta", "json").writeJSON(pageMeta);
+  firstPageDir.cd("assets").make();
+  firstPageDir.peek("page", "json").writeJSON({
     strokes: [],
     assets: []
   });
 
   // 创建页面列表
-  tempDir.peek('pages', 'json').writeJSON([
+  tempDir.peek("pages", "json").writeJSON([
     {
       templateID: boardInfo.templateID,
       pageID: firstPageID
@@ -75,9 +86,9 @@ function createEmptyBoard(boardInfo) {
   ]);
 
   // 复制模板资源
-  tempDir.cd('templates');
+  tempDir.cd("templates");
   templatesDir.cd(boardInfo.templateID)
-              .cp(tempDir.cd('templates').cd(boardInfo.templateID));
+              .cp(tempDir.cd("templates").cd(boardInfo.templateID));
 
   // 压缩并隐藏临时目录
   tempDir.compress(boardFile, false);

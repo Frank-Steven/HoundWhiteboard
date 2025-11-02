@@ -4,9 +4,16 @@
 
 const RenderManager = require("../js/full-screen-utils/render-manager.js");
 
-let testRenderManager = new RenderManager(document.getElementById('canvas'));
+const canvas = document.getElementById('canvas');
 
-let test = {
+// 设置 canvas 的内部分辨率，使其与 CSS 尺寸匹配
+// 这样可以避免内容被拉伸
+canvas.width = 800;
+canvas.height = 600;
+
+let testRenderManager = new RenderManager(canvas);
+
+testRenderManager.renderDirect({
   type: "solidPolygon",
   position: { x: 0, y: 0 },
   transform: [[1, 0], [0, 1]],
@@ -15,9 +22,7 @@ let test = {
       points: [[0, 0], [100, 100], [0, 100]]
     }
   }
-};
-
-testRenderManager.renderDirect(test);
+});
 
 testRenderManager.renderDirect({
   type: "text",

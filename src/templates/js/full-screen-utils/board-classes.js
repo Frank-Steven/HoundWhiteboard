@@ -1,6 +1,6 @@
 /**
  * @file 定义白板操作核心对象的模块
- * @module BoardClasses
+ * @module board-classes
  * @description 包含不同白板对象的类:
  * - 基础对象类
  * - 墨迹对象(自由手绘)
