@@ -27,7 +27,6 @@ ipc.on("settings-loaded", (event, settings) => {
 /**
  * 通过更新 theme-stylesheet 的 HTMLElement 应用主题样式
  * @function setTheme
- * @returns {void}
  * @throws {Error} 当找不到 ID 为 theme-stylesheet 的 HTML 元素时
  * @example
  * // 假设 window.settings.theme 为 'dark'
@@ -44,7 +43,6 @@ function setTheme() {
 /**
  * 根据当前语言更新 DOM 中所有文本节点
  * @function setLanguage
- * @returns {void}
  * @fires languageChanged 语言变更事件
  * @throws {Error} 无法加载语言文件时抛出异常
  */
@@ -56,7 +54,6 @@ function setLanguage() {
    * @function updateTextNodes
    * @param {Object} obj - 语言翻译对象
    * @param {string} [parentId=""] - 嵌套翻译的父元素 ID
-   * @returns {void}
    */
   function updateTextNodes(obj, parentId = "") {
     for (const key in obj) {

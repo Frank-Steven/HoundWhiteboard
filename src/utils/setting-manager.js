@@ -16,7 +16,6 @@ const defaultSettings = { theme: 'light', language: 'zh-CN' };
  * 初始化设置管理器
  * @function init
  * @param {Object} app - Electron 应用对象
- * @returns {void}
  */
 function init(app) {
   userDataDir = directory.parse(app.getPath('userData'));
@@ -38,7 +37,6 @@ function loadSettings() {
  * @param {Object} settings - 要保存的设置对象
  * @param {string} settings.theme - 当前主题
  * @param {string} settings.language - 当前语言
- * @returns {void}
  */
 function saveSettings(settings) {
   try {
@@ -53,7 +51,6 @@ function saveSettings(settings) {
  * @function setupSettingsIPC
  * @param {Object} ipc - IPC主进程对象
  * @param {Object} BrowserWindow - BrowserWindow类
- * @returns {void}
  */
 function setupSettingsIPC(ipc, BrowserWindow) {
   /**

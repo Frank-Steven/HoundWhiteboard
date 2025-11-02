@@ -1,7 +1,14 @@
-const fs = require("fs");
+/**
+ * @file I/O 操作模块
+ * @module io
+ * @description 功能：
+ * - 随机数文件池
+ * - 封装了文件类与目录类
+ */
+
 const path = require("path");
 const hidefile = require("hidefile");
-const AdmZip = require("adm-zip");
+const fp = require("./fp")
 
 /**
  * @class
@@ -470,161 +477,21 @@ class file {
   }
 }
 
-class fpClass {
-  /**
-   * 创建指定目录
-   * @param {directory} dir 要创建的目录实例
-   */
-  mkdir(dir) {
-    fs.mkdirSync(dir.getPath(), { recursive: true });
-  }
-
-  /**
-   * 获取目录中的所有子目录
-   * @param {directory} dir 要读取的目录实例
-   * @returns {Array<directory>} 子目录实例数组
-   */
-  lsDir(dir) {
-    return fs.readdirSync(dir.getPath())
-             .filter(name => fs.statSync(dir.cd(name).getPath()).isDirectory())
-             .map(name => dir.cd(name));
-  }
-
-  /**
-   * 读取目录中的文件
-   * @param {directory} dir - 要读取的目录
-   * @returns {Array<file>} 文件数组
-   */
-  lsFile(dir) {
-    return fs.readdirSync(dir.getPath())
-             .filter(name => fs.statSync(dir.cd(name).getPath()).isFile())
-             .map(name => {
-                const nameWithoutExt = name.split(".").slice(0, -1).join(".");
-                const ext = name.split(".").pop();
-                return new file(dir.getPath(), nameWithoutExt, ext);
-              })
-  }
-
-  /**
-   * 读取目录中的内容
-   * @param {directory} dir - 要读取的目录
-   * @returns {Array<string>} 文件名数组
-   */
-  ls(dir) {
-    return fs.readdirSync(dir.getPath());
-  }
-
-  /**
-   * 判断文件是否存在
-   * @param {file|directory} file - 要判断的文件
-   * @returns {boolean} 是否存在
-   */
-  exist(file) {
-    return fs.existsSync(file.getPath());
-  }
-
-  /**
-   * 读取文件内容
-   * @param {file} file - 要读取的文件
-   * @returns {string} 文件内容
-   */
-  readFile(file) {
-    return fs.readFileSync(file.getPath(), "utf8");
-  }
-
-  /**
-   * 写入文件内容
-   * @param {file} file - 要写入的文件
-   * @param {string} content - 要写入的内容
-   */
-  writeFile(file, content) {
-    fs.writeFileSync(file.getPath(), content, "utf8");
-  }
-
-  /**
-   * 创建文件
-   * @param {file} file - 要创建的文件
-   */
-  touch(file) {
-    this.writeFile(file, "");
-  }
-
-  /**
-   * 删除文件
-   * @param {file} file - 要删除的文件
-   */
-  rm(file) {
-    fs.unlinkSync(file.getPath());
-  }
-
-  /**
-   * 删除目录
-   * @param {directory} dir - 要删除的目录
-   */
-  rmDir(dir) {
-    fs.rmSync(dir.getPath(), { recursive: true, force: true});
-  }
-
-  /**
-   * 复制文件
-   * @param {file} source - 要复制的文件
-   * @param {file} dest - 复制到的文件
-   */
-  cp(source, dest) {
-    fs.copyFileSync(source.getPath(), dest.getPath());
-  }
-
-  /**
-   * 复制目录
-   * @param {directory} source - 要复制的目录
-   * @param {directory} dest - 复制到的目录
-   */
-  cpDir(source, dest) {
-    fs.cpSync(source.getPath(), dest.getPath(), { recursive: true });
-  }
-
-  /**
-   * 移动文件
-   * @param {file} source - 要移动的文件
-   * @param {file} dest - 移动到的文件
-   */
-  mv(source, dest) {
-    fs.renameSync(source.getPath(), dest.getPath());
-  }
-
-  /**
-   * 解压文件
-   * @param {file} source - 要解压的文件路径
-   * @param {directory} dest - 解压到的目录路径
-   */
-  extractFile(source, dest) {
-    const zip = new AdmZip(source.getPath());
-    zip.extractAllTo(dest.getPath(), true);
-  }
-
-  /**
-   * 压缩文件
-   * @param {directory} source - 要压缩的文件夹路径
-   * @param {file} dest - 压缩后的文件路径
-   * @param {boolean} remove - 是否删除原文件
-   */
-  compressFile(source, dest, remove = false) {
-    const zip = new AdmZip();
-    zip.addLocalFolder(source.getPath());
-    zip.writeZip(dest.getPath());
-    if (remove) {
-      fs.rm(source.getPath(), { recursive: true, force: true }, (err) => {
-        if (err) throw err;
-        console.log("Directory deleted");
-      });
-    }
-  }
-}
-
-const fp = new fpClass();
-
 const { randomNumberPool } = require("./algorithm");
 
+/**
+ * 不重复的随机文件名池
+ * @class
+ * @property {directory} dir 目标目录实例
+ * @property {string} type "directory" 表示目录池，其他值表示文件扩展名
+ * @property {randomNumberPool} pool 内部随机数池
+ * @example
+ * let pool = new fileNameRandomPool(myDir, "txt");
+ * let file1 = pool.generate(); // 创建一个随机命名的 .txt 文件
+ * let file2 = pool.generate(); // 创建另一个不重复的 .txt 文件
+ * pool.remove(file1.name); // 删除文件并从池中移除
+ * let file3 = pool.rename(file2.name); // 重命名文件为新的随机名称
+ */
 class fileNameRandomPool {
   /**
    * 创建随机文件名池实例
@@ -643,8 +510,35 @@ class fileNameRandomPool {
   }
 
   /**
-   * 生成随机目录/文件实例
+   * 向随机池中添加指定 ID 的目录/文件
+   * @param {string} ID - 要添加的 ID
+   * @returns {boolean} 是否成功添加
+   */
+  add(ID) {
+    return this.pool.add(parseInt(ID));
+  }
+
+  /**
+   * 查询指定 ID 是否在随机池中
+   * @param {string} ID - 要查询的 ID
+   * @returns {boolean} 是否存在
+   */
+  include(ID) {
+    return this.pool.include(parseInt(ID));
+  }
+
+  /**
+   * 查询该池是否已满
+   * @returns {boolean} 是否已满
+   */
+  isFull() {
+    return this.pool.isFull();
+  }
+
+  /**
+   * 生成不重复的随机目录/文件实例
    * @returns {directory|file} 新创建的目录或文件实例
+   * @throws {Error} 当随机池已被占满时
    */
   generate() {
     const name = this.pool.generate().toString();
@@ -660,50 +554,38 @@ class fileNameRandomPool {
   }
 
   /**
-   * 删除目录/文件
+   * 从随机池中删除指定 ID 的目录/文件
    * @param {string} ID - 目录/文件 ID
+   * @returns {boolean} 是否成功删除
    */
   remove(ID) {
     if (this.type === "directory") {
       this.dir.cd(ID).rm();
     } else {
-      this.dir.peek(ID, type).rm();
+      this.dir.peek(ID, this.type).rm();
     }
-    this.pool.remove(parseInt(ID));
+    return this.pool.remove(parseInt(ID));
   }
 
   /**
-   * 重命名目录/文件
-   * @param {string} ID - 目录/文件 ID
+   * 在池中重新生成一个不重复的 ID 并重命名目录/文件
+   * @param {string} ID - 要重命名的目录/文件 ID
    * @returns {directory|file} 重命名后的文件或目录
    */
   rename(ID) {
-    let newID = this.pool.rename(ID).toString();
+    let newID = this.pool.rename(parseInt(ID)).toString();
     if (this.type === "directory") {
       this.dir.cd(ID).mv(this.dir.cd(newID));
       return this.dir.cd(newID);
     } else {
-      this.dir.peek(ID, type).mv(this.dir.peek(newID, type));
-      return this.dir.peek(newID, type);
+      this.dir.peek(ID, this.type).mv(this.dir.peek(newID, this.type));
+      return this.dir.peek(newID, this.type);
     }
   }
 }
 
 module.exports = {
-  /**
-   * 目录操作类
-   */
   directory,
-  /**
-   * 文件操作类
-   */
   file,
-  /**
-   * 随机文件名生成器
-   */
   fileNameRandomPool,
-  /**
-   * 文件系统操作工具类
-   */
-  fp,
 };

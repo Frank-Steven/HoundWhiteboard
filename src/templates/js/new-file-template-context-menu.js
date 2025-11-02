@@ -18,7 +18,6 @@ let currentContextButton = null;
  * 重命名模板
  * @function templateRename
  * @param {HTMLElement} templateButton - 模板按钮元素
- * @returns {void}
  */
 function templateRename(templateButton) {
   showRenameEditor(templateButton);
@@ -46,7 +45,6 @@ async function templateRemove(templateButton) {
  * 编辑模板
  * @function templateEdit
  * @param {HTMLElement} templateButton - 模板按钮元素
- * @returns {void}
  */
 function templateEdit(templateButton) {
   ipc.send('template-edit', templateButton.id);
@@ -56,7 +54,6 @@ function templateEdit(templateButton) {
  * 复制模板
  * @function templateCopy
  * @param {HTMLElement} templateButton - 模板按钮元素
- * @returns {void}
  */
 function templateCopy(templateButton) {
   ipc.send('template-copy', templateButton.id);
@@ -68,7 +65,6 @@ function templateCopy(templateButton) {
  * @param {number} x - X 坐标
  * @param {number} y - Y 坐标
  * @param {HTMLElement} button - 触发菜单的按钮元素
- * @returns {void}
  */
 function showContextMenu(x, y, button) {
   if (contextMenu.classList.contains('show')) {
@@ -87,7 +83,6 @@ function showContextMenu(x, y, button) {
  * @param {number} x - X 坐标
  * @param {number} y - Y 坐标
  * @param {HTMLElement} button - 触发菜单的按钮元素
- * @returns {void}
  */
 function displayContextMenu(x, y, button) {
   currentContextButton = button;
@@ -120,7 +115,6 @@ function displayContextMenu(x, y, button) {
 /**
  * 隐藏上下文菜单
  * @function hideContextMenu
- * @returns {void}
  */
 function hideContextMenu() {
   contextMenu.classList.remove('show');
@@ -135,7 +129,6 @@ function hideContextMenu() {
  * 为按钮添加上下文菜单功能
  * @function addContextMenuToButton
  * @param {HTMLElement} button - 要添加上下文菜单的按钮元素
- * @returns {void}
  */
 function addContextMenuToButton(button) {
   if (button.id === 'new-file-template-select-new-template') {

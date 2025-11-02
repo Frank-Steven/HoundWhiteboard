@@ -20,7 +20,6 @@ const templateMeta = {
  * 初始化模板管理器
  * @function init
  * @param {Object} app - Electron应用对象
- * @returns {void}
  */
 function init(app) {
   const userDataDir = directory.parse(app.getPath('userData'));
@@ -112,7 +111,6 @@ function loadTemplateByID(templateID) {
  * 删除模板
  * @function removeTemplate
  * @param {string} templateID - 模板ID
- * @returns {void}
  */
 function removeTemplate(templateID) {
   templatePool.remove(templateID);
@@ -139,7 +137,6 @@ function renameTemplate(templateID, newName) {
  * @function setupTemplateOperationIPC
  * @param {Object} ipc - IPC主进程对象
  * @param {Object} windows - 窗口对象集合
- * @returns {void}
  */
 function setupTemplateOperationIPC(ipc, windows) {
   ipc.on('new-template-result', (event, result) => {

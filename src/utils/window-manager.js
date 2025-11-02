@@ -105,7 +105,6 @@ function createModalWindow(template, parent, size = { width: 800, height: 600, m
  * @function setupFileOpenCloseIPC
  * @param {Object} ipc - IPC主进程对象
  * @param {Object} windows - 窗口对象集合
- * @returns {void}
  */
 function setupFileOpenCloseIPC(ipc, windows) {
   /**

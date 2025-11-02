@@ -41,7 +41,6 @@ const boardInfo = {
  * 通过闪烁元素来应用视觉反馈
  * @function blink
  * @param {HTMLElement} element - 要应用闪烁效果的元素
- * @returns {void}
  */
 function blink(element) {
   element.classList.add('blinking');
@@ -80,7 +79,6 @@ function sanitizeFilename(value) {
  * 根据当前输入更新文件路径显示
  * @function updateFilePathDisplay
  * @param {string} fileName - 当前文件名输入
- * @returns {void}
  */
 function updateFilePathDisplay(fileName) {
   boardInfo.file = path.join(
@@ -179,7 +177,6 @@ confirmBtn.addEventListener('click', () => {
  * 可视化地选择模板按钮
  * @function chooseButton
  * @param {string} templateID - 所选模板的 ID
- * @returns {void}
  */
 function chooseButton(templateID) {
   const button = document.getElementById(templateID);
@@ -198,7 +195,6 @@ function chooseButton(templateID) {
  * @property {string} element.id - 模板 ID
  * @property {Object} element.data - 模板元数据
  * @property {string} element.imgPath - 模板预览图片路径
- * @returns {void}
  */
 function buttonLoadAdd(element) {
   let btn = document.createElement('button');

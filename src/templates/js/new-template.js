@@ -1,5 +1,5 @@
 /**
- * @file 新建模板创建
+ * @file 新建模板
  * @description 功能:
  * - 模板背景配置（纯色/图片）
  * - 纹理选择
@@ -48,7 +48,6 @@ previewScreenFlush();
 /**
  * 根据当前设置更新预览屏幕
  * @function previewScreenFlush
- * @returns {void}
  */
 function previewScreenFlush() {
   if (imageOpt.checked) {
@@ -64,7 +63,6 @@ function previewScreenFlush() {
  * 通过闪烁元素来应用视觉反馈
  * @function blink
  * @param {HTMLElement} element - 要应用闪烁效果的元素
- * @returns {void}
  */
 function blink(element) {
   element.classList.add('blinking');

@@ -1,5 +1,36 @@
+/**
+ * @file 算法模块
+ * @module algorithm
+ * @description 功能：
+ * - 随机数池
+ * - 计算双指和三指操作的矩阵
+ */
+
 const { randomInt } = require("crypto");
 
+/**
+ * 不重复的随机数池
+ * @class
+ * @property {number} min 随机数的最小值
+ * @property {number} max 随机数的最大值
+ * @property {number} length 池中随机数的数量
+ * @property {Object} pool 随机数池的 number -> boolean 映射
+ * @example
+ * let pool = new randomNumberPool(114514, 114516);
+ * pool.initFromArray([1, 2, 3, 114515]); // 只会添加 114515
+ * // 此时 pool.length 为 1
+ * let rnum1 = pool.generate();
+ * let rnum2 = pool.generate();
+ * // rnum1 和 rnum2 为 114514 和 114515
+ * try {
+ *   let rnum3 = pool.generate();
+ * } catch (err) {
+ *   console.log(err);
+ *   // 因为池子已经满了，所以会报错
+ * }
+ * pool.remove(rnum1); // 返回 true
+ * pool.remove(rnum1); // 返回 false (删除未成功，因为池中已经没有这个数了)
+ */
 class randomNumberPool {
   /**
    * 创建随机数池
@@ -9,6 +40,7 @@ class randomNumberPool {
   constructor(min, max) {
     this.min = min;
     this.max = max;
+    this.length = 0;
     this.pool = {};
   }
 
@@ -23,10 +55,44 @@ class randomNumberPool {
   }
 
   /**
+   * 向随机池中添加指定数字
+   * @param {number} num - 要添加的数字
+   * @returns {boolean} 是否成功添加
+   */
+  add(num) {
+    if (!(min <= num && num <= max)) return false;
+    if (this.pool[num]) return false;
+    this.pool[num] = true;
+    return true;
+  }
+
+  /**
+   * 查询指定数字是否在随机池中
+   * @param {number} num - 要添加的数字
+   * @returns {boolean} 是否成功添加
+   */
+  include(num) {
+    if (!(min <= num && num <= max)) return false;
+    return this.pool[num]
+  }
+
+  /**
+   * 查询该池是否已满
+   * @returns {boolean} 是否已满
+   */
+  isFull() {
+    return this.length == this.max - this.min + 1;
+  }
+
+  /**
    * 生成不重复的随机数
    * @returns {number} 生成的随机数
+   * @throws {Error} 当随机数池已被占满时
    */
   generate() {
+    if (this.isFull()) {
+      throw new Error("randomNumberPool: no space for a new number");
+    }
     let num;
     do {
       num = randomInt(this.min, this.max);
@@ -38,7 +104,7 @@ class randomNumberPool {
   /**
    * 从随机池中删除指定数字
    * @param {number} num 要删除的数字
-   * @returns {boolean} 是否删除成功
+   * @returns {boolean} 是否成功删除
    */
   remove(num) {
     if (this.pool[num]){
