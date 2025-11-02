@@ -1,6 +1,11 @@
 /**
- * @file RenderManager 模块，用于渲染
- * @module RenderManager
+ * @file 渲染模块
+ * @module render-manager
+ * @description 功能:
+ * - 将 Direct 转为 ctx 操作
+ * - 处理多边形渲染
+ * - 处理图像渲染
+ * - 处理文字渲染
  */
 
 class RenderManager {
@@ -30,41 +35,41 @@ class RenderManager {
    * @example
    * renderDirect({
    *   type: "solidPolygon",
-   *     position: { x: 100, y: 100 },
-   *     transform: [[1, 0], [0, 1]],
-   *     data: {
-   *       solidPolygon: {
-   *         points: [[0, 0], [100, 100], [0, 100]]
-   *       }
+   *   position: { x: 100, y: 100 },
+   *   transform: [[1, 0], [0, 1]],
+   *   data: {
+   *     solidPolygon: {
+   *       points: [[0, 0], [100, 100], [0, 100]]
    *     }
-   * })
+   *   }
+   * });
    *
    * renderDirect({
    *   type: "img",
-   *     position: { x: 100, y: 100 },
-   *     transform: [[1, 0], [0, 1]],
-   *     data: {
-   *       img: {
-   *         src: "/home/zhouc_yu/Pictures/Wallpapers/archbtw.png",
-   *         width: 1920,
-   *         height: 1200
-   *       }
+   *   position: { x: 100, y: 100 },
+   *   transform: [[1, 0], [0, 1]],
+   *   data: {
+   *     img: {
+   *       src: "/home/zhouc_yu/Pictures/Wallpapers/archbtw.png",
+   *       width: 1920,
+   *       height: 1200
    *     }
-   * })
+   *   }
+   * });
    *
    * renderDirect({
    *   type: "text",
-   *     position: { x: 100, y: 100 },
-   *     transform: [[1, 0], [0, 1]],
-   *     data: {
-   *       text: {
-   *         text: "This is an example text.",
-   *         font: "Noto Sans CJK SC",
-   *         size: 24,
-   *         color: "#000000"
-   *       }
+   *   position: { x: 100, y: 100 },
+   *   transform: [[1, 0], [0, 1]],
+   *   data: {
+   *     text: {
+   *       text: "This is an example text.",
+   *       font: "Noto Sans CJK SC",
+   *       size: 24,
+   *       color: "#000000"
    *     }
-   * })
+   *   }
+   * });
    */
   renderDirect(direct) {
     const ctx = this.canvas.getContext("2d");

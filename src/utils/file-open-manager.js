@@ -1,7 +1,8 @@
 /**
- * @file 打开文件模块
- * @module FileOpenManager
- * @description 功能: 文件操作对话框 (打开/保存)
+ * @file 文件打开模块
+ * @module file-open-manager
+ * @description 功能:
+ * - 文件操作对话框 (打开/保存)
  */
 
 const { dialog } = require('electron');

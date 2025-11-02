@@ -1,9 +1,12 @@
 /**
- * 内联提示框组件 - 模块化版本
+ * 内联提示框模块
  * 功能完整的通用提示框系统
  *
- * @module Toast
- * @description 零依赖、轻量级的提示框组件，支持多种自定义选项和动画效果
+ * @file 轻量级的提示框模块
+ * @module toast
+ * @description 功能:
+ * - 管理并显示内联提示框
+ * - 支持多种自定义选项和动画效果
  * @example
  * const Toast = require('./utils/ui/toast');
  * const toast = new Toast();
@@ -331,6 +334,7 @@ const CSS_CONTENT = `
 
 /**
  * 零依赖、轻量级的提示框组件，支持多种自定义选项和动画效果
+ * @class InlineToast
  * @example
  * const Toast = require('./utils/ui/toast');
  * const toast = new Toast();
@@ -406,13 +410,13 @@ class InlineToast {
   show(options) {
     const config = { ...this.defaultOptions, ...options };
     const toast = this.createToast(config);
-    
+
     this.toasts.push(toast);
     this.container.appendChild(toast.element);
 
     // 应用动画和位置
     this.applyAnimation(toast.element, config);
-    
+
     // 计算并应用堆叠偏移
     this.applyStackOffset(toast);
 
@@ -469,7 +473,7 @@ class InlineToast {
   createToast(config) {
     const element = document.createElement('div');
     element.className = `inline-toast toast-${config.type}`;
-    
+
     // 添加自定义类
     if (config.customClass) {
       element.className += ` ${config.customClass}`;
@@ -686,7 +690,7 @@ class InlineToast {
       if (toast.element.parentNode) {
         toast.element.parentNode.removeChild(toast.element);
       }
-      
+
       const index = this.toasts.indexOf(toast);
       if (index > -1) {
         this.toasts.splice(index, 1);
@@ -707,7 +711,7 @@ class InlineToast {
    */
   repositionToasts(position) {
     const samePositionToasts = this.toasts.filter(t => t.config.position === position);
-    
+
     samePositionToasts.forEach((toast, index) => {
       let offset = 0;
       for (let i = 0; i < index; i++) {

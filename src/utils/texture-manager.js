@@ -1,8 +1,8 @@
 /**
  * @file 纹理管理模块
- * @module TextureManager
- * @description 功能包括:
- * - SVG纹理生成
+ * @module texture-manager
+ * @description 功能:
+ * - SVG 纹理生成
  * - 瓦片纹理创建
  */
 

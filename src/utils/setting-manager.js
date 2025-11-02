@@ -1,7 +1,7 @@
 /**
  * @file 设置管理模块
- * @module SettingManager
- * @description 功能包括:
+ * @module setting-manager
+ * @description 功能:
  * - 应用设置持久化
  * - 文件操作对话框 (打开/保存)
  * - 设置变更通知

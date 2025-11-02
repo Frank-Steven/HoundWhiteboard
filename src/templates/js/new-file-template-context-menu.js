@@ -1,7 +1,7 @@
 /**
- * @file 模板上下文菜单模块
- * @module TemplateContextMenu
- * @description 处理:
+ * @file 新建文件中的模板上下文菜单
+ * @requires new-file.js
+ * @description 功能:
  * - 模板的右键上下文菜单
  * - 模板操作（重命名、删除、编辑、复制）
  * - 菜单定位和可见性

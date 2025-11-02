@@ -1,9 +1,12 @@
 /**
  * 伪窗口工具模块
  * 提供灵活的窗口显示和定位功能
- * 
- * @module FakeWindow
- * @description 轻量级窗口管理工具，支持居中和自定义位置两种显示模式
+ *
+ * @file 轻量级伪窗口模块
+ * @module fake-window
+ * @description 功能:
+ * - 管理并显示伪窗口
+ * - 支持居中和自定义位置两种显示模式
  * @example
  * const FakeWindow = require('./utils/ui/fake-window');
  * const myWindow = new FakeWindow(document.getElementById('my-window'), {
@@ -319,20 +322,20 @@ class FakeWindow {
   _positionByQuadrant(element, originX, originY) {
     element.style.left = `${originX}px`;
     element.style.top = `${originY}px`;
-    
+
     requestAnimationFrame(() => {
       const rect = element.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
       const minMargin = this.config.minMargin;
-      
+
       const hasRightSpace = (originX + rect.width + minMargin) <= viewportWidth;
       const hasLeftSpace = (originX - rect.width - minMargin) >= 0;
       const hasBottomSpace = (originY + rect.height + minMargin) <= viewportHeight;
       const hasTopSpace = (originY - rect.height - minMargin) >= 0;
-      
+
       let finalX, finalY;
-      
+
       switch (this.config.primaryQuadrant) {
         case 4: // 主象限：右下
           if (hasRightSpace && hasBottomSpace) {
@@ -349,7 +352,7 @@ class FakeWindow {
             finalY = originY - rect.height;
           }
           break;
-          
+
         case 1: // 主象限：右上
           if (hasRightSpace && hasTopSpace) {
             finalX = originX;
@@ -365,7 +368,7 @@ class FakeWindow {
             finalY = originY;
           }
           break;
-          
+
         case 2: // 主象限：左上
           if (hasLeftSpace && hasTopSpace) {
             finalX = originX - rect.width;
@@ -381,7 +384,7 @@ class FakeWindow {
             finalY = originY;
           }
           break;
-          
+
         case 3: // 主象限：左下
           if (hasLeftSpace && hasBottomSpace) {
             finalX = originX - rect.width;
@@ -398,7 +401,7 @@ class FakeWindow {
           }
           break;
       }
-      
+
       element.style.left = `${finalX}px`;
       element.style.top = `${finalY}px`;
     });

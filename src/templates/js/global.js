@@ -1,10 +1,9 @@
 /**
- * @file 主题和语言管理的全局工具模块
- * @module GlobalUtils
- * @description 主要功能包括：
- * - 主题切换功能
- * - 多语言翻译系统
- * - 设置变更的 IPC 通信处理
+ * @file 主题和语言管理的全局工具
+ * @description 功能:
+ * - 处理主题
+ * - 处理本地化
+ * - 设置主题与语言变更的 IPC 通信处理
  */
 
 const { ipcRenderer } = require("electron");

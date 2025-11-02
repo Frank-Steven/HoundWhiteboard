@@ -1,10 +1,9 @@
 /**
- * @file 新建文件创建模块
- * @module NewFile
- * @description 处理:
+ * @file 新建文件
+ * @description 功能:
  * - 文件名验证和清理
  * - 保存路径选择
- * - 模板选择
+ * - 选择模板
  * - 新建文件创建确认
  */
 
@@ -23,10 +22,19 @@ const confirmBtn = document.getElementById('yes-or-no-button-yes');
 const cancelBtn = document.getElementById('yes-or-no-button-no');
 const buttonList = document.getElementById('new-file-template-select-buttons');
 
+/**
+ * 选择的文件路径
+ */
 let filePath = '';
+
+/**
+ * 白板的配置文件
+ */
 const boardInfo = {
   templateID: null,
-  filePath: null
+  file: null,
+  width: 800,
+  height: 600,
 };
 
 /**
@@ -75,11 +83,11 @@ function sanitizeFilename(value) {
  * @returns {void}
  */
 function updateFilePathDisplay(fileName) {
-  boardInfo.filePath = path.join(
-    filePath, 
+  boardInfo.file = path.join(
+    filePath,
     fileName ? `${fileName}.hwb` : ''
   );
-  filePathSpan.textContent = boardInfo.filePath || "未选择路径";
+  filePathSpan.textContent = boardInfo.file || "未选择路径";
 }
 
 // 输入验证
@@ -103,8 +111,8 @@ choosePathBtn.addEventListener('click', async () => {
   const result = await ipc.invoke('path-choose');
   if (result) {
     filePath = result[0];
-    boardInfo.filePath = path.join(filePath, input.value === '' ? '' : input.value + '.hwb');
-    filePathSpan.textContent = boardInfo.filePath;
+    boardInfo.file = path.join(filePath, input.value === '' ? '' : input.value + '.hwb');
+    filePathSpan.textContent = boardInfo.file;
   }
 });
 
@@ -133,36 +141,36 @@ cancelBtn.addEventListener('click', () => {
  */
 confirmBtn.addEventListener('click', () => {
   let canConfirm = true;
-  
+
   if (!boardInfo.templateID) {
     blink(buttonList);
     toast.warning('请选择样式');
     canConfirm = false;
   }
-  
+
   if (input.value === '') {
     input.focus();
     blink(input);
     toast.warning('请填写文件名');
     canConfirm = false;
   }
-  
+
   if (filePath === '') {
     choosePathBtn.focus();
     blink(choosePathBtn);
     toast.warning('请选择路径');
     canConfirm = false;
   }
-  
+
   if (input.value !== '' && filePath !== '') {
-    if (directory.parse(boardInfo.filePath).peek(input.value, 'hwb').exist()) {
+    if (directory.parse(boardInfo.file).peek(input.value, 'hwb').exist()) {
       input.focus();
       blink(input);
       toast.warning('已有同名文件存在');
       canConfirm = false;
     }
   }
-  
+
   if (!canConfirm) return;
   ipc.send('create-new-board-templated', boardInfo);
 });

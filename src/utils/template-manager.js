@@ -1,7 +1,7 @@
 /**
  * @file 模板管理模块
- * @module TemplateManager
- * @description 功能包括:
+ * @module template-manager
+ * @description 功能:
  * - 模板生命周期管理(创建、读取、更新、删除)
  * - 模板元数据管理
  * - 模板IPC通信

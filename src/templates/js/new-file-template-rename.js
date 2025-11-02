@@ -1,7 +1,7 @@
 /**
- * @file 模板重命名模块
- * @module TemplateRename
- * @description 处理:
+ * @file 新建文件中的模板重命名
+ * @requires new-file.js
+ * @description 功能:
  * - 内联模板重命名功能
  * - 名称验证和清理
  * - 国际化错误消息
