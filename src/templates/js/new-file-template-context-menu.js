@@ -7,9 +7,6 @@
  * - 菜单定位和可见性
  */
 
-const { ipcRenderer } = require('electron');
-const ipc = ipcRenderer;
-
 // DOM 元素
 const contextMenu = document.getElementById('context-menu');
 let currentContextButton = null;
