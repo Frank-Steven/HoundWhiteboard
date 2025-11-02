@@ -166,9 +166,9 @@ window-manager.js ────┐
                       ├─ template-manager.js
 setting-manager.js ───┘
 
-texture-manager.js ───┐
-                      ├─ board-manager.js
-fake-window.js ───────┘
+texture-manager.js ───── board-manager.js
 
-toast.js ──────────── (独立模块)
+fake-window.js ───────── (独立模块)
+
+toast.js ─────────────── (独立模块)
 ```

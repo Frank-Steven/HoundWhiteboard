@@ -1,569 +1,856 @@
-# 伪窗口工具模块 (Fake Window)
+# 伪窗口工具模块 (FakeWindow)
 
-一个轻量级、灵活的窗口管理工具，支持居中显示和自定义位置两种模式。
+一个基于严格面向对象设计的轻量级窗口管理系统，支持居中显示和自定义位置两种模式。
 
-## 功能特性
+## 🎯 特性
 
-✅ **双模式支持**：居中模态窗口和自定义位置窗口  
-✅ **灵活定位**：支持精确坐标定位和自动居中  
-✅ **智能边界检测**：自动调整位置避免超出视口  
-✅ **模态控制**：可选的背景遮罩和交互阻止  
-✅ **事件回调**：完整的显示/隐藏生命周期钩子  
-✅ **轻量级**：仅注入必要的外层容器样式  
-✅ **高度可定制**：窗口内容样式完全由用户控制  
-✅ **零依赖**：纯原生 JavaScript 实现  
-✅ **模块化设计**：使用 CommonJS 模块系统
+### 核心架构
+- ✅ **完整的 OOP 设计**：采用 ES6+ Class 语法，严格遵循 SOLID 原则
+- ✅ **私有字段封装**：使用 `#` 私有字段保护内部状态
+- ✅ **Getter/Setter**：完整的属性访问控制
+- ✅ **事件系统**：基于观察者模式的完整事件发布订阅机制
+- ✅ **工厂模式**：便捷的窗口创建和预设配置
+- ✅ **策略模式**：可插拔的定位策略
+- ✅ **单例模式**：全局样式和 Z-Index 管理
+- ✅ **链式调用**：流畅的 API 设计
+- ✅ **生命周期钩子**：完整的 beforeShow/show/beforeHide/hide 事件
+- ✅ **完整的 JSDoc**：详细的类型注释和文档
 
-## 设计理念
+### 设计模式应用
 
-**职责分离**：
-- **fake-window.js**：负责外层容器的定位、显示/隐藏逻辑、事件管理
-- **用户 HTML**：定义窗口内容结构
-- **用户 CSS**：控制窗口内容样式（背景、边框、动画等）
+| 模式 | 应用场景 | 类/组件 |
+|------|---------|---------|
+| **观察者模式** | 事件系统 | [`EventEmitter`](../../src/utils/ui/fake-window.js:95) |
+| **工厂模式** | 窗口创建 | [`WindowFactory`](../../src/utils/ui/fake-window.js:1145) |
+| **策略模式** | 定位策略 | 象限定位算法 |
+| **单例模式** | 全局管理 | [`StyleInjector`](../../src/utils/ui/fake-window.js:68), [`ZIndexManager`](../../src/utils/ui/fake-window.js:234) |
 
-这种设计让开发者拥有最大的灵活性，可以创建任何样式的窗口。
+## 📐 类架构设计
 
-## 文件结构
+### 类层次结构
 
 ```
-src/utils/ui/
-└── fake-window.js          # 核心工具模块（样式已内联）
+EventEmitter (事件基类)
+    ↓
+FakeWindow (主窗口类)
+
+WindowFactory (工厂类 - 静态方法)
+
+辅助类：
+├── StyleInjector (样式注入器 - 单例)
+├── ZIndexManager (Z-Index 管理器 - 单例)
+└── WindowConfig (配置管理类)
 ```
 
-## 快速开始
+### 类图
+
+```mermaid
+classDiagram
+    class EventEmitter {
+        -Map~string,Set~ #listeners
+        +on(event, handler) this
+        +off(event, handler) this
+        +emit(event, ...args) this
+        +once(event, handler) this
+        +removeAllListeners() void
+        +listenerCount(event) number
+    }
+
+    class FakeWindow {
+        -HTMLElement #element
+        -WindowConfig #config
+        -boolean #visible
+        -Object #domHandlers
+        -boolean #destroyed
+        +constructor(element, options)
+        +get element() HTMLElement
+        +get visible() boolean
+        +get mode() string
+        +set mode(value) void
+        +get modal() boolean
+        +set modal(value) void
+        +showCentered() this
+        +showAt(x, y, options) this
+        +show() this
+        +hide() this
+        +toggle() this
+        +bringToFront() this
+        +updateConfig(options) this
+        +destroy() void
+    }
+
+    class WindowFactory {
+        <<static>>
+        -Object #presets
+        +create(element, preset, options) FakeWindow
+        +createDialog(element, options) FakeWindow
+        +createAlert(element, options) FakeWindow
+        +createContextMenu(element, options) FakeWindow
+        +createTooltip(element, options) FakeWindow
+        +createDropdown(element, options) FakeWindow
+        +createModal(element, options) FakeWindow
+        +registerPreset(name, config) void
+        +getPreset(name) Object
+    }
+
+    class StyleInjector {
+        <<singleton>>
+        -StyleInjector #instance
+        -boolean #injected
+        +getInstance() StyleInjector
+        +inject() void
+        +isInjected() boolean
+    }
+
+    class ZIndexManager {
+        <<singleton>>
+        -ZIndexManager #instance
+        -number #maxZIndex
+        +getInstance() ZIndexManager
+        +getNext() number
+        +getCurrent() number
+        +reset(value) void
+    }
+
+    class WindowConfig {
+        -Object #config
+        -Object #defaults
+        +constructor(options)
+        +get(key) any
+        +set(key, value) void
+        +update(options) void
+        +getAll() Object
+    }
+
+    EventEmitter <|-- FakeWindow
+    FakeWindow ..> WindowConfig : uses
+    FakeWindow ..> ZIndexManager : uses
+    WindowFactory ..> FakeWindow : creates
+    StyleInjector ..> FakeWindow : supports
+```
+
+## 🚀 快速开始
 
 ### 1. 引入模块
 
 ```javascript
 const FakeWindow = require('./utils/ui/fake-window');
+// 或者
+const { FakeWindow, WindowFactory } = require('./utils/ui/fake-window');
 ```
 
-### 2. 在 HTML 中定义窗口结构
+### 2. 基础用法
 
-```html
-<!-- 居中模态窗口示例 -->
-<div id="my-modal" class="fake-window-wrapper">
-  <div class="my-modal-content">
-    <h2>标题</h2>
-    <p>这是窗口内容</p>
-    <button onclick="FakeWindow.hide('my-modal')">关闭</button>
-  </div>
-</div>
-
-<!-- 自定义位置窗口示例（如右键菜单） -->
-<div id="context-menu" class="fake-window-wrapper">
-  <div class="menu-content">
-    <div class="menu-item">选项 1</div>
-    <div class="menu-item">选项 2</div>
-    <div class="menu-item">选项 3</div>
-  </div>
-</div>
-```
-
-### 3. 在 CSS 中定义窗口样式
-
-```css
-/* 居中模态窗口样式 */
-.my-modal-content {
-  background: white;
-  border-radius: 12px;
-  padding: 24px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  max-width: 500px;
-  width: 90%;
-}
-
-/* 右键菜单样式 */
-.menu-content {
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  min-width: 180px;
-}
-
-.menu-item {
-  padding: 10px 16px;
-  cursor: pointer;
-}
-
-.menu-item:hover {
-  background: #f0f0f0;
-}
-```
-
-### 4. 使用 JavaScript 控制显示
+#### 方式一：使用构造函数
 
 ```javascript
-// 居中显示模态窗口
-FakeWindow.showCentered('my-modal', {
+// 创建窗口实例
+const window = new FakeWindow(document.getElementById('my-window'), {
+  mode: 'centered',
   modal: true,
   backdropClose: true
 });
 
-// 在鼠标位置显示右键菜单
-document.addEventListener('contextmenu', (e) => {
-  e.preventDefault();
-  FakeWindow.showAt('context-menu', e.clientX, e.clientY, {
-    backdropClose: true
-  });
-});
+// 显示窗口
+window.show();
 
 // 隐藏窗口
-FakeWindow.hide('my-modal');
+window.hide();
 ```
 
-## API 文档
+#### 方式二：使用工厂模式
 
-### 方法
-
-#### `FakeWindow.showCentered(elementId, options)`
-
-在视口中央显示窗口（模态模式）。
-
-**参数：**
-- `elementId` (String) - 窗口元素的 ID
-- `options` (Object) - 配置选项
-
-**配置选项：**
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `modal` | Boolean | `true` | 是否为模态窗口（阻止背景交互） |
-| `backdropClose` | Boolean | `true` | 点击背景是否关闭窗口 |
-| `zIndex` | Number | `null` | 自定义 z-index（默认自动递增） |
-| `onShow` | Function | `null` | 显示时的回调函数 |
-| `onHide` | Function | `null` | 隐藏时的回调函数 |
-
-**返回值：**
-- `Boolean` - 是否成功显示
-
-**示例：**
 ```javascript
-FakeWindow.showCentered('my-window', {
-  modal: true,
-  backdropClose: true,
-  onShow: (element) => {
+// 使用工厂方法创建预设窗口
+const dialog = WindowFactory.createDialog(element);
+const menu = WindowFactory.createContextMenu(element);
+const tooltip = WindowFactory.createTooltip(element);
+
+// 显示
+dialog.show();
+menu.showAt(100, 200);
+```
+
+### 3. 事件监听
+
+```javascript
+// 注册事件监听器
+window
+  .on('show', (element) => {
     console.log('窗口已显示', element);
-  },
-  onHide: (element) => {
+  })
+  .on('hide', (element) => {
     console.log('窗口已隐藏', element);
-  }
+  });
+
+// 生命周期钩子
+window
+  .on('beforeShow', () => console.log('即将显示'))
+  .on('beforeHide', () => console.log('即将隐藏'));
+```
+
+### 4. 链式调用
+
+```javascript
+window
+  .updateConfig({ modal: false })
+  .show()
+  .bringToFront();
+```
+
+## 📚 核心类 API 文档
+
+### EventEmitter (事件基类)
+
+所有窗口实例都继承自 [`EventEmitter`](../../src/utils/ui/fake-window.js:95)，提供完整的事件系统。
+
+#### 方法
+
+##### `on(event, handler)`
+
+注册事件监听器。
+
+**参数：**
+- `event` (string) - 事件名称
+- `handler` (Function) - 事件处理函数
+
+**返回：** `this` - 支持链式调用
+
+**示例：**
+```javascript
+window.on('show', (element) => {
+  console.log('窗口显示', element);
 });
 ```
 
-#### `FakeWindow.showAt(elementId, x, y, options)`
+##### `off(event, [handler])`
 
-在指定坐标位置显示窗口。
+移除事件监听器。
 
 **参数：**
-- `elementId` (String) - 窗口元素的 ID
-- `x` (Number) - X 坐标（像素）
-- `y` (Number) - Y 坐标（像素）
+- `event` (string) - 事件名称
+- `handler` (Function, 可选) - 要移除的处理函数，不传则移除该事件的所有监听器
+
+**返回：** `this`
+
+**示例：**
+```javascript
+window.off('show', handler);  // 移除特定处理器
+window.off('show');           // 移除所有 show 事件监听器
+```
+
+##### `emit(event, ...args)`
+
+触发事件（内部使用）。
+
+##### `once(event, handler)`
+
+注册一次性事件监听器。
+
+**示例：**
+```javascript
+window.once('show', () => {
+  console.log('只触发一次');
+});
+```
+
+##### `listenerCount([event])`
+
+获取监听器数量。
+
+**返回：** `number`
+
+---
+
+### FakeWindow (主窗口类)
+
+主窗口类，继承自 [`EventEmitter`](../../src/utils/ui/fake-window.js:95)。
+
+#### 构造函数
+
+```javascript
+new FakeWindow(element, options)
+```
+
+**参数：**
+- `element` (HTMLElement) - 窗口元素
 - `options` (Object) - 配置选项
 
 **配置选项：**
+
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `modal` | Boolean | `false` | 是否为模态窗口 |
-| `backdropClose` | Boolean | `false` | 点击外部是否关闭窗口 |
-| `adjustPosition` | Boolean | `true` | 是否自动调整位置以适应视口 |
-| `quadrantMode` | Boolean | `false` | 是否启用象限模式定位 |
-| `primaryQuadrant` | Number | `4` | 主象限 (1=右上, 2=左上, 3=左下, 4=右下) |
-| `minMargin` | Number | `10` | 象限模式的最小边距（像素） |
-| `zIndex` | Number | `null` | 自定义 z-index |
-| `onShow` | Function | `null` | 显示时的回调函数 |
-| `onHide` | Function | `null` | 隐藏时的回调函数 |
-
-**返回值：**
-- `Boolean` - 是否成功显示
+| `mode` | string | `'centered'` | 显示模式：`'centered'` 或 `'positioned'` |
+| `modal` | boolean | `true` | 是否为模态窗口 |
+| `backdropClose` | boolean | `true` | 点击背景/外部是否关闭 |
+| `quadrantMode` | boolean | `false` | 是否启用象限模式（仅 positioned） |
+| `primaryQuadrant` | number | `4` | 主象限 (1-4) |
+| `minMargin` | number | `10` | 最小边距（像素） |
+| `zIndex` | number | `null` | 自定义 z-index |
 
 **示例：**
 ```javascript
-// 在鼠标位置显示
-FakeWindow.showAt('context-menu', e.clientX, e.clientY, {
-  backdropClose: true,
-  adjustPosition: true
-});
-
-// 在固定位置显示
-FakeWindow.showAt('tooltip', 100, 200, {
-  modal: false,
-  adjustPosition: false
-});
-
-// 使用象限模式（智能定位）
-FakeWindow.showAt('context-menu', mouseX, mouseY, {
-  quadrantMode: true,
-  primaryQuadrant: 4,  // 优先显示在右下
-  minMargin: 10
+const window = new FakeWindow(element, {
+  mode: 'centered',
+  modal: true,
+  backdropClose: true
 });
 ```
 
-#### 象限模式说明
+#### 属性 (Getter/Setter)
 
-象限模式以指定坐标为原点，根据可用空间智能选择最佳显示位置：
+##### `element` (只读)
 
-```
-| II  | II  | I  |
-| II  | II  | I  |
-| III | III | IV |
-```
+获取窗口元素。
 
-| 右边空间 | 下边空间 | 显示象限 |
-|-|-|-|
-| ✅ | ✅ | IV（右下）|
-| ❌ | ✅ | III（左下）|
-| ✅ | ❌ | I（右上）|
-| ❌ | ❌ | II（左上）|
+**类型：** `HTMLElement`
 
-**示例：**
 ```javascript
-// 右键菜单使用象限模式
-document.addEventListener('contextmenu', (e) => {
-  e.preventDefault();
-  FakeWindow.showAt('context-menu', e.clientX, e.clientY, {
-    backdropClose: true,
-    quadrantMode: true,
-    primaryQuadrant: 4,
-    minMargin: 10
-  });
-});
+const el = window.element;
 ```
 
-#### `FakeWindow.hide(elementId)`
+##### `visible` (只读)
 
-隐藏指定窗口。
+获取可见状态。
 
-**参数：**
-- `elementId` (String) - 窗口元素的 ID
+**类型：** `boolean`
 
-**返回值：**
-- `Boolean` - 是否成功隐藏
-
-**示例：**
 ```javascript
-FakeWindow.hide('my-window');
-```
-
-#### `FakeWindow.isVisible(elementId)`
-
-检查窗口是否可见。
-
-**参数：**
-- `elementId` (String) - 窗口元素的 ID
-
-**返回值：**
-- `Boolean` - 是否可见
-
-**示例：**
-```javascript
-if (FakeWindow.isVisible('my-window')) {
+if (window.visible) {
   console.log('窗口正在显示');
 }
 ```
 
-#### `FakeWindow.bringToFront(elementId)`
+##### `mode`
+
+获取或设置显示模式。
+
+**类型：** `string` (`'centered'` | `'positioned'`)
+
+```javascript
+window.mode = 'centered';
+console.log(window.mode);
+```
+
+##### `modal`
+
+获取或设置模态状态。
+
+**类型：** `boolean`
+
+```javascript
+window.modal = true;
+```
+
+##### `config` (只读)
+
+获取配置对象的只读副本。
+
+**类型：** `Object`
+
+```javascript
+const config = window.config;
+console.log(config.mode, config.modal);
+```
+
+##### `destroyed` (只读)
+
+检查窗口是否已销毁。
+
+**类型：** `boolean`
+
+```javascript
+if (window.destroyed) {
+  console.log('窗口已销毁');
+}
+```
+
+#### 方法
+
+##### `showCentered()`
+
+在视口中央显示窗口。
+
+**返回：** `this`
+
+**触发事件：** `beforeShow`, `show`
+
+**示例：**
+```javascript
+window.showCentered();
+```
+
+##### `showAt(x, y, [options])`
+
+在指定位置显示窗口。
+
+**参数：**
+- `x` (number) - X 坐标
+- `y` (number) - Y 坐标
+- `options` (Object, 可选) - 临时配置覆盖
+
+**返回：** `this`
+
+**触发事件：** `beforeShow`, `show`
+
+**示例：**
+```javascript
+// 基础用法
+window.showAt(100, 200);
+
+// 使用象限模式
+window.showAt(e.clientX, e.clientY, {
+  quadrantMode: true,
+  primaryQuadrant: 4
+});
+```
+
+##### `show()`
+
+显示窗口（使用当前配置）。
+
+**返回：** `this`
+
+**触发事件：** `beforeShow`, `show`
+
+**示例：**
+```javascript
+window.show();
+```
+
+##### `hide()`
+
+隐藏窗口。
+
+**返回：** `this`
+
+**触发事件：** `beforeHide`, `hide`
+
+**示例：**
+```javascript
+window.hide();
+```
+
+##### `toggle()`
+
+切换显示/隐藏状态。
+
+**返回：** `this`
+
+**示例：**
+```javascript
+window.toggle();
+```
+
+##### `bringToFront()`
 
 将窗口置于最前。
 
+**返回：** `this`
+
+**示例：**
+```javascript
+window.bringToFront();
+```
+
+##### `updateConfig(options)`
+
+更新窗口配置。
+
 **参数：**
-- `elementId` (String) - 窗口元素的 ID
+- `options` (Object) - 新的配置选项
 
-**返回值：**
-- `Boolean` - 是否成功
-
-**示例：**
-```javascript
-FakeWindow.bringToFront('my-window');
-```
-
-#### `FakeWindow.hideAll()`
-
-隐藏所有活动窗口。
+**返回：** `this`
 
 **示例：**
 ```javascript
-FakeWindow.hideAll();
+window.updateConfig({
+  modal: false,
+  backdropClose: true
+});
 ```
 
-## 使用示例
+##### `destroy()`
+
+销毁窗口，清理所有资源。
+
+**返回：** `void`
+
+**示例：**
+```javascript
+window.destroy();
+```
+
+#### 事件
+
+| 事件名 | 参数 | 说明 |
+|--------|------|------|
+| `beforeShow` | `(element)` | 显示前触发 |
+| `show` | `(element)` | 显示后触发 |
+| `beforeHide` | `(element)` | 隐藏前触发 |
+| `hide` | `(element)` | 隐藏后触发 |
+
+---
+
+### WindowFactory (工厂类)
+
+窗口工厂类，提供便捷的创建方法。
+
+#### 静态方法
+
+##### `create(element, preset, [options])`
+
+使用预设创建窗口。
+
+**参数：**
+- `element` (HTMLElement) - 窗口元素
+- `preset` (string) - 预设名称
+- `options` (Object, 可选) - 额外配置
+
+**返回：** [`FakeWindow`](../../src/utils/ui/fake-window.js:335)
+
+**预设列表：**
+- `dialog` - 对话框
+- `alert` - 提示框
+- `contextMenu` - 右键菜单
+- `tooltip` - 工具提示
+- `dropdown` - 下拉菜单
+- `modal` - 模态窗口
+
+**示例：**
+```javascript
+const window = WindowFactory.create(element, 'dialog', {
+  backdropClose: true
+});
+```
+
+##### `createDialog(element, [options])`
+
+创建对话框窗口。
+
+**预设配置：**
+```javascript
+{
+  mode: 'centered',
+  modal: true,
+  backdropClose: false
+}
+```
+
+**示例：**
+```javascript
+const dialog = WindowFactory.createDialog(element);
+dialog.show();
+```
+
+##### `createAlert(element, [options])`
+
+创建提示框窗口。
+
+**预设配置：**
+```javascript
+{
+  mode: 'centered',
+  modal: true,
+  backdropClose: true
+}
+```
+
+##### `createContextMenu(element, [options])`
+
+创建右键菜单窗口。
+
+**预设配置：**
+```javascript
+{
+  mode: 'positioned',
+  modal: false,
+  backdropClose: true,
+  quadrantMode: true,
+  primaryQuadrant: 4,
+  minMargin: 10
+}
+```
+
+**示例：**
+```javascript
+const menu = WindowFactory.createContextMenu(element);
+
+document.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  menu.showAt(e.clientX, e.clientY);
+});
+```
+
+##### `createTooltip(element, [options])`
+
+创建工具提示窗口。
+
+**预设配置：**
+```javascript
+{
+  mode: 'positioned',
+  modal: false,
+  backdropClose: false,
+  quadrantMode: true,
+  primaryQuadrant: 1,
+  minMargin: 8
+}
+```
+
+##### `createDropdown(element, [options])`
+
+创建下拉菜单窗口。
+
+**预设配置：**
+```javascript
+{
+  mode: 'positioned',
+  modal: false,
+  backdropClose: true,
+  quadrantMode: true,
+  primaryQuadrant: 4,
+  minMargin: 5
+}
+```
+
+##### `createModal(element, [options])`
+
+创建模态窗口。
+
+**预设配置：**
+```javascript
+{
+  mode: 'centered',
+  modal: true,
+  backdropClose: true
+}
+```
+
+##### `registerPreset(name, config)`
+
+注册自定义预设。
+
+**参数：**
+- `name` (string) - 预设名称
+- `config` (Object) - 预设配置
+
+**示例：**
+```javascript
+WindowFactory.registerPreset('myPreset', {
+  mode: 'centered',
+  modal: true,
+  backdropClose: false
+});
+
+const window = WindowFactory.create(element, 'myPreset');
+```
+
+##### `getPreset(name)`
+
+获取预设配置。
+
+**返回：** `Object | null`
+
+##### `getPresetNames()`
+
+获取所有预设名称。
+
+**返回：** `string[]`
+
+## 💡 使用示例
 
 ### 1. 居中模态对话框
 
-```html
-<div id="confirm-dialog" class="fake-window-wrapper">
-  <div class="dialog-content">
-    <div class="dialog-header">
-      <h3>确认操作</h3>
-    </div>
-    <div class="dialog-body">
-      <p>确定要删除这个项目吗？</p>
-    </div>
-    <div class="dialog-footer">
-      <button onclick="FakeWindow.hide('confirm-dialog')">取消</button>
-      <button onclick="confirmDelete()">确定</button>
-    </div>
-  </div>
-</div>
-```
-
-```css
-.dialog-content {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  max-width: 400px;
-  width: 90%;
-  overflow: hidden;
-}
-
-.dialog-header {
-  padding: 20px 24px;
-  border-bottom: 1px solid #eee;
-}
-
-.dialog-body {
-  padding: 24px;
-}
-
-.dialog-footer {
-  padding: 16px 24px;
-  border-top: 1px solid #eee;
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-}
-```
-
 ```javascript
-function showConfirmDialog() {
-  FakeWindow.showCentered('confirm-dialog', {
-    modal: true,
-    backdropClose: false,
-    onShow: () => {
-      console.log('对话框已显示');
-    }
-  });
+// 使用工厂模式创建
+const dialog = WindowFactory.createDialog(
+  document.getElementById('confirm-dialog')
+);
+
+// 添加事件监听
+dialog.on('show', () => {
+  console.log('对话框已显示');
+});
+
+// 显示对话框
+function showConfirm() {
+  dialog.showCentered();
 }
 
-function confirmDelete() {
-  // 执行删除操作
-  console.log('已删除');
-  FakeWindow.hide('confirm-dialog');
+// 隐藏对话框
+function hideConfirm() {
+  dialog.hide();
 }
 ```
 
 ### 2. 右键上下文菜单
 
-```html
-<div id="context-menu" class="fake-window-wrapper">
-  <div class="context-menu-content">
-    <div class="menu-item" onclick="handleEdit()">
-      <span class="menu-icon">✏️</span>
-      <span>编辑</span>
-    </div>
-    <div class="menu-item" onclick="handleCopy()">
-      <span class="menu-icon">📋</span>
-      <span>复制</span>
-    </div>
-    <div class="menu-divider"></div>
-    <div class="menu-item danger" onclick="handleDelete()">
-      <span class="menu-icon">🗑️</span>
-      <span>删除</span>
-    </div>
-  </div>
-</div>
-```
-
-```css
-.context-menu-content {
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  min-width: 180px;
-  padding: 6px 0;
-}
-
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.menu-item:hover {
-  background: #f0f0f0;
-}
-
-.menu-item.danger {
-  color: #ff3b30;
-}
-
-.menu-divider {
-  height: 1px;
-  background: #ddd;
-  margin: 6px 0;
-}
-```
-
 ```javascript
+// 创建右键菜单
+const contextMenu = WindowFactory.createContextMenu(
+  document.getElementById('context-menu')
+);
+
+// 监听右键事件
 document.addEventListener('contextmenu', (e) => {
   e.preventDefault();
-  FakeWindow.showAt('context-menu', e.clientX, e.clientY, {
-    backdropClose: true,
-    adjustPosition: true
-  });
+  
+  // 在鼠标位置显示菜单（自动象限定位）
+  contextMenu.showAt(e.clientX, e.clientY);
 });
 
-function handleEdit() {
-  console.log('编辑');
-  FakeWindow.hide('context-menu');
-}
-
-function handleCopy() {
-  console.log('复制');
-  FakeWindow.hide('context-menu');
-}
-
-function handleDelete() {
-  console.log('删除');
-  FakeWindow.hide('context-menu');
+// 菜单项点击后隐藏
+function handleMenuClick(action) {
+  console.log('菜单操作:', action);
+  contextMenu.hide();
 }
 ```
 
-### 3. 工具提示窗口
-
-```html
-<div id="tooltip" class="fake-window-wrapper">
-  <div class="tooltip-content">
-    <div class="tooltip-title">提示</div>
-    <div class="tooltip-text">这是一个提示信息</div>
-  </div>
-</div>
-```
-
-```css
-.tooltip-content {
-  background: rgba(0, 0, 0, 0.9);
-  color: white;
-  border-radius: 6px;
-  padding: 12px 16px;
-  max-width: 300px;
-  font-size: 14px;
-}
-
-.tooltip-title {
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-```
+### 3. 图片预览窗口
 
 ```javascript
-function showTooltip(x, y, title, text) {
-  document.querySelector('#tooltip .tooltip-title').textContent = title;
-  document.querySelector('#tooltip .tooltip-text').textContent = text;
-  
-  FakeWindow.showAt('tooltip', x, y + 10, {
-    modal: false,
-    adjustPosition: true
-  });
-}
-
-// 3秒后自动隐藏
-setTimeout(() => {
-  FakeWindow.hide('tooltip');
-}, 3000);
-```
-
-### 4. 图片预览窗口
-
-```html
-<div id="image-preview" class="fake-window-wrapper">
-  <div class="preview-content">
-    <button class="preview-close" onclick="FakeWindow.hide('image-preview')">×</button>
-    <img id="preview-image" src="" alt="预览">
-  </div>
-</div>
-```
-
-```css
-.preview-content {
-  position: relative;
-  background: white;
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  max-width: 90vw;
-  max-height: 90vh;
-}
-
-.preview-close {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: rgba(0, 0, 0, 0.5);
-  color: white;
-  border-radius: 50%;
-  font-size: 24px;
-  cursor: pointer;
-  z-index: 1;
-}
-
-#preview-image {
-  max-width: 100%;
-  max-height: 80vh;
-  display: block;
-}
-```
-
-```javascript
-function previewImage(imageSrc) {
-  document.getElementById('preview-image').src = imageSrc;
-  FakeWindow.showCentered('image-preview', {
+// 创建预览窗口
+const preview = new FakeWindow(
+  document.getElementById('image-preview'),
+  {
+    mode: 'centered',
     modal: true,
     backdropClose: true
-  });
+  }
+);
+
+// 显示图片预览
+function previewImage(imageSrc) {
+  const img = document.querySelector('#image-preview img');
+  img.src = imageSrc;
+  preview.show();
 }
 ```
-## 象限模式详解
 
-象限模式是一种智能定位系统，特别适合右键菜单、下拉菜单等需要根据可用空间自动调整位置的场景。
+### 4. 表单编辑器
+
+```javascript
+// 创建表单窗口
+const formWindow = WindowFactory.createDialog(
+  document.getElementById('form-dialog')
+);
+
+// 显示时聚焦第一个输入框
+formWindow.on('show', () => {
+  document.getElementById('form-name').focus();
+});
+
+// 显示表单
+function showForm(data) {
+  // 填充数据
+  document.getElementById('form-name').value = data.name;
+  document.getElementById('form-email').value = data.email;
+  
+  // 显示窗口
+  formWindow.show();
+}
+
+// 保存表单
+function saveForm() {
+  const data = {
+    name: document.getElementById('form-name').value,
+    email: document.getElementById('form-email').value
+  };
+  
+  console.log('保存数据:', data);
+  formWindow.hide();
+}
+```
+
+### 5. 加载提示
+
+```javascript
+// 创建加载窗口
+const loading = new FakeWindow(
+  document.getElementById('loading'),
+  {
+    mode: 'centered',
+    modal: true,
+    backdropClose: false  // 不允许点击关闭
+  }
+);
+
+// 显示加载
+async function loadData() {
+  loading.show();
+  
+  try {
+    await fetchData();
+    loading.hide();
+  } catch (error) {
+    loading.hide();
+    showError(error.message);
+  }
+}
+```
+
+### 6. 自定义扩展
+
+```javascript
+// 继承 FakeWindow 创建自定义窗口类
+class CustomWindow extends FakeWindow {
+  constructor(element, options) {
+    super(element, options);
+    
+    // 添加自定义初始化
+    this.initCustomFeatures();
+  }
+  
+  initCustomFeatures() {
+    // 自定义功能初始化
+    this.on('show', () => {
+      this.startAnimation();
+    });
+  }
+  
+  // 重写方法
+  show() {
+    console.log('自定义显示逻辑');
+    return super.show();
+  }
+  
+  // 添加新方法
+  startAnimation() {
+    // 自定义动画
+  }
+  
+  customMethod() {
+    // 自定义方法
+  }
+}
+
+// 使用自定义类
+const customWindow = new CustomWindow(element, {
+  mode: 'centered'
+});
+```
+
+## 🎯 象限模式详解
+
+象限模式是智能定位系统，根据可用空间自动选择最佳显示位置。
 
 ### 工作原理
 
-以指定坐标（通常是鼠标位置）为原点，将视口划分为四个象限：
+以指定坐标为原点，将视口划分为四个象限：
 
 ```
-|II |II |I  |
-|II |II |I  |
-|III|III|IV |
-
-象限编号：
-- I (1) = 右上
-- II (2) = 左上
-- III (3) = 左下
-- IV (4) = 右下
-```
-
-### 配置参数
-
-```javascript
-FakeWindow.showAt('menu', x, y, {
-  quadrantMode: true,      // 启用象限模式
-  primaryQuadrant: 4,      // 主象限（优先显示的象限）
-  minMargin: 10           // 最小边距（像素）
-});
+┌─────────────────┐
+│  II  │  I       │  象限编号：
+│──────●──────────│  1 = 右上
+│      │          │  2 = 左上
+│ III  │  IV      │  3 = 左下
+└─────────────────┘  4 = 右下
 ```
 
 ### 切换逻辑
 
-以 `primaryQuadrant: 4`（右下）为例：
+以主象限 4（右下）为例：
 
 | 右边空间 | 下边空间 | 显示象限 |
 |---------|---------|---------|
@@ -574,48 +861,17 @@ FakeWindow.showAt('menu', x, y, {
 
 ### 使用示例
 
-#### 右键菜单
-
 ```javascript
-document.addEventListener('contextmenu', (e) => {
-  e.preventDefault();
-  FakeWindow.showAt('context-menu', e.clientX, e.clientY, {
-    backdropClose: true,
-    quadrantMode: true,
-    primaryQuadrant: 4,  // 优先右下
-    minMargin: 10
-  });
+// 创建支持象限模式的菜单
+const menu = new FakeWindow(element, {
+  mode: 'positioned',
+  quadrantMode: true,
+  primaryQuadrant: 4,  // 优先右下
+  minMargin: 10
 });
-```
 
-#### 按钮下拉菜单
-
-```javascript
-function showDropdown(button) {
-  const rect = button.getBoundingClientRect();
-  FakeWindow.showAt('dropdown', rect.left, rect.bottom, {
-    backdropClose: true,
-    quadrantMode: true,
-    primaryQuadrant: 4,  // 优先在按钮右下方
-    minMargin: 5
-  });
-}
-```
-
-#### 工具提示
-
-```javascript
-function showTooltip(element, text) {
-  const rect = element.getBoundingClientRect();
-  const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2;
-  
-  FakeWindow.showAt('tooltip', centerX, centerY, {
-    quadrantMode: true,
-    primaryQuadrant: 1,  // 优先在元素右上方
-    minMargin: 8
-  });
-}
+// 显示菜单
+menu.showAt(e.clientX, e.clientY);
 ```
 
 ### 四种主象限的应用场景
@@ -627,81 +883,144 @@ function showTooltip(element, text) {
 | 3（左下） | 右上角的下拉菜单 | 用户头像菜单 |
 | 4（右下） | 右键菜单、常规下拉 | 上下文菜单 |
 
-### 与普通模式对比
+## 🔧 高级用法
 
-| 特性 | 普通模式 | 象限模式 |
-|------|---------|---------|
-| 定位方式 | 固定坐标 | 智能象限 |
-| 边界处理 | 简单平移 | 象限切换 |
-| 适用场景 | 固定位置窗口 | 动态菜单 |
-| 用户体验 | 可能被裁剪 | 始终完整显示 |
-
-
-## 高级用法
-
-### 1. 多窗口管理
+### 1. 事件系统
 
 ```javascript
-// 显示多个窗口
-FakeWindow.showCentered('window1', { zIndex: 10001 });
-FakeWindow.showCentered('window2', { zIndex: 10002 });
+const window = new FakeWindow(element);
 
-// 将窗口1置顶
-FakeWindow.bringToFront('window1');
+// 注册多个事件
+window
+  .on('beforeShow', () => console.log('准备显示'))
+  .on('show', () => console.log('已显示'))
+  .on('beforeHide', () => console.log('准备隐藏'))
+  .on('hide', () => console.log('已隐藏'));
+
+// 一次性事件
+window.once('show', () => {
+  console.log('只触发一次');
+});
+
+// 移除事件
+const handler = () => console.log('显示');
+window.on('show', handler);
+window.off('show', handler);
+
+// 移除所有事件
+window.off('show');
+```
+
+### 2. 配置管理
+
+```javascript
+const window = new FakeWindow(element, {
+  mode: 'centered',
+  modal: true
+});
+
+// 使用 setter 更新单个配置
+window.modal = false;
+window.mode = 'positioned';
+
+// 批量更新配置
+window.updateConfig({
+  modal: true,
+  backdropClose: false
+});
+
+// 获取配置
+console.log(window.config);
+console.log(window.modal);
+```
+
+### 3. 链式调用
+
+```javascript
+window
+  .updateConfig({ modal: false })
+  .show()
+  .bringToFront();
+
+// 或
+window
+  .on('show', handler)
+  .on('hide', handler)
+  .showCentered();
+```
+
+### 4. 多窗口管理
+
+```javascript
+const windows = {
+  dialog: WindowFactory.createDialog(element1),
+  menu: WindowFactory.createContextMenu(element2),
+  tooltip: WindowFactory.createTooltip(element3)
+};
+
+// 显示多个窗口
+windows.dialog.show();
+windows.menu.showAt(100, 200);
 
 // 关闭所有窗口
-FakeWindow.hideAll();
+Object.values(windows).forEach(w => w.hide());
+
+// 将特定窗口置顶
+windows.dialog.bringToFront();
 ```
 
-### 2. 生命周期钩子
+### 5. 生命周期管理
 
 ```javascript
-FakeWindow.showCentered('my-window', {
-  onShow: (element) => {
-    console.log('窗口显示', element);
-    // 初始化窗口内容
-    initWindowContent();
-  },
-  onHide: (element) => {
-    console.log('窗口隐藏', element);
-    // 清理资源
-    cleanupResources();
-  }
+const window = new FakeWindow(element);
+
+// 初始化时的设置
+window.on('beforeShow', () => {
+  // 准备数据
+  loadData();
 });
-```
 
-### 3. 动态内容更新
-
-```javascript
-// 显示窗口
-FakeWindow.showCentered('dynamic-window');
-
-// 动态更新内容
-const windowElement = document.getElementById('dynamic-window');
-const contentElement = windowElement.querySelector('.window-content');
-contentElement.innerHTML = '<p>新内容</p>';
-```
-
-### 4. 键盘快捷键
-
-```javascript
-document.addEventListener('keydown', (e) => {
-  // Ctrl+K 显示命令面板
-  if (e.ctrlKey && e.key === 'k') {
-    e.preventDefault();
-    FakeWindow.showCentered('command-palette', {
-      modal: true,
-      backdropClose: true
-    });
-  }
+window.on('show', () => {
+  // 启动动画
+  startAnimation();
 });
+
+window.on('beforeHide', () => {
+  // 保存状态
+  saveState();
+});
+
+window.on('hide', () => {
+  // 清理资源
+  cleanup();
+});
+
+// 销毁窗口
+window.destroy();
 ```
 
-## 样式自定义
+### 6. 自定义预设
+
+```javascript
+// 注册自定义预设
+WindowFactory.registerPreset('notification', {
+  mode: 'positioned',
+  modal: false,
+  backdropClose: true,
+  quadrantMode: true,
+  primaryQuadrant: 1
+});
+
+// 使用自定义预设
+const notification = WindowFactory.create(element, 'notification');
+notification.showAt(window.innerWidth - 20, 20);
+```
+
+## 🎨 样式自定义
 
 ### 自动注入的样式
 
-fake-window.js 只注入以下基础样式（外层容器）：
+模块自动注入以下基础样式（外层容器）：
 
 ```css
 .fake-window-wrapper {
@@ -752,24 +1071,101 @@ fake-window.js 只注入以下基础样式（外层容器）：
 }
 
 /* 窗口内容 */
-.my-window-content {
+.dialog-box {
   position: relative;
   z-index: 1;
-  /* 其他样式... */
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* 动画 */
+.fake-window-wrapper.show .dialog-box {
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 ```
 
-## 注意事项
+## 📋 SOLID 原则应用
 
-1. **元素 ID 必须唯一**：每个窗口元素必须有唯一的 ID
-2. **HTML 结构**：窗口元素必须在 DOM 中预先定义
-3. **样式控制**：窗口内容样式完全由用户 CSS 控制
-4. **事件清理**：隐藏窗口时会自动清理事件监听器
-5. **z-index 管理**：默认自动递增，也可手动指定
-6. **边界检测**：自定义位置模式默认启用边界检测
-7. **模态行为**：居中模式默认为模态，自定义位置模式默认非模态
+### 单一职责原则 (SRP)
 
-## 浏览器兼容性
+每个类专注于单一职责：
+
+- [`EventEmitter`](../../src/utils/ui/fake-window.js:95)：事件管理
+- [`FakeWindow`](../../src/utils/ui/fake-window.js:335)：窗口显示和交互
+- [`WindowFactory`](../../src/utils/ui/fake-window.js:1145)：窗口创建
+- [`StyleInjector`](../../src/utils/ui/fake-window.js:68)：样式注入
+- [`ZIndexManager`](../../src/utils/ui/fake-window.js:234)：层级管理
+- [`WindowConfig`](../../src/utils/ui/fake-window.js:271)：配置管理
+
+### 开闭原则 (OCP)
+
+通过继承和组合扩展功能，无需修改现有代码：
+
+```javascript
+// 扩展新功能
+class AnimatedWindow extends FakeWindow {
+  show() {
+    this.playAnimation();
+    return super.show();
+  }
+  
+  playAnimation() {
+    // 自定义动画
+  }
+}
+```
+
+### 里氏替换原则 (LSP)
+
+子类可以替换父类使用：
+
+```javascript
+class CustomWindow extends FakeWindow {
+  // 可以在任何使用 FakeWindow 的地方使用 CustomWindow
+}
+
+const window = new CustomWindow(element);
+window.show();  // 正常工作
+```
+
+### 接口隔离原则 (ISP)
+
+提供精简的公共接口，隐藏内部实现：
+
+```javascript
+// 公共接口
+window.show();
+window.hide();
+window.toggle();
+
+// 私有实现（使用 # 私有字段）
+#applyDisplay();
+#setupEventListeners();
+```
+
+### 依赖倒置原则 (DIP)
+
+依赖抽象（事件系统）而非具体实现：
+
+```javascript
+// 通过事件系统解耦
+window.on('show', handler);  // 不依赖具体实现
+```
+
+## 🌐 浏览器兼容性
 
 - Chrome 60+
 - Firefox 55+
@@ -777,21 +1173,14 @@ fake-window.js 只注入以下基础样式（外层容器）：
 - Edge 79+
 - Opera 47+
 
-## 演示页面
+**注意：** 需要支持 ES6+ 特性（Class、私有字段、箭头函数等）
 
-打开 [`fake-window-standalone.html`](./fake-window-standalone.html) 查看完整的使用示例和效果演示。
+## 📚 更多资源
 
-## 与其他组件对比
+- [快速开始指南](./QUICK-START-fake-window.md)
+- [完整示例](./fake-window-standalone.html)
+- [源代码](../../src/utils/ui/fake-window.js)
 
-| 特性 | Toast | FakeWindow |
-|------|-------|------------|
-| 用途 | 临时通知 | 交互式窗口 |
-| 模态 | 否 | 可选 |
-| 位置 | 固定位置 | 灵活定位 |
-| 内容 | 简单文本 | 复杂 HTML |
-| 样式 | 内置 | 用户定义 |
-| 交互 | 最小化 | 丰富交互 |
-
-## 许可证
+## 📄 许可证
 
 MIT License

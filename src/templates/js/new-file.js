@@ -174,7 +174,7 @@ confirmBtn.addEventListener('click', () => {
 });
 
 /**
- * 可视化地选择模板按钮
+ * 选择模板按钮并让其可视化
  * @function chooseButton
  * @param {string} templateID - 所选模板的 ID
  */
@@ -245,3 +245,7 @@ function buttonLoadAdd(element) {
 ipc.on('new-template-adding', (event, result) => {
   buttonLoadAdd(result.info);
 });
+
+const FakeWindow = require("../../utils/ui/fake-window");
+
+
