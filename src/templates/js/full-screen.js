@@ -8,7 +8,7 @@ let testRenderManager = new RenderManager(document.getElementById('canvas'));
 
 let test = {
   type: "solidPolygon",
-  position: { x: 100, y: 100 },
+  position: { x: 0, y: 0 },
   transform: [[1, 0], [0, 1]],
   data: {
     solidPolygon: {
@@ -18,3 +18,17 @@ let test = {
 };
 
 testRenderManager.renderDirect(test);
+
+testRenderManager.renderDirect({
+  type: "text",
+    position: { x: 100, y: 100 },
+    transform: [[1, 0], [0, 1]],
+    data: {
+      text: {
+        text: "This is an example text.",
+        font: "Noto Sans CJK SC",
+        size: 24,
+        color: "#000000"
+      }
+    }
+});

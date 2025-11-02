@@ -3,14 +3,19 @@ const path = require("path");
 const hidefile = require("hidefile");
 const AdmZip = require("adm-zip");
 
+/**
+ * @class
+ * @property {string} address - 目录所在路径
+ * @property {string} name - 目录名称
+ */
 class directory {
   address = "";
   name = "";
 
   /**
    * 创建目录实例
-   * @param {string} address 目录所在路径
-   * @param {string} name 目录名称
+   * @param {string} address - 目录所在路径
+   * @param {string} name - 目录名称
    */
   constructor (address, name) {
     this.address = address;
@@ -27,7 +32,7 @@ class directory {
 
   /**
    * 进入指定子目录并返回新实例
-   * @param {string} pathStr 子目录路径(相对路径或目录名)
+   * @param {string} pathStr - 子目录路径(相对路径或目录名)
    * @returns {directory} 新的目录实例
    */
   cd(pathStr) {
@@ -44,8 +49,8 @@ class directory {
 
   /**
    * 创建并返回指定文件的实例
-   * @param {string} fileName 文件名(不含扩展名)
-   * @param {string} fileExt 文件扩展名(不含点)
+   * @param {string} fileName - 文件名(不含扩展名)
+   * @param {string} fileExt - 文件扩展名(不含点)
    * @returns {file} 文件实例
    */
   peek(fileName, fileExt) {
@@ -54,7 +59,7 @@ class directory {
 
   /**
    * 检查指定子目录是否存在
-   * @param {string} dirName 子目录名称
+   * @param {string} dirName - 子目录名称
    * @returns {boolean} 子目录是否存在
    */
   existDir(dirName) {
@@ -63,8 +68,8 @@ class directory {
 
   /**
    * 检查指定文件是否存在
-   * @param {string} fileName 文件名(不含扩展名)
-   * @param {string} fileExt 文件扩展名(不含点)
+   * @param {string} fileName - 文件名(不含扩展名)
+   * @param {string} fileExt - 文件扩展名(不含点)
    * @returns {boolean} 文件是否存在
    */
   existFile(fileName, fileExt) {
@@ -227,6 +232,12 @@ class directory {
   }
 }
 
+/**
+ * @class
+ * @property {string} address - 文件所在路径
+ * @property {string} name - 文件名 (不含扩展名)
+ * @property {string} extension - 文件扩展名 (不含点)
+ */
 class file {
   address = "";
   name = "";
@@ -234,9 +245,9 @@ class file {
 
   /**
    * 创建文件实例
-   * @param {string} address 文件所在路径
-   * @param {string} name 文件名(不含扩展名)
-   * @param {string} extension 文件扩展名(不含点)
+   * @param {string} address - 文件所在路径
+   * @param {string} name - 文件名 (不含扩展名)
+   * @param {string} extension - 文件扩展名 (不含点)
    */
   constructor (address, name, extension = "") {
     this.address = address;
