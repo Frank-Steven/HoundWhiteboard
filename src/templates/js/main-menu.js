@@ -14,9 +14,8 @@ const contentScreens = document.querySelectorAll('.content-screen');
 
 /**
  * 通过添加 'content-active' 类来激活内容屏幕
- * @function activateScreen
+ *
  * @param {HTMLElement} screen - 要激活的屏幕元素
- * @returns {void}
  */
 function activateScreen(screen) {
   contentScreens.forEach((scr) => {
@@ -27,9 +26,8 @@ function activateScreen(screen) {
 
 /**
  * 通过添加 'content-active' 类来激活侧边栏按钮
- * @function activateButton
+ *
  * @param {HTMLElement} button - 要激活的按钮元素
- * @returns {void}
  */
 function activateButton(button) {
   sidebarButtons.forEach((btn) => {
@@ -101,9 +99,6 @@ languages.forEach((lang) => {
 
 /**
  * 重置选择元素以匹配当前设置
- * @function resetSelects
- * @fixme 这个不对哦，it doesn't work!
- * @returns {void}
  */
 function resetSelects() {
   // 设置主题选择

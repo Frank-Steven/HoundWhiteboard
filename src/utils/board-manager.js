@@ -32,7 +32,6 @@ const pageMeta = {
  * 初始化白板管理器
  * @function init
  * @param {Object} app - Electron应用对象
- * @returns {void}
  */
 function init(app) {
   templatesDir = new directory(app.getPath('userData'), 'templates').make();
@@ -46,7 +45,6 @@ function init(app) {
  * @param {string} boardInfo.templateID - 要应用的模板ID
  * @param {number} boardInfo.width - 白板的宽度
  * @param {number} boardInfo.height - 白板的高度
- * @returns {void}
  */
 function createEmptyBoard(boardInfo) {
   // 创建根目录
@@ -147,7 +145,6 @@ function openBoard(boardFile) {
  * 保存白板
  * @function saveBoard
  * @param {directory} boardDir - 要保存的白板目录
- * @returns {void}
  */
 function saveBoard(boardDir) {
   const boardFile = new file(boardDir.address, boardDir.name.substring(1), 'hwb').rmWhenExist();

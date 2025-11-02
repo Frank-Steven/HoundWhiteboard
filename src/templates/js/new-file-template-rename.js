@@ -36,7 +36,6 @@ const RENAME_FILTER_CONFIG = {
 /**
  * 为重命名编辑器加载国际化文本
  * @function loadRenameTexts
- * @returns {void}
  */
 function loadRenameTexts() {
   const language = require(`../../../data/languages/${window.settings.language}.json`);
@@ -63,7 +62,6 @@ setTimeout(() => {
  * 为模板按钮显示重命名编辑器
  * @function showRenameEditor
  * @param {HTMLElement} templateButton - 模板按钮元素
- * @returns {void}
  */
 function showRenameEditor(templateButton) {
   if (!templateButton) return;
@@ -87,7 +85,6 @@ function showRenameEditor(templateButton) {
 /**
  * 隐藏重命名编辑器
  * @function hideRenameEditor
- * @returns {void}
  */
 function hideRenameEditor() {
   renameEditor.classList.remove('show');
@@ -102,7 +99,6 @@ function hideRenameEditor() {
 /**
  * 清除重命名错误状态
  * @function clearRenameError
- * @returns {void}
  */
 function clearRenameError() {
   renameError.textContent = '';
@@ -114,7 +110,6 @@ function clearRenameError() {
  * 显示重命名错误消息
  * @function showRenameError
  * @param {string} message - 要显示的错误消息
- * @returns {void}
  */
 function showRenameError(message) {
   renameError.textContent = message;

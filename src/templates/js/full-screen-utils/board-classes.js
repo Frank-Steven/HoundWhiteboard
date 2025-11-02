@@ -48,7 +48,6 @@ class object {
    * 对对象应用变换矩阵
    * @method
    * @param {math.matrix} transform - 要应用的二维变换矩阵
-   * @returns {void}
    * @throws {TypeError} 当 transform 不是有效的二维矩阵
    * @example
    * const obj = new object(10, 20, 'graph');
@@ -81,7 +80,6 @@ class ink extends object {
    * @method
    * @param {number} x - 点的 x 坐标
    * @param {number} y - 点的 y 坐标
-   * @returns {void}
    * @throws {TypeError} 当坐标不是数字
    * @example
    * const inkObj = new ink(0, 0, 'ink');
@@ -100,7 +98,6 @@ class ink extends object {
    * 从图形对象初始化墨迹对象
    * @method
    * @param {graph} obj - 用于初始化的源图形对象
-   * @returns {void}
    * @throws {TypeError} 当 obj 不是有效的图形对象
    */
   initFromGraph(obj) {
@@ -133,7 +130,6 @@ class graph extends object {
    * @method
    * @param {number} x - 点的 x 坐标
    * @param {number} y - 点的 y 坐标
-   * @returns {void}
    * @throws {TypeError} 如果坐标不是数字
    * @example
    * const graphObj = new graph(0, 0, 'graph');
@@ -153,7 +149,6 @@ class graph extends object {
    * 从墨迹对象初始化图形对象
    * @method
    * @param {ink} obj - 用于初始化的源墨迹对象
-   * @returns {void}
    * @throws {TypeError} 当 obj 不是有效的墨迹对象
    */
   initFromInk(obj) {
@@ -189,7 +184,6 @@ class solid extends object {
    * @param {number} y - 左上角 y 坐标
    * @param {number} width - 矩形宽度
    * @param {number} height - 矩形高度
-   * @returns {void}
    * @throws {TypeError} 如果任何参数不是数字
    * @example
    * const rect = new solid(0, 0, 'solid');
@@ -217,7 +211,6 @@ class solid extends object {
    * 从图形对象初始化实体对象
    * @method
    * @param {graph} obj - 用于初始化的源图形对象
-   * @returns {void}
    * @throws {TypeError} 当 obj 不是有效的图形对象
    */
   initFromGraph(obj) {
@@ -235,7 +228,6 @@ class solid extends object {
    * 从墨迹对象初始化实体对象
    * @method
    * @param {ink} obj - 用于初始化的源墨迹对象
-   * @returns {void}
    * @throws {TypeError} 当 obj 不是有效的墨迹对象
    */
   initFromInk(obj) {
@@ -321,7 +313,6 @@ class page {
    * 向页面添加对象
    * @method
    * @param {object} obj - 要添加的白板对象
-   * @returns {void}
    * @throws {TypeError} 当 obj 不是有效的白板对象
    */
   appendObject(obj) {
@@ -332,7 +323,6 @@ class page {
    * 从页面移除对象
    * @method
    * @param {object} obj - 要移除的白板对象
-   * @returns {void}
    * @throws {Error} 当页面上没有这个对象
    */
   rmObject(obj) {

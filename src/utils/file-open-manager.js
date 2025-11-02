@@ -12,7 +12,6 @@ const { dialog } = require('electron');
  * @function setupFileOpenIPC
  * @param {Object} ipc - IPC 主进程对象
  * @param {Object} windows - 窗口对象集合
- * @returns {void}
  */
 function setupFileOpenIPC(ipc, windows) {
   /**
