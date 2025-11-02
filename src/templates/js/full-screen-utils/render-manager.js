@@ -1,48 +1,69 @@
 /**
- * @file full-screen-utils/render-manager.js
- * @module render-manager.js
+ * @file RenderManager 模块，用于渲染
+ * @module RenderManager
  */
 
 class RenderManager {
   constructor(canvas) {
     this.canvas = canvas;
   }
-  /***************************************************/
-  /* Define Direct                                   */
-  /* {                                               */
-  /*   "type": "solidPolygon"/"img"/"text",          */
-  /*   "position": { "x", "y" },                     */
-  /*   "transform": [[a, c]], [b, d]],               */
-  /*   "data": {                                     */
-  /*     "solidPolygon": {                           */
-  /*       "points": [[x1, y1], [x2, y2], ...]       */
-  /*     },                                          */
-  /*     "img": {                                    */
-  /*       "src": "path/to/img.png",                 */
-  /*       "width": w, "height": h                   */
-  /*     },                                          */
-  /*     "text": {                                   */
-  /*       "text": "Example text.",                  */
-  /*       "font": "Arial",                          */
-  /*       "size": 16,                               */
-  /*       "color": "black" }                        */
-  /*     }                                           */
-  /*   }                                             */
-  /*                                                 */
-  /* }                                               */
-  /***************************************************/
 
   /**
+   * @param {Object} direct - 被序列化后的 direct
+   * @param {string} direct.type - "solidPolygon" 或 "img" 或 "text"
+   * @param {Object} direct.position
+   * @param {number} direct.position.x
+   * @param {number} direct.position.y
+   * @param {number[2][2]} direct.transform - transform 矩阵
+   * @param {Object} direct.data - direct 的内联数据
+   * @param {Object} direct.data.solidPolygon - 当 type 为 "solidPolygon" 时所用的数据
+   * @param {number[][2]} direct.data.solidPolygon.points - solidPolygon 的点集
+   * @param {Object} direct.data.img - 当 type 为 "img" 时所用的数据
+   * @param {string} direct.data.img.src - img 的路径
+   * @param {number} direct.data.img.width - img 的宽度
+   * @param {number} direct.data.img.height - img 的高度
+   * @param {Object} direct.data.text - 当 type 为 "text" 时所用的数据
+   * @param {string} direct.data.text.text - text 的文本
+   * @param {string} direct.data.text.font - text 的字体
+   * @param {number} direct.data.text.size - text 的字号
+   * @param {string} direct.data.text.color - text 的颜色
    * @example
    * renderDirect({
-   * type: "solidPolygon",
-   *   position: { x: 100, y: 100 },
-   *   transform: [[1, 0], [0, 1]],
-   *   data: {
-   *     solidPolygon: {
-   *     points: [[0, 0], [100, 100], [0, 100]]
+   *   type: "solidPolygon",
+   *     position: { x: 100, y: 100 },
+   *     transform: [[1, 0], [0, 1]],
+   *     data: {
+   *       solidPolygon: {
+   *         points: [[0, 0], [100, 100], [0, 100]]
+   *       }
    *     }
-   *   }
+   * })
+   *
+   * renderDirect({
+   *   type: "img",
+   *     position: { x: 100, y: 100 },
+   *     transform: [[1, 0], [0, 1]],
+   *     data: {
+   *       img: {
+   *         src: "/home/zhouc_yu/Pictures/Wallpapers/archbtw.png",
+   *         width: 1920,
+   *         height: 1200
+   *       }
+   *     }
+   * })
+   *
+   * renderDirect({
+   *   type: "text",
+   *     position: { x: 100, y: 100 },
+   *     transform: [[1, 0], [0, 1]],
+   *     data: {
+   *       text: {
+   *         text: "This is an example text.",
+   *         font: "Noto Sans CJK SC",
+   *         size: 24,
+   *         color: "#000000"
+   *       }
+   *     }
    * })
    */
   renderDirect(direct) {

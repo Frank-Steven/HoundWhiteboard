@@ -61,7 +61,7 @@ class object {
       this.innerPoints[i] = math.multiply(transform, this.innerPoints[i]);
     }
   }
-}                                                                                 
+}
 
 /**
  * 墨迹类，表示自由手绘对象
@@ -333,7 +333,7 @@ class page {
    * @method
    * @param {object} obj - 要移除的白板对象
    * @returns {void}
-   * @throws {Error} 如果在页面上找不到对象
+   * @throws {Error} 当页面上没有这个对象
    */
   rmObject(obj) {
     const index = this.objects.indexOf(obj);

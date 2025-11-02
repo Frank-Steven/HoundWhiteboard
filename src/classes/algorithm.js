@@ -62,7 +62,7 @@ class randomNumberPool {
 
 /**
  * 获取二指操作的变换矩阵
- * 
+ *
  * @bug 这个算法其实有点问题，计算 a b c d 是对的，但是 e 和 f 是错的
  *
  * @param {number} x1 原始点一的横坐标
@@ -116,7 +116,7 @@ function getDualFingerResult(x1, y1, x2, y2, x1q, y1q, x2q, y2q, aq, bq, cq, dq,
 
 /**
  * 获取三指操作的变换矩阵
- * 
+ *
  * @bug 这个算法其实有点问题，计算 a b c d 是对的，但是 e 和 f 是错的
  *
  * @param {number} x1 原始点一的横坐标
