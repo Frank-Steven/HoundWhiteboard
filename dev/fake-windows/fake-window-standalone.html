@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>伪窗口工具 - 独立示例</title>
+  <title>伪窗口工具 - 面向对象示例</title>
   <style>
     /* 基础样式 */
     * {
@@ -23,7 +23,7 @@
       background: white;
       border-radius: 16px;
       padding: 40px;
-      max-width: 800px;
+      max-width: 900px;
       margin: 0 auto;
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     }
@@ -79,36 +79,6 @@
     .btn-warning { background: #FF9800; }
     .btn-danger { background: #F44336; }
     .btn-info { background: #2196F3; }
-
-    /* FakeWindow 外层容器样式 */
-    .fake-window-wrapper {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 10000;
-      display: none;
-      pointer-events: none;
-    }
-
-    .fake-window-wrapper.show {
-      display: block;
-    }
-
-    .fake-window-wrapper.modal {
-      pointer-events: auto;
-    }
-
-    .fake-window-wrapper.show.centered {
-      display: flex !important;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .fake-window-wrapper.positioned > * {
-      position: fixed;
-    }
 
     /* 背景遮罩 */
     .fake-window-wrapper.modal::before {
@@ -402,14 +372,47 @@
         width: 100%;
       }
     }
+
+    /* 代码示例样式 */
+    .code-example {
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 20px 0;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      overflow-x: auto;
+    }
+
+    .code-example pre {
+      margin: 0;
+      color: #333;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>🪟 伪窗口工具</h1>
-    <p class="subtitle">灵活的窗口管理工具，支持居中和自定义位置显示</p>
+    <h1>🪟 伪窗口工具 - 面向对象版</h1>
+    <p class="subtitle">基于严格 OOP 设计的窗口管理系统 v2.0</p>
 
-    <div class="section-title">居中模态窗口</div>
+    <div class="section-title">📚 核心概念演示</div>
+    <div class="button-grid">
+      <button class="demo-button btn-primary" onclick="showOOPExample()">
+        OOP 基础用法
+      </button>
+      <button class="demo-button btn-success" onclick="showFactoryExample()">
+        工厂模式
+      </button>
+      <button class="demo-button btn-info" onclick="showEventExample()">
+        事件系统
+      </button>
+      <button class="demo-button btn-warning" onclick="showInheritanceExample()">
+        继承扩展
+      </button>
+    </div>
+
+    <div class="section-title">🎨 居中模态窗口</div>
     <div class="button-grid">
       <button class="demo-button btn-primary" onclick="showConfirmDialog()">
         确认对话框
@@ -425,7 +428,7 @@
       </button>
     </div>
 
-    <div class="section-title">自定义位置窗口</div>
+    <div class="section-title">📍 自定义位置窗口</div>
     <div class="button-grid">
       <button class="demo-button btn-info" onclick="showContextMenu(event)">
         右键菜单
@@ -438,7 +441,7 @@
       </button>
     </div>
 
-    <div class="section-title">象限模式测试</div>
+    <div class="section-title">🎯 象限模式测试</div>
     <div class="button-grid">
       <button class="demo-button btn-primary" onclick="testQuadrant(event, 1)">
         主象限1（右上）
@@ -454,7 +457,7 @@
       </button>
     </div>
 
-    <div class="section-title">特殊功能</div>
+    <div class="section-title">⚡ 特殊功能</div>
     <div class="button-grid">
       <button class="demo-button btn-warning" onclick="showLoading()">
         加载提示
@@ -474,13 +477,13 @@
       <div class="dialog-header">
         <span class="dialog-icon">❓</span>
         <span class="dialog-title">确认操作</span>
-        <button class="dialog-close" onclick="windows.confirm.hide()">×</button>
+        <button class="dialog-close" onclick="windowInstances.confirm.hide()">×</button>
       </div>
       <div class="dialog-body">
         <p>确定要执行这个操作吗？此操作不可撤销。</p>
       </div>
       <div class="dialog-footer">
-        <button class="dialog-btn dialog-btn-cancel" onclick="windows.confirm.hide()">
+        <button class="dialog-btn dialog-btn-cancel" onclick="windowInstances.confirm.hide()">
           取消
         </button>
         <button class="dialog-btn dialog-btn-confirm" onclick="handleConfirm()">
@@ -496,13 +499,13 @@
       <div class="dialog-header">
         <span class="dialog-icon">ℹ️</span>
         <span class="dialog-title">提示</span>
-        <button class="dialog-close" onclick="windows.alert.hide()">×</button>
+        <button class="dialog-close" onclick="windowInstances.alert.hide()">×</button>
       </div>
       <div class="dialog-body">
         <p>这是一个提示信息对话框。</p>
       </div>
       <div class="dialog-footer">
-        <button class="dialog-btn dialog-btn-confirm" onclick="windows.alert.hide()">
+        <button class="dialog-btn dialog-btn-confirm" onclick="windowInstances.alert.hide()">
           确定
         </button>
       </div>
@@ -515,7 +518,7 @@
       <div class="dialog-header">
         <span class="dialog-icon">✏️</span>
         <span class="dialog-title">编辑信息</span>
-        <button class="dialog-close" onclick="windows.form.hide()">×</button>
+        <button class="dialog-close" onclick="windowInstances.form.hide()">×</button>
       </div>
       <div class="dialog-body">
         <div class="form-group">
@@ -528,7 +531,7 @@
         </div>
       </div>
       <div class="dialog-footer">
-        <button class="dialog-btn dialog-btn-cancel" onclick="windows.form.hide()">
+        <button class="dialog-btn dialog-btn-cancel" onclick="windowInstances.form.hide()">
           取消
         </button>
         <button class="dialog-btn dialog-btn-confirm" onclick="handleFormSubmit()">
@@ -541,7 +544,7 @@
   <!-- 图片预览 -->
   <div id="image-preview" class="fake-window-wrapper">
     <div class="preview-content">
-      <button class="preview-close" onclick="windows.preview.hide()">×</button>
+      <button class="preview-close" onclick="windowInstances.preview.hide()">×</button>
       <img class="preview-image" src="https://picsum.photos/800/600" alt="预览图片">
     </div>
   </div>
@@ -578,295 +581,428 @@
   </div>
 
   <script>
-    // FakeWindow 类（内联完整版 - standalone）
-    let globalMaxZIndex = 10000;
-    
-    class FakeWindow {
-      constructor(element, options = {}) {
-        if (!element) {
-          throw new Error('FakeWindow: element is required');
+    // ============================================================================
+    // FakeWindow 类（内联完整版 - 面向对象架构）
+    // ============================================================================
+
+    // 样式注入器 - 单例模式
+    class StyleInjector {
+      static #instance = null;
+      #injected = false;
+
+      static getInstance() {
+        if (!StyleInjector.#instance) {
+          StyleInjector.#instance = new StyleInjector();
         }
-
-        this.element = element;
-        this.config = {
-          mode: 'centered',
-          modal: true,
-          backdropClose: true,
-          quadrantMode: false,
-          primaryQuadrant: 4,
-          minMargin: 10,
-          zIndex: null,
-          onShow: null,
-          onHide: null,
-          ...options
-        };
-
-        this.eventHandlers = {};
-        this.isVisible = false;
-        this.element.classList.add('fake-window-wrapper');
+        return StyleInjector.#instance;
       }
 
+      inject() {
+        if (this.#injected) return;
+        // 样式已在 HTML 中定义
+        this.#injected = true;
+      }
+    }
+
+    // 事件发射器基类 - 观察者模式
+    class EventEmitter {
+      #listeners = new Map();
+
+      on(event, handler) {
+        if (!this.#listeners.has(event)) {
+          this.#listeners.set(event, new Set());
+        }
+        this.#listeners.get(event).add(handler);
+        return this;
+      }
+
+      off(event, handler) {
+        if (!this.#listeners.has(event)) return this;
+        if (handler) {
+          this.#listeners.get(event).delete(handler);
+        } else {
+          this.#listeners.delete(event);
+        }
+        return this;
+      }
+
+      emit(event, ...args) {
+        if (!this.#listeners.has(event)) return this;
+        this.#listeners.get(event).forEach(handler => {
+          try {
+            handler(...args);
+          } catch (error) {
+            console.error(`Error in event handler for "${event}":`, error);
+          }
+        });
+        return this;
+      }
+
+      once(event, handler) {
+        const onceHandler = (...args) => {
+          handler(...args);
+          this.off(event, onceHandler);
+        };
+        return this.on(event, onceHandler);
+      }
+
+      removeAllListeners() {
+        this.#listeners.clear();
+      }
+    }
+
+    // Z-Index 管理器
+    class ZIndexManager {
+      static #instance = null;
+      #maxZIndex = 10000;
+
+      static getInstance() {
+        if (!ZIndexManager.#instance) {
+          ZIndexManager.#instance = new ZIndexManager();
+        }
+        return ZIndexManager.#instance;
+      }
+
+      getNext() {
+        return ++this.#maxZIndex;
+      }
+    }
+
+    // 窗口配置类
+    class WindowConfig {
+      static #defaults = {
+        mode: 'centered',
+        modal: true,
+        backdropClose: true,
+        quadrantMode: false,
+        primaryQuadrant: 4,
+        minMargin: 10,
+        zIndex: null,
+        x: 0,
+        y: 0
+      };
+
+      #config;
+
+      constructor(options = {}) {
+        this.#config = { ...WindowConfig.#defaults, ...options };
+      }
+
+      get(key) {
+        return this.#config[key];
+      }
+
+      set(key, value) {
+        this.#config[key] = value;
+      }
+
+      update(options) {
+        Object.assign(this.#config, options);
+      }
+
+      getAll() {
+        return { ...this.#config };
+      }
+    }
+
+    // 主窗口类
+    class FakeWindow extends EventEmitter {
+      #element;
+      #config;
+      #visible = false;
+      #domHandlers = {};
+      #destroyed = false;
+
+      constructor(element, options = {}) {
+        super();
+        if (!element) throw new Error('FakeWindow: element is required');
+        this.#element = element;
+        this.#config = new WindowConfig(options);
+        this.#initialize();
+      }
+
+      #initialize() {
+        this.#element.classList.add('fake-window-wrapper');
+        this.#visible = this.#element.classList.contains('show');
+      }
+
+      get element() { return this.#element; }
+      get visible() { return this.#visible; }
+      get mode() { return this.#config.get('mode'); }
+      set mode(value) { this.#config.set('mode', value); }
+      get modal() { return this.#config.get('modal'); }
+      set modal(value) { this.#config.set('modal', value); }
+      get config() { return this.#config.getAll(); }
+
       showCentered() {
-        this.config.mode = 'centered';
-        return this._show();
+        this.#config.set('mode', 'centered');
+        return this.show();
       }
 
       showAt(x, y, options = {}) {
-        this.config = { ...this.config, ...options, mode: 'positioned', x, y };
-        return this._show();
+        this.#config.update({ ...options, mode: 'positioned', x, y });
+        return this.show();
       }
 
-      _show() {
-        this._removeEventListeners();
-
-        if (this.config.mode === 'centered') {
-          this.element.classList.add('centered');
-          this.element.classList.remove('positioned');
-        } else {
-          this.element.classList.add('positioned');
-          this.element.classList.remove('centered');
-        }
-
-        if (this.config.modal) {
-          this.element.classList.add('modal');
-        } else {
-          this.element.classList.remove('modal');
-        }
-
-        if (this.config.zIndex) {
-          this.element.style.zIndex = this.config.zIndex;
-        } else {
-          this.element.style.zIndex = ++globalMaxZIndex;
-        }
-
-        this.element.classList.add('show');
-        this.isVisible = true;
-
-        if (this.config.mode === 'positioned') {
-          const contentElement = this.element.firstElementChild;
-          if (contentElement) {
-            if (this.config.quadrantMode) {
-              this._positionByQuadrant(contentElement, this.config.x, this.config.y);
-            } else {
-              contentElement.style.left = `${this.config.x}px`;
-              contentElement.style.top = `${this.config.y}px`;
-            }
-          }
-        }
-
-        if (this.config.backdropClose) {
-          if (this.config.mode === 'centered') {
-            this._setupBackdropClose();
-          } else {
-            this._setupOutsideClick();
-          }
-        }
-
-        this._setupEscClose();
-
-        if (this.config.onShow) {
-          this.config.onShow(this.element);
-        }
-
+      show() {
+        if (this.#visible) return this;
+        this.emit('beforeShow', this.#element);
+        this.#removeEventListeners();
+        this.#applyDisplay();
+        this.#visible = true;
+        this.emit('show', this.#element);
         return this;
       }
 
       hide() {
-        this.element.classList.remove('show');
-        this.isVisible = false;
-        this._removeEventListeners();
-
-        if (this.config.onHide) {
-          this.config.onHide(this.element);
-        }
-
+        if (!this.#visible) return this;
+        this.emit('beforeHide', this.#element);
+        this.#element.classList.remove('show');
+        this.#visible = false;
+        this.#removeEventListeners();
+        this.emit('hide', this.#element);
         return this;
       }
 
       toggle() {
-        if (this.isVisible) {
-          this.hide();
-        } else {
-          this._show();
-        }
-        return this;
+        return this.#visible ? this.hide() : this.show();
       }
 
       bringToFront() {
-        this.element.style.zIndex = ++globalMaxZIndex;
+        this.#element.style.zIndex = ZIndexManager.getInstance().getNext();
         return this;
       }
 
-      _setupBackdropClose() {
+      #applyDisplay() {
+        const mode = this.#config.get('mode');
+        if (mode === 'centered') {
+          this.#element.classList.add('centered');
+          this.#element.classList.remove('positioned');
+        } else {
+          this.#element.classList.add('positioned');
+          this.#element.classList.remove('centered');
+        }
+
+        if (this.#config.get('modal')) {
+          this.#element.classList.add('modal');
+        } else {
+          this.#element.classList.remove('modal');
+        }
+
+        const customZIndex = this.#config.get('zIndex');
+        this.#element.style.zIndex = customZIndex || ZIndexManager.getInstance().getNext();
+        this.#element.classList.add('show');
+
+        if (mode === 'positioned') {
+          this.#applyPositioning();
+        }
+
+        this.#setupEventListeners();
+      }
+
+      #applyPositioning() {
+        const contentElement = this.#element.firstElementChild;
+        if (!contentElement) return;
+
+        const x = this.#config.get('x');
+        const y = this.#config.get('y');
+
+        if (this.#config.get('quadrantMode')) {
+          this.#positionByQuadrant(contentElement, x, y);
+        } else {
+          contentElement.style.left = `${x}px`;
+          contentElement.style.top = `${y}px`;
+        }
+      }
+
+      #positionByQuadrant(element, originX, originY) {
+        element.style.left = `${originX}px`;
+        element.style.top = `${originY}px`;
+
+        requestAnimationFrame(() => {
+          const rect = element.getBoundingClientRect();
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+          const minMargin = this.#config.get('minMargin');
+
+          const hasRight = (originX + rect.width + minMargin) <= viewportWidth;
+          const hasLeft = (originX - rect.width - minMargin) >= 0;
+          const hasBottom = (originY + rect.height + minMargin) <= viewportHeight;
+          const hasTop = (originY - rect.height - minMargin) >= 0;
+
+          const position = this.#calculateQuadrantPosition(
+            originX, originY, rect.width, rect.height,
+            hasRight, hasLeft, hasBottom, hasTop
+          );
+
+          element.style.left = `${position.x}px`;
+          element.style.top = `${position.y}px`;
+        });
+      }
+
+      #calculateQuadrantPosition(originX, originY, width, height, hasRight, hasLeft, hasBottom, hasTop) {
+        const primaryQuadrant = this.#config.get('primaryQuadrant');
+        let finalX, finalY;
+
+        switch (primaryQuadrant) {
+          case 4:
+            if (hasRight && hasBottom) { finalX = originX; finalY = originY; }
+            else if (!hasRight && hasBottom) { finalX = originX - width; finalY = originY; }
+            else if (hasRight && !hasBottom) { finalX = originX; finalY = originY - height; }
+            else { finalX = originX - width; finalY = originY - height; }
+            break;
+          case 1:
+            if (hasRight && hasTop) { finalX = originX; finalY = originY - height; }
+            else if (!hasRight && hasTop) { finalX = originX - width; finalY = originY - height; }
+            else if (hasRight && !hasTop) { finalX = originX; finalY = originY; }
+            else { finalX = originX - width; finalY = originY; }
+            break;
+          case 2:
+            if (hasLeft && hasTop) { finalX = originX - width; finalY = originY - height; }
+            else if (hasLeft && !hasTop) { finalX = originX - width; finalY = originY; }
+            else if (!hasLeft && hasTop) { finalX = originX; finalY = originY - height; }
+            else { finalX = originX; finalY = originY; }
+            break;
+          case 3:
+            if (hasLeft && hasBottom) { finalX = originX - width; finalY = originY; }
+            else if (!hasLeft && hasBottom) { finalX = originX; finalY = originY; }
+            else if (hasLeft && !hasBottom) { finalX = originX - width; finalY = originY - height; }
+            else { finalX = originX; finalY = originY - height; }
+            break;
+          default:
+            finalX = originX; finalY = originY;
+        }
+
+        return { x: finalX, y: finalY };
+      }
+
+      #setupEventListeners() {
+        if (this.#config.get('backdropClose')) {
+          if (this.#config.get('mode') === 'centered') {
+            this.#setupBackdropClose();
+          } else {
+            this.#setupOutsideClick();
+          }
+        }
+        this.#setupEscClose();
+      }
+
+      #setupBackdropClose() {
         const handler = (e) => {
-          if (e.target === this.element && this.isVisible) {
+          if (e.target === this.#element && this.#visible) {
             this.hide();
           }
         };
-        this.element.addEventListener('click', handler);
-        this.eventHandlers.backdropClickHandler = handler;
+        this.#element.addEventListener('click', handler);
+        this.#domHandlers.backdropClickHandler = handler;
       }
 
-      _setupOutsideClick() {
+      #setupOutsideClick() {
         const handler = (e) => {
-          const contentElement = this.element.firstElementChild;
-          if (contentElement && !contentElement.contains(e.target) && this.isVisible) {
+          const contentElement = this.#element.firstElementChild;
+          if (contentElement && !contentElement.contains(e.target) && this.#visible) {
             this.hide();
           }
         };
         setTimeout(() => {
           document.addEventListener('click', handler);
-          this.eventHandlers.outsideClickHandler = handler;
+          this.#domHandlers.outsideClickHandler = handler;
         }, 0);
       }
 
-      _setupEscClose() {
+      #setupEscClose() {
         const handler = (e) => {
-          if (e.key === 'Escape' && this.isVisible) {
+          if (e.key === 'Escape' && this.#visible) {
             this.hide();
           }
         };
         document.addEventListener('keydown', handler);
-        this.eventHandlers.escKeyHandler = handler;
+        this.#domHandlers.escKeyHandler = handler;
       }
 
-      _removeEventListeners() {
-        if (this.eventHandlers.backdropClickHandler) {
-          this.element.removeEventListener('click', this.eventHandlers.backdropClickHandler);
-          delete this.eventHandlers.backdropClickHandler;
+      #removeEventListeners() {
+        if (this.#domHandlers.backdropClickHandler) {
+          this.#element.removeEventListener('click', this.#domHandlers.backdropClickHandler);
+          delete this.#domHandlers.backdropClickHandler;
         }
-        if (this.eventHandlers.outsideClickHandler) {
-          document.removeEventListener('click', this.eventHandlers.outsideClickHandler);
-          delete this.eventHandlers.outsideClickHandler;
+        if (this.#domHandlers.outsideClickHandler) {
+          document.removeEventListener('click', this.#domHandlers.outsideClickHandler);
+          delete this.#domHandlers.outsideClickHandler;
         }
-        if (this.eventHandlers.escKeyHandler) {
-          document.removeEventListener('keydown', this.eventHandlers.escKeyHandler);
-          delete this.eventHandlers.escKeyHandler;
+        if (this.#domHandlers.escKeyHandler) {
+          document.removeEventListener('keydown', this.#domHandlers.escKeyHandler);
+          delete this.#domHandlers.escKeyHandler;
         }
-      }
-
-      _positionByQuadrant(element, originX, originY) {
-        element.style.left = `${originX}px`;
-        element.style.top = `${originY}px`;
-        
-        requestAnimationFrame(() => {
-          const rect = element.getBoundingClientRect();
-          const viewportWidth = window.innerWidth;
-          const viewportHeight = window.innerHeight;
-          const minMargin = this.config.minMargin;
-          
-          const hasRightSpace = (originX + rect.width + minMargin) <= viewportWidth;
-          const hasLeftSpace = (originX - rect.width - minMargin) >= 0;
-          const hasBottomSpace = (originY + rect.height + minMargin) <= viewportHeight;
-          const hasTopSpace = (originY - rect.height - minMargin) >= 0;
-          
-          let finalX, finalY;
-          
-          switch (this.config.primaryQuadrant) {
-            case 4:
-              if (hasRightSpace && hasBottomSpace) {
-                finalX = originX;
-                finalY = originY;
-              } else if (!hasRightSpace && hasBottomSpace) {
-                finalX = originX - rect.width;
-                finalY = originY;
-              } else if (hasRightSpace && !hasBottomSpace) {
-                finalX = originX;
-                finalY = originY - rect.height;
-              } else {
-                finalX = originX - rect.width;
-                finalY = originY - rect.height;
-              }
-              break;
-              
-            case 1:
-              if (hasRightSpace && hasTopSpace) {
-                finalX = originX;
-                finalY = originY - rect.height;
-              } else if (!hasRightSpace && hasTopSpace) {
-                finalX = originX - rect.width;
-                finalY = originY - rect.height;
-              } else if (hasRightSpace && !hasTopSpace) {
-                finalX = originX;
-                finalY = originY;
-              } else {
-                finalX = originX - rect.width;
-                finalY = originY;
-              }
-              break;
-              
-            case 2:
-              if (hasLeftSpace && hasTopSpace) {
-                finalX = originX - rect.width;
-                finalY = originY - rect.height;
-              } else if (hasLeftSpace && !hasTopSpace) {
-                finalX = originX - rect.width;
-                finalY = originY;
-              } else if (!hasLeftSpace && hasTopSpace) {
-                finalX = originX;
-                finalY = originY - rect.height;
-              } else {
-                finalX = originX;
-                finalY = originY;
-              }
-              break;
-              
-            case 3:
-              if (hasLeftSpace && hasBottomSpace) {
-                finalX = originX - rect.width;
-                finalY = originY;
-              } else if (!hasLeftSpace && hasBottomSpace) {
-                finalX = originX;
-                finalY = originY;
-              } else if (hasLeftSpace && !hasBottomSpace) {
-                finalX = originX - rect.width;
-                finalY = originY - rect.height;
-              } else {
-                finalX = originX;
-                finalY = originY - rect.height;
-              }
-              break;
-          }
-          
-          element.style.left = `${finalX}px`;
-          element.style.top = `${finalY}px`;
-        });
       }
     }
 
-    // 创建窗口实例
-    const windows = {
-      confirm: new FakeWindow(document.getElementById('confirm-dialog'), {
+    // 窗口工厂 - 工厂模式
+    class WindowFactory {
+      static #presets = {
+        dialog: { mode: 'centered', modal: true, backdropClose: false },
+        alert: { mode: 'centered', modal: true, backdropClose: true },
+        contextMenu: { mode: 'positioned', modal: false, backdropClose: true, quadrantMode: true, primaryQuadrant: 4, minMargin: 10 },
+        tooltip: { mode: 'positioned', modal: false, backdropClose: false, quadrantMode: true, primaryQuadrant: 1, minMargin: 8 },
+        dropdown: { mode: 'positioned', modal: false, backdropClose: true, quadrantMode: true, primaryQuadrant: 4, minMargin: 5 },
+        modal: { mode: 'centered', modal: true, backdropClose: true }
+      };
+
+      static create(element, preset, options = {}) {
+        const presetConfig = WindowFactory.#presets[preset] || {};
+        const config = { ...presetConfig, ...options };
+        return new FakeWindow(element, config);
+      }
+
+      static createDialog(element, options = {}) {
+        return WindowFactory.create(element, 'dialog', options);
+      }
+
+      static createAlert(element, options = {}) {
+        return WindowFactory.create(element, 'alert', options);
+      }
+
+      static createContextMenu(element, options = {}) {
+        return WindowFactory.create(element, 'contextMenu', options);
+      }
+
+      static createTooltip(element, options = {}) {
+        return WindowFactory.create(element, 'tooltip', options);
+      }
+
+      static createDropdown(element, options = {}) {
+        return WindowFactory.create(element, 'dropdown', options);
+      }
+
+      static createModal(element, options = {}) {
+        return WindowFactory.create(element, 'modal', options);
+      }
+    }
+
+    // ============================================================================
+    // 创建窗口实例 - 展示面向对象用法
+    // ============================================================================
+
+    const windowInstances = {
+      // 使用工厂模式创建对话框
+      confirm: WindowFactory.createDialog(document.getElementById('confirm-dialog')),
+      
+      // 使用工厂模式创建提示框
+      alert: WindowFactory.createAlert(document.getElementById('alert-dialog')),
+      
+      // 使用构造函数创建表单窗口
+      form: new FakeWindow(document.getElementById('form-dialog'), {
         mode: 'centered',
         modal: true,
         backdropClose: false
       }),
-      alert: new FakeWindow(document.getElementById('alert-dialog'), {
-        mode: 'centered',
-        modal: true,
-        backdropClose: true
-      }),
-      form: new FakeWindow(document.getElementById('form-dialog'), {
-        mode: 'centered',
-        modal: true,
-        backdropClose: false,
-        onShow: () => {
-          document.getElementById('form-name').focus();
-        }
-      }),
-      preview: new FakeWindow(document.getElementById('image-preview'), {
-        mode: 'centered',
-        modal: true,
-        backdropClose: true
-      }),
-      contextMenu: new FakeWindow(document.getElementById('context-menu'), {
-        mode: 'positioned',
-        modal: false,
-        backdropClose: true,
-        quadrantMode: true,
-        primaryQuadrant: 4,
-        minMargin: 10
-      }),
+      
+      // 使用工厂模式创建预览窗口
+      preview: WindowFactory.createModal(document.getElementById('image-preview')),
+      
+      // 使用工厂模式创建右键菜单
+      contextMenu: WindowFactory.createContextMenu(document.getElementById('context-menu')),
+      
+      // 使用工厂模式创建加载窗口
       loading: new FakeWindow(document.getElementById('loading'), {
         mode: 'centered',
         modal: true,
@@ -874,32 +1010,135 @@
       })
     };
 
+    // ============================================================================
+    // 事件监听示例 - 展示观察者模式
+    // ============================================================================
+
+    // 为表单窗口添加事件监听
+    windowInstances.form
+      .on('show', () => {
+        console.log('📝 表单窗口已显示');
+        document.getElementById('form-name').focus();
+      })
+      .on('hide', () => {
+        console.log('📝 表单窗口已隐藏');
+      });
+
+    // 为确认对话框添加事件监听
+    windowInstances.confirm
+      .on('beforeShow', () => console.log('⏳ 确认对话框即将显示'))
+      .on('show', () => console.log('✅ 确认对话框已显示'))
+      .on('beforeHide', () => console.log('⏳ 确认对话框即将隐藏'))
+      .on('hide', () => console.log('✅ 确认对话框已隐藏'));
+
+    // ============================================================================
     // 示例函数
+    // ============================================================================
+
+    function showOOPExample() {
+      alert('OOP 基础用法示例：\n\n' +
+        '// 1. 使用构造函数创建\n' +
+        'const window = new FakeWindow(element, { mode: "centered" });\n\n' +
+        '// 2. 使用 getter/setter\n' +
+        'window.modal = true;\n' +
+        'console.log(window.visible);\n\n' +
+        '// 3. 链式调用\n' +
+        'window.show().bringToFront();\n\n' +
+        '// 4. 事件监听\n' +
+        'window.on("show", () => console.log("显示"));\n\n' +
+        '查看控制台了解更多！'
+      );
+    }
+
+    function showFactoryExample() {
+      alert('工厂模式示例：\n\n' +
+        '// 使用工厂方法创建预设窗口\n' +
+        'const dialog = WindowFactory.createDialog(element);\n' +
+        'const menu = WindowFactory.createContextMenu(element);\n' +
+        'const tooltip = WindowFactory.createTooltip(element);\n\n' +
+        '// 自定义预设\n' +
+        'const custom = WindowFactory.create(element, "dialog", {\n' +
+        '  backdropClose: true\n' +
+        '});\n\n' +
+        '查看控制台了解更多！'
+      );
+    }
+
+    function showEventExample() {
+      // 创建临时窗口演示事件
+      const tempWindow = windowInstances.alert;
+      
+      // 添加一次性事件监听
+      tempWindow.once('show', () => {
+        console.log('🎉 这个事件只会触发一次！');
+      });
+      
+      // 显示窗口
+      tempWindow.show();
+      
+      alert('事件系统示例：\n\n' +
+        '// 注册事件监听器\n' +
+        'window.on("show", handler);\n' +
+        'window.on("hide", handler);\n\n' +
+        '// 一次性事件\n' +
+        'window.once("show", handler);\n\n' +
+        '// 移除监听器\n' +
+        'window.off("show", handler);\n\n' +
+        '// 生命周期钩子\n' +
+        'window.on("beforeShow", handler);\n' +
+        'window.on("afterHide", handler);\n\n' +
+        '查看控制台查看事件触发！'
+      );
+    }
+
+    function showInheritanceExample() {
+      alert('继承扩展示例：\n\n' +
+        '// 自定义窗口类\n' +
+        'class CustomWindow extends FakeWindow {\n' +
+        '  constructor(element, options) {\n' +
+        '    super(element, options);\n' +
+        '  }\n\n' +
+        '  // 重写方法\n' +
+        '  show() {\n' +
+        '    console.log("自定义显示逻辑");\n' +
+        '    return super.show();\n' +
+        '  }\n\n' +
+        '  // 添加新方法\n' +
+        '  customMethod() {\n' +
+        '    // 自定义功能\n' +
+        '  }\n' +
+        '}\n\n' +
+        '// 使用自定义类\n' +
+        'const custom = new CustomWindow(element);\n\n' +
+        '查看文档了解更多扩展方式！'
+      );
+    }
+
     function showConfirmDialog() {
-      windows.confirm.showCentered();
+      windowInstances.confirm.showCentered();
     }
 
     function showAlertDialog() {
-      windows.alert.showCentered();
+      windowInstances.alert.showCentered();
     }
 
     function showFormDialog() {
       document.getElementById('form-name').value = '';
       document.getElementById('form-email').value = '';
-      windows.form.showCentered();
+      windowInstances.form.showCentered();
     }
 
     function showImagePreview() {
-      windows.preview.showCentered();
+      windowInstances.preview.showCentered();
     }
 
     function showContextMenu(event) {
       event.preventDefault();
-      windows.contextMenu.showAt(event.clientX, event.clientY);
+      windowInstances.contextMenu.showAt(event.clientX, event.clientY);
     }
 
     function showTooltip(event) {
-      alert('工具提示功能演示（可自定义实现）');
+      alert('工具提示功能演示\n\n可以使用 WindowFactory.createTooltip() 创建');
     }
 
     function showDropdown(event) {
@@ -907,39 +1146,39 @@
     }
 
     function showLoading() {
-      windows.loading.showCentered();
+      windowInstances.loading.showCentered();
       setTimeout(() => {
-        windows.loading.hide();
+        windowInstances.loading.hide();
         showAlertDialog();
       }, 2000);
     }
 
     function showMultiple() {
-      windows.alert.showCentered();
+      windowInstances.alert.showCentered();
       setTimeout(() => {
-        windows.confirm.showCentered();
+        windowInstances.confirm.showCentered();
       }, 300);
     }
 
     function hideAllWindows() {
-      Object.values(windows).forEach(w => w.hide());
+      Object.values(windowInstances).forEach(w => w.hide());
     }
 
     function handleConfirm() {
-      console.log('已确认');
-      windows.confirm.hide();
+      console.log('✅ 已确认');
+      windowInstances.confirm.hide();
     }
 
     function handleFormSubmit() {
       const name = document.getElementById('form-name').value;
       const email = document.getElementById('form-email').value;
-      console.log('保存数据:', { name, email });
-      windows.form.hide();
+      console.log('💾 保存数据:', { name, email });
+      windowInstances.form.hide();
     }
 
     function handleMenuAction(action) {
-      console.log('菜单操作:', action);
-      windows.contextMenu.hide();
+      console.log('📋 菜单操作:', action);
+      windowInstances.contextMenu.hide();
     }
 
     function testQuadrant(event, quadrant) {
@@ -950,14 +1189,24 @@
         4: '右下'
       };
       
-      console.log(`测试主象限 ${quadrant}（${quadrantNames[quadrant]}）`);
+      console.log(`🎯 测试主象限 ${quadrant}（${quadrantNames[quadrant]}）`);
       
-      // 临时修改配置
-      windows.contextMenu.config.primaryQuadrant = quadrant;
-      windows.contextMenu.showAt(event.clientX, event.clientY);
+      // 更新配置
+      windowInstances.contextMenu.updateConfig({ primaryQuadrant: quadrant });
+      windowInstances.contextMenu.showAt(event.clientX, event.clientY);
     }
 
     // 欢迎消息
+    console.log('🎉 伪窗口工具 v2.0 - 面向对象版');
+    console.log('📚 核心特性：');
+    console.log('  - 严格的 OOP 设计');
+    console.log('  - 事件系统（观察者模式）');
+    console.log('  - 工厂模式');
+    console.log('  - 私有字段封装');
+    console.log('  - Getter/Setter');
+    console.log('  - 链式调用');
+    console.log('  - 完整的生命周期钩子');
+    
     setTimeout(() => {
       showAlertDialog();
     }, 500);
