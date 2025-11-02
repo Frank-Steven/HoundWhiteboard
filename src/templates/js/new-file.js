@@ -13,6 +13,8 @@ const { file, directory } = require('../../classes/io');
 const Toast = require('../../utils/ui/toast');
 const toast = new Toast();
 
+const { WindowFactory } = require('../../utils/ui/fake-window');
+
 // DOM 元素
 const newTemplateBtn = document.getElementById('new-file-template-select-new-template');
 const input = document.getElementById('new-file-save-form-input');
@@ -21,6 +23,31 @@ const choosePathBtn = document.getElementById('new-file-save-choosepath');
 const confirmBtn = document.getElementById('yes-or-no-button-yes');
 const cancelBtn = document.getElementById('yes-or-no-button-no');
 const buttonList = document.getElementById('new-file-template-select-buttons');
+const contextMenu = document.getElementById('context-menu');
+const renameEditor = document.getElementById('rename-editor');
+
+// 创建 FakeWindow 实例 - 使用 window 对象使其全局可访问
+window.contextMenuWindow = null;
+window.renameEditorWindow = null;
+window.currentContextButton = null;
+
+// 初始化 FakeWindow 实例
+function initializeFakeWindows() {
+  // 创建右键菜单窗口
+  window.contextMenuWindow = WindowFactory.createContextMenu(contextMenu);
+  
+  // 创建重命名编辑器窗口
+  window.renameEditorWindow = WindowFactory.createDialog(renameEditor, {
+    backdropClose: true
+  });
+}
+
+// 在 DOM 加载完成后初始化
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeFakeWindows);
+} else {
+  initializeFakeWindows();
+}
 
 /**
  * 选择的文件路径
@@ -178,7 +205,7 @@ confirmBtn.addEventListener('click', () => {
  * @function chooseButton
  * @param {string} templateID - 所选模板的 ID
  */
-function chooseButton(templateID) {
+window.chooseButton = function(templateID) {
   const button = document.getElementById(templateID);
   if (boardInfo.templateID) {
     document.getElementById(boardInfo.templateID)
@@ -225,6 +252,11 @@ function buttonLoadAdd(element) {
   
   choose();
   btn.addEventListener('click', choose);
+  
+  // 添加右键菜单支持
+  if (typeof addContextMenuToButton === 'function') {
+    addContextMenuToButton(btn);
+  }
 }
 
 // 初始化模板按钮
@@ -246,6 +278,8 @@ ipc.on('new-template-adding', (event, result) => {
   buttonLoadAdd(result.info);
 });
 
-const FakeWindow = require("../../utils/ui/fake-window");
-
-
+// 引入工具模块 - 必须在 DOM 元素和全局变量定义之后
+setTimeout(() => {
+  require('../js/new-file-utils/context-menu');
+  require('../js/new-file-utils/renamer');
+}, 0);

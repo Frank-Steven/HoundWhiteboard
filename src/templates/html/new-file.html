@@ -1,13 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
+    <meta charset="UTF-8"/>
     <title id="new-file-title"></title>
-    <link id="theme-stylesheet" rel="stylesheet" href="" />
-    <link rel="stylesheet" href="../css/global.css" />
-    <link rel="stylesheet" href="../css/new-file.css" />
-    <link rel="stylesheet" href="../css/new-file-template-context-menu.css" />
-    <link rel="stylesheet" href="../css/new-file-template-rename.css" />
+    <link id="theme-stylesheet" rel="stylesheet" href=""/>
+    <link rel="stylesheet" href="../css/global.css"/>
+    <link rel="stylesheet" href="../css/new-file.css"/>
   </head>
   <body>
     <div id="new-file">
@@ -17,7 +15,7 @@
         <div id="new-file-template-select">
           <div id="new-file-template-select-buttons">
             <button id="new-file-template-select-new-template" class="big-flex-btn">
-              <img id="new-file-template-select-new-template-icon" src="../../asset/imgs/add.svg"></img>
+              <img id="new-file-template-select-new-template-icon" src="../../asset/imgs/add.svg">
               <span id="new-file-template-select-new-template-text"></span>
             </button>
           </div>
@@ -47,31 +45,29 @@
       <button id="yes-or-no-button-yes"></button>
     </div>
 
-    <div id="menu" class="fake-window-wrapper">
-      这是 menu
-    </div>
-
-    <div id="context-menu" class="context-menu">
-      <div class="context-menu-item" data-action="edit">
-        <span class="context-menu-icon">📝</span>
-        <span id="context-menu-edit" class="context-menu-text"></span>
-      </div>
-      <div class="context-menu-item" data-action="copy">
-        <span class="context-menu-icon">📋</span>
-        <span id="context-menu-copy" class="context-menu-text"></span>
-      </div>
-      <div class="context-menu-item" data-action="rename">
-        <span class="context-menu-icon">✏️</span>
-        <span id="context-menu-rename" class="context-menu-text"></span>
-      </div>
-      <div class="context-menu-divider"></div>
-      <div class="context-menu-item context-menu-item-danger" data-action="remove">
-        <span class="context-menu-icon">🗑️</span>
-        <span id="context-menu-remove" class="context-menu-text"></span>
+    <div id="context-menu">
+      <div class="context-menu-content">
+        <div class="context-menu-item" data-action="edit">
+          <span class="context-menu-icon">📝</span>
+          <span id="context-menu-edit" class="context-menu-text"></span>
+        </div>
+        <div class="context-menu-item" data-action="copy">
+          <span class="context-menu-icon">📋</span>
+          <span id="context-menu-copy" class="context-menu-text"></span>
+        </div>
+        <div class="context-menu-item" data-action="rename">
+          <span class="context-menu-icon">✏️</span>
+          <span id="context-menu-rename" class="context-menu-text"></span>
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item context-menu-item-danger" data-action="remove">
+          <span class="context-menu-icon">🗑️</span>
+          <span id="context-menu-remove" class="context-menu-text"></span>
+        </div>
       </div>
     </div>
 
-    <div id="rename-editor" class="rename-editor">
+    <div id="rename-editor">
       <div class="rename-editor-backdrop"></div>
       <div class="rename-editor-container">
         <div class="rename-editor-header">
@@ -105,6 +101,4 @@
 
   <script src="../js/global.js"></script>
   <script src="../js/new-file.js"></script>
-  <script src="../js/new-file-template-context-menu.js"></script>
-  <script src="../js/new-file-template-rename.js"></script>
 </html>
