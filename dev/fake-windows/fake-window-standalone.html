@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>伪窗口工具 - 面向对象示例</title>
+  <title>伪窗口工具 - 独立示例</title>
   <style>
     /* 基础样式 */
     * {
@@ -79,6 +79,36 @@
     .btn-warning { background: #FF9800; }
     .btn-danger { background: #F44336; }
     .btn-info { background: #2196F3; }
+
+    /* FakeWindow 基础样式 - 必须在最前面 */
+    .fake-window-wrapper {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10000;
+      display: none;
+      pointer-events: none;
+    }
+
+    .fake-window-wrapper.show {
+      display: block;
+    }
+
+    .fake-window-wrapper.modal {
+      pointer-events: auto;
+    }
+
+    .fake-window-wrapper.show.centered {
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .fake-window-wrapper.positioned > * {
+      position: fixed;
+    }
 
     /* 背景遮罩 */
     .fake-window-wrapper.modal::before {
@@ -393,8 +423,8 @@
 </head>
 <body>
   <div class="container">
-    <h1>🪟 伪窗口工具 - 面向对象版</h1>
-    <p class="subtitle">基于严格 OOP 设计的窗口管理系统 v2.0</p>
+    <h1>🪟 伪窗口工具 - 独立示例</h1>
+    <p class="subtitle">基于严格 OOP 设计的窗口管理系统</p>
 
     <div class="section-title">📚 核心概念演示</div>
     <div class="button-grid">
@@ -770,6 +800,11 @@
 
       bringToFront() {
         this.#element.style.zIndex = ZIndexManager.getInstance().getNext();
+        return this;
+      }
+
+      updateConfig(options) {
+        this.#config.update(options);
         return this;
       }
 
