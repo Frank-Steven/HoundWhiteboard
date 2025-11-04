@@ -8,7 +8,7 @@
  */
 
 const winManager = require('./window-manager');
-const { file, directory, fileNameRandomPool } = require('../classes/io');
+const { file, directory, fileNameRandomPool } = require('../utils/io');
 
 let templatesDir, templatePool;
 const templateMeta = {

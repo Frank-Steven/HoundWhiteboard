@@ -7,7 +7,7 @@
  * - 设置变更通知
  */
 
-const { directory } = require('../classes/io');
+const { directory } = require('../utils/io');
 
 let userDataDir, settingsFile;
 const defaultSettings = { theme: 'light', language: 'zh-CN' };

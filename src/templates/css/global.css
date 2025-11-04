@@ -51,3 +51,9 @@ body {
 .content-active {
   display: block;
 }
+
+.button-icon {
+  width: 24px;
+  height: 24px;
+  background-color: aqua;
+}
