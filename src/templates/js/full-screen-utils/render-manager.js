@@ -20,6 +20,7 @@ class RenderManager {
    * @param {number} direct.position.x
    * @param {number} direct.position.y
    * @param {number[2][2]} direct.transform - transform 矩阵
+   * @param {string} direct.mixture - 混合模式
    * @param {Object} direct.data - direct 的内联数据
    * @param {Object} direct.data.solidPolygon - 当 type 为 "solidPolygon" 时所用的数据
    * @param {number[][2]} direct.data.solidPolygon.points - solidPolygon 的点集
@@ -33,10 +34,12 @@ class RenderManager {
    * @param {number} direct.data.text.size - text 的字号
    * @param {string} direct.data.text.color - text 的颜色
    * @example
+   * // 欲渲染多边形
    * renderDirect({
    *   type: "solidPolygon",
    *   position: { x: 100, y: 100 },
    *   transform: [[1, 0], [0, 1]],
+   *   mixture: "source-over",
    *   data: {
    *     solidPolygon: {
    *       points: [[0, 0], [100, 100], [0, 100]]
@@ -44,10 +47,13 @@ class RenderManager {
    *   }
    * });
    *
+   * @example
+   * // 欲渲染图片
    * renderDirect({
    *   type: "img",
    *   position: { x: 100, y: 100 },
    *   transform: [[1, 0], [0, 1]],
+   *   mixture: "source-over",
    *   data: {
    *     img: {
    *       src: "/home/zhouc_yu/Pictures/Wallpapers/archbtw.png",
@@ -57,10 +63,13 @@ class RenderManager {
    *   }
    * });
    *
+   * @example
+   * // 欲渲染文字
    * renderDirect({
    *   type: "text",
    *   position: { x: 100, y: 100 },
    *   transform: [[1, 0], [0, 1]],
+   *   mixture: "source-over",
    *   data: {
    *     text: {
    *       text: "This is an example text.",
@@ -74,7 +83,7 @@ class RenderManager {
   renderDirect(direct) {
     const ctx = this.canvas.getContext("2d");
     ctx.save();
-    const { type, position, transform, data } = direct;
+    const { type, position, transform, mixture, data } = direct;
     ctx.setTransform(
       transform[0][0],
       transform[1][0],
@@ -83,6 +92,7 @@ class RenderManager {
       position.x,
       position.y
     );
+    ctx.globalCompositeOperation = mixture;
     switch (type) {
       case "solidPolygon":
         const { points } = data.solidPolygon;

@@ -7,7 +7,7 @@
  * - 模板创建确认
  */
 
-const { directory } = require('../../classes/io');
+const { directory } = require('../../utils/io');
 
 const Toast = require('../../utils/ui/toast');
 const toast = new Toast();

@@ -4,10 +4,10 @@
     "main-menu": {
       "title": "猎犬白板 Hound Whiteboard",
       "sidebar": {
-        "start": "开始",
-        "help": "帮助",
-        "about": "关于",
-        "settings": "设置"
+        "start-text": "开始",
+        "help-text": "帮助",
+        "about-text": "关于",
+        "settings-text": "设置"
       },
       "content": {
         "start": {

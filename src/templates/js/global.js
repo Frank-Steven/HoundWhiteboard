@@ -102,3 +102,9 @@ ipc.on("settings-changed", (event, settings) => {
   setTheme();
   setLanguage();
 });
+
+/**
+ * 根据当前主题获取图标路径
+ * @function getIconPath
+ * @param {string} iconPack - 图标包名称
+ */

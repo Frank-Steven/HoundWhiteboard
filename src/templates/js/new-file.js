@@ -8,7 +8,7 @@
  */
 
 const path = require('path');
-const { file, directory } = require('../../classes/io');
+const { file, directory } = require('../../utils/io');
 
 const Toast = require('../../utils/ui/toast');
 const toast = new Toast();

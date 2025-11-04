@@ -4,7 +4,7 @@ const foManager = require("./utils/file-open-manager");
 const winManager = require("./utils/window-manager");
 const boardManager = require("./utils/board-manager");
 const templateManager = require("./utils/template-manager");
-const { file, directory } = require("./classes/io");
+const { file, directory } = require("./utils/io");
 const ipc = require("electron").ipcMain;
 
 let windows = {
