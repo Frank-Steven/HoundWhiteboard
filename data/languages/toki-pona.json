@@ -4,10 +4,10 @@
     "main-menu": {
       "title": "ilo lipu walo soweli Hound",
       "sidebar": {
-        "start": "open",
-        "help": "pona",
-        "about": "sona",
-        "settings": "ante"
+        "start-text": "open",
+        "help-text": "pona",
+        "about-text": "sona",
+        "settings-text": "ante"
       },
       "content": {
         "start": {

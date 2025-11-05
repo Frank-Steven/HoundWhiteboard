@@ -4,10 +4,10 @@
     "main-menu": {
       "title": "Hound Whiteboard",
       "sidebar": {
-        "start": "Start",
-        "help": "Help",
-        "about": "About",
-        "settings": "Settings"
+        "start-text": "Start",
+        "help-text": "Help",
+        "about-text": "About",
+        "settings-text": "Settings"
       },
       "content": {
         "start": {
