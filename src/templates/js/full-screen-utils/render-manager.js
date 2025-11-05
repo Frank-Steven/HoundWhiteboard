@@ -2,7 +2,7 @@
  * @file 渲染模块
  * @module render-manager
  * @description 功能:
- * - 将 Direct 转为 ctx 操作
+ * - 将 Quark 转为 ctx 操作
  * - 处理多边形渲染
  * - 处理图像渲染
  * - 处理文字渲染
@@ -14,28 +14,28 @@ class RenderManager {
   }
 
   /**
-   * @param {Object} direct - 被序列化后的 direct
-   * @param {string} direct.type - "solidPolygon" 或 "img" 或 "text"
-   * @param {Object} direct.position
-   * @param {number} direct.position.x
-   * @param {number} direct.position.y
-   * @param {number[2][2]} direct.transform - transform 矩阵
-   * @param {string} direct.mixture - 混合模式
-   * @param {Object} direct.data - direct 的内联数据
-   * @param {Object} direct.data.solidPolygon - 当 type 为 "solidPolygon" 时所用的数据
-   * @param {number[][2]} direct.data.solidPolygon.points - solidPolygon 的点集
-   * @param {Object} direct.data.img - 当 type 为 "img" 时所用的数据
-   * @param {string} direct.data.img.src - img 的路径
-   * @param {number} direct.data.img.width - img 的宽度
-   * @param {number} direct.data.img.height - img 的高度
-   * @param {Object} direct.data.text - 当 type 为 "text" 时所用的数据
-   * @param {string} direct.data.text.text - text 的文本
-   * @param {string} direct.data.text.font - text 的字体
-   * @param {number} direct.data.text.size - text 的字号
-   * @param {string} direct.data.text.color - text 的颜色
+   * @param {Object} quark - 被序列化后的 quark
+   * @param {string} quark.type - "solidPolygon" 或 "img" 或 "text"
+   * @param {Object} quark.position
+   * @param {number} quark.position.x
+   * @param {number} quark.position.y
+   * @param {number[2][2]} quark.transform - transform 矩阵
+   * @param {string} quark.mixture - 混合模式
+   * @param {Object} quark.data - quark 的内联数据
+   * @param {Object} quark.data.solidPolygon - 当 type 为 "solidPolygon" 时所用的数据
+   * @param {number[][2]} quark.data.solidPolygon.points - solidPolygon 的点集
+   * @param {Object} quark.data.img - 当 type 为 "img" 时所用的数据
+   * @param {string} quark.data.img.src - img 的路径
+   * @param {number} quark.data.img.width - img 的宽度
+   * @param {number} quark.data.img.height - img 的高度
+   * @param {Object} quark.data.text - 当 type 为 "text" 时所用的数据
+   * @param {string} quark.data.text.text - text 的文本
+   * @param {string} quark.data.text.font - text 的字体
+   * @param {number} quark.data.text.size - text 的字号
+   * @param {string} quark.data.text.color - text 的颜色
    * @example
    * // 欲渲染多边形
-   * renderDirect({
+   * renderQuark({
    *   type: "solidPolygon",
    *   position: { x: 100, y: 100 },
    *   transform: [[1, 0], [0, 1]],
@@ -49,7 +49,7 @@ class RenderManager {
    *
    * @example
    * // 欲渲染图片
-   * renderDirect({
+   * renderQuark({
    *   type: "img",
    *   position: { x: 100, y: 100 },
    *   transform: [[1, 0], [0, 1]],
@@ -65,7 +65,7 @@ class RenderManager {
    *
    * @example
    * // 欲渲染文字
-   * renderDirect({
+   * renderQuark({
    *   type: "text",
    *   position: { x: 100, y: 100 },
    *   transform: [[1, 0], [0, 1]],
@@ -80,10 +80,10 @@ class RenderManager {
    *   }
    * });
    */
-  renderDirect(direct) {
+  renderQuark(quark) {
     const ctx = this.canvas.getContext("2d");
     ctx.save();
-    const { type, position, transform, mixture, data } = direct;
+    const { type, position, transform, mixture, data } = quark;
     ctx.setTransform(
       transform[0][0],
       transform[1][0],
@@ -123,6 +123,6 @@ class RenderManager {
     }
     ctx.restore();
   }
-}
+};
 
 module.exports = RenderManager;
