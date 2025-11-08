@@ -1,96 +1,14 @@
 /**
  * @file 白板对象定义
- * @description 定义白板系统中使用的所有基础类和对象类型，包括点、Quark（渲染单元）和各种维度的对象
+ * @description
+ * 定义白板系统中使用的所有对象类型，包括:
+ * - Quark（渲染单元）
+ * - 各种维度的对象
  * @author Zhou Chenyu
  */
 
 import * as math from "mathjs";
-
-/**
- * 二维点类
- * @class
- * @description 表示二维平面上的一个点，包含 x 和 y 坐标，支持矩阵变换
- * @author Zhou Chenyu
- */
-class Point {
-  /**
-   * 点的横坐标
-   * @type {number}
-   */
-  x: number;
-
-  /**
-   * 点的纵坐标
-   * @type {number}
-   */
-  y: number;
-
-  /**
-   * 创建一个新的二维点
-   * @param {number} x - 横坐标
-   * @param {number} y - 纵坐标
-   * @constructor
-   */
-  constructor(x: number, y: number) {
-    this.x = x;
-    this.y = y;
-  }
-
-  /**
-   * 将此对象序列化为普通 JavaScript 对象
-   * @returns {{x: number, y: number}} 包含 x 和 y 坐标的对象
-   * @example
-   * const point = new Point(10, 20);
-   * const serialized = point.serialize(); // { x: 10, y: 20 }
-   */
-  serialize(): { x: number; y: number } {
-    return { x: this.x, y: this.y };
-  }
-
-  /**
-   * 将序列化的对象转化为 Point 实例
-   * @param {{x: number, y: number}} point - 包含 x 和 y 坐标的对象
-   * @returns {Point} Point 实例
-   * @static
-   * @example
-   * const point = Point.parse({ x: 10, y: 20 });
-   */
-  static parse(point: { x: number; y: number }): Point {
-    return new Point(point.x, point.y);
-  }
-
-  /**
-   * 应用变换矩阵（破坏性操作）
-   * @param {math.Matrix} trans - 2x2 变换矩阵
-   * @returns {Point} 返回自己以支持链式调用
-   * @description 此方法会直接修改当前点的坐标
-   * @example
-   * const point = new Point(1, 0);
-   * const rotationMatrix = math.matrix([[0, -1], [1, 0]]); // 90度旋转
-   * point.applyTransform(rotationMatrix); // point 现在是 (0, 1)
-   */
-  applyTransform(trans: math.Matrix): Point {
-    const p = Point.multiplyMatrix(trans, this);
-    this.x = p.x;
-    this.y = p.y;
-    return this;
-  }
-
-  /**
-   * 将矩阵与点相乘
-   * @param {math.Matrix} m - 2x2 变换矩阵
-   * @param {Point} p - 要变换的点
-   * @returns {Point} 变换后的新点
-   * @static
-   * @description 执行矩阵-向量乘法，返回新的点而不修改原点
-   */
-  static multiplyMatrix(m: math.Matrix, p: Point): Point {
-    return new Point(
-      m.get([0, 0]) * p.x + m.get([0, 1]) * p.y,
-      m.get([1, 0]) * p.x + m.get([1, 1]) * p.y
-    );
-  }
-}
+import { Point, Range, CircleRange } from "./basic-classes";
 
 /**
  * Quark 抽象基类 - 最底层的渲染单元
@@ -135,7 +53,7 @@ abstract class Quark {
   }
 
   /**
-   * 将此对象序列化为普通 JavaScript 对象
+   * 将此对象序列化为普通 JSON 对象
    * @abstract
    * @returns {object} 序列化后的对象
    * @description 子类必须实现此方法以支持对象的持久化
@@ -144,15 +62,15 @@ abstract class Quark {
 
   /**
    * 将序列化的对象转化为 Quark 实例
-   * @param {any} quark - 被序列化的 Quark 对象
+   * @param {object} quark - 被序列化的 Quark 对象
    * @returns {Quark} Quark 实例
    * @static
    * @abstract
    * @throws {Error} 基类未实现此方法
    * @description 子类应该重写此方法以支持反序列化
    */
-  static parse(quark: any): Quark {
-    throw Error("Error: not implemented");
+    static parse(quark: object): Quark {
+    throw Error("Method not implemented.");
   }
 }
 
@@ -232,7 +150,7 @@ class PolygonQuark extends Quark {
   }
 
   /**
-   * 将此对象序列化为普通 JavaScript 对象
+   * 将此对象序列化为普通 JSON 对象
    * @returns {PolygonQuarkData} 序列化后的对象
    * @description 将多边形 Quark 转换为可 JSON 序列化的格式
    */
@@ -362,7 +280,7 @@ class TextQuark extends Quark {
   }
 
   /**
-   * 将此对象序列化为普通 JavaScript 对象
+   * 将此对象序列化为普通 JSON 对象
    * @returns {TextQuarkData} 序列化后的对象
    * @description 将文本 Quark 转换为可 JSON 序列化的格式
    */
@@ -483,7 +401,7 @@ class ImageQuark extends Quark {
   }
 
   /**
-   * 将此对象序列化为普通 JavaScript 对象
+   * 将此对象序列化为普通 JSON 对象
    * @returns {ImageQuarkData} 序列化后的对象
    * @description 将图片 Quark 转换为可 JSON 序列化的格式
    */
@@ -644,11 +562,24 @@ abstract class BasicObject {
 }
 
 /**
+ * 可擦对象接口
+ * @interface
+ * @author Zhou Chenyu
+ */
+interface IEreasable {
+  /**
+   * @param {Range} range - 欲擦除的范围
+   * @returns {boolean} 是否成功擦除
+   */
+  erase(range :Range): boolean;
+}
+
+/**
  * 零维对象抽象基类
  * @abstract
  * @class
  * @extends BasicObject
- * @description 表示点状对象，没有长度、宽度和高度
+ * @description 表示零维对象，对象自身没有长度和宽度
  * @author Zhou Chenyu
  */
 abstract class ZeroDimensionObject extends BasicObject { }
@@ -658,7 +589,7 @@ abstract class ZeroDimensionObject extends BasicObject { }
  * @abstract
  * @class
  * @extends BasicObject
- * @description 表示线状对象，只有长度没有宽度
+ * @description 表示一维对象，对象自身只有长度没有宽度 (或只有长度没有宽度)
  * @author Zhou Chenyu
  */
 abstract class OneDimensionObject extends BasicObject {
@@ -685,7 +616,7 @@ abstract class OneDimensionObject extends BasicObject {
  * @abstract
  * @class
  * @extends BasicObject
- * @description 表示面状对象，有长度和宽度
+ * @description 表示二维对象，自身有长度和宽度
  * @author Zhou Chenyu
  */
 abstract class TwoDimensionObject extends BasicObject { }
@@ -698,18 +629,19 @@ abstract class TwoDimensionObject extends BasicObject { }
  * 对象容器是使一维对象和二维对象零维化的媒介。它将使所有被白板直接管理的对象是零维的，也使用户操作更为直观。
  *
  * 对象容器有以下几种模式:
- * - 普通模式: 容器直接显示子对象
- * - 拉伸模式: 容器可以拉伸子对象
- * - 窗口模式: 容器作为子对象的视口窗口
+ * - 普通模式: 容器直接显示内部对象，可以认为这个容器不存在
+ * - 拉伸模式: 内部对象以拉伸的方式填充容器，此模式与其它模式不一样的是，操纵杆可以直接调整其变换矩阵
+ * - 窗口模式: 对二维对象，其表现与普通模式相同；对一维对象，若其非主轴被缩得过分小会被裁切
+ * - 收缩模式: 不改变内部对象宽高比，而是将其收缩以适应容器
  *
- * 用户应通过"进入"容器来修改子对象的内容。
+ * 用户通过“进入”容器来修改内部对象的内容 (不是更改对象！)。
  * @author Zhou Chenyu
  */
 class Container extends ZeroDimensionObject {
   /**
-   * 容器中存储的子对象
+   * 容器中存储的内部对象
    * @type {OneDimensionObject | TwoDimensionObject}
-   * @description 可以是一维对象或二维对象
+   * @description 只能是一维对象或二维对象
    */
   child: OneDimensionObject | TwoDimensionObject;
 
@@ -748,7 +680,7 @@ class LineObject extends ZeroDimensionObject {
    * @throws {Error} 方法未实现
    */
   getQuarks(): Quark | Quark[] {
-    throw new Error("Error: not implemented");
+    throw new Error("Method not implemented.");
   }
 }
 
@@ -766,7 +698,7 @@ class PenObject extends ZeroDimensionObject {
    * @throws {Error} 方法未实现
    */
   getQuarks(): Quark | Quark[] {
-    throw new Error("Error: not implemented");
+    throw new Error("Method not implemented.");
   }
 }
 
@@ -777,6 +709,7 @@ export {
   TextQuark,
   ImageQuark,
   BasicObject,
+  IEreasable,
   ZeroDimensionObject,
   OneDimensionObject,
   TwoDimensionObject,
