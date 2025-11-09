@@ -21,10 +21,10 @@
 ### UI
 - 美化 UI。
 
-### [template-manager.js](../src/utils/template-manager.js)
+### [template-manager.js](../src/components/template-manager.js)
 - 将 meta 里的 hash 作为 template 的唯一标识。
 
-### [texture-manager.js](../src/utils/texture-manager.js)
+### [texture-manager.js](../src/components/texture-manager.js)
 - 将 meta 里的 hash 作为 texture 的唯一标识。
 
 ### 文件操作

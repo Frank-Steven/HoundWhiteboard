@@ -1,9 +1,9 @@
 const { app, BrowserWindow } = require("electron");
-const settingManager = require("./utils/setting-manager");
-const foManager = require("./utils/file-open-manager");
-const winManager = require("./utils/window-manager");
-const boardManager = require("./utils/board-manager");
-const templateManager = require("./utils/template-manager");
+const settingManager = require("./components/setting-manager");
+const foManager = require("./components/file-open-manager");
+const winManager = require("./components/window-manager");
+const boardManager = require("./components/board-manager");
+const templateManager = require("./components/template-manager");
 const { file, directory } = require("./utils/io");
 const ipc = require("electron").ipcMain;
 
