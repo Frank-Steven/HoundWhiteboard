@@ -1,7 +1,7 @@
 const path = require("path");
 const { getStroke } = require("perfect-freehand");
 const { fileNameRandomPool, file, directory } = require("../../utils/io");
-const boardManager = require("../../utils/board-manager");
+const boardManager = require("../../components/board-manager");
 const math = require("mathjs");
 
 // prefect-freehand 参数
