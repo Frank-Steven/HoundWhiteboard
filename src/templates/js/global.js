@@ -6,7 +6,8 @@
  * - 设置主题与语言变更的 IPC 通信处理
  */
 
-const { ipcRenderer } = require("electron");
+const { ipcRenderer, nativeTheme } = require("electron");
+const fp = require("../utils/fp");
 const ipc = ipcRenderer;
 
 /**
@@ -30,9 +31,10 @@ ipc.on("settings-loaded", (event, settings) => {
  * @throws {Error} 当找不到 ID 为 theme-stylesheet 的 HTML 元素时
  * @example
  * // 假设 window.settings.theme 为 'dark'
- * setTheme(); // 加载 '../../../data/themes/dark.css'
+ * setTheme(); // 加载 '.config/hound-whiteboard/data/themes/dark.css'
  */
 function setTheme() {
+  let theme = fp.readFile(`/data/themes/${window.settings.theme}.json`);
   const stylesheet = document.getElementById("theme-stylesheet");
   if (!stylesheet) {
     throw new Error('Theme stylesheet element not found');
