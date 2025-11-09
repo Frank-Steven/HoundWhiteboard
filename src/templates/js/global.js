@@ -7,7 +7,7 @@
  */
 
 const { ipcRenderer, nativeTheme } = require("electron");
-const fp = require("../utils/fp");
+// const fp = require("../utils/fp");
 const ipc = ipcRenderer;
 
 /**
@@ -34,7 +34,7 @@ ipc.on("settings-loaded", (event, settings) => {
  * setTheme(); // 加载 '.config/hound-whiteboard/data/themes/dark.css'
  */
 function setTheme() {
-  let theme = fp.readFile(`/data/themes/${window.settings.theme}.json`);
+  // let theme = fp.readFile(`/data/themes/${window.settings.theme}.json`);
   const stylesheet = document.getElementById("theme-stylesheet");
   if (!stylesheet) {
     throw new Error('Theme stylesheet element not found');
