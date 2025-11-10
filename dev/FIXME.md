@@ -1,17 +1,20 @@
 # FIXME
 
+## Bugs
+
 ### [settings-manager.js](../src/components/setting-manager.js)
 - 改造 settings 存储方式，并支持 nativeTheme。
 
 内置模块nativeTheme.themeSource可以获取当前的应用主题，有‘light’,'dark','system'，其中‘system’仅在macos中支持；
 
 一、通过修改nativeTheme.themeSource来实现主题切换；
-```javascript
+
+```js
 const { nativeTheme } = require('electron');
- 
+
 // 白天主题
 nativeTheme.themeSource = 'light';
- 
+
 // 黑夜主题
 nativeTheme.themeSource = 'dark';
 ```
