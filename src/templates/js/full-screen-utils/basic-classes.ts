@@ -4,6 +4,8 @@
  * 定义白板系统中使用的所有基础类，包括
  * - 点
  * - 对象范围
+ * 注: typescript 文件的导入应该从 dist 里导入
+ * @author Zhou Chenyu
  */
 
 import * as math from "mathjs";

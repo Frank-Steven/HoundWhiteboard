@@ -1,23 +1,58 @@
 {
   "compilerOptions": {
-    "allowJs": true, // 允许编译JavaScript文件
-    "checkJs": false, // 是否在JavaScript文件中进行类型检查
+    // 基础选项
+    "target": "ES2020", // 目标语言版本，ES2020 支持更多现代特性
+    "module": "NodeNext", // 模块系统，使用 Node.js 的最新模块解析
+    "lib": ["ES2020", "DOM"], // 包含的库文件
+    
+    // JavaScript 支持
+    "allowJs": true, // 允许编译 JavaScript 文件
+    "checkJs": false, // 不对 JS 文件进行严格类型检查（可根据需要改为 true）
+    
+    // 输出配置
     "outDir": "./dist", // 输出目录
-    "target": "es6", // 目标语言版本
-    "module": "commonjs", // 模块系统
-    "strict": true // 启用所有严格类型检查选项
+    "rootDir": "./src", // 源代码根目录
+    "removeComments": false, // 保留注释
+    "sourceMap": true, // 生成 source map 文件，便于调试
+    "declaration": true, // 生成 .d.ts 声明文件
+    "declarationMap": true, // 生成声明文件的 source map
+    
+    // 模块解析
+    "moduleResolution": "NodeNext", // 使用 Node.js 的最新模块解析策略
+    "esModuleInterop": true, // 启用 ES 模块互操作性
+    "allowSyntheticDefaultImports": true, // 允许从没有默认导出的模块中默认导入
+    "resolveJsonModule": true, // 允许导入 JSON 文件
+    
+    // 类型检查
+    "strict": true, // 启用所有严格类型检查选项
+    "noImplicitAny": true, // 不允许隐式 any 类型
+    "strictNullChecks": true, // 严格的 null 检查
+    "strictFunctionTypes": true, // 严格的函数类型检查
+    "strictPropertyInitialization": true, // 严格的属性初始化检查
+    "noImplicitThis": true, // 不允许 this 有隐式 any 类型
+    "alwaysStrict": true, // 以严格模式解析并为每个源文件生成 "use strict"
+    
+    // 额外检查
+    "noUnusedLocals": false, // 不报告未使用的局部变量（可根据需要改为 true）
+    "noUnusedParameters": false, // 不报告未使用的参数（可根据需要改为 true）
+    "noImplicitReturns": true, // 报告函数的不是所有代码路径都有返回值
+    "noFallthroughCasesInSwitch": true, // 报告 switch 语句的 fallthrough 错误
+    
+    // 其他选项
+    "skipLibCheck": true, // 跳过声明文件的类型检查
+    "forceConsistentCasingInFileNames": true // 强制文件名大小写一致
   },
 
   "include": [
-    "src/*"
+    "src/**/*" // 包含 src 目录下的所有文件（递归）
   ],
 
   "exclude": [
     "node_modules",
     "dist",
-		"dev",
-		"data",
-		".idea",
-		".vscode",
+    "dev",
+    "data",
+    ".idea",
+    ".vscode"
   ]
 }

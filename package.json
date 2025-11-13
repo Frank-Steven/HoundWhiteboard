@@ -4,7 +4,11 @@
   "description": "A whiteboard app",
   "main": "./src/main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "type-check": "tsc --noEmit",
+    "type-check:watch": "tsc --noEmit --watch"
   },
   "author": "Frank Steven",
   "license": "MIT",
@@ -15,5 +19,9 @@
     "electron": "^38.0.0",
     "mathjs": "^14.8.2",
     "perfect-freehand": "^1.2.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.6"
   }
 }

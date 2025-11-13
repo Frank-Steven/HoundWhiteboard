@@ -4,6 +4,7 @@
  * 定义白板系统中使用的所有对象类型，包括:
  * - Quark（渲染单元）
  * - 各种维度的对象
+ * 注: typescript 文件的导入应该从 dist 里导入
  * @author Zhou Chenyu
  */
 
@@ -709,11 +710,14 @@ export {
   TextQuark,
   ImageQuark,
   BasicObject,
-  IEreasable,
   ZeroDimensionObject,
   OneDimensionObject,
   TwoDimensionObject,
   Container,
   LineObject,
   PenObject,
+};
+
+export type {
+  IEreasable,
 };
