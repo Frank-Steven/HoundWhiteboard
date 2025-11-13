@@ -1,8 +1,11 @@
 const { app, BrowserWindow } = require("electron");
-const IOManager = require("./utils/IOManager");
-const winManager = require("./utils/windowManager");
-const boardManager = require("./utils/boardManager");
-const { file, directory } = require("./classes/io");
+const settingManager = require("./components/setting-manager");
+const foManager = require("./components/file-open-manager");
+const winManager = require("./components/window-manager");
+const boardManager = require("./components/board-manager");
+const templateManager = require("./components/template-manager");
+const { file, directory } = require("./utils/io");
+const ipc = require("electron").ipcMain;
 
 let windows = {
   MainMenu: null,
@@ -11,11 +14,10 @@ let windows = {
   FullScreen: null
 };
 
-const ipc = require("electron").ipcMain;
-
 app.whenReady().then(() => {
-  IOManager.init(app);
+  settingManager.init(app);
   boardManager.init(app);
+  templateManager.init(app);
 
   windows.MainMenu = winManager.createWindow("main-menu.html", {
     width: 800,
@@ -35,25 +37,14 @@ app.whenReady().then(() => {
     }
   });
 
-  // 设置 IPC 处理器
-  IOManager.setupSettingsIPC(ipc, BrowserWindow);
-  IOManager.setupFileOperationIPC(ipc, windows);
+  // 设置进程间通信(IPC)处理器
+  settingManager.setupSettingsIPC(ipc, BrowserWindow);  // 设置处理器
+  foManager.setupFileOpenIPC(ipc, windows);
+  winManager.setupFileOpenCloseIPC(ipc, windows);      // 窗口开关处理器
+  templateManager.setupTemplateOperationIPC(ipc, windows); // 模板操作处理器
 
-  // console.log(windows);
+  // 调试用：打印窗口对象
 });
-
-ipc.on("open-modal-window", (event, windowNow, windowNew, windowNewHTML) => {
-  windows[windowNew] = winManager.createModalWindow(windowNewHTML, windows[windowNow], {
-    width: 800,
-    height: 600,
-    minWidth: 800,
-    minHeight: 600,
-  });
-});
-
-ipc.on("close-window", (event, windowNow) => {
-  windows[windowNow].close();
-})
 
 app.on("window-all-closed", () => {
   setTimeout(() => {
@@ -63,23 +54,11 @@ app.on("window-all-closed", () => {
   }, 1000);
 });
 
-ipc.on("new-template-result", (event, result) => {
-  // result: {texture, backgroundColor, backgroundImage, name}
-  console.log(result);
-  const templateInfo = IOManager.saveTemplate(result);
-  windows.NewFile.webContents.send("new-template-adding",
-    { info: templateInfo, result: result });
-});
-
-ipc.on("load-buttons", (event, windowNow) => {
-  const result = IOManager.loadTemplateAll();
-  windows[windowNow].webContents.send("buttons-loaded", result);
-});
-
-// @param {
-//          {string} templateID
-//          {file} boardFile
-//        } boardInfo
+// 参数说明:
+// {
+//   {string} templateID - 模板ID
+//   {file} boardFile - 白板文件对象
+// } boardInfo - 白板信息对象
 ipc.on("create-new-board-templated", (event, boardInfo) => {
   console.log("create-new-board-templated: %s At %s", boardInfo.templateID, boardInfo.filePath);
   boardManager.createEmptyBoard(boardInfo);
@@ -104,4 +83,3 @@ ipc.on("save-board-templated", (event, dirPath) => {
   });
   boardManager.saveBoard(directory.parse(dirPath));
 });
-

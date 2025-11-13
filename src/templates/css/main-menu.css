@@ -17,13 +17,19 @@
   height: 50px;
   border: none;
   font-size: var(--fs4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 auto;
+  cursor: pointer;
+  gap: 10px;
 }
 
 #main-menu-sidebar button:hover {
   background-color: var(--bg2);
 }
 
-#main-menu-sidebar .sidebar-button.content-active {
+#main-menu-sidebar .sidebar-button .content-active {
   /* 当前选中的按钮 */
   background-color: var(--bg2);
 }
@@ -58,6 +64,7 @@
   font-size: var(--fs4);
   padding: 10px 20px;
   border-radius: 5px;
+  -electron-corner-smoothing: 60%;
   cursor: pointer;
 }
 

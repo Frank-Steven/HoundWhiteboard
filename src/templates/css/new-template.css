@@ -106,3 +106,20 @@
   display: inline-block; /* 确保span能够正确应用宽度和高度 */
   padding: 5px 0; /* 根据需要调整内边距 */
 }
+
+@keyframes blink-animation {
+  0%, 100% {
+    border-color: #ff0000;
+    box-shadow: 0 0 5px #ff0000;
+  }
+  50% {
+    border-color: #0000ff;
+    box-shadow: 0 0 15px #0000ff;
+  }
+}
+
+.blinking {
+  border: 2px solid #ff0000;
+  box-shadow: 0 0 5px #ff0000;
+  animation: blink-animation 1.5s infinite alternate;
+}

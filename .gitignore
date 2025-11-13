@@ -2,6 +2,5 @@ node_modules
 .vscode
 package-lock.json
 yarn.lock
-dev
 .idea
-dev/琵琶行
+dist

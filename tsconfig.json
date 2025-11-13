@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "allowJs": true, // 允许编译JavaScript文件
+    "checkJs": false, // 是否在JavaScript文件中进行类型检查
+    "outDir": "./dist", // 输出目录
+    "target": "es6", // 目标语言版本
+    "module": "commonjs", // 模块系统
+    "strict": true // 启用所有严格类型检查选项
+  },
+
+  "include": [
+    "src/*"
+  ],
+
+  "exclude": [
+    "node_modules",
+    "dist",
+		"dev",
+		"data",
+		".idea",
+		".vscode",
+  ]
+}
