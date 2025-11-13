@@ -1,78 +1,107 @@
-/// Sidebar buttons
+/**
+ * @file 应用程序导航和设置的主菜单
+ * @description 功能:
+ * - 侧边栏导航
+ * - 开始屏幕操作（新建/打开文件）
+ * - 设置管理（主题/语言选择）
+ */
 
-const sidebarButtons = document.querySelectorAll(".sidebar-button");
-const contentScreens = document.querySelectorAll(".content-screen");
+const fs = require('fs');
 
+// 侧边栏元素
+const sidebarButtons = document.querySelectorAll('.sidebar-button');
+const contentScreens = document.querySelectorAll('.content-screen');
+
+/**
+ * 通过添加 'content-active' 类来激活内容屏幕
+ *
+ * @param {HTMLElement} screen - 要激活的屏幕元素
+ */
 function activateScreen(screen) {
   contentScreens.forEach((scr) => {
-    scr.classList.remove("content-active");
+    scr.classList.remove('content-active');
   });
-  screen.classList.add("content-active");
+  screen.classList.add('content-active');
 }
 
+/**
+ * 通过添加 'content-active' 类来激活侧边栏按钮
+ *
+ * @param {HTMLElement} button - 要激活的按钮元素
+ */
 function activateButton(button) {
   sidebarButtons.forEach((btn) => {
-    btn.classList.remove("content-active");
-  })
-  button.classList.add("content-active");
+    btn.classList.remove('content-active');
+  });
+  button.classList.add('content-active');
 }
 
+// 设置侧边栏导航
 sidebarButtons.forEach((btn) => {
-  btn.addEventListener("click", () => {
+  btn.addEventListener('click', () => {
     const scr = document.getElementById(btn.dataset.targetScreen);
     activateScreen(scr);
     activateButton(btn);
   });
 });
 
-sidebarButtons[0].classList.add("content-active");
-contentScreens[0].classList.add("content-active");
+// 激活默认屏幕
+sidebarButtons[0].classList.add('content-active');
+contentScreens[0].classList.add('content-active');
 
-/// Start screen buttons
+// 开始屏幕元素
+const startNewBtn = document.getElementById('main-menu-content-start-buttons-new');
+const startOpenBtn = document.getElementById('main-menu-content-start-buttons-open');
 
-const startNewBtn = document.getElementById("main-menu-content-start-buttons-new");
-const startOpenBtn = document.getElementById("main-menu-content-start-buttons-open");
-
-startNewBtn.addEventListener("click", () => {
-  ipc.send("open-modal-window", "MainMenu", "NewFile", "new-file.html");
+/**
+ * 新建文件按钮点击的 IPC 事件监听器
+ * @event new-file-click
+ * @listens HTMLElement#click
+ */
+startNewBtn.addEventListener('click', () => {
+  ipc.send('open-modal-window', 'MainMenu', 'NewFile', 'new-file.html');
 });
 
-startOpenBtn.addEventListener("click", () => {
-  console.log("open.");
-  ipc.send("open-hwb-file", "MainMenu");
+/**
+ * 打开文件按钮点击的 IPC 事件监听器
+ * @event open-file-click
+ * @listens HTMLElement#click
+ */
+startOpenBtn.addEventListener('click', async () => {
+  const filePath = await ipc.invoke('open-hwb-file', 'MainMenu');
+  if (filePath) {
+    ipc.send('open-board-templated', filePath[0]);
+  }
 });
 
-ipc.on("open-hwb-file-result", (event, filePath) => {
-  console.log(filePath);
-  ipc.send("open-board-templated", filePath[0]);
-})
+// 设置屏幕元素
+const themeSelect = document.getElementById('main-menu-content-settings-theme-select');
+const languageSelect = document.getElementById('main-menu-content-settings-language-select');
 
-/// Settings screen buttons
-
-const themeSelect = document.getElementById("main-menu-content-settings-theme-select");
-const languageSelect = document.getElementById("main-menu-content-settings-language-select");
-
-// 遍历 theme 目录，动态生成 theme 选项
-const themes = require("fs").readdirSync(`./src/data/themes`);
-for (let i = 0; i < themes.length; i++) {
-  const option = document.createElement("option");
-  option.value = themes[i].replace(".css", "");
-  option.text = themes[i].replace(".css", "");
-  console.log(option.value);
+// FIXME: 这个应从这里移走
+// 填充主题选项
+const themes = fs.readdirSync('./data/themes');
+themes.forEach((theme) => {
+  const option = document.createElement('option');
+  option.value = theme.replace('.css', '');
+  option.text = theme.replace('.css', '');
   themeSelect.add(option);
-}
+});
 
-const languages = require("fs").readdirSync(`./src/data/languages`);
-for (let i = 0; i < languages.length; i++) {
-  const option = document.createElement("option");
-  option.value = languages[i].replace(".json", "");
-  option.text = languages[i].replace(".json", "");
-  console.log(option.value);
+// 填充语言选项
+const languages = fs.readdirSync('./data/languages');
+languages.forEach((lang) => {
+  const option = document.createElement('option');
+  option.value = lang.replace('.json', '');
+  option.text = lang.replace('.json', '');
   languageSelect.add(option);
-}
+});
 
+/**
+ * 重置选择元素以匹配当前设置
+ */
 function resetSelects() {
-  // 根据当前 theme 选择项，初始化 select 项
+  // 设置主题选择
   for (let i = 0; i < themeSelect.options.length; i++) {
     if (themeSelect.options[i].value === window.settings.theme) {
       themeSelect.selectedIndex = i;
@@ -80,7 +109,7 @@ function resetSelects() {
     }
   }
 
-  // 根据当前 language 选择项，初始化 select 项
+  // 设置语言选择
   for (let i = 0; i < languageSelect.options.length; i++) {
     if (languageSelect.options[i].value === window.settings.language) {
       languageSelect.selectedIndex = i;
@@ -89,23 +118,36 @@ function resetSelects() {
   }
 }
 
-const saveBtn = document.getElementById("main-menu-content-settings-buttons-save");
-const cancelBtn = document.getElementById("main-menu-content-settings-buttons-cancel");
+// 设置按钮
+const saveBtn = document.getElementById('main-menu-content-settings-buttons-save');
+const cancelBtn = document.getElementById('main-menu-content-settings-buttons-cancel');
 
-saveBtn.addEventListener("click", () => {
-  console.log(themeSelect.value);
-  console.log(languageSelect.value);
+/**
+ * 设置保存的 IPC 事件监听器
+ * @event settings-save
+ * @listens HTMLElement#click
+ */
+saveBtn.addEventListener('click', () => {
   window.settings.theme = themeSelect.value;
   window.settings.language = languageSelect.value;
-  ipc.send("settings-changed", window.settings);
+  ipc.send('settings-changed', window.settings);
 });
 
-
-ipc.on("settings-loaded", (event, settings) => {
-  window.settings.theme = settings.theme;
-  window.settings.language = settings.language;
+/**
+ * 设置加载的 IPC 事件监听器
+ * @event settings-loaded
+ * @listens ipc#settings-loaded
+ */
+ipc.on('settings-loaded', (event, settings) => {
+  window.settings = settings;
+  resetSelects();
 });
 
-cancelBtn.addEventListener("click", () => {
+/**
+ * 设置取消的事件监听器
+ * @event settings-cancel
+ * @listens HTMLElement#click
+ */
+cancelBtn.addEventListener('click', () => {
   resetSelects();
 });

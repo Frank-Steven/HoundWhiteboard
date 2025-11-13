@@ -1,182 +1,285 @@
-// const { ipcRenderer } = require("electron")
-// const ipc = ipcRenderer
-// ipc has been decleared in global.js
+/**
+ * @file 新建文件
+ * @description 功能:
+ * - 文件名验证和清理
+ * - 保存路径选择
+ * - 选择模板
+ * - 新建文件创建确认
+ */
 
-const path = require("path");
+const path = require('path');
+const { file, directory } = require('../../utils/io');
 
-const newTemplateBtn = document.getElementById("new-file-template-select-new-template");
+const Toast = require('../../utils/ui/toast');
+const toast = new Toast();
 
-const input = document.getElementById("new-file-save-form-input");
-const inputSubmit = document.getElementById("new-file-save-form-submit");
+const { WindowFactory } = require('../../utils/ui/fake-window');
 
-const filePathSpan = document.getElementById("new-file-save-path");
-const choosePathBtn = document.getElementById("new-file-save-choosepath");
+// DOM 元素
+const newTemplateBtn = document.getElementById('new-file-template-select-new-template');
+const input = document.getElementById('new-file-save-form-input');
+const filePathSpan = document.getElementById('new-file-save-path');
+const choosePathBtn = document.getElementById('new-file-save-choosepath');
+const confirmBtn = document.getElementById('yes-or-no-button-yes');
+const cancelBtn = document.getElementById('yes-or-no-button-no');
+const buttonList = document.getElementById('new-file-template-select-buttons');
+const contextMenu = document.getElementById('context-menu');
+const renameEditor = document.getElementById('rename-editor');
 
-const confirmBtn = document.getElementById("yes-or-no-button-yes");
-const cancelBtn = document.getElementById("yes-or-no-button-no");
+// 创建 FakeWindow 实例 - 使用 window 对象使其全局可访问
+window.contextMenuWindow = null;
+window.renameEditorWindow = null;
+window.currentContextButton = null;
 
-const buttonList = document.getElementById("new-file-template-select-buttons");
+// 初始化 FakeWindow 实例
+function initializeFakeWindows() {
+  // 创建右键菜单窗口
+  window.contextMenuWindow = WindowFactory.createContextMenu(contextMenu);
+  
+  // 创建重命名编辑器窗口
+  window.renameEditorWindow = WindowFactory.createDialog(renameEditor, {
+    backdropClose: true
+  });
+}
 
-let filePath = "";
+// 在 DOM 加载完成后初始化
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeFakeWindows);
+} else {
+  initializeFakeWindows();
+}
 
-// NOTE: 由于 IPC 会自动序列化参数，所以此处就不用 file 类型的文件了
-let boardInfo = {
+/**
+ * 选择的文件路径
+ */
+let filePath = '';
+
+/**
+ * 白板的配置文件
+ */
+const boardInfo = {
   templateID: null,
-  filePath: null,
+  file: null,
+  width: 800,
+  height: 600,
 };
 
-// 输入框事件优化（使用 input 事件替代 keydown）
-input.addEventListener('input', () => {
-  // 文件名过滤配置
-  const FILTER_CONFIG = {
-    // 增强正则表达式（覆盖所有操作系统非法字符）
-    illegalChars: /[<>:"/\\.@|?*~$^'`\u0000-\u001F]/g, // 包含控制字符过滤
-    maxLength: 255 - '.hwb'.length, // 保留扩展名空间
-    replaceChar: '_' // 非法字符替换符
-  };
-
-  // 执行过滤操作
-  const sanitizeFilename = (value) => {
-    // 阶段1：预处理
-    let cleaned = value.trim()
-      .normalize('NFC') // 统一 Unicode 格式（重要 macOS 兼容）
-      .replace(FILTER_CONFIG.illegalChars, FILTER_CONFIG.replaceChar);
-
-    // 阶段2：长度控制
-    cleaned = cleaned.slice(0, FILTER_CONFIG.maxLength);
-
-    // 阶段3：保留系统特殊名称检测
-    if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]?)$/i.test(cleaned)) {
-      cleaned = FILTER_CONFIG.replaceChar + cleaned; // 避免保留名称冲突
-    }
-
-    return cleaned;
-  };
-
-  // 应用过滤
-  const newValue = sanitizeFilename(input.value);
-  
-  // 仅当值变化时更新（避免无限循环）
-  if (input.value !== newValue) {
-    input.value = newValue;
-    blink(input); // 添加视觉反馈
-  }
-
-  // 更新文件路径显示
-  updateFilePathDisplay(newValue);
-});
-
+/**
+ * 通过闪烁元素来应用视觉反馈
+ * @function blink
+ * @param {HTMLElement} element - 要应用闪烁效果的元素
+ */
 function blink(element) {
   element.classList.add('blinking');
   setTimeout(() => element.classList.remove('blinking'), 500);
 }
 
-// 提取路径更新逻辑
-function updateFilePathDisplay(fileName) {
-  boardInfo.filePath = path.join(
-    filePath, 
-    fileName ? `${fileName}.hwb` : ''
-  );
-  filePathSpan.textContent = boardInfo.filePath || "未选择路径";
+/**
+ * 根据操作系统限制清理文件名输入
+ * @function sanitizeFilename
+ * @param {string} value - 原始文件名输入
+ * @returns {string} 清理后的文件名
+ * @example
+ * sanitizeFilename('my<file>.hwb'); // 返回 'my_file_.hwb'
+ */
+function sanitizeFilename(value) {
+  const FILTER_CONFIG = {
+    illegalChars: /[<>:"/\\.@|?*~$^'`\u0000-\u001F]/g,
+    maxLength: 255 - '.hwb'.length,
+    replaceChar: '_'
+  };
+
+  let cleaned = value.trim()
+    .normalize('NFC')
+    .replace(FILTER_CONFIG.illegalChars, FILTER_CONFIG.replaceChar);
+
+  cleaned = cleaned.slice(0, FILTER_CONFIG.maxLength);
+
+  if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9]?)$/i.test(cleaned)) {
+    cleaned = FILTER_CONFIG.replaceChar + cleaned;
+  }
+
+  return cleaned;
 }
 
-// 选择保存文件夹
-choosePathBtn.addEventListener("click", () => {
-  ipc.send("path-choose");
-})
+/**
+ * 根据当前输入更新文件路径显示
+ * @function updateFilePathDisplay
+ * @param {string} fileName - 当前文件名输入
+ */
+function updateFilePathDisplay(fileName) {
+  boardInfo.file = path.join(
+    filePath,
+    fileName ? `${fileName}.hwb` : ''
+  );
+  filePathSpan.textContent = boardInfo.file || "未选择路径";
+}
 
-ipc.on("path-choose-result", (event, result) => {
-  filePath = result[0];
-
-  console.log("Path:" + filePath);
-  boardInfo.filePath = path.join(filePath, input.value === "" ? "" : input.value + ".hwb");
-  filePathSpan.textContent = boardInfo.filePath;
-});
-
-// 新建主题
-newTemplateBtn.addEventListener("click", () => {
-  ipc.send("open-modal-window", "NewFile", "NewTemplate", "new-template.html");
-});
-
-// 取消
-cancelBtn.addEventListener("click", () => {
-  ipc.send("close-window", "NewFile");
-});
-
-// 确认
-// TODO: 不能有同名
-// TODO: 把 boardInfo 里的 filePath 改成 file 类
-confirmBtn.addEventListener("click", () => {
-  if (boardInfo.templateID === null) {
-    console.log("No template selected");
-    return;
+// 输入验证
+input.addEventListener('input', () => {
+  const newValue = sanitizeFilename(input.value);
+  
+  if (input.value !== newValue) {
+    input.value = newValue;
+    blink(input);
   }
-  if (filePath === "" || input.value === "") {
-    if (input.value === "") {
+
+  updateFilePathDisplay(newValue);
+});
+
+/**
+ * 路径选择的 IPC 事件监听器
+ * @event path-choose
+ * @listens HTMLElement#click
+ */
+choosePathBtn.addEventListener('click', async () => {
+  const result = await ipc.invoke('path-choose');
+  if (result) {
+    filePath = result[0];
+    boardInfo.file = path.join(filePath, input.value === '' ? '' : input.value + '.hwb');
+    filePathSpan.textContent = boardInfo.file;
+  }
+});
+
+/**
+ * 新建模板按钮的 IPC 事件监听器
+ * @event new-template-click
+ * @listens HTMLElement#click
+ */
+newTemplateBtn.addEventListener('click', () => {
+  ipc.send('open-modal-window', 'NewFile', 'NewTemplate', 'new-template.html');
+});
+
+/**
+ * 取消按钮的 IPC 事件监听器
+ * @event cancel-click
+ * @listens HTMLElement#click
+ */
+cancelBtn.addEventListener('click', () => {
+  ipc.send('close-window', 'NewFile');
+});
+
+/**
+ * 确认按钮的 IPC 事件监听器
+ * @event confirm-click
+ * @listens HTMLElement#click
+ */
+confirmBtn.addEventListener('click', () => {
+  let canConfirm = true;
+
+  if (!boardInfo.templateID) {
+    blink(buttonList);
+    toast.warning('请选择样式');
+    canConfirm = false;
+  }
+
+  if (input.value === '') {
+    input.focus();
+    blink(input);
+    toast.warning('请填写文件名');
+    canConfirm = false;
+  }
+
+  if (filePath === '') {
+    choosePathBtn.focus();
+    blink(choosePathBtn);
+    toast.warning('请选择路径');
+    canConfirm = false;
+  }
+
+  if (input.value !== '' && filePath !== '') {
+    if (directory.parse(boardInfo.file).peek(input.value, 'hwb').exist()) {
       input.focus();
       blink(input);
-      console.log("No file name selected");
+      toast.warning('已有同名文件存在');
+      canConfirm = false;
     }
-    if (filePath === "") {
-      choosePathBtn.focus();
-      blink(choosePathBtn);
-      console.log("No file path selected");
-    }
-    return;
   }
-  console.log(boardInfo);
-  ipc.send("create-new-board-templated", boardInfo);
+
+  if (!canConfirm) return;
+  ipc.send('create-new-board-templated', boardInfo);
 });
 
+/**
+ * 选择模板按钮并让其可视化
+ * @function chooseButton
+ * @param {string} templateID - 所选模板的 ID
+ */
+window.chooseButton = function(templateID) {
+  const button = document.getElementById(templateID);
+  if (boardInfo.templateID) {
+    document.getElementById(boardInfo.templateID)
+            .style.border = '2px solid transparent';
+  }
+  boardInfo.templateID = templateID;
+  button.style.border = '2px solid #007aff';
+}
+
+/**
+ * 创建并添加模板选择按钮
+ * @function buttonLoadAdd
+ * @param {Object} element - 模板数据对象
+ * @property {string} element.id - 模板 ID
+ * @property {Object} element.data - 模板元数据
+ * @property {string} element.imgPath - 模板预览图片路径
+ */
 function buttonLoadAdd(element) {
-  let btn = document.createElement("button");
-  let span = document.createElement("span");
-  let img = document.createElement("img");
-  // 加载按钮（在新建模版按钮后面插入）
+  let btn = document.createElement('button');
+  let span = document.createElement('span');
+  let img = document.createElement('img');
+  
   buttonList.insertBefore(btn, buttonList.children[1]);
   btn.appendChild(img);
   btn.appendChild(span);
 
-  btn.className = "big-flex-btn";
+  btn.className = 'big-flex-btn';
   btn.id = element.id;
   span.innerHTML = element.data.name;
-  if (element.data.backgroundType === "solid") {
-    // 加载背景色
+  
+  if (element.data.backgroundType === 'solid') {
     img.style.background = element.data.background;
   } else {
-    // 加载图片
     img.src = element.imgPath;
   }
 
   const choose = () => {
-    console.log("Choose: " + element.id);
-    // 当选中这个模版时，result.templateId = element.id
     boardInfo.templateID = element.id;
-    // 遍历所有按钮，取消选中
     for (let i = 0; i < buttonList.children.length; i++) {
-      buttonList.children[i].style.border = "2px solid transparent";
+      buttonList.children[i].style.border = '2px solid transparent';
     }
-    // 选中当前按钮
-    btn.style.border = "2px solid #007aff";
+    btn.style.border = '2px solid #007aff';
   };
-  choose(); // Init
-  btn.addEventListener("click", choose);
+  
+  choose();
+  btn.addEventListener('click', choose);
+  
+  // 添加右键菜单支持
+  if (typeof addContextMenuToButton === 'function') {
+    addContextMenuToButton(btn);
+  }
 }
 
-// 加载按钮
-ipc.send("load-buttons", "NewFile");
-
-confirmBtn.focus();
-
-ipc.on("buttons-loaded", (event, result) => {
-  console.log(result);
-  buttonList.innerHTML = "";
+// 初始化模板按钮
+(async () => {
+  const result = await ipc.invoke('template-load-buttons', 'NewFile');
+  buttonList.innerHTML = '';
   buttonList.appendChild(newTemplateBtn);
   result.forEach((element) => {
     buttonLoadAdd(element);
   });
-});
+})();
 
-ipc.on("new-template-adding", (event, result) => {
+/**
+ * 新建模板添加的 IPC 事件监听器
+ * @event new-template-adding
+ * @listens ipc#new-template-adding
+ */
+ipc.on('new-template-adding', (event, result) => {
   buttonLoadAdd(result.info);
 });
+
+// 引入工具模块 - 必须在 DOM 元素和全局变量定义之后
+setTimeout(() => {
+  require('../js/new-file-utils/context-menu');
+  require('../js/new-file-utils/renamer');
+}, 0);
