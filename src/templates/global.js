@@ -6,6 +6,7 @@
  * - 设置主题与语言变更的 IPC 通信处理
  */
 
+const { userDataDirectory } = require("../../utils/usr");
 const { ipcRenderer, nativeTheme } = require("electron");
 // const fp = require("../utils/fp");
 const ipc = ipcRenderer;
@@ -37,7 +38,7 @@ function setTheme() {
   // let theme = fp.readFile(`/data/themes/${window.settings.theme}.json`);
   const stylesheet = document.getElementById("theme-stylesheet");
   if (!stylesheet) {
-    throw new Error('Theme stylesheet element not found');
+    throw new Error("Theme stylesheet element not found");
   }
   stylesheet.href = `../../../data/themes/${window.settings.theme}.css`;
 }
@@ -49,7 +50,7 @@ function setTheme() {
  * @throws {Error} 无法加载语言文件时抛出异常
  */
 function setLanguage() {
-  const language = require(`../../../data/languages/${window.settings.language}.json`);
+  const language = userDataDirectory.cd("languages").catJson(window.settings.language + ".json");
 
   /**
    * 递归更新 DOM 中的文本节点
@@ -64,12 +65,14 @@ function setLanguage() {
       if (typeof obj[key] === "object") {
         updateTextNodes(obj[key], currentId);
       } else {
-        const element = document.getElementById(currentId);
-        if (element) {
-          element.innerText = obj[key];
-          // 特殊处理输入框（保留原逻辑）
-          if (element.tagName === "INPUT" && element.placeholder) {
-            element.placeholder = obj[key];
+        const elements = document.getElementsByClassName("[text]" + currentId);
+        for (const element of elements) {
+          if (element) {
+            element.innerText = obj[key];
+            // 特殊处理输入框（保留原逻辑）
+            if (element.tagName === "INPUT" && element.placeholder) {
+              element.placeholder = obj[key];
+            }
           }
         }
       }

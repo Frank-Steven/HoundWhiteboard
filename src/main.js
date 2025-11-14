@@ -1,5 +1,5 @@
 const { app, BrowserWindow } = require("electron");
-const settingManager = require("./components/setting-manager");
+const settingManager = require("./components/settings-manager");
 const foManager = require("./components/file-open-manager");
 const winManager = require("./components/window-manager");
 const boardManager = require("./components/board-manager");
@@ -7,18 +7,16 @@ const templateManager = require("./components/template-manager");
 const { file, directory } = require("./utils/io");
 const ipc = require("electron").ipcMain;
 
+console.log(app.getPath("exe"));
+
 let windows = {
   MainMenu: null,
   NewFile: null,
   NewTemplate: null,
-  FullScreen: null
+  FullScreen: null,
 };
 
 app.whenReady().then(() => {
-  settingManager.init(app);
-  boardManager.init(app);
-  templateManager.init(app);
-
   windows.MainMenu = winManager.createWindow("main-menu", {
     width: 800,
     height: 600,
@@ -38,9 +36,9 @@ app.whenReady().then(() => {
   });
 
   // 设置进程间通信(IPC)处理器
-  settingManager.setupSettingsIPC(ipc, BrowserWindow);  // 设置处理器
+  settingManager.setupSettingsIPC(ipc, BrowserWindow); // 设置处理器
   foManager.setupFileOpenIPC(ipc, windows);
-  winManager.setupFileOpenCloseIPC(ipc, windows);      // 窗口开关处理器
+  winManager.setupFileOpenCloseIPC(ipc, windows); // 窗口开关处理器
   templateManager.setupTemplateOperationIPC(ipc, windows); // 模板操作处理器
 
   // 调试用：打印窗口对象
@@ -60,16 +58,24 @@ app.on("window-all-closed", () => {
 //   {file} boardFile - 白板文件对象
 // } boardInfo - 白板信息对象
 ipc.on("create-new-board-templated", (event, boardInfo) => {
-  console.log("create-new-board-templated: %s At %s", boardInfo.templateID, boardInfo.filePath);
+  console.log(
+    "create-new-board-templated: %s At %s",
+    boardInfo.templateID,
+    boardInfo.filePath
+  );
   boardManager.createEmptyBoard(boardInfo);
-  BrowserWindow.getAllWindows().forEach((win) => { win.close(); });
+  BrowserWindow.getAllWindows().forEach((win) => {
+    win.close();
+  });
   windows.FullScreen = boardManager.openBoard(file.parse(boardInfo.filePath));
 });
 
 ipc.on("open-board-templated", (event, filePath) => {
   console.log(filePath);
   console.log("open-board-templated: At %s", filePath);
-  BrowserWindow.getAllWindows().forEach((win) => { win.close(); });
+  BrowserWindow.getAllWindows().forEach((win) => {
+    win.close();
+  });
   windows.FullScreen = boardManager.openBoard(file.parse(filePath));
 });
 

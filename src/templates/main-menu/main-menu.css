@@ -1,9 +1,9 @@
-#main-menu {
+.main-menu {
   height: 100vh;
   display: flex;
 }
 
-#main-menu-sidebar {
+.main-menu-sidebar {
   background-color: var(--bg1);
   height: 100%;
   width: 200px;
@@ -11,7 +11,7 @@
   flex-direction: column;
 }
 
-#main-menu-sidebar button {
+.main-menu-sidebar button {
   color: var(--fg1);
   background-color: var(--bg1);
   height: 50px;
@@ -25,32 +25,32 @@
   gap: 10px;
 }
 
-#main-menu-sidebar button:hover {
+.main-menu-sidebar button:hover {
   background-color: var(--bg2);
 }
 
-#main-menu-sidebar .sidebar-button .content-active {
+.main-menu-sidebar .sidebar-button .content-active {
   /* 当前选中的按钮 */
   background-color: var(--bg2);
 }
 
-#main-menu-content {
+.main-menu-content {
   width: 100%;
   overflow: auto;
 }
 
-#main-menu-content div {
+.main-menu-content div {
   margin: 30px;
 }
 
-#main-menu-content-start-buttons {
+.main-menu-content-start-buttons {
   display: flex;
   gap: 20px;
   align-items: center;
   justify-content: center;
 }
 
-#main-menu-content-start-buttons button {
+.main-menu-content-start-buttons button {
   background-color: var(--bg1);
   border: none;
   color: var(--fg1);
@@ -68,15 +68,15 @@
   cursor: pointer;
 }
 
-#main-menu-content-start-buttons button:hover {
+.main-menu-content-start-buttons button:hover {
   background-color: var(--bg2);
 }
 
-#main-menu-content-start-buttons button span {
+.main-menu-content-start-buttons button span {
   font-size: var(--fs5);
 }
 
-#main-menu-content-start-buttons button img {
+.main-menu-content-start-buttons button img {
   display: block;
   width: 40px;
   height: 40px;

@@ -6,8 +6,6 @@
  * - 设置管理（主题/语言选择）
  */
 
-const fs = require('fs');
-
 // 侧边栏元素
 const sidebarButtons = document.querySelectorAll('.sidebar-button');
 const contentScreens = document.querySelectorAll('.content-screen');

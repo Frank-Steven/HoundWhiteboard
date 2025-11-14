@@ -74,7 +74,7 @@
 
 ---
 
-## [Setting Manager](setting-manager.js)
+## [Settings Manager](settings-manager.js)
 
 管理应用设置和文件操作。
 
