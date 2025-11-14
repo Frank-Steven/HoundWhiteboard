@@ -4,11 +4,7 @@
   "description": "A whiteboard app",
   "main": "./src/main.js",
   "scripts": {
-    "start": "electron .",
-    "build": "tsc",
-    "build:watch": "tsc --watch",
-    "type-check": "tsc --noEmit",
-    "type-check:watch": "tsc --noEmit --watch"
+    "start": "electron ."
   },
   "author": "Frank Steven",
   "license": "MIT",
@@ -17,11 +13,6 @@
     "hidefile": "^3.0.0",
     "electron-packager": "^17.1.0",
     "electron": "^38.0.0",
-    "mathjs": "^14.8.2",
-    "perfect-freehand": "^1.2.2"
-  },
-  "devDependencies": {
-    "typescript": "^5.3.3",
-    "@types/node": "^20.10.6"
+    "mathjs": "^14.8.2"
   }
 }
