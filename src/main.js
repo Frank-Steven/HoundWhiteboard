@@ -19,7 +19,7 @@ app.whenReady().then(() => {
   boardManager.init(app);
   templateManager.init(app);
 
-  windows.MainMenu = winManager.createWindow("main-menu.html", {
+  windows.MainMenu = winManager.createWindow("main-menu", {
     width: 800,
     height: 600,
     minWidth: 800,
@@ -28,7 +28,7 @@ app.whenReady().then(() => {
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      windows.MainMenu = winManager.createWindow("main-menu.html", {
+      windows.MainMenu = winManager.createWindow("main-menu", {
         width: 800,
         height: 600,
         minWidth: 800,
@@ -75,7 +75,7 @@ ipc.on("open-board-templated", (event, filePath) => {
 
 ipc.on("save-board-templated", (event, dirPath) => {
   windows.FullScreen.close();
-  windows.MainMenu = winManager.createWindow("main-menu.html", {
+  windows.MainMenu = winManager.createWindow("main-menu", {
     width: 800,
     height: 600,
     minWidth: 800,
