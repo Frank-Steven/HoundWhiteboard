@@ -147,7 +147,7 @@ choosePathBtn.addEventListener('click', async () => {
  * @listens HTMLElement#click
  */
 newTemplateBtn.addEventListener('click', () => {
-  ipc.send('open-modal-window', 'NewFile', 'NewTemplate', 'new-template.html');
+  ipc.send('open-modal-window', 'NewFile', 'NewTemplate', 'new-template');
 });
 
 /**
@@ -280,6 +280,6 @@ ipc.on('new-template-adding', (event, result) => {
 
 // 引入工具模块 - 必须在 DOM 元素和全局变量定义之后
 setTimeout(() => {
-  require('../js/new-file-utils/context-menu');
-  require('../js/new-file-utils/renamer');
+  require('./context-menu');
+  require('./renamer');
 }, 0);

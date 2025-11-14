@@ -2,7 +2,7 @@
  * @file full-screen.js
  */
 
-const RenderManager = require("../js/full-screen-utils/render-manager.js");
+const RenderManager = require("./render-manager.js");
 
 const canvas = document.getElementById('canvas');
 

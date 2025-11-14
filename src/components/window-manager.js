@@ -33,7 +33,7 @@ function createWindow(template, size = { width: 800, height: 600, minWidth: 800,
     minHeight: size.minHeight,
     autoHideMenuBar: true
   });
-  win.loadFile(__dirname + '/../templates/html/' + template);
+  win.loadFile(__dirname + '/../templates/' + template + '/' + template + '.html');
 
   win.webContents.on('did-finish-load', () => {
     const settings = settingManager.loadSettings();
@@ -60,7 +60,7 @@ function createFullScreenWindow(template) {
     frame: false,
     transparent: true
   });
-  win.loadFile(__dirname + '/../templates/html/' + template);
+  win.loadFile(__dirname + '/../templates/' + template + '/' + template + '.html');
   return win;
 }
 
@@ -90,7 +90,7 @@ function createModalWindow(template, parent, size = { width: 800, height: 600, m
     modal: true,
     autoHideMenuBar: true
   });
-  modalWin.loadFile(__dirname + '/../templates/html/' + template);
+  modalWin.loadFile(__dirname + '/../templates/' + template + '/' + template + '.html');
 
   modalWin.webContents.on('did-finish-load', () => {
     const settings = settingManager.loadSettings();
