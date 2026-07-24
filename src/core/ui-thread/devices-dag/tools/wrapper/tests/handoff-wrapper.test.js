@@ -16,6 +16,7 @@ import { RectangleRange } from "../../../../../engine/range/rectangle.js";
 import {
   createMockCreator,
   createMockModifier,
+  CollectingTool,
 } from "../../../../../test-support/mock-tools.js";
 
 /**
@@ -338,5 +339,42 @@ describe("HandoffWrapperTool", () => {
 
     expect(wrapper.getDebugInfo().phase).toBe("second");
     expect(second._handoffObjects).toEqual([]);
+  });
+
+  test("endAction 应使用槽位上下文（状态读写落在 shell 节点）", () => {
+    // 自定义工具：process 时开始动作并写入 objects 投影，completeAction 时清除
+    class ObjectHoldingTool extends CollectingTool {
+      process(signalPacket, context) {
+        super.process(signalPacket, context);
+        this.beginAction(context);
+        this.setContextObjects(context, [{ id: 1 }]);
+      }
+
+      completeAction(context = {}) {
+        this.clearContextObjects(context);
+        this.isActionActive = false;
+      }
+    }
+
+    const first = new ObjectHoldingTool();
+    const second = new CollectingTool();
+    const wrapper = new HandoffWrapperTool({ first, second });
+    const { services } = createCreatorServices(1);
+    const { dag } = mountHandoff(wrapper, services);
+
+    dispatchToHandoff(dag, [
+      { type: "position", context: { value: { x: 1, y: 1 } } },
+    ]);
+
+    // 信号流程中 objects 投影写在 first 槽位的 shell 节点上
+    const firstShell = wrapper._getSlot("first").node;
+    expect(firstShell.state.objects).toHaveLength(1);
+
+    wrapper.endAction({ services });
+
+    // endAction → completeAction 的 clearContextObjects 落在 shell 节点：投影被清除
+    expect(firstShell.state.objects).toBeUndefined();
+    // wrapper 真实节点不被子工具的状态读写污染
+    expect(dag.getNodeState("/viewport/handoff").objects).toBeUndefined();
   });
 });

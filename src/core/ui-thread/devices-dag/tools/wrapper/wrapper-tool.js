@@ -151,8 +151,10 @@ class WrapperTool extends Tool {
   /**
    * 构造面向指定槽位的工具调用上下文
    * @description
-   * state 读写落在槽位 shell 节点自身 state 上，services 从父上下文透传。
-   * 用于在信号分发之外直接调用子工具的生命周期方法（如 `discardAction`）。
+   * 形状对齐真实 DAG 的 handlerContext：state 读写落在槽位 shell 节点自身 state 上
+   * （`dag` 恒为 null，状态不会穿透到真实 DAG），services 从父上下文透传。
+   * 用于在信号分发之外直接调用子工具的生命周期方法（如 `endAction` / `cancelAction` / `discardAction`），
+   * 保证子工具在这些路径上的状态读写与信号流程中一致。
    * @param {string} scopeId - 槽位标识
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [parentContext={}] - 父级处理器上下文
    * @returns {Object} 槽位作用域上下文
@@ -167,13 +169,45 @@ class WrapperTool extends Tool {
     }
 
     const node = slot.node;
+    const readState = () => ({ ...node.state });
+
+    /**
+     * 写入槽位 shell 节点状态
+     * @param {Object} state - 新状态
+     * @returns {Object} 写入后的状态
+     */
+    const writeState = (state) => {
+      node.state = isPlainObject(state) ? { ...state } : {};
+      return { ...node.state };
+    };
+
     return {
-      services,
+      node,
+      dag: null,
       path,
-      getNodeState: () => ({ ...node.state }),
-      setNodeState: (_pathOrId, state) => {
-        node.state = isPlainObject(state) ? { ...state } : {};
-        return { ...node.state };
+      services,
+      semantics: { ...node.semantics },
+      state: readState(),
+      getState: readState,
+      setState: writeState,
+      patchState(partial = {}) {
+        return writeState(
+          isPlainObject(partial) ? { ...node.state, ...partial } : node.state,
+        );
+      },
+      getNodeState: () => readState(),
+      setNodeState: (_pathOrId, state) => writeState(state),
+      delNodeState(_pathOrId, ...keys) {
+        for (const key of keys) delete node.state[key];
+      },
+      routeToChild: (to, signals) => ({
+        packets: [new SignalPacket(to, signals)],
+      }),
+      stop: () => ({ packets: [] }),
+      signal(type, value, extra) {
+        const base = isPlainObject(extra) ? { ...extra } : {};
+        if (value !== undefined) base.value = value;
+        return { type, context: base };
       },
     };
   }

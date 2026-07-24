@@ -189,4 +189,46 @@ describe("WrapperTool", () => {
     expect(entry.handler.dispose).toHaveBeenCalledTimes(1);
     expect(wrapper._getSlot("touch-0")).toBeUndefined();
   });
+
+  test("_buildSlotContext 提供完整上下文形状且状态读写落在 shell 节点", () => {
+    const wrapper = new TestWrapper();
+    wrapper._addSlot("a", new StateWritingTool(1));
+    const shell = wrapper._getSlot("a").node;
+
+    const ctx = wrapper._buildSlotContext("a", {
+      services: { board: { marker: 1 } },
+      path: "/wf/test",
+    });
+
+    // 形状：dag 恒为 null，路径带槽位后缀，services 透传
+    expect(ctx.dag).toBeNull();
+    expect(ctx.node).toBe(shell);
+    expect(ctx.path).toBe("/wf/test/a");
+    expect(ctx.services.board).toEqual({ marker: 1 });
+
+    // patchState / getState / delNodeState 只影响 shell 节点
+    ctx.patchState({ phase: "x", count: 1 });
+    expect(shell.state).toEqual({ phase: "x", count: 1 });
+    expect(ctx.getState()).toEqual({ phase: "x", count: 1 });
+
+    ctx.patchState({ count: 2 });
+    expect(shell.state.count).toBe(2);
+
+    ctx.delNodeState(undefined, "phase");
+    expect(shell.state).toEqual({ count: 2 });
+
+    ctx.setNodeState(undefined, { reset: true });
+    expect(shell.state).toEqual({ reset: true });
+    expect(ctx.getNodeState()).toEqual({ reset: true });
+
+    // signal / routeToChild / stop 与 DAG 标准 helper 同形
+    expect(ctx.signal("position", { x: 1 })).toEqual({
+      type: "position",
+      context: { value: { x: 1 } },
+    });
+    expect(ctx.routeToChild("next", [])).toEqual({
+      packets: [expect.objectContaining({ to: "next" })],
+    });
+    expect(ctx.stop()).toEqual({ packets: [] });
+  });
 });

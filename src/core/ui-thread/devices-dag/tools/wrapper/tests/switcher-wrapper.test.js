@@ -254,4 +254,48 @@ describe("ToolSwitcherWrapper", () => {
     expect(stroke.calls).toHaveLength(1);
     expect(circle.calls).toHaveLength(0);
   });
+
+  test("切换工具时旧工具的 endAction 应使用槽位上下文（状态读写落在 shell 节点）", () => {
+    // 自定义工具：process 时开始动作并写入 objects 投影，completeAction 时清除
+    class ObjectHoldingTool extends CollectingTool {
+      process(signalPacket, context) {
+        super.process(signalPacket, context);
+        this.beginAction(context);
+        this.setContextObjects(context, [{ id: 1 }]);
+      }
+
+      completeAction(context = {}) {
+        this.clearContextObjects(context);
+        this.isActionActive = false;
+      }
+    }
+
+    const stroke = new ObjectHoldingTool();
+    const circle = new CollectingTool();
+    const wrapper = new ToolSwitcherWrapper({
+      tools: [
+        { name: "stroke", tool: stroke },
+        { name: "circle", tool: circle },
+      ],
+      defaultTool: "stroke",
+    });
+    const { dag } = mountSwitcher(wrapper);
+
+    dispatchToSwitcher(dag, [
+      { type: "position", context: { value: { x: 1, y: 1 } } },
+    ]);
+
+    // 信号流程中 objects 投影写在 stroke 槽位的 shell 节点上
+    const strokeShell = wrapper._getSlot("stroke").node;
+    expect(strokeShell.state.objects).toHaveLength(1);
+
+    dispatchToSwitcher(dag, [
+      { type: TOOL_SWITCH, context: { activeTool: "circle" } },
+    ]);
+
+    // endAction → completeAction 的 clearContextObjects 落在 shell 节点：投影被清除
+    expect(strokeShell.state.objects).toBeUndefined();
+    // wrapper 真实节点不被子工具的状态读写污染
+    expect(dag.getNodeState("/switcher").objects).toBeUndefined();
+  });
 });

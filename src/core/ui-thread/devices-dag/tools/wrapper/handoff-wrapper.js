@@ -214,22 +214,26 @@ class HandoffWrapperTool extends WrapperTool {
 
   /**
    * 结束当前动作
-   * @description 对当前相位工具调用 `endAction`。
+   * @description 对当前相位工具调用 `endAction`，上下文为槽位作用域上下文（状态读写落在槽位 shell 节点）。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {*} 当前相位工具 endAction 的返回值
    */
   endAction(context = {}) {
-    return this._getSlot(this.#phase)?.tool?.endAction(context);
+    return this._getSlot(this.#phase)?.tool?.endAction(
+      this._buildSlotContext(this.#phase, context),
+    );
   }
 
   /**
    * 取消当前动作
-   * @description 对当前相位工具调用 `cancelAction` 并切回 first。
+   * @description 对当前相位工具调用 `cancelAction`（槽位作用域上下文）并切回 first。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void}
    */
   cancelAction(context = {}) {
-    this._getSlot(this.#phase)?.tool?.cancelAction(context);
+    this._getSlot(this.#phase)?.tool?.cancelAction(
+      this._buildSlotContext(this.#phase, context),
+    );
     this.#setPhase("first");
   }
 

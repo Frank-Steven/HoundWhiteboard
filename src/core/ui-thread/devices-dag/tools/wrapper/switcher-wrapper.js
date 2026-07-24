@@ -182,8 +182,10 @@ class ToolSwitcherWrapper extends WrapperTool {
         target !== this.#activeName
       ) {
         this.#ensureSlot(target);
-        const oldTool = this._getSlot(this.#activeName)?.tool;
-        oldTool?.endAction(context);
+        const oldName = this.#activeName;
+        this._getSlot(oldName)?.tool?.endAction(
+          this._buildSlotContext(oldName, context),
+        );
         this.#activeName = target;
         context.patchState?.({ routeTarget: this.#activeName });
         this.#lastMirroredName = this.#activeName;
@@ -201,22 +203,26 @@ class ToolSwitcherWrapper extends WrapperTool {
 
   /**
    * 结束当前动作
-   * @description 传播到当前活跃工具。
+   * @description 传播到当前活跃工具，上下文为槽位作用域上下文（状态读写落在槽位 shell 节点）。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {*} 当前活跃工具 endAction 的返回值
    */
   endAction(context = {}) {
-    return this._getSlot(this.#activeName)?.tool?.endAction(context);
+    return this._getSlot(this.#activeName)?.tool?.endAction(
+      this._buildSlotContext(this.#activeName, context),
+    );
   }
 
   /**
    * 取消当前动作
-   * @description 传播到当前活跃工具。
+   * @description 传播到当前活跃工具，上下文为槽位作用域上下文（状态读写落在槽位 shell 节点）。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void}
    */
   cancelAction(context = {}) {
-    this._getSlot(this.#activeName)?.tool?.cancelAction(context);
+    this._getSlot(this.#activeName)?.tool?.cancelAction(
+      this._buildSlotContext(this.#activeName, context),
+    );
   }
 
   /**
