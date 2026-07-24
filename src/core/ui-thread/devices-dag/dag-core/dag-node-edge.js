@@ -579,6 +579,13 @@ class DevicesDAGNode {
    * 依次处理 `redirect` 改写、主包/延迟包拆分、`defaultRoute` 兜底，
    * 产出继续下钻所需的路径段、当前包，以及不再下钻的终结包与延迟包。
    * 所有 `to` 必须是相对路径，绝对路径直接抛错。
+   *
+   * 主包 `to` 为空时的语义（按优先级）：
+   * 1. 节点有 `defaultRoute` → 走默认出边；
+   * 2. 无剩余路径段 → 进终结包；
+   * 3. 否则就地替换信号（保留原路由信息），沿剩余路径继续下传。
+   *
+   * 无 `to` 的额外包沿主包生效路径延迟分发；主链已到叶子时进终结包。
    * @param {import("../dag-type.js").DevicesDAGHandlerResult} result - 规整后的 handler 结果
    * @param {Object} options - 路由选项
    * @param {string} options.path - 当前节点路径（用于错误信息）
@@ -603,18 +610,6 @@ class DevicesDAGNode {
     if (result.packets.length > 0) {
       const primaryPacket = SignalPacket.from(result.packets[0]);
 
-      for (const extraPkt of result.packets.slice(1)) {
-        const p = SignalPacket.from(extraPkt);
-        if (p.to) {
-          if (p.to.startsWith("/")) {
-            throw new Error(
-              `Handler at "${path}" returned an extra packet with absolute path "${p.to}". Extra packet "to" must be a relative path.`,
-            );
-          }
-          deferredPackets.push(p);
-        }
-      }
-
       if (primaryPacket.to) {
         if (primaryPacket.to.startsWith("/")) {
           throw new Error(
@@ -628,6 +623,28 @@ class DevicesDAGNode {
         currentPacket = primaryPacket;
       } else if (routeSegments.length === 0) {
         finalPackets.push(primaryPacket);
+      } else if (primaryPacket.signals !== currentPacket.signals) {
+        // 主包 to 为空：就地替换信号，保留原路由信息沿剩余路径继续
+        currentPacket = new SignalPacket(currentPacket.to, primaryPacket.signals);
+      }
+
+      // 额外包在主包路由决策之后处理：无 to 的包沿主包生效路径延迟分发
+      for (const extraPkt of result.packets.slice(1)) {
+        const p = SignalPacket.from(extraPkt);
+        if (p.to) {
+          if (p.to.startsWith("/")) {
+            throw new Error(
+              `Handler at "${path}" returned an extra packet with absolute path "${p.to}". Extra packet "to" must be a relative path.`,
+            );
+          }
+          deferredPackets.push(p);
+        } else if (routeSegments.length > 0) {
+          deferredPackets.push(
+            new SignalPacket(joinPath(routeSegments), p.signals),
+          );
+        } else {
+          finalPackets.push(p);
+        }
       }
     } else if (!result.explicitPackets) {
       if (routeSegments.length === 0 && this.defaultRoute) {

@@ -668,7 +668,7 @@ describe("DevicesDAG", () => {
       expect(collected).toContainEqual({ path: "y", types: ["to-y"] });
     });
 
-    test("deferred route 中无 to 的 packet 应被丢弃（不进队列）", () => {
+    test("deferred route 中无 to 的 packet 应沿主包生效路径延迟分发", () => {
       const dag = new DevicesDAG();
       dag.ensureNode("/a/x");
 
@@ -677,7 +677,7 @@ describe("DevicesDAG", () => {
           return {
             packets: [
               { to: "x", signals: [{ type: "primary" }] },
-              { signals: [{ type: "no-to" }] }, // 无 to，不应进队列
+              { signals: [{ type: "no-to" }] }, // 无 to：沿主包生效路径（x）延迟分发
             ],
           };
         },
@@ -691,7 +691,81 @@ describe("DevicesDAG", () => {
       });
 
       dag.dispatch({ to: "/a", signals: [] });
-      expect(calls).toEqual([["primary"]]);
+      expect(calls).toEqual([["primary"], ["no-to"]]);
+    });
+
+    test("主包无 to 且有剩余路径时应就地替换信号继续下传", () => {
+      const dag = new DevicesDAG();
+      let leafReceived = null;
+      dag.configureNode("/a/b", {
+        handler: () => ({ signals: [{ type: "transformed" }] }),
+      });
+      dag.configureNode("/a/b/c", {
+        handler(pkt) {
+          leafReceived = pkt.signals.map((s) => s.type);
+          return { stop: true, packets: [] };
+        },
+      });
+
+      dag.dispatch({ to: "/a/b/c", signals: [{ type: "original" }] });
+      expect(leafReceived).toEqual(["transformed"]);
+    });
+
+    test("主包无 to 就地替换信号时应保畄原 packet.to 不变", () => {
+      const dag = new DevicesDAG();
+      let observedTo = null;
+      dag.configureNode("/vp/mouse", {
+        handler: (pkt) => ({ signals: pkt.signals }),
+      });
+      dag.configureNode("/vp/mouse/primary", {
+        handler(pkt) {
+          observedTo = pkt.to;
+          return { stop: true, packets: [] };
+        },
+      });
+
+      dag.dispatch({ to: "/vp/mouse/primary", signals: [{ type: "position" }] });
+      expect(observedTo).toBe("/vp/mouse/primary");
+    });
+
+    test("主包无 to 时 defaultRoute 优先于剩余路径", () => {
+      const dag = new DevicesDAG();
+      const hits = [];
+      dag.configureNode("/a", {
+        defaultRoute: "d",
+        handler: () => ({ signals: [{ type: "T" }] }),
+      });
+      dag.configureNode("/a/d", {
+        handler(pkt) {
+          hits.push(["d", pkt.signals[0].type]);
+          return { stop: true, packets: [] };
+        },
+      });
+      dag.configureNode("/a/c", {
+        handler(pkt) {
+          hits.push(["c", pkt.signals[0].type]);
+          return { stop: true, packets: [] };
+        },
+      });
+
+      dag.dispatch({ to: "/a/c", signals: [{ type: "X" }] });
+      expect(hits).toEqual([["d", "T"]]);
+    });
+
+    test("叶子处无 to 的额外包应进终结包", () => {
+      const dag = new DevicesDAG();
+      dag.configureNode("/a", {
+        handler: () => [
+          { signals: [{ type: "main" }] },
+          { signals: [{ type: "side" }] },
+        ],
+      });
+
+      const result = dag.dispatch({ to: "/a", signals: [] });
+      expect(result.packets.map((p) => p.signals[0].type)).toEqual([
+        "main",
+        "side",
+      ]);
     });
 
     test("多层嵌套的 deferred routes 应正确分发", () => {
@@ -1558,7 +1632,7 @@ describe("DevicesDAG", () => {
       expect(result.packets[0].signals[0].type).toBe("t");
     });
 
-    test("handler 返回 empty 信号数组应正常继续", () => {
+    test("handler 返回的信号包（含空信号数组）应替代原包继续下传", () => {
       const dag = new DevicesDAG();
       dag.ensureNode("/a/b");
       dag.configureNode("/a", {
@@ -1574,7 +1648,8 @@ describe("DevicesDAG", () => {
       });
 
       dag.dispatch({ to: "/a/b", signals: [{ type: "t" }] });
-      expect(bCalls).toEqual([["t"]]);
+      // 无 to 的主包就地替换信号：下游收到 handler 返回的空信号数组
+      expect(bCalls).toEqual([[]]);
     });
 
     test("多包返回：主包优先于延迟包到达目标节点", () => {
