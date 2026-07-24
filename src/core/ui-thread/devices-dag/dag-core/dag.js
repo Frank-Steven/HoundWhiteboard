@@ -618,7 +618,13 @@ class DevicesDAG {
 
     this._registerToolInstance(workflow);
 
-    const processor = workflow.createProcessor();
+    let processor;
+    try {
+      processor = workflow.createProcessor();
+    } catch (error) {
+      this._unregisterToolInstance(workflow);
+      throw error;
+    }
 
     node.handler = processor;
     node.semantics = { ...node.semantics, tool: true };
@@ -665,8 +671,16 @@ class DevicesDAG {
 
   /**
    * 挂载结构化子图
+   * @description
+   * 采用 validate-then-mount 两阶段策略：
+   * 阶段 0（{@link DevicesDAG#_validateSubDAGMount}）做零副作用预检，所有可预见的失败
+   * （边名冲突、重复边名、未知节点引用、子图内部成环、tool 重复挂载、根节点 handler 覆盖）
+   * 都在任何副作用产生前抛出；
+   * 落地阶段中途失败（如 `tool.createProcessor` 抛错）时回滚——断开已建立的边、
+   * 注销已登记的 tool、移除本次新建的节点。
    * @param {string} basePath - 挂载基准路径
    * @param {SubDAGDefinition} subDAGDef - 子图定义
+   * @returns {DevicesDAGNode[]} 挂载的节点列表
    */
   mountSubDAG(basePath, subDAGDef) {
     if (!subDAGDef || typeof subDAGDef !== "object") return [];
@@ -674,34 +688,82 @@ class DevicesDAG {
     const { rootPath = "/", rootNodeId = 0, nodes, edges = [] } = subDAGDef;
     const targetRootPath = joinPath(basePath, rootPath);
 
+    // 阶段 0：纯校验（零副作用）
+    this._validateSubDAGMount(targetRootPath, rootNodeId, nodes, edges);
+
     /** @type {Map<number, DevicesDAGNode>} */
     const idMap = new Map();
     /** @type {DevicesDAGNode[]} */
     const mountedNodes = [];
+    /** @type {DevicesDAGEdge[]} 本次挂载建立的边（回滚时断开） */
+    const createdEdges = [];
+    /** @type {Array<import("../tools/tool.js").Tool>} 本次挂载已登记的 tool（回滚时注销） */
+    const mountedTools = [];
 
-    // 1. 创建节点：根节点用 ensureNode 定位到 targetRootPath，其余节点直接创建
-    if (nodes) {
-      for (const [localId, nodeDef] of nodes) {
-        let globalNode;
-        if (localId === rootNodeId) {
-          globalNode = this.ensureNode(targetRootPath);
-        } else {
-          globalNode = this._createNode(this._allocateNodeId());
+    const preExistingRoot = this.getNode(targetRootPath);
+    /** @type {Set<number>} 挂载前已存在的节点 id（回滚时保留） */
+    const nodeIdsBefore = new Set(this._nodes.keys());
+    // 预先存在的根节点可能被 _applyNodeDefinition 修改字段，快照以便回滚恢复
+    const rootSnapshot = preExistingRoot
+      ? {
+          handler: preExistingRoot.handler,
+          semantics: preExistingRoot.semantics,
+          services: preExistingRoot.services,
+          defaultRoute: preExistingRoot.defaultRoute,
+          umount: preExistingRoot.umount,
+          toolInstance: preExistingRoot._toolInstance ?? null,
         }
-        this._applyNodeDefinition(globalNode, nodeDef);
-        idMap.set(localId, globalNode);
-        mountedNodes.push(globalNode);
-      }
-    }
+      : null;
 
-    // 2. 挂载边
-    for (const edgeDef of edges) {
-      const fromNode = idMap.get(edgeDef.fromNodeId);
-      const toNode = idMap.get(edgeDef.toNodeId);
-      if (!fromNode || !toNode) continue;
-      if (fromNode.outEdges.has(edgeDef.name)) continue;
-      this._checkNoCycle(fromNode, edgeDef.name, toNode);
-      this._connectNodes(fromNode, edgeDef.name, toNode);
+    try {
+      // 1. 创建节点：根节点用 ensureNode 定位到 targetRootPath，其余节点直接创建
+      if (nodes) {
+        for (const [localId, nodeDef] of nodes) {
+          let globalNode;
+          if (localId === rootNodeId) {
+            globalNode = this.ensureNode(targetRootPath);
+          } else {
+            globalNode = this._createNode(this._allocateNodeId());
+          }
+          this._applyNodeDefinition(globalNode, nodeDef, mountedTools);
+          idMap.set(localId, globalNode);
+          mountedNodes.push(globalNode);
+        }
+      }
+
+      // 2. 挂载边（边名冲突与未知引用已在预检排除；环检查保留作为双保险）
+      for (const edgeDef of edges) {
+        const fromNode = idMap.get(edgeDef.fromNodeId);
+        const toNode = idMap.get(edgeDef.toNodeId);
+        this._checkNoCycle(fromNode, edgeDef.name, toNode);
+        createdEdges.push(this._connectNodes(fromNode, edgeDef.name, toNode));
+      }
+    } catch (error) {
+      // 回滚：断开本次建立的子图内部边、注销已登记的 tool
+      for (const edge of createdEdges) {
+        this._disconnectEdge(edge);
+      }
+      for (const tool of mountedTools) {
+        this._unregisterToolInstance(tool);
+      }
+      // 移除本次新建的全部节点（含 ensureNode 创建的中间链路节点，通过入边断开）
+      for (const node of [...this._nodes.values()]) {
+        if (nodeIdsBefore.has(node.id)) continue;
+        for (const edge of [...node.inEdges]) {
+          this._disconnectEdge(edge);
+        }
+        this._nodes.delete(node.id);
+      }
+      // 恢复预先存在的根节点字段
+      if (rootSnapshot) {
+        preExistingRoot.handler = rootSnapshot.handler;
+        preExistingRoot.semantics = rootSnapshot.semantics;
+        preExistingRoot.services = rootSnapshot.services;
+        preExistingRoot.defaultRoute = rootSnapshot.defaultRoute;
+        preExistingRoot.umount = rootSnapshot.umount;
+        preExistingRoot._toolInstance = rootSnapshot.toolInstance;
+      }
+      throw error;
     }
 
     for (const node of mountedNodes) {
@@ -714,11 +776,125 @@ class DevicesDAG {
   }
 
   /**
-   * 将子图节点定义应用到已有节点
-   * @param {DevicesDAGNode} node
-   * @param {SubDAGNodeDefinition} def
+   * 挂载子图前的纯校验（零副作用）
+   * @description
+   * 把所有可预见的挂载失败前置到任何副作用产生之前：
+   * - 边引用的局部 id 必须存在，边名必须是非空字符串
+   * - 同一源节点的边名不得重复（定义内重复或与既有出边冲突）
+   * - 子图内部不得成环（新节点不可达自既有图，环只能出现在定义内部）
+   * - `def.tool` 不得已挂载在本 DAG 中
+   * - 根节点已存在且已有 handler 时，定义不得再提供 handler / tool
+   * @param {string} targetRootPath - 子图根的目标路径
+   * @param {number} rootNodeId - 子图根节点局部 id
+   * @param {Map<number, SubDAGNodeDefinition>|undefined} nodes - 节点定义
+   * @param {SubDAGEdgeDefinition[]} edges - 边定义列表
+   * @private
    */
-  _applyNodeDefinition(node, def) {
+  _validateSubDAGMount(targetRootPath, rootNodeId, nodes, edges) {
+    const existingRoot = this.getNode(targetRootPath);
+
+    if (nodes) {
+      for (const [localId, nodeDef] of nodes) {
+        if (!nodeDef) continue;
+        if (nodeDef.tool && this._mountedToolInstances.has(nodeDef.tool)) {
+          throw new Error(
+            `Tool instance is already mounted in this DAG (sub-dag node ${localId}). A tool instance cannot be mounted more than once.`,
+          );
+        }
+        if (
+          localId === rootNodeId &&
+          existingRoot?.handler &&
+          (nodeDef.handler != null || nodeDef.tool)
+        ) {
+          throw new Error(
+            `Cannot mount sub-dag at "${targetRootPath}": root node already has a handler.`,
+          );
+        }
+      }
+    }
+
+    /** @type {Map<number, Set<number>>} 定义内邻接表（局部 id → 后继局部 id） */
+    const localAdjacency = new Map();
+    /** @type {Map<number, Set<string>>} 定义内边名表（局部 id → 已用边名） */
+    const edgeNamesBySource = new Map();
+
+    for (const edgeDef of edges) {
+      const { name, fromNodeId, toNodeId } = edgeDef ?? {};
+      if (typeof name !== "string" || !name) {
+        throw new Error(`Sub-dag edge name must be a non-empty string.`);
+      }
+      if (!nodes?.has(fromNodeId) || !nodes?.has(toNodeId)) {
+        throw new Error(
+          `Sub-dag edge "${name}" references unknown node id (${fromNodeId} → ${toNodeId}).`,
+        );
+      }
+      // 与既有出边冲突（仅根节点可能预先存在）
+      if (fromNodeId === rootNodeId && existingRoot?.outEdges.has(name)) {
+        throw new Error(
+          `Edge "${name}" already exists from node at "${targetRootPath}".`,
+        );
+      }
+      const names = edgeNamesBySource.get(fromNodeId) ?? new Set();
+      if (names.has(name)) {
+        throw new Error(
+          `Duplicate edge name "${name}" from sub-dag node ${fromNodeId}.`,
+        );
+      }
+      names.add(name);
+      edgeNamesBySource.set(fromNodeId, names);
+
+      const targets = localAdjacency.get(fromNodeId) ?? new Set();
+      targets.add(toNodeId);
+      localAdjacency.set(fromNodeId, targets);
+    }
+
+    this._assertLocalDefAcyclic(localAdjacency, nodes);
+  }
+
+  /**
+   * 检查子图定义内部是否成环（三色 DFS）
+   * @param {Map<number, Set<number>>} localAdjacency - 定义内邻接表
+   * @param {Map<number, SubDAGNodeDefinition>|undefined} nodes - 节点定义
+   * @private
+   */
+  _assertLocalDefAcyclic(localAdjacency, nodes) {
+    if (!nodes) return;
+
+    const WHITE = 0;
+    const GRAY = 1;
+    const BLACK = 2;
+    /** @type {Map<number, number>} */
+    const color = new Map();
+
+    /**
+     * @param {number} id - 局部节点 id
+     * @returns {boolean} 发现回边（成环）则返回 true
+     */
+    const visit = (id) => {
+      color.set(id, GRAY);
+      for (const next of localAdjacency.get(id) ?? []) {
+        const nextColor = color.get(next) ?? WHITE;
+        if (nextColor === GRAY) return true;
+        if (nextColor === WHITE && visit(next)) return true;
+      }
+      color.set(id, BLACK);
+      return false;
+    };
+
+    for (const id of nodes.keys()) {
+      if ((color.get(id) ?? WHITE) === WHITE && visit(id)) {
+        throw new Error(`Sub-dag definition contains a cycle.`);
+      }
+    }
+  }
+
+  /**
+   * 将子图节点定义应用到已有节点
+   * @param {DevicesDAGNode} node - 目标节点
+   * @param {SubDAGNodeDefinition} def - 子图节点定义
+   * @param {Array<import("../tools/tool.js").Tool>} [mountedTools] - 已登记 tool 收集器（用于挂载回滚）
+   */
+  _applyNodeDefinition(node, def, mountedTools) {
     if (!def) return;
 
     if (def.handler != null) {
@@ -738,7 +914,14 @@ class DevicesDAG {
     }
     if (def.tool) {
       this._registerToolInstance(def.tool);
-      const processor = def.tool.createProcessor();
+      let processor;
+      try {
+        processor = def.tool.createProcessor();
+      } catch (error) {
+        this._unregisterToolInstance(def.tool);
+        throw error;
+      }
+      mountedTools?.push(def.tool);
       node.handler = processor;
       node.semantics = { ...node.semantics, tool: true };
       node._toolInstance = def.tool;

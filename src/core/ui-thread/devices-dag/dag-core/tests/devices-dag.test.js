@@ -1409,7 +1409,7 @@ describe("DevicesDAG", () => {
       expect(dag.mountSubDAG("", "not-object")).toEqual([]);
     });
 
-    test("mountSubDAG 应处理重复边名（幂等）", () => {
+    test("mountSubDAG 与既有出边名冲突应抛错且不产生孤儿节点", () => {
       const dag = new DevicesDAG();
       const builder = createSubDAG("/dup");
       const r = builder.node();
@@ -1417,8 +1417,137 @@ describe("DevicesDAG", () => {
       builder.edge("link", r, c);
       // 先手动创建同一条边
       dag.ensureNode("/dup/link");
+      const nodeCountBefore = dag._nodes.size;
 
-      expect(() => dag.mountSubDAG("", builder.build())).not.toThrow();
+      expect(() => dag.mountSubDAG("", builder.build())).toThrow(
+        /already exists/,
+      );
+      // 预检零副作用：不新增任何节点
+      expect(dag._nodes.size).toBe(nodeCountBefore);
+    });
+
+    test("mountSubDAG 定义内重复边名应抛错", () => {
+      const dag = new DevicesDAG();
+      const builder = createSubDAG("/dup2");
+      const r = builder.node();
+      const a = builder.node();
+      const b = builder.node();
+      builder.edge("link", r, a);
+      builder.edge("link", r, b);
+
+      expect(() => dag.mountSubDAG("", builder.build())).toThrow(
+        /Duplicate edge name/,
+      );
+      expect(dag.getNode("/dup2")).toBeUndefined();
+    });
+
+    test("mountSubDAG 边引用未知节点 id 应抛错", () => {
+      const dag = new DevicesDAG();
+      expect(() =>
+        dag.mountSubDAG("", {
+          rootPath: "/bad-ref",
+          rootNodeId: 0,
+          nodes: new Map([[0, { handler: null }]]),
+          edges: [{ name: "x", fromNodeId: 0, toNodeId: 99 }],
+        }),
+      ).toThrow(/unknown node id/);
+      expect(dag.getNode("/bad-ref")).toBeUndefined();
+    });
+
+    test("mountSubDAG 子图内部成环应抛错", () => {
+      const dag = new DevicesDAG();
+      const builder = createSubDAG("/cyc");
+      const a = builder.node();
+      const b = builder.node();
+      builder.edge("ab", a, b);
+      builder.edge("ba", b, a);
+
+      expect(() => dag.mountSubDAG("", builder.build())).toThrow(/cycle/);
+      expect(dag.getNode("/cyc")).toBeUndefined();
+    });
+
+    test("mountSubDAG 挂载已注册的 tool 应抛错且原挂载完好", () => {
+      const dag = new DevicesDAG();
+      const tool = {
+        createProcessor() {
+          const fn = () => {};
+          fn.dispose = jest.fn();
+          return fn;
+        },
+        umount: jest.fn(),
+      };
+      dag.mountWorkflow("/first", tool);
+
+      const builder = createSubDAG("/second");
+      builder.node().tool(tool);
+
+      expect(() => dag.mountSubDAG("", builder.build())).toThrow(
+        /already mounted/,
+      );
+      // 原挂载完好
+      expect(dag.getNode("/first").handler).toBeInstanceOf(Function);
+      expect(dag.getNode("/second")).toBeUndefined();
+    });
+
+    test("mountSubDAG 根节点已有 handler 时定义再提供 handler 应抛错", () => {
+      const dag = new DevicesDAG();
+      const originalHandler = () => {};
+      dag.configureNode("/occupied", { handler: originalHandler });
+
+      const builder = createSubDAG("/occupied");
+      builder.node().handler(() => {});
+
+      expect(() => dag.mountSubDAG("", builder.build())).toThrow(
+        /already has a handler/,
+      );
+      expect(dag.getNode("/occupied").handler).toBe(originalHandler);
+    });
+
+    test("mountSubDAG 中 createProcessor 抛错应回滚（注销 tool、移除新建节点）", () => {
+      const dag = new DevicesDAG();
+      const goodTool = {
+        createProcessor() {
+          return () => {};
+        },
+      };
+      const badTool = {
+        createProcessor() {
+          throw new Error("createProcessor boom");
+        },
+      };
+
+      const nodeCountBefore = dag._nodes.size;
+      expect(() =>
+        dag.mountSubDAG("", {
+          rootPath: "/rb",
+          rootNodeId: 0,
+          nodes: new Map([
+            [0, { tool: goodTool }],
+            [1, { tool: badTool }],
+          ]),
+          edges: [{ name: "next", fromNodeId: 0, toNodeId: 1 }],
+        }),
+      ).toThrow(/createProcessor boom/);
+
+      // 已登记的 goodTool 被注销，可重新挂载
+      expect(() => dag.mountWorkflow("/elsewhere", goodTool)).not.toThrow();
+      // 本次新建的节点被移除（/elsewhere 是新建挂载，不在回滚范围内）
+      expect(dag.getNode("/rb")).toBeUndefined();
+      expect(dag._nodes.size).toBe(nodeCountBefore + 1);
+    });
+
+    test("mountWorkflow 中 createProcessor 抛错应注销 tool 实例", () => {
+      const dag = new DevicesDAG();
+      const badTool = {
+        createProcessor() {
+          throw new Error("createProcessor boom");
+        },
+      };
+
+      expect(() => dag.mountWorkflow("/wf/tool", badTool)).toThrow(
+        /createProcessor boom/,
+      );
+      expect(dag._mountedToolInstances.has(badTool)).toBe(false);
     });
   });
 
