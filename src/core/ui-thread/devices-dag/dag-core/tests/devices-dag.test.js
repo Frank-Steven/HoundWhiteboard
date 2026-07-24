@@ -158,6 +158,80 @@ describe("DevicesDAG", () => {
       const dag = new DevicesDAG();
       expect(dag.removeEdge("/", "nope")).toBe(false);
     });
+
+    test("removeEdge 清理孤立节点时应执行完整 umount 钩子链并注销 tool 实例", () => {
+      const dag = new DevicesDAG();
+      const mockTool = {
+        createProcessor() {
+          const fn = () => {};
+          fn.dispose = jest.fn();
+          return fn;
+        },
+        umount: jest.fn(),
+      };
+      dag.mountWorkflow("/dev/tool", mockTool);
+      const processor = dag.getNode("/dev/tool").handler;
+
+      expect(dag.removeEdge("/dev", "tool")).toBe(true);
+
+      // 完整钩子链：processor.dispose → tool.umount
+      expect(processor.dispose).toHaveBeenCalledTimes(1);
+      expect(mockTool.umount).toHaveBeenCalledTimes(1);
+
+      // 节点被移除、tool 实例已注销，可重新挂载到其他路径
+      expect(dag.getNode("/dev/tool")).toBeUndefined();
+      expect(() => dag.mountWorkflow("/dev2/tool", mockTool)).not.toThrow();
+    });
+
+    test("removeEdge 应将传入的 context 作为 services 透传给 umount 钩子", () => {
+      const dag = new DevicesDAG();
+      const seen = [];
+      dag.configureNode("/a/b", {
+        umount(ctx) {
+          seen.push(ctx.services?.marker ?? null);
+        },
+      });
+
+      dag.removeEdge("/a", "b", { marker: 42 });
+      expect(seen).toEqual([42]);
+    });
+
+    test("removeEdge 对多入边共享节点应在最后一条入边移除时才执行 umount 钩子", () => {
+      const dag = new DevicesDAG();
+      const umount = jest.fn();
+      dag.configureNode("/shared/tool", { umount });
+      dag.addEdge("/", "x", "/shared/tool");
+
+      dag.removeEdge("/", "x");
+      expect(umount).not.toHaveBeenCalled();
+      expect(dag.getNode("/shared/tool")).toBeInstanceOf(DevicesDAGNode);
+
+      dag.removeEdge("/shared", "tool");
+      expect(umount).toHaveBeenCalledTimes(1);
+      expect(dag.getNode("/shared/tool")).toBeUndefined();
+    });
+
+    test("removeEdge 清理时 umount 钩子抛错不应中断清理", () => {
+      const dag = new DevicesDAG();
+      const mockTool = {
+        createProcessor() {
+          const fn = () => {};
+          fn.dispose = jest.fn(() => {
+            throw new Error("dispose boom");
+          });
+          return fn;
+        },
+        umount: jest.fn(() => {
+          throw new Error("umount boom");
+        }),
+      };
+      dag.mountWorkflow("/a/tool", mockTool);
+
+      expect(() => dag.removeEdge("/a", "tool")).not.toThrow();
+      expect(dag.getNode("/a/tool")).toBeUndefined();
+      // tool 实例仍被注销，可重新挂载
+      expect(() => dag.mountWorkflow("/b/tool", mockTool)).not.toThrow();
+    });
   });
 
   describe("getNodeState / setNodeState", () => {
@@ -1327,6 +1401,41 @@ describe("DevicesDAG", () => {
         // tool.umount 抛错不中断卸载链：原卸载钩子仍被执行
         expect(previousUmount).toHaveBeenCalledTimes(1);
         // 错误经 log 工具按 WARN 级记录
+        expect(warnEntries.length).toBeGreaterThan(0);
+      } finally {
+        off();
+      }
+    });
+
+    test("unmount 时原卸载钩子抛错应记录日志且不中断清理", () => {
+      const dag = new DevicesDAG();
+      const warnEntries = [];
+      const off = logBus.onLevels(["WARN"], (entry) =>
+        warnEntries.push(entry),
+      );
+
+      const previousUmount = jest.fn(() => {
+        throw new Error("previous boom");
+      });
+      dag.ensureNode("/wf/tool");
+      dag.configureNode("/wf/tool", { umount: previousUmount });
+
+      const tool = {
+        createProcessor() {
+          const processor = () => {};
+          processor.dispose = jest.fn();
+          return processor;
+        },
+        umount: jest.fn(),
+      };
+      dag.mountWorkflow("/wf/tool", tool);
+
+      try {
+        expect(() => dag.unmount("/wf/tool")).not.toThrow();
+        expect(previousUmount).toHaveBeenCalledTimes(1);
+        // 原钩子抛错不影响节点清理与 tool 实例注销
+        expect(dag.getNode("/wf/tool")).toBeUndefined();
+        expect(dag._mountedToolInstances.has(tool)).toBe(false);
         expect(warnEntries.length).toBeGreaterThan(0);
       } finally {
         off();

@@ -261,29 +261,6 @@ class DevicesDAG {
   }
 
   /**
-   * 递归清理孤立节点及其下游子图
-   * @param {DevicesDAGNode} node - 待检查的节点
-   * @param {Set<number>} [cleaned=new Set()] - 已清理节点 id 集合（防止重复）
-   */
-  _cleanupOrphanChain(node, cleaned = new Set()) {
-    if (cleaned.has(node.id)) return;
-    if (node.inEdges.size > 0) return; // 仍有入边，不是孤立节点
-    if (node === this._ghost) return; // 幽灵节点永不清理
-
-    cleaned.add(node.id);
-
-    // 先递归检查所有后继节点
-    const outgoingEdges = [...node.outEdges.values()];
-    for (const edge of outgoingEdges) {
-      this._disconnectEdge(edge);
-      this._cleanupOrphanChain(edge.target, cleaned);
-    }
-
-    // 移除节点本身
-    this._nodes.delete(node.id);
-  }
-
-  /**
    * 从根节点沿路径解析到目标节点
    * @param {string} path - 绝对或相对路径（相对路径相对于根）
    * @returns {DevicesDAGNode|undefined}
@@ -490,11 +467,16 @@ class DevicesDAG {
 
   /**
    * 移除一条有向边，并递归清理因此变成孤立的节点
+   * @description
+   * 孤立子图的清理由 {@link DevicesDAG#_umountSubgraph} 承担：
+   * 执行完整 umount 钩子链（`processor.dispose → tool.umount → 原钩子`）、
+   * 注销 tool 实例并重置节点字段，与 {@link DevicesDAG#unmount} 行为一致。
    * @param {string} fromPath - 源节点路径
    * @param {string} edgeName - 边名
+   * @param {Record<string, any>} [context={}] - 卸载上下文（作为 services 透传给孤立节点的 umount 钩子）
    * @returns {boolean} 是否成功移除
    */
-  removeEdge(fromPath, edgeName) {
+  removeEdge(fromPath, edgeName, context = {}) {
     const source = this.getNode(fromPath);
     if (!source) return false;
 
@@ -502,8 +484,10 @@ class DevicesDAG {
     if (!edge) return false;
 
     const target = edge.target;
+    // 断边前计算目标节点路径，供孤立清理时的 umount 钩子上下文使用
+    const targetPath = joinPath(resolvePath("/", fromPath), edgeName);
     this._disconnectEdge(edge);
-    this._cleanupOrphanChain(target);
+    this._umountSubgraph(target, context, new Set(), targetPath);
 
     return true;
   }
@@ -649,7 +633,7 @@ class DevicesDAG {
    * 串联 tool 卸载钩子链
    * @description
    * 生成节点的 umount 钩子：依次执行 `processor.dispose`、`tool.umount` 与原卸载钩子。
-   * `dispose` / `umount` 的错误记录告警日志后不中断后续钩子执行。
+   * 任一环节抛错均记录告警日志，不中断后续钩子执行。
    * @param {DevicesDAGNode} node - 目标节点
    * @param {import("../tools/tool.js").Tool} tool - 工具实例
    * @param {Function} processor - 工具处理器（由 `tool.createProcessor()` 生成）
@@ -670,7 +654,11 @@ class DevicesDAG {
         dagLog.warn(`tool.umount failed at "${node.path}":`, error);
       }
       if (typeof previousUmount === "function") {
-        previousUmount(handlerContext);
+        try {
+          previousUmount(handlerContext);
+        } catch (error) {
+          dagLog.warn(`previous umount hook failed at "${node.path}":`, error);
+        }
       }
     };
   }

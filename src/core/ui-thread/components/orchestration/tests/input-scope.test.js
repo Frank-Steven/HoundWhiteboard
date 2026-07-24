@@ -15,13 +15,13 @@ import { InputScope } from "../input-scope.js";
 
 /**
  * 创建独立的 InputScope 测试环境（真实 DevicesDAG + 桩 board/viewport）
- * @returns {{ dag: DevicesDAG, scope: InputScope }}
+ * @returns {{ dag: DevicesDAG, board: Object, viewport: Object, scope: InputScope }}
  */
 function createScope() {
   const dag = new DevicesDAG();
   const board = { devicesDAG: dag };
   const viewport = { viewportId: "vp" };
-  return { dag, scope: new InputScope(board, viewport) };
+  return { dag, board, viewport, scope: new InputScope(board, viewport) };
 }
 
 describe("InputScope.mountWorkflow", () => {
@@ -104,5 +104,61 @@ describe("InputScope.mountWorkflow", () => {
     expect(() => scope.mountWorkflow(null, new CollectingTool())).toThrow(
       TypeError,
     );
+  });
+});
+
+describe("InputScope.unmountWorkflow / removeEdge 生命周期", () => {
+  test("连同入边一并卸载时应恰好执行一次卸载钩子链", () => {
+    const { dag, scope } = createScope();
+    const tool = new CollectingTool();
+    tool.umount = jest.fn();
+
+    dag.ensureNode("/vp/mouse/primary");
+    scope.mountWorkflow("stroke", tool);
+    scope.addEdge({ from: "mouse/primary", to: "workflows/stroke" });
+
+    const result = scope.unmountWorkflow("stroke", [
+      { from: "mouse/primary" },
+    ]);
+
+    expect(result).toBe(true);
+    // 先删设备边时节点仍持有挂载路径入边，不触发钩子；
+    // 最终由 unmountWorkflow 执行唯一一次钩子链
+    expect(tool.umount).toHaveBeenCalledTimes(1);
+    // tool 实例已注销，可重新挂载
+    expect(() => scope.mountWorkflow("stroke2", tool)).not.toThrow();
+  });
+
+  test("unmountWorkflow 的卸载钩子上下文应携带 board 与 viewport", () => {
+    const { board, viewport, scope } = createScope();
+    const tool = new CollectingTool();
+    tool.umount = jest.fn();
+
+    scope.mountWorkflow("stroke", tool);
+    scope.unmountWorkflow("stroke");
+
+    expect(tool.umount).toHaveBeenCalledTimes(1);
+    const ctx = tool.umount.mock.calls[0][0];
+    expect(ctx.services.board).toBe(board);
+    expect(ctx.services.viewport).toBe(viewport);
+  });
+
+  test("removeEdge 使工具节点孤立时应执行卸载钩子并携带 board/viewport 上下文", () => {
+    const { dag, board, viewport, scope } = createScope();
+    const tool = new CollectingTool();
+    tool.umount = jest.fn();
+
+    scope.mountWorkflow("stroke", tool);
+
+    // 移除挂载路径边 → 节点孤立 → 触发完整卸载钩子链
+    expect(scope.removeEdge({ from: "workflows", edge: "stroke" })).toBe(true);
+
+    expect(tool.umount).toHaveBeenCalledTimes(1);
+    const ctx = tool.umount.mock.calls[0][0];
+    expect(ctx.services.board).toBe(board);
+    expect(ctx.services.viewport).toBe(viewport);
+    expect(dag.getNode("/vp/workflows/stroke")).toBeUndefined();
+    // tool 实例已注销，可重新挂载
+    expect(() => scope.mountWorkflow("stroke", tool)).not.toThrow();
   });
 });

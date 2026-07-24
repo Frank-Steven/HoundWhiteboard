@@ -162,33 +162,44 @@ class InputScope {
 
   /**
    * 移除有向边
+   * @description
+   * 若移除后目标子图变成孤立节点，会执行完整 umount 钩子链并注销 tool 实例；
+   * 钩子上下文携带 board / boardApi / viewport 服务。
    * @param {Object} options - 边选项
    * @param {string} options.from - 源节点路径（相对于视口根）
    * @param {string} [options.edge="default"] - 边名
    * @returns {boolean} 是否成功移除
    */
   removeEdge({ from, edge = "default" }) {
-    return this._dag.removeEdge(joinPath("/", this._viewportId, from), edge);
+    return this._dag.removeEdge(joinPath("/", this._viewportId, from), edge, {
+      board: this._board,
+      boardApi: this._board?.getBoardApi?.(),
+      viewport: this._viewport,
+    });
   }
 
   /**
    * 卸载 workflow 并可选移除入边
+   * @description
+   * 先移除入边再卸载：workflow 节点在标准接线下持有多条入边（挂载路径边 + 设备边），
+   * 先删设备边不会使其孤立，最终由 unmountWorkflow 以完整上下文执行卸载钩子链。
    * @param {string} name - workflow 名
    * @param {Array<{from: string, edge?: string}>} [edgesToRemove=[]] - 要一并移除的入边列表
    * @returns {boolean} 是否成功卸载
    */
   unmountWorkflow(name, edgesToRemove = []) {
     const workflowPath = joinPath("/", this._viewportId, "workflows", name);
-
-    for (const { from, edge = "default" } of edgesToRemove) {
-      this._dag.removeEdge(joinPath("/", this._viewportId, from), edge);
-    }
-
-    return this._dag.unmountWorkflow(workflowPath, {
+    const context = {
       board: this._board,
       boardApi: this._board?.getBoardApi?.(),
       viewport: this._viewport,
-    });
+    };
+
+    for (const { from, edge = "default" } of edgesToRemove) {
+      this._dag.removeEdge(joinPath("/", this._viewportId, from), edge, context);
+    }
+
+    return this._dag.unmountWorkflow(workflowPath, context);
   }
 
   /**
