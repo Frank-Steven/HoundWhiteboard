@@ -238,12 +238,14 @@ class MultiToolWrapper extends WrapperTool {
    * @description
    * 覆写基座钩子：从入口节点出发沿 outEdges 递归调用各节点 handler 的
    * `dispose` 钩子，dispose 错误逐节点吞掉，不中断其余节点清理。
+   * node 槽位不持有 Tool 实例（`slot.tool` 为 null），基座的 tool.umount 调用天然跳过。
    * @param {{ node: DevicesDAGNode, tool: null, processor: Function|null }} slot - 触点槽位
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @param {string} [scopeId] - 槽位标识（本实现未使用）
    * @returns {void}
    * @protected
    */
-  _teardownSlot(slot, context = {}) {
+  _teardownSlot(slot, context = {}, scopeId) {
     this.#disposeSubgraphNode(slot.node, context, new Set());
   }
 

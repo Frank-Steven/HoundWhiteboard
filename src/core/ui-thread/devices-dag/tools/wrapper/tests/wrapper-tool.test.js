@@ -190,6 +190,40 @@ describe("WrapperTool", () => {
     expect(wrapper._getSlot("touch-0")).toBeUndefined();
   });
 
+  test("_teardownSlot 应以槽位上下文调用槽位 tool 的 umount", () => {
+    const wrapper = new TestWrapper();
+    const tool = new StateWritingTool(1);
+    const umount = jest.spyOn(tool, "umount");
+    wrapper._addSlot("a", tool);
+
+    wrapper._disposeSlot("a", { services: { board: {} }, path: "/wf/test" });
+
+    expect(umount).toHaveBeenCalledTimes(1);
+    const umountCtx = umount.mock.calls[0][0];
+    // 槽位上下文：dag 恒为 null，路径带槽位后缀
+    expect(umountCtx.dag).toBeNull();
+    expect(umountCtx.path).toBe("/wf/test/a");
+  });
+
+  test("槽位 tool 的 umount 抛错不中断其余槽位清理", () => {
+    const wrapper = new TestWrapper();
+    const bad = new StateWritingTool(1);
+    bad.umount = jest.fn(() => {
+      throw new Error("umount boom");
+    });
+    const good = new StateWritingTool(2);
+    const goodUmount = jest.spyOn(good, "umount");
+    wrapper._addSlot("a", bad);
+    wrapper._addSlot("b", good);
+
+    const disposeB = jest.spyOn(wrapper._getSlot("b").processor, "dispose");
+
+    expect(() => wrapper._disposeAllSlots({ services: {} })).not.toThrow();
+    expect(goodUmount).toHaveBeenCalledTimes(1);
+    expect(disposeB).toHaveBeenCalledTimes(1);
+    expect(wrapper._listSlotIds()).toEqual([]);
+  });
+
   test("_buildSlotContext 提供完整上下文形状且状态读写落在 shell 节点", () => {
     const wrapper = new TestWrapper();
     wrapper._addSlot("a", new StateWritingTool(1));

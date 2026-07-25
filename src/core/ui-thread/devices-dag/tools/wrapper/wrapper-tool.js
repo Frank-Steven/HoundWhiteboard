@@ -215,20 +215,30 @@ class WrapperTool extends Tool {
   /**
    * 清理单个槽位占用的资源
    * @description
-   * 默认实现调用 `slot.processor?.dispose?.(context)` 并吞掉 dispose 错误，
-   * 避免单个槽位的清理失败中断其余槽位。
+   * 默认实现先调用 `slot.processor?.dispose?.(context)`，再以槽位上下文调用
+   * `slot.tool?.umount(...)`（与 DAG 挂载路径的卸载契约对齐）；
+   * 任一环节抛错均吞掉，避免单个槽位的清理失败中断其余槽位。
    * 子类可覆写本钩子扩展清理逻辑（如沿子图 outEdges 递归 dispose），
    * 覆写时应自行保证容错，不要抛出异常。
    * @param {{ node: DevicesDAGNode, tool: Tool|null, processor: Function|null }} slot - 待清理的槽位
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
-   * @returns {void}
+   * @param {string} [scopeId] - 槽位标识（用于构造槽位上下文）
    * @protected
    */
-  _teardownSlot(slot, context = {}) {
+  _teardownSlot(slot, context = {}, scopeId) {
     try {
       slot.processor?.dispose?.(context);
     } catch {
       // dispose 错误不中断其余槽位清理
+    }
+    if (slot.tool) {
+      try {
+        slot.tool.umount(
+          scopeId ? this._buildSlotContext(scopeId, context) : context,
+        );
+      } catch {
+        // umount 错误不中断其余槽位清理
+      }
     }
   }
 
@@ -246,7 +256,7 @@ class WrapperTool extends Tool {
       return;
     }
 
-    this._teardownSlot(slot, context);
+    this._teardownSlot(slot, context, scopeId);
     this.#slots.delete(scopeId);
   }
 
@@ -264,14 +274,14 @@ class WrapperTool extends Tool {
 
   /**
    * 工具节点被卸载时执行清理
-   * @description 取消活跃动作并 dispose 全部槽位。
+   * @description
+   * 先走基类卸载契约（取消活跃动作 + 调用覆写的 `reset`），再 dispose 全部槽位
+   * （各槽位子工具的 `umount` 随 `_teardownSlot` 一并执行）。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void}
    */
   umount(context = {}) {
-    if (this.isActionActive) {
-      this.cancelAction(context);
-    }
+    super.umount(context);
     this._disposeAllSlots(context);
   }
 }

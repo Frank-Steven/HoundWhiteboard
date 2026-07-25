@@ -83,6 +83,7 @@
  * @property {DevicesDAGServiceContext} [services] - 节点声明的静态服务集合
  * @property {string} [defaultRoute] - 默认出边名
  * @property {Tool} [tool] - 工具实例
+ * @property {Object} [toolContext] - 工具上下文（合并进节点 semantics.toolContext）
  * @property {DevicesDAGNodeUmountHandler|null} [umount] - 卸载钩子
  */
 

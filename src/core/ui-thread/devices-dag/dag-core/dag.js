@@ -318,14 +318,18 @@ class DevicesDAG {
 
   /**
    * 从指定节点解析相对路径
+   * @description
+   * 以 fromNode 的可达路径（`node.path`，悬垂时经 {@link DevicesDAG#getNodePath} 现算）为基准，
+   * 用 {@link resolvePath} 解析相对路径（支持 `.` / `..` / 绝对路径覆盖）。
    * @param {DevicesDAGNode} fromNode - 起始节点
    * @param {string} relativePath - 相对路径
    * @returns {DevicesDAGNode|undefined}
    */
   resolveRelativeNode(fromNode, relativePath = "") {
     if (!fromNode) return undefined;
-    const absolutePath = resolvePath("/", relativePath);
-    return this.getNode(absolutePath);
+    const basePath = fromNode.path ?? this.getNodePath(fromNode);
+    if (!basePath) return undefined;
+    return this.getNode(resolvePath(basePath, relativePath));
   }
 
   /**
@@ -574,15 +578,25 @@ class DevicesDAG {
 
   /**
    * 写入节点状态
+   * @description
+   * 目标节点必须已存在——不会创建缺失节点（与 {@link DevicesDAG#getNodeState} 对称）。
+   * 节点不存在时 strict 模式抛错，非 strict 模式告警并返回空对象。
    * @param {string|number} pathOrId - 节点路径或节点 id
    * @param {Object} state - 新状态
-   * @returns {Object} 写入后的状态
+   * @returns {Object} 写入后的状态；节点不存在时返回空对象
+   * @throws {Error} strict 模式下节点不存在时抛错
    */
   setNodeState(pathOrId, state = {}) {
     const node =
       typeof pathOrId === "number"
         ? this._nodes.get(pathOrId)
-        : this.ensureNode(pathOrId);
+        : this.getNode(pathOrId);
+    if (!node) {
+      const message = `[DevicesDAG] setNodeState: node not found at "${pathOrId}". Node state can only be written to existing nodes.`;
+      if (this._strict) throw new Error(message);
+      dagLog.warn(message);
+      return {};
+    }
     node.state = isPlainObject(state) ? { ...state } : {};
     return { ...node.state };
   }
@@ -1012,6 +1026,12 @@ class DevicesDAG {
       node._toolInstance = def.tool;
 
       node.umount = this._chainToolUmount(node, def.tool, processor);
+    }
+    if (
+      isPlainObject(def.toolContext) &&
+      Object.keys(def.toolContext).length > 0
+    ) {
+      node.semantics = { ...node.semantics, toolContext: def.toolContext };
     }
   }
 

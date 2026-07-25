@@ -258,6 +258,7 @@ describe("DevicesDAG", () => {
 
     test("setNodeState 应返回写入后的状态快照", () => {
       const dag = new DevicesDAG();
+      dag.ensureNode("/s");
       const result = dag.setNodeState("/s", { a: 1 });
       expect(result).toEqual({ a: 1 });
     });
@@ -1389,14 +1390,23 @@ describe("DevicesDAG", () => {
   });
 
   describe("resolveRelativeNode", () => {
-    test("resolveRelativeNode 应从指定节点解析相对路径", () => {
+    test("resolveRelativeNode 应相对 fromNode 解析子路径", () => {
       const dag = new DevicesDAG();
-      dag.ensureNode("/a/b");
-      const aNode = dag.getNode("/a");
-      // resolveRelativeNode 内部使用 resolvePath("/", relativePath) 解析为绝对路径
-      // 然后调用 getNode(absolutePath)，所以 "b" 会解析为 "/b"
-      const result = dag.resolveRelativeNode(aNode, "/a/b");
-      expect(result).toBe(dag.getNode("/a/b"));
+      dag.ensureNode("/a/b/c");
+      const bNode = dag.getNode("/a/b");
+
+      expect(dag.resolveRelativeNode(bNode, "c")).toBe(dag.getNode("/a/b/c"));
+    });
+
+    test("resolveRelativeNode 应支持 .. 解析兄弟路径", () => {
+      const dag = new DevicesDAG();
+      dag.ensureNode("/a/b/c");
+      dag.ensureNode("/a/b/sibling");
+      const cNode = dag.getNode("/a/b/c");
+
+      expect(dag.resolveRelativeNode(cNode, "../sibling")).toBe(
+        dag.getNode("/a/b/sibling"),
+      );
     });
 
     test("resolveRelativeNode 在 fromNode 为 undefined 时应返回 undefined", () => {
@@ -1404,10 +1414,11 @@ describe("DevicesDAG", () => {
       expect(dag.resolveRelativeNode(undefined, "a")).toBeUndefined();
     });
 
-    test("resolveRelativeNode 空路径应返回根节点", () => {
+    test("resolveRelativeNode 空路径应返回 fromNode 自身", () => {
       const dag = new DevicesDAG();
-      const root = dag.getNode("/");
-      expect(dag.resolveRelativeNode(root, "")).toBe(root);
+      dag.ensureNode("/a/b");
+      const bNode = dag.getNode("/a/b");
+      expect(dag.resolveRelativeNode(bNode, "")).toBe(bNode);
     });
   });
 
@@ -1941,6 +1952,40 @@ describe("DevicesDAG", () => {
       dag.setNodeState("/a", { count: 5 });
       dag.setNodeState("/a");
       expect(dag.getNodeState("/a")).toEqual({});
+    });
+
+    test("setNodeState 写入不存在的路径应告警且不创建节点", () => {
+      const dag = new DevicesDAG();
+      const warnEntries = [];
+      const off = logBus.onLevels(["WARN"], (entry) =>
+        warnEntries.push(entry),
+      );
+      try {
+        const result = dag.setNodeState("/typo/path", { x: 1 });
+        expect(result).toEqual({});
+        expect(dag.getNode("/typo")).toBeUndefined();
+        expect(warnEntries.length).toBeGreaterThan(0);
+      } finally {
+        off();
+      }
+    });
+
+    test("setNodeState 写入不存在的节点时 strict 模式应抛错", () => {
+      const dag = new DevicesDAG({ strict: true });
+      expect(() => dag.setNodeState("/nowhere", { x: 1 })).toThrow(
+        /not found/,
+      );
+    });
+
+    test("setNodeState 不应复活已卸载的节点", () => {
+      const dag = new DevicesDAG();
+      dag.ensureNode("/a/b");
+      dag.unmount("/a");
+
+      dag.setNodeState("/a/b", { x: 1 });
+
+      expect(dag.getNode("/a")).toBeUndefined();
+      expect(dag.getNode("/a/b")).toBeUndefined();
     });
   });
 

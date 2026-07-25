@@ -285,4 +285,17 @@ describe("createSubDAG (Builder DSL)", () => {
       expect(def.edges).toEqual([]);
     });
   });
+
+  describe("挂载后 toolContext", () => {
+    test("tool(tool, toolContext) 经 mountSubDAG 挂载后 semantics.toolContext 应保留", () => {
+      const dag = new DevicesDAG();
+      const mockTool = { createProcessor: () => () => {} };
+      const builder = createSubDAG("/wf");
+      builder.node().tool(mockTool, { foo: 1 });
+
+      dag.mountSubDAG("", builder.build());
+
+      expect(dag.getNode("/wf").semantics.toolContext).toEqual({ foo: 1 });
+    });
+  });
 });

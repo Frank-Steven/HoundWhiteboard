@@ -298,4 +298,50 @@ describe("ToolSwitcherWrapper", () => {
     // wrapper 真实节点不被子工具的状态读写污染
     expect(dag.getNodeState("/switcher").objects).toBeUndefined();
   });
+
+  test("unmount 应调用全部已实例化槽位 tool 的 umount（含非活跃槽位）", () => {
+    const stroke = new CollectingTool();
+    const circle = new CollectingTool();
+    const strokeUmount = jest.spyOn(stroke, "umount");
+    const circleUmount = jest.spyOn(circle, "umount");
+    const wrapper = new ToolSwitcherWrapper({
+      tools: [
+        { name: "stroke", tool: stroke },
+        { name: "circle", tool: circle },
+      ],
+      defaultTool: "stroke",
+    });
+    const { dag } = mountSwitcher(wrapper);
+
+    dag.unmount("/switcher");
+
+    expect(strokeUmount).toHaveBeenCalledTimes(1);
+    expect(circleUmount).toHaveBeenCalledTimes(1);
+    // 槽位 umount 收到的是槽位上下文（dag 为 null、路径带槽位后缀）
+    const strokeCtx = strokeUmount.mock.calls[0][0];
+    expect(strokeCtx.dag).toBeNull();
+    expect(strokeCtx.path).toBe("/switcher/stroke");
+  });
+
+  test("unmount 后覆写的 reset 应生效（activeName 恢复默认）", () => {
+    const stroke = new CollectingTool();
+    const circle = new CollectingTool();
+    const wrapper = new ToolSwitcherWrapper({
+      tools: [
+        { name: "stroke", tool: stroke },
+        { name: "circle", tool: circle },
+      ],
+      defaultTool: "stroke",
+    });
+    const { dag } = mountSwitcher(wrapper);
+
+    dispatchToSwitcher(dag, [
+      { type: TOOL_SWITCH, context: { activeTool: "circle" } },
+    ]);
+    expect(wrapper.getDebugInfo().activeName).toBe("circle");
+
+    dag.unmount("/switcher");
+
+    expect(wrapper.getDebugInfo().activeName).toBe("stroke");
+  });
 });

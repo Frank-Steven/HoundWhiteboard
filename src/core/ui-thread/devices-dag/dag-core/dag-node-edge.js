@@ -296,7 +296,10 @@ class DevicesDAGNode {
             node.semantics = { ...node.semantics, tool: true };
           }
         }
-        if (nodeDef.toolContext) {
+        if (
+          isPlainObject(nodeDef.toolContext) &&
+          Object.keys(nodeDef.toolContext).length > 0
+        ) {
           node.semantics = {
             ...node.semantics,
             toolContext: nodeDef.toolContext,
