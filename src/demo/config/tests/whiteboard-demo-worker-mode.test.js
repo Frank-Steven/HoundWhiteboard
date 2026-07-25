@@ -482,4 +482,110 @@ describe("whiteboard demo worker mode", () => {
       restoreAnimationFrame();
     }
   });
+
+  test("按住右键时多次左键长按应各自提交独立笔画，且不干扰右键框选", async () => {
+    const restoreAnimationFrame = installMockAnimationFrame();
+    const restoreDocument = installMockDocument();
+    const { uiEndpoint, workerHost } = createLoopbackWorkerPair();
+    const board = new Board({ width: 800, height: 600 });
+    let runtime = null;
+    let viewport = null;
+
+    try {
+      const enablePromise = board.enableWorkerMode(uiEndpoint);
+      runtime = createCoreWorkerRuntime(workerHost).start();
+      await enablePromise;
+
+      const rootElement = document.createElement("div");
+      viewport = board.createViewport(
+        rootElement,
+        { width: 800, height: 600 },
+        "main",
+      );
+      await flushMicrotasks();
+
+      const { primaryStrokeTool, secondarySelectionTool } =
+        configureWhiteboardDemo(board, viewport);
+      mountPrimaryStrokeTool(viewport, primaryStrokeTool);
+
+      /**
+       * 构造 position 信号
+       * @param {number} x - x 坐标
+       * @param {number} y - y 坐标
+       * @param {Object} extras - 附加上下文（button/buttons）
+       * @returns {Object}
+       */
+      const pos = (x, y, extras) => ({
+        type: "position",
+        context: { value: new Vector(x, y), ...extras },
+      });
+
+      /**
+       * 构造 end 信号
+       * @param {number} button - 松开的按钮
+       * @param {number} buttons - 松开后仍按住的按钮位掩码
+       * @returns {Object}
+       */
+      const end = (button, buttons) => ({
+        type: "end",
+        context: { button, buttons },
+      });
+
+      /**
+       * 向鼠标设备分发信号
+       * @param {Array<Object>} signals - 信号列表
+       * @returns {void}
+       */
+      const emit = (signals) =>
+        board.signalsEventBus.emit("input", { to: "/main/mouse", signals });
+
+      // 右键按下并拖动（开始框选，全程按住）
+      emit([pos(1, 1, { button: 2, buttons: 2 })]);
+      emit([pos(5, 5, { button: 2, buttons: 2 })]);
+
+      // 第一笔：左键按下 → 拖动 → 松开（右键仍按住）
+      emit([pos(10, 10, { button: 0, buttons: 3 })]);
+      emit([pos(20, 20, { button: 0, buttons: 3 })]);
+      emit([end(0, 2)]);
+      await flushMicrotasks();
+
+      // 第二笔：再次左键按下 → 拖动 → 松开
+      emit([pos(50, 50, { button: 0, buttons: 3 })]);
+      emit([pos(60, 60, { button: 0, buttons: 3 })]);
+      emit([end(0, 2)]);
+      await flushMicrotasks();
+
+      // 两次左键应各自提交独立笔画对象
+      const strokes = await board.getBoardApi().queryObjects([1, 2]);
+      expect(strokes).toHaveLength(2);
+      expect(strokes[0]).toMatchObject({
+        id: 1,
+        isActive: false,
+        position: { x: 10, y: 10 },
+      });
+      expect(strokes[1]).toMatchObject({
+        id: 2,
+        isActive: false,
+        position: { x: 50, y: 50 },
+      });
+
+      // 右键框选手势未被左键的 end 提前终结：继续拖动并松右键后，
+      // 框选矩形应覆盖完整轨迹 (1,1)→(70,70)，同时选中两笔
+      emit([pos(70, 70, { button: 2, buttons: 2 })]);
+      emit([end(2, 0)]);
+      await flushMicrotasks();
+
+      expect(secondarySelectionTool._selectedObjects).toHaveLength(2);
+      expect(
+        viewport.devicesDAG.getNode("/main/workflows/secondary-chooser")
+          ?.state,
+      ).toMatchObject({ phase: "second" });
+    } finally {
+      viewport?.destroy?.();
+      board.getBoardApi()?.destroy?.();
+      runtime?.stop?.();
+      restoreDocument();
+      restoreAnimationFrame();
+    }
+  });
 });

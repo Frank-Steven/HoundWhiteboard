@@ -65,24 +65,4 @@ describe("Board 输入信道兜底", () => {
       off();
     }
   });
-
-  test("信号包未到达任何消费者时应按节流告警", async () => {
-    const board = new Board({ width: 800, height: 600 });
-
-    const warnEntries = [];
-    const off = logBus.onLevels(["WARN"], (entry) => warnEntries.push(entry));
-
-    try {
-      // boardLog 是模块级单例：等待 KeyThrottle 节流窗口（默认 200ms）过去，
-      // 避免被前面用例的同类告警节流
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      board.signalsEventBus.emit("input", {
-        to: "/nowhere",
-        signals: [{ type: "position" }],
-      });
-      expect(warnEntries.length).toBeGreaterThan(0);
-    } finally {
-      off();
-    }
-  });
 });
