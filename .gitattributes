@@ -1,0 +1,12 @@
+# 跨平台行尾统一策略
+# 文本文件在仓库中统一存 LF，签出时 Windows 上转 CRLF、*nix 上保持 LF
+* text=auto
+
+# Shell 脚本：跨平台一致保持 LF（否则 Linux/macOS 上 $'\r' 报错）
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Windows 脚本：Windows 平台保持 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
