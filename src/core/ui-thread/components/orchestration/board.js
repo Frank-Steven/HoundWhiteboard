@@ -14,6 +14,14 @@ import { DevicesDAG } from "../../devices-dag/index.js";
 import { BoardApiRpc } from "../../../bridges/board-api-rpc.js";
 import { Viewport } from "./viewport.js";
 import { joinPath } from "../../../engine/utils/path.js";
+import { Logger } from "../../../../utils/log/logger.js";
+import { logBus } from "../../../../utils/log/log-bus.js";
+
+/**
+ * Board 日志
+ * @type {Logger}
+ */
+const boardLog = new Logger("Board", "WARN", logBus);
 
 /**
  * Board 运行时节点配置事件载荷。
@@ -273,12 +281,17 @@ class Board {
 
   /**
    * 绑定信道相关事件
+   * @description 单个信号包的分发失败只记录日志，不中断输入循环。
    * @private
    */
   #bindSignalsEventBus() {
     // input 事件负责将信号送往对应节点
     this.signalsEventBus.on("input", ({ to, signals }) => {
-      this.devicesDAG.dispatch({ to, signals });
+      try {
+        this.devicesDAG.dispatch({ to, signals });
+      } catch (error) {
+        boardLog.error(`dispatch failed for "${to}":`, error);
+      }
     });
   }
 

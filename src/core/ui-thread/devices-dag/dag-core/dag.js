@@ -418,12 +418,79 @@ class DevicesDAG {
       throw new Error(`Source node not found at path "${fromPath}".`);
     }
 
+    const nodeIdsBefore = new Set(this._nodes.keys());
     const target = toPath
       ? this.ensureNode(toPath)
       : this._createNode(this._allocateNodeId());
 
     this._checkNoCycle(source, edgeName, target);
-    return this._connectNodes(source, edgeName, target);
+    const edge = this._connectNodes(source, edgeName, target);
+    try {
+      // 新边可能让目标路径引入服务上下文冲突，冲突时断边回滚
+      this._assertServiceConsistency();
+    } catch (error) {
+      this._disconnectEdge(edge);
+      this._removeNodesCreatedAfter(nodeIdsBefore);
+      throw error;
+    }
+    return edge;
+  }
+
+  /**
+   * 检查全图服务上下文无冲突
+   * @description
+   * 服务冲突的定义：同一 key 被两个存在可达关系的节点重复声明
+   * （dispatch 时服务沿路径累积，重复 key 会导致后者无法合并）。
+   * 无环图中等价于：对每个声明 services 的节点，其可达下游不得再声明同名 key。
+   * 本检查在装配期（configureNode / mount / addEdge / mountSubDAG）自动执行，
+   * 冲突时抛错，由调用方负责回滚。
+   * @throws {Error} 当存在服务 key 冲突时
+   * @private
+   */
+  _assertServiceConsistency() {
+    for (const source of this._nodes.values()) {
+      if (!isPlainObject(source.services)) continue;
+      if (Object.keys(source.services).length === 0) continue;
+
+      // DFS 可达下游，检查 key 交集
+      const visited = new Set([source.id]);
+      const stack = [...source.outEdges.values()].map((edge) => edge.target);
+      while (stack.length > 0) {
+        const node = stack.pop();
+        if (visited.has(node.id)) continue;
+        visited.add(node.id);
+        if (isPlainObject(node.services)) {
+          for (const key of Object.keys(node.services)) {
+            if (Object.prototype.hasOwnProperty.call(source.services, key)) {
+              throw new Error(
+                `Service context key "${key}" conflicts: declared at "${source.path ?? `#${source.id}`}" and again at reachable "${node.path ?? `#${node.id}`}".`,
+              );
+            }
+          }
+        }
+        for (const edge of node.outEdges.values()) {
+          stack.push(edge.target);
+        }
+      }
+    }
+  }
+
+  /**
+   * 移除指定快照之后创建的全部节点
+   * @description
+   * 装配操作失败回滚时使用：断开新建节点的全部入边（含 ensureNode 创建的链路边）后移除。
+   * 新建节点尚未完成挂载，无需执行 umount 钩子，直接移除。
+   * @param {Set<number>} nodeIdsBefore - 操作前的节点 id 快照
+   * @private
+   */
+  _removeNodesCreatedAfter(nodeIdsBefore) {
+    for (const node of [...this._nodes.values()]) {
+      if (nodeIdsBefore.has(node.id)) continue;
+      for (const edge of [...node.inEdges]) {
+        this._disconnectEdge(edge);
+      }
+      this._nodes.delete(node.id);
+    }
   }
 
   /**
@@ -522,6 +589,9 @@ class DevicesDAG {
 
   /**
    * 运行时更新节点配置
+   * @description
+   * 各字段按顺序应用；`services` 最后写入并做全图冲突检查——
+   * 冲突时抛错，services 恢复原值、本次新建的节点链被清理（其余字段修改保留）。
    * @param {string} path - 节点路径
    * @param {Object} options - 配置选项
    * @param {DevicesDAGHandler|null} [options.handler] - 新处理器
@@ -530,8 +600,10 @@ class DevicesDAG {
    * @param {string|null} [options.defaultRoute] - 新默认出边
    * @param {DevicesDAGNodeUmountHandler|null} [options.umount] - 新卸载钩子
    * @returns {DevicesDAGNode} 更新后的节点
+   * @throws {Error} 当 services 与可达节点的服务声明冲突时
    */
   configureNode(path, options = {}) {
+    const nodeIdsBefore = new Set(this._nodes.keys());
     const node = this.ensureNode(path);
 
     if ("handler" in options) {
@@ -543,9 +615,6 @@ class DevicesDAG {
         ? { ...options.semantics }
         : {};
     }
-    if ("services" in options) {
-      node.services = isPlainObject(options.services) ? options.services : {};
-    }
     if ("defaultRoute" in options) {
       node.defaultRoute =
         typeof options.defaultRoute === "string" ? options.defaultRoute : "";
@@ -553,6 +622,18 @@ class DevicesDAG {
     if ("umount" in options) {
       node.umount =
         typeof options.umount === "function" ? options.umount : null;
+    }
+    // services 最后写入：冲突检查失败时恢复并清理新建节点
+    if ("services" in options) {
+      const previousServices = node.services;
+      node.services = isPlainObject(options.services) ? options.services : {};
+      try {
+        this._assertServiceConsistency();
+      } catch (error) {
+        node.services = previousServices;
+        this._removeNodesCreatedAfter(nodeIdsBefore);
+        throw error;
+      }
     }
 
     return node;
@@ -566,6 +647,7 @@ class DevicesDAG {
    * @returns {DevicesDAGNode} 挂载后的节点
    */
   mount(path, handler = null, options = {}) {
+    const nodeIdsBefore = new Set(this._nodes.keys());
     const node = this.ensureNode(path);
 
     if (arguments.length >= 2) {
@@ -573,12 +655,6 @@ class DevicesDAG {
     }
     if (isPlainObject(options.semantics)) {
       node.semantics = { ...node.semantics, ...options.semantics };
-    }
-    if (isPlainObject(options.services)) {
-      node.services = {
-        ...node.services,
-        ...options.services,
-      };
     }
 
     const defaultRoute =
@@ -589,6 +665,18 @@ class DevicesDAG {
     if ("umount" in options) {
       node.umount =
         typeof options.umount === "function" ? options.umount : null;
+    }
+    // services 合并写入：冲突检查失败时恢复并清理新建节点
+    if (isPlainObject(options.services)) {
+      const previousServices = node.services;
+      node.services = { ...node.services, ...options.services };
+      try {
+        this._assertServiceConsistency();
+      } catch (error) {
+        node.services = previousServices;
+        this._removeNodesCreatedAfter(nodeIdsBefore);
+        throw error;
+      }
     }
 
     return node;
@@ -738,6 +826,9 @@ class DevicesDAG {
         this._checkNoCycle(fromNode, edgeDef.name, toNode);
         createdEdges.push(this._connectNodes(fromNode, edgeDef.name, toNode));
       }
+
+      // 3. 服务上下文冲突检查：新挂载的 services 经新边累积，冲突则走回滚
+      this._assertServiceConsistency();
     } catch (error) {
       // 回滚：断开本次建立的子图内部边、注销已登记的 tool
       for (const edge of createdEdges) {
@@ -747,13 +838,7 @@ class DevicesDAG {
         this._unregisterToolInstance(tool);
       }
       // 移除本次新建的全部节点（含 ensureNode 创建的中间链路节点，通过入边断开）
-      for (const node of [...this._nodes.values()]) {
-        if (nodeIdsBefore.has(node.id)) continue;
-        for (const edge of [...node.inEdges]) {
-          this._disconnectEdge(edge);
-        }
-        this._nodes.delete(node.id);
-      }
+      this._removeNodesCreatedAfter(nodeIdsBefore);
       // 恢复预先存在的根节点字段
       if (rootSnapshot) {
         preExistingRoot.handler = rootSnapshot.handler;

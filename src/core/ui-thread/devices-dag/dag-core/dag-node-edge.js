@@ -54,11 +54,13 @@ function mergeContextLayer(baseLayer = {}, patchLayer = {}, options = {}) {
 
   for (const key of Object.keys(patchLayer)) {
     if (Object.prototype.hasOwnProperty.call(nextLayer, key)) {
-      throw new Error(`${label} key "${key}" already exists. Cannot override.`);
+      throw new Error(
+        `[DevicesDAG] ${label} key "${key}" already exists. Cannot override. This should have been caught at assembly time.`,
+      );
     }
     if (Object.prototype.hasOwnProperty.call(forbidden, key)) {
       throw new Error(
-        `${label} key "${key}" conflicts with an existing context layer.`,
+        `[DevicesDAG] ${label} key "${key}" conflicts with an existing context layer. This should have been caught at assembly time.`,
       );
     }
     nextLayer[key] = patchLayer[key];

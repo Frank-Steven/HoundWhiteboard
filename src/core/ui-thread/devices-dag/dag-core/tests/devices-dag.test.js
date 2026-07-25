@@ -387,20 +387,21 @@ describe("DevicesDAG", () => {
   });
 
   describe("dispatch 服务上下文", () => {
-    test("节点声明的 services 键与上游冲突时应抛错", () => {
+    test("节点声明的 services 键与上游冲突时应在装配期抛错", () => {
       const dag = new DevicesDAG();
       dag.ensureNode("/a/b");
       dag.configureNode("/", {
         services: { layer: "a" },
       });
-      dag.configureNode("/a", {
-        services: { layer: "b" },
-      });
 
-      // layer 在 "/" 层已声明，"/a" 层再声明同名键应抛错
+      // layer 在 "/" 层已声明，"/a" 层再声明同名键应在 configureNode 时抛错
       expect(() =>
-        dag.dispatch({ to: "/a/b", signals: [{ type: "test" }] }),
-      ).toThrow(/already exists/i);
+        dag.configureNode("/a", {
+          services: { layer: "b" },
+        }),
+      ).toThrow(/conflicts/);
+      // 冲突的 services 未写入
+      expect(dag.getNode("/a").services).toEqual({});
     });
 
     test("dispatch 应让下游 handler 读取路径上声明的 services", () => {
@@ -465,6 +466,119 @@ describe("DevicesDAG", () => {
         board: { id: "board-1" },
         viewport: { id: "vp-1" },
       });
+    });
+  });
+
+  describe("服务上下文装配期预检", () => {
+    test("configureNode 冲突时清理本次新建的节点链", () => {
+      const dag = new DevicesDAG();
+      dag.configureNode("/", { services: { layer: "a" } });
+
+      expect(() =>
+        dag.configureNode("/new/path", { services: { layer: "b" } }),
+      ).toThrow(/conflicts/);
+      // 新建节点链被清理
+      expect(dag.getNode("/new")).toBeUndefined();
+      expect(dag.getNode("/new/path")).toBeUndefined();
+    });
+
+    test("configureNode 冲突时既有节点的原 services 不变，其余字段修改保留", () => {
+      const dag = new DevicesDAG();
+      dag.configureNode("/", { services: { layer: "a" } });
+      dag.configureNode("/a", { services: { own: 1 } });
+      const handler = () => {};
+
+      expect(() =>
+        dag.configureNode("/a", {
+          handler,
+          services: { layer: "b" },
+        }),
+      ).toThrow(/conflicts/);
+
+      const node = dag.getNode("/a");
+      // services 恢复原值，handler 修改保留
+      expect(node.services).toEqual({ own: 1 });
+      expect(node.handler).toBe(handler);
+    });
+
+    test("下游声明与上游冲突时同样拦截（沿可达方向）", () => {
+      const dag = new DevicesDAG();
+      dag.configureNode("/a/b/c", { services: { deep: 1 } });
+
+      // 在下游已声明 deep 的情况下，上游再声明同名键应抛错
+      expect(() => dag.configureNode("/a", { services: { deep: 2 } })).toThrow(
+        /conflicts/,
+      );
+    });
+
+    test("mount 合并 services 冲突应抛错", () => {
+      const dag = new DevicesDAG();
+      dag.configureNode("/", { services: { shared: 1 } });
+
+      expect(() =>
+        dag.mount("/a", null, { services: { shared: 2 } }),
+      ).toThrow(/conflicts/);
+      expect(dag.getNode("/a")).toBeUndefined();
+    });
+
+    test("addEdge 形成的新入边路径引入冲突时应抛错且断边回滚", () => {
+      const dag = new DevicesDAG();
+      dag.configureNode("/dev", { services: { svc: 1 } });
+      dag.configureNode("/wf/tool", { services: { svc: 2 } });
+
+      expect(() => dag.addEdge("/dev", "default", "/wf/tool")).toThrow(
+        /conflicts/,
+      );
+      // 边未建立
+      expect(dag.getNode("/dev").outEdges.has("default")).toBe(false);
+    });
+
+    test("多入边节点：无冲突的入边路径可建立，引入冲突的入边被拒", () => {
+      const dag = new DevicesDAG();
+      dag.configureNode("/src-a", { services: { a: 1 } });
+      dag.configureNode("/src-b", { services: { shared: 1 } });
+      dag.configureNode("/sink", { services: { shared: 2 } });
+
+      // A 路径无冲突
+      expect(() => dag.addEdge("/src-a", "to", "/sink")).not.toThrow();
+      // B 路径有冲突（src-b.shared → sink.shared）
+      expect(() => dag.addEdge("/src-b", "to", "/sink")).toThrow(/conflicts/);
+      // A 路径仍然完好
+      expect(dag.getNode("/src-a").outEdges.has("to")).toBe(true);
+    });
+
+    test("mountSubDAG 子图 services 与挂载点上游冲突时应抛错且回滚", () => {
+      const dag = new DevicesDAG();
+      dag.configureNode("/vp", { services: { viewport: {} } });
+      const nodeCountBefore = dag._nodes.size;
+
+      expect(() =>
+        dag.mountSubDAG("/vp", {
+          rootPath: "/sub",
+          rootNodeId: 0,
+          nodes: new Map([
+            [0, { handler: null }],
+            [1, { handler: null, services: { viewport: {} } }],
+          ]),
+          edges: [{ name: "child", fromNodeId: 0, toNodeId: 1 }],
+        }),
+      ).toThrow(/conflicts/);
+
+      // 回滚：节点表无残留
+      expect(dag._nodes.size).toBe(nodeCountBefore);
+      expect(dag.getNode("/vp/sub")).toBeUndefined();
+    });
+
+    test("绕过装配 API 直接改 node.services 时 dispatch 仍抛出带前缀的错误", () => {
+      const dag = new DevicesDAG();
+      dag.configureNode("/", { services: { layer: "a" } });
+      dag.ensureNode("/a/b");
+      // 绕过装配 API 直接写入冲突 services（模拟引擎 bug）
+      dag.getNode("/a").services = { layer: "b" };
+
+      expect(() =>
+        dag.dispatch({ to: "/a/b", signals: [{ type: "test" }] }),
+      ).toThrow(/\[DevicesDAG\].*already exists/);
     });
   });
 
