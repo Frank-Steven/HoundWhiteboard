@@ -108,17 +108,17 @@
 
 /**
  * 设备图（引擎核心类）
- * @typedef {import("./dag-type.js").DevicesDAG} DevicesDAG
+ * @typedef {import("./dag-core/dag.js").DevicesDAG} DevicesDAG
  */
 
 /**
  * 设备图节点（引擎核心类）
- * @typedef {import("./dag-type.js").DevicesDAGNode} DevicesDAGNode
+ * @typedef {import("./dag-core/dag-node-edge.js").DevicesDAGNode} DevicesDAGNode
  */
 
 /**
  * 设备图有向边（引擎核心类）
- * @typedef {import("./dag-type.js").DevicesDAGEdge} DevicesDAGEdge
+ * @typedef {import("./dag-core/dag-node-edge.js").DevicesDAGEdge} DevicesDAGEdge
  */
 
 /**

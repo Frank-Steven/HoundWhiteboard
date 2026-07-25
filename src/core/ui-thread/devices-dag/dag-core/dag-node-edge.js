@@ -13,6 +13,10 @@
  */
 
 import { isPlainObject, normalizeHandlerResult } from "./dag-utils.js";
+import {
+  wouldCreateCycle,
+  applyNodeDefinitionToNode,
+} from "./dag-utils.js";
 import { SignalPacket } from "./signal.js";
 import { normalizePath, joinPath } from "../../../engine/utils/path.js";
 import { Logger } from "../../../../utils/log/logger.js";
@@ -143,7 +147,11 @@ class DevicesDAGNode {
   inEdges;
 
   /**
-   * 节点的 canonical path 表示（由 DAG 维护，确保唯一且稳定）
+   * 节点当前的一条可达路径
+   * @description
+   * 由 DAG 维护：连接时快速赋值，结构变化（unmount / removeEdge）后经
+   * {@link DevicesDAG#_refreshAllNodePaths} 全量重算。
+   * 多入边节点取 BFS 首条可达路径；独立图（createGraph）节点恒为 null。
    * @type {string|null}
    */
   path;
@@ -262,6 +270,10 @@ class DevicesDAGNode {
    * 每次调用都创建全新节点实例，适合 per-touch 子图等需要多份独立副本的场景。
    *
    * 节点的 tool 通过 `createProcessor()` 转为 handler，不注册到全局 tool 表。
+   * 字段应用与 {@link DevicesDAG#_applyNodeDefinition} 共享 {@link applyNodeDefinitionToNode} 实现。
+   *
+   * 边校验（与挂载路径同规则）：边名非空字符串、引用已知局部 id、同源边名不重复、不成环；
+   * 违规直接抛错（历史行为是静默跳过或覆盖，会损坏 inEdges 簿记）。
    *
    * @param {import("../dag-type.js").SubDAGDefinition} subDAGDef - 子图定义
    * @returns {DevicesDAGNode} 根入口节点
@@ -279,49 +291,33 @@ class DevicesDAGNode {
     if (nodes) {
       for (const [localId, nodeDef] of nodes) {
         const node = new DevicesDAGNode(localId);
-
-        if (nodeDef.handler != null) {
-          node.handler =
-            typeof nodeDef.handler === "function" ? nodeDef.handler : null;
-        }
-        if (isPlainObject(nodeDef.semantics)) {
-          node.semantics = { ...nodeDef.semantics };
-        }
-        if (isPlainObject(nodeDef.services)) {
-          node.services = nodeDef.services;
-        }
-        if (nodeDef.tool != null && typeof nodeDef.tool === "object") {
-          if (nodeDef.tool.createProcessor) {
-            node.handler = nodeDef.tool.createProcessor();
-            node.semantics = { ...node.semantics, tool: true };
-          }
-        }
-        if (
-          isPlainObject(nodeDef.toolContext) &&
-          Object.keys(nodeDef.toolContext).length > 0
-        ) {
-          node.semantics = {
-            ...node.semantics,
-            toolContext: nodeDef.toolContext,
-          };
-        }
-        if (nodeDef.defaultRoute != null) {
-          node.defaultRoute = nodeDef.defaultRoute;
-        }
-        if (typeof nodeDef.umount === "function") {
-          node.umount = nodeDef.umount;
-        }
-
+        applyNodeDefinitionToNode(node, nodeDef);
         idMap.set(localId, node);
       }
     }
 
     for (const edgeDef of edges) {
-      const fromNode = idMap.get(edgeDef.fromNodeId);
-      const toNode = idMap.get(edgeDef.toNodeId);
-      if (!fromNode || !toNode) continue;
-      const edge = new DevicesDAGEdge(edgeDef.name, fromNode, toNode);
-      fromNode.outEdges.set(edgeDef.name, edge);
+      const { name, fromNodeId, toNodeId } = edgeDef ?? {};
+      if (typeof name !== "string" || !name) {
+        throw new Error(`Sub-dag edge name must be a non-empty string.`);
+      }
+      const fromNode = idMap.get(fromNodeId);
+      const toNode = idMap.get(toNodeId);
+      if (!fromNode || !toNode) {
+        throw new Error(
+          `Sub-dag edge "${name}" references unknown node id (${fromNodeId} → ${toNodeId}).`,
+        );
+      }
+      if (fromNode.outEdges.has(name)) {
+        throw new Error(
+          `Duplicate edge name "${name}" from sub-dag node ${fromNodeId}.`,
+        );
+      }
+      if (wouldCreateCycle(fromNode, toNode)) {
+        throw new Error(`Edge "${name}" would create a cycle in sub-dag.`);
+      }
+      const edge = new DevicesDAGEdge(name, fromNode, toNode);
+      fromNode.outEdges.set(name, edge);
       toNode.inEdges.add(edge);
     }
 

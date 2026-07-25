@@ -284,7 +284,8 @@ function createKeyboardDevice() {
     return [
       ...Array.from(generalTargets).map((childPath) => ({
         to: childPath,
-        signals: packet.signals,
+        // 扇出时浅拷贝信号数组，避免多个下游分支共享同一可变数组
+        signals: [...packet.signals],
       })),
       ...Array.from(codeTargets.entries()).map(([childPath, signals]) => ({
         to: childPath,

@@ -26,6 +26,10 @@ import {
 import { SignalPacket } from "./signal.js";
 import { CounterPool } from "../../../engine/utils/counter-pool.js";
 import { isPlainObject, isSubDAGDefinition } from "./dag-utils.js";
+import {
+  wouldCreateCycle,
+  applyNodeDefinitionToNode,
+} from "./dag-utils.js";
 import { DevicesDAGNode } from "./dag-node-edge.js";
 import { DevicesDAGEdge } from "./dag-node-edge.js";
 import { dagToString } from "./dag-debug.js";
@@ -154,6 +158,12 @@ class DevicesDAG {
   _mountedToolInstances;
 
   /**
+   * 已挂载子图定义集合（禁止重复挂载，弱引用不防碍定义对象被 GC）
+   * @type {WeakSet<Object>}
+   */
+  _mountedSubDAGDefs;
+
+  /**
    * 根节点
    * @type {DevicesDAGNode}
    */
@@ -170,6 +180,7 @@ class DevicesDAG {
     this._maxDispatchDepth = options.maxDispatchDepth ?? 32;
     this._strict = options.strict ?? false;
     this._mountedToolInstances = new Set();
+    this._mountedSubDAGDefs = new WeakSet();
 
     // 幽灵节点（-1，分发起点，对外不可见）
     this._ghost = this._createNode(-1);
@@ -261,7 +272,7 @@ class DevicesDAG {
   }
 
   /**
-   * 从根节点沿路径解析到目标节点
+   * 从根节点沿路径解析到目标节点（纯查询，无副作用）
    * @param {string} path - 绝对或相对路径（相对路径相对于根）
    * @returns {DevicesDAGNode|undefined}
    */
@@ -276,10 +287,6 @@ class DevicesDAG {
       const edge = current.outEdges.get(segment);
       if (!edge) return undefined;
       current = edge.target;
-    }
-
-    if (!current.path) {
-      current.path = absolutePath;
     }
 
     return current;
@@ -361,6 +368,31 @@ class DevicesDAG {
     }
 
     return undefined; // 不可达
+  }
+
+  /**
+   * 重算全部可达节点的 path（BFS 单点维护）
+   * @description
+   * `node.path` 是"当前可达路径之一"：多入边节点取 BFS 首条路径。
+   * 结构变化（unmount / removeEdge 清理孤儿）后，幸存节点的旧 path 可能悬垂
+   * （指向已不存在的路径），统一调用本方法全量刷新。
+   * @private
+   */
+  _refreshAllNodePaths() {
+    this._root.path = "/";
+    const visited = new Set([this._root.id]);
+    const queue = [this._root];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      for (const [edgeName, edge] of current.outEdges) {
+        if (visited.has(edge.target.id)) continue;
+        visited.add(edge.target.id);
+        edge.target.path =
+          current.path === "/" ? `/${edgeName}` : `${current.path}/${edgeName}`;
+        queue.push(edge.target);
+      }
+    }
   }
 
   /**
@@ -515,25 +547,14 @@ class DevicesDAG {
 
   /**
    * 判断 target 是否已能到达 source（DFS）
+   * @description 委托 {@link wouldCreateCycle}（dag-utils.js 的共享纯函数）。
    * @param {DevicesDAGNode} source - 源节点
    * @param {DevicesDAGNode} target - 目标节点
    * @returns {boolean} target 可达 source 则为 true
    * @private
    */
   _wouldCreateCycle(source, target) {
-    if (source === target) return true;
-    const visited = new Set();
-    const stack = [target];
-    while (stack.length > 0) {
-      const node = stack.pop();
-      if (node === source) return true;
-      if (visited.has(node.id)) continue;
-      visited.add(node.id);
-      for (const edge of node.outEdges.values()) {
-        stack.push(edge.target);
-      }
-    }
-    return false;
+    return wouldCreateCycle(source, target);
   }
 
   /**
@@ -559,6 +580,7 @@ class DevicesDAG {
     const targetPath = joinPath(resolvePath("/", fromPath), edgeName);
     this._disconnectEdge(edge);
     this._umountSubgraph(target, context, new Set(), targetPath);
+    this._refreshAllNodePaths();
 
     return true;
   }
@@ -704,10 +726,14 @@ class DevicesDAG {
    */
   mountWorkflow(path, workflow) {
     if (isSubDAGDefinition(workflow)) {
-      return this.mountSubDAG("/", {
-        ...workflow,
-        rootPath: path,
-      });
+      return this.mountSubDAG(
+        "/",
+        {
+          ...workflow,
+          rootPath: path,
+        },
+        { trackDef: workflow },
+      );
     }
 
     const node = this.ensureNode(path);
@@ -780,12 +806,25 @@ class DevicesDAG {
    * 都在任何副作用产生前抛出；
    * 落地阶段中途失败（如 `tool.createProcessor` 抛错）时回滚——断开已建立的边、
    * 注销已登记的 tool、移除本次新建的节点。
+   *
+   * 同一份子图定义只允许挂载一次：设备子图在闭包中持有可变状态（按钮、触点等），
+   * 重复挂载会导致多个挂载点共享状态。每个挂载点应重新调用工厂创建新定义。
    * @param {string} basePath - 挂载基准路径
    * @param {SubDAGDefinition} subDAGDef - 子图定义
+   * @param {Object} [options={}] - 挂载选项
+   * @param {Object} [options.trackDef] - 防重挂载的跟踪对象（调用方 spread 定义时传原始定义）
    * @returns {DevicesDAGNode[]} 挂载的节点列表
+   * @throws {Error} 当同一定义重复挂载或预检失败时
    */
-  mountSubDAG(basePath, subDAGDef) {
+  mountSubDAG(basePath, subDAGDef, options = {}) {
     if (!subDAGDef || typeof subDAGDef !== "object") return [];
+
+    const trackDef = options.trackDef ?? subDAGDef;
+    if (this._mountedSubDAGDefs.has(trackDef)) {
+      throw new Error(
+        `SubDAGDefinition is already mounted. Device sub-graphs hold closure state; create a fresh definition per mount point.`,
+      );
+    }
 
     const { rootPath = "/", rootNodeId = 0, nodes, edges = [] } = subDAGDef;
     const targetRootPath = joinPath(basePath, rootPath);
@@ -871,6 +910,7 @@ class DevicesDAG {
       }
     }
 
+    this._mountedSubDAGDefs.add(trackDef);
     return mountedNodes;
   }
 
@@ -989,6 +1029,10 @@ class DevicesDAG {
 
   /**
    * 将子图节点定义应用到已有节点
+   * @description
+   * 字段应用委托 {@link applyNodeDefinitionToNode}（与 `DevicesDAGNode.createGraph` 共享）；
+   * 本方法额外处理 DAG 特有逻辑：tool 实例注册（`createProcessor` 抛错时注销）、
+   * `_toolInstance` 标记、umount 钩子链与挂载回滚收集。
    * @param {DevicesDAGNode} node - 目标节点
    * @param {SubDAGNodeDefinition} def - 子图节点定义
    * @param {Array<import("../tools/tool.js").Tool>} [mountedTools] - 已登记 tool 收集器（用于挂载回滚）
@@ -996,42 +1040,27 @@ class DevicesDAG {
   _applyNodeDefinition(node, def, mountedTools) {
     if (!def) return;
 
-    if (def.handler != null) {
-      node.handler = typeof def.handler === "function" ? def.handler : null;
-    }
-    if (isPlainObject(def.semantics)) {
-      node.semantics = { ...node.semantics, ...def.semantics };
-    }
-    if (isPlainObject(def.services)) {
-      node.services = { ...node.services, ...def.services };
-    }
-    if (typeof def.defaultRoute === "string") {
-      node.defaultRoute = def.defaultRoute;
-    }
-    if (def.umount != null) {
-      node.umount = typeof def.umount === "function" ? def.umount : null;
-    }
     if (def.tool) {
+      // 预先注册，createProcessor 抛错时注销（保证注册表与挂载状态一致）
       this._registerToolInstance(def.tool);
-      let processor;
-      try {
-        processor = def.tool.createProcessor();
-      } catch (error) {
-        this._unregisterToolInstance(def.tool);
-        throw error;
-      }
-      mountedTools?.push(def.tool);
-      node.handler = processor;
-      node.semantics = { ...node.semantics, tool: true };
-      node._toolInstance = def.tool;
-
-      node.umount = this._chainToolUmount(node, def.tool, processor);
     }
-    if (
-      isPlainObject(def.toolContext) &&
-      Object.keys(def.toolContext).length > 0
-    ) {
-      node.semantics = { ...node.semantics, toolContext: def.toolContext };
+    let toolResult = null;
+    try {
+      toolResult = applyNodeDefinitionToNode(node, def);
+    } catch (error) {
+      if (def.tool) {
+        this._unregisterToolInstance(def.tool);
+      }
+      throw error;
+    }
+    if (toolResult) {
+      mountedTools?.push(toolResult.tool);
+      node._toolInstance = toolResult.tool;
+      node.umount = this._chainToolUmount(
+        node,
+        toolResult.tool,
+        toolResult.processor,
+      );
     }
   }
 
@@ -1044,6 +1073,30 @@ class DevicesDAG {
    * @returns {{ packets: SignalPacket[], services?: Object }} 分发结果
    */
   dispatch(packet) {
+    return this._dispatchCore(packet, null);
+  }
+
+  /**
+   * 从根节点开始分发信号包并返回路由追踪信息
+   * @description
+   * 与 {@link DevicesDAG#dispatch} 行为一致（共享 {@link DevicesDAG#_dispatchCore}），
+   * 额外收集路由追踪信息。返回结果中包含 `trace` 数组，可通过 `traceToString()` 格式化。
+   * @param {SignalPacket|Record<string, any>} packet - 信号包
+   * @returns {{ packets: SignalPacket[], services?: Object, trace: Array }} 分发结果与追踪信息
+   */
+  dispatchWithTrace(packet) {
+    const trace = [];
+    return { ...this._dispatchCore(packet, trace), trace };
+  }
+
+  /**
+   * dispatch 的共享实现
+   * @param {SignalPacket|Record<string, any>} packet - 信号包
+   * @param {Array|null} trace - 路由追踪收集器（null 表示不收集）
+   * @returns {{ packets: SignalPacket[], services?: Object }} 分发结果
+   * @private
+   */
+  _dispatchCore(packet, trace) {
     const startPacket = SignalPacket.from(packet, { defaultTo: "" });
 
     // 校验：dispatch 必须使用从根节点出发的绝对路径
@@ -1071,53 +1124,9 @@ class DevicesDAG {
       maxDepth: this._maxDispatchDepth,
       strict: this._strict,
       dag: this,
+      trace,
       edgeNotFoundFallback: (pkt) => [new SignalPacket("", pkt.signals)],
     });
-  }
-
-  /**
-   * 从根节点开始分发信号包并返回路由追踪信息
-   * @description
-   * 与 {@link DevicesDAG#dispatch} 行为一致，额外收集路由追踪信息。
-   * 返回结果中包含 `trace` 数组，可通过 `traceToString()` 格式化。
-   * @param {SignalPacket|Record<string, any>} packet - 信号包
-   * @returns {{ packets: SignalPacket[], services?: Object, trace: Array }} 分发结果与追踪信息
-   */
-  dispatchWithTrace(packet) {
-    const trace = [];
-    const startPacket = SignalPacket.from(packet, { defaultTo: "" });
-
-    if (startPacket.to && !startPacket.to.startsWith("/")) {
-      throw new Error(
-        `dispatchWithTrace() requires an absolute path starting with "/", got "${startPacket.to}".`,
-      );
-    }
-
-    let to = startPacket.to || "";
-
-    if (!to) {
-      if (this._root.getDefaultRoute()) {
-        to = "/" + this._root.getDefaultRoute();
-      } else {
-        return { packets: [startPacket], trace };
-      }
-    }
-
-    const result = this._ghost.dispatch(
-      new SignalPacket(to, startPacket.signals),
-      {
-        path: "",
-        services: {},
-        depth: 0,
-        maxDepth: this._maxDispatchDepth,
-        strict: this._strict,
-        dag: this,
-        trace,
-        edgeNotFoundFallback: (pkt) => [new SignalPacket("", pkt.signals)],
-      },
-    );
-
-    return { ...result, trace };
   }
 
   /**
@@ -1173,6 +1182,7 @@ class DevicesDAG {
     // 先断开指定路径的最后一条入边，再递归清理因此变成孤立的节点
     this._disconnectEdge(lastEdge);
     this._umountSubgraph(target, context, new Set(), absolutePath);
+    this._refreshAllNodePaths();
     return true;
   }
 

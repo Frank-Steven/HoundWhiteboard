@@ -97,10 +97,14 @@ class InputScope {
       throw new TypeError("mountDevice requires a valid SubDAGDefinition.");
     }
 
-    return this._dag.mountSubDAG(this._viewportId, {
-      ...subDAG,
-      rootPath: name || subDAG.rootPath,
-    });
+    return this._dag.mountSubDAG(
+      this._viewportId,
+      {
+        ...subDAG,
+        rootPath: name || subDAG.rootPath,
+      },
+      { trackDef: subDAG },
+    );
   }
 
   /**
@@ -149,7 +153,9 @@ class InputScope {
 
     if (prefix) {
       const prefixSubDAG = { ...prefix, rootPath: name };
-      const prefixNodes = this._dag.mountSubDAG(sourcePath, prefixSubDAG);
+      const prefixNodes = this._dag.mountSubDAG(sourcePath, prefixSubDAG, {
+        trackDef: prefix,
+      });
       const sinkNode = this._findPrefixSink(prefixNodes);
       if (sinkNode?.path) {
         return this._dag.addEdge(sinkNode.path, name, targetPath);

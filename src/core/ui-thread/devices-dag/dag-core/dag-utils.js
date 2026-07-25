@@ -98,3 +98,75 @@ function normalizeHandlerResult(rawResult, options = {}) {
 }
 
 export { isPlainObject, isSubDAGDefinition, normalizeHandlerResult };
+
+/**
+ * 判断 target 是否已能沿出边到达 source（DFS）
+ * @description
+ * 用于新增边前的环检查：target 可达 source 时，新增 source→target 会产生环。
+ * 纯函数，仅依赖节点的 outEdges 结构，不持有 DAG 实例状态。
+ * @param {Object} source - 源节点（鸭式类型，需含 id 与 outEdges）
+ * @param {Object} target - 目标节点
+ * @returns {boolean} target 可达 source 则为 true
+ */
+function wouldCreateCycle(source, target) {
+  if (source === target) return true;
+  const visited = new Set();
+  const stack = [target];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === source) return true;
+    if (visited.has(node.id)) continue;
+    visited.add(node.id);
+    for (const edge of node.outEdges.values()) {
+      stack.push(edge.target);
+    }
+  }
+  return false;
+}
+
+/**
+ * 将子图节点定义应用到节点（共享实现）
+ * @description
+ * 应用 handler / semantics / services / defaultRoute / umount / toolContext 字段，
+ * 并把 `def.tool` 转为 processor handler（不含 DAG 特有的 tool 注册与钩子链）。
+ * `DevicesDAG#_applyNodeDefinition`（挂载路径）与 `DevicesDAGNode.createGraph`（独立图路径）
+ * 共用本实现，保证两条路径行为一致。
+ * @param {Object} node - 目标节点（鸭式类型：handler/semantics/services/defaultRoute/umount 字段可写）
+ * @param {import("../dag-type.js").SubDAGNodeDefinition} def - 子图节点定义
+ * @returns {{ tool: Object, processor: Function }|null} tool 处理结果（无 tool 时返回 null）
+ */
+function applyNodeDefinitionToNode(node, def) {
+  if (!def) return null;
+
+  if (def.handler != null) {
+    node.handler = typeof def.handler === "function" ? def.handler : null;
+  }
+  if (isPlainObject(def.semantics)) {
+    node.semantics = { ...node.semantics, ...def.semantics };
+  }
+  if (isPlainObject(def.services)) {
+    node.services = { ...node.services, ...def.services };
+  }
+  if (typeof def.defaultRoute === "string") {
+    node.defaultRoute = def.defaultRoute;
+  }
+  if (def.umount != null) {
+    node.umount = typeof def.umount === "function" ? def.umount : null;
+  }
+  if (
+    isPlainObject(def.toolContext) &&
+    Object.keys(def.toolContext).length > 0
+  ) {
+    node.semantics = { ...node.semantics, toolContext: def.toolContext };
+  }
+
+  if (def.tool) {
+    const processor = def.tool.createProcessor();
+    node.handler = processor;
+    node.semantics = { ...node.semantics, tool: true };
+    return { tool: def.tool, processor };
+  }
+  return null;
+}
+
+export { wouldCreateCycle, applyNodeDefinitionToNode };

@@ -134,7 +134,20 @@ class MultiToolWrapper extends WrapperTool {
       return;
     }
 
-    const { contacts, changedTouchIds } = firstSignal.context ?? {};
+    const { contacts, changedTouchIds, activeTouchIds } =
+      firstSignal.context ?? {};
+
+    // 对账：设备报告的活跃触点集是权威集合，#instances 中已不活跃的触点
+    // 按丢失 end 处理（防御设备 resetState / clearTouches 等外部重置导致的槽位泄漏）
+    const activeIds = new Set(
+      activeTouchIds ?? (contacts ?? []).map((contact) => contact.touchId),
+    );
+    for (const touchId of [...this.#instances.keys()]) {
+      if (!activeIds.has(touchId)) {
+        this.#endTouch(touchId, deviceContext);
+      }
+    }
+
     if (!changedTouchIds || changedTouchIds.length === 0) {
       return;
     }

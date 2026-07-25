@@ -151,6 +151,35 @@ describe("mouse-device", () => {
     });
   });
 
+  test("扇出到多个通道时各分支的 signals 数组相互独立", () => {
+    const dag = new DevicesDAG();
+    const mouseDevice = createMouseDevice();
+
+    dag.mountSubDAG("/viewport", mouseDevice);
+    mountChannelReporters(dag, "/viewport/mouse");
+
+    const result = dag.dispatch({
+      to: "/viewport/mouse",
+      signals: [
+        {
+          type: "position",
+          context: { value: { x: 10, y: 20 }, buttons: 3, button: 2 },
+        },
+      ],
+    });
+
+    // 通道报告 prefix 把各自收到的 signals 数组记入 context.signals
+    const branchArrays = result.packets.map(
+      (packet) => packet.signals[0].context.signals,
+    );
+    expect(branchArrays.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < branchArrays.length; i++) {
+      // 内容一致但数组引用互不相同（任一分支修改不影响兄弟分支）
+      expect(branchArrays[i]).toEqual(branchArrays[0]);
+      expect(branchArrays[i]).not.toBe(branchArrays[0]);
+    }
+  });
+
   test("按住主键时滚轮事件应同时路由到 primary 和 wheel 节点", () => {
     const dag = new DevicesDAG();
     const mouseDevice = createMouseDevice();

@@ -38,6 +38,17 @@ src/ui-thread/devices-dag/dag-core/signal.js
 
 因此 Core 内部不再需要在各处重复实现 `normalizeSignalPacket()` 一类的私有转换逻辑。
 
+## 不可变约定
+
+信号包与信号对象在图内流动时按**只读**处理：
+
+- `SignalPacket.from(...)` 对已是实例的输入原样返回，不复制
+- 任何 handler / prefix / tool **不得原地修改**收到的信号或其 `context`（包括 `value`、`buttons` 等字段）
+- 需要转换时必须新建对象（`{ ...signal, context: { ...signal.context, value: next } }`）
+- 设备向多个下游分支扇出时，每个分支获得独立的 `signals` 数组浅拷贝（数组独立、元素仍共享，因此元素同样不可原地修改）
+
+违反约定会让同帧的兄弟分支读到被篡改的信号，且故障点与修改点可能相距很远，极难排查。
+
 ## 当前实现中的三层角色
 
 当前信号传递大致分为三层：

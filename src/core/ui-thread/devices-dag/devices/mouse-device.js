@@ -193,7 +193,8 @@ function createMouseDevice() {
 
     return Array.from(new Set(targets)).map((childPath) => ({
       to: childPath,
-      signals: packet.signals,
+      // 扇出时浅拷贝信号数组，避免多个下游分支共享同一可变数组
+      signals: [...packet.signals],
     }));
   };
 
@@ -247,7 +248,8 @@ function createMouseDevice() {
     ) {
       nextPackets.push({
         to: explicitDescendantPath,
-        signals: convertedPacket.signals,
+        // 浅拷贝信号数组，避免下游分支共享同一可变数组
+        signals: [...convertedPacket.signals],
       });
     }
     return nextPackets;

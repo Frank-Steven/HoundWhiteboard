@@ -281,14 +281,25 @@ class Board {
 
   /**
    * 绑定信道相关事件
-   * @description 单个信号包的分发失败只记录日志，不中断输入循环。
+   * @description
+   * 单个信号包的分发失败只记录日志，不中断输入循环；
+   * 未到达任何消费者的信号包按节流告警（辅助排查接线错误，空转场景不刷屏）。
    * @private
    */
   #bindSignalsEventBus() {
     // input 事件负责将信号送往对应节点
     this.signalsEventBus.on("input", ({ to, signals }) => {
       try {
-        this.devicesDAG.dispatch({ to, signals });
+        const result = this.devicesDAG.dispatch({ to, signals });
+        const unconsumed = result?.packets?.filter(
+          (pkt) => pkt.signals.length > 0,
+        );
+        if (unconsumed?.length > 0) {
+          boardLog.throttledWarn(
+            "dag-unconsumed",
+            `${unconsumed.length} signal packet(s) did not reach any consumer for "${to}".`,
+          );
+        }
       } catch (error) {
         boardLog.error(`dispatch failed for "${to}":`, error);
       }

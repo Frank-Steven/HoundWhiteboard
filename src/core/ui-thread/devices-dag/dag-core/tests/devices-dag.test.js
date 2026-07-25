@@ -1676,6 +1676,83 @@ describe("DevicesDAG", () => {
     });
   });
 
+  describe("SubDAGDefinition 防重挂载", () => {
+    test("同一 SubDAGDefinition 重复挂载应抛错", () => {
+      const dag = new DevicesDAG();
+      const builder = createSubDAG("/dev-a");
+      builder.node().handler(() => {});
+      const def = builder.build();
+
+      dag.mountSubDAG("", def);
+      expect(() => dag.mountSubDAG("/other", def)).toThrow(/already mounted/);
+    });
+
+    test("同一工厂新建的定义可分别挂载", () => {
+      const dag = new DevicesDAG();
+      const build = () => {
+        const builder = createSubDAG("/dev-b");
+        builder.node().handler(() => {});
+        return builder.build();
+      };
+
+      dag.mountSubDAG("", build());
+      expect(() => dag.mountSubDAG("/other", build())).not.toThrow();
+    });
+
+    test("经 mountWorkflow 挂载的子图定义同样防重（spread 不绕过）", () => {
+      const dag = new DevicesDAG();
+      const builder = createSubDAG("/ignored");
+      builder.node().handler(() => {});
+      const def = builder.build();
+
+      dag.mountWorkflow("/wf/a", def);
+      expect(() => dag.mountWorkflow("/wf/b", def)).toThrow(/already mounted/);
+    });
+
+    test("挂载失败的定义未登记，重试时仍报校验错误而非重复挂载", () => {
+      const dag = new DevicesDAG();
+      const builder = createSubDAG("/dup4");
+      const r = builder.node();
+      const a = builder.node();
+      const b = builder.node();
+      builder.edge("link", r, a);
+      builder.edge("link", r, b);
+      const def = builder.build();
+
+      expect(() => dag.mountSubDAG("", def)).toThrow(/Duplicate/);
+      // 定义未因失败挂载被登记，重试仍报预检错误
+      expect(() => dag.mountSubDAG("", def)).toThrow(/Duplicate/);
+    });
+  });
+
+  describe("node.path 维护", () => {
+    test("共享节点的 anchor 路径卸载后，幸存节点 path 刷新为仍存在的路径", () => {
+      const dag = new DevicesDAG();
+      const node = dag.addEdge("/", "a").target;
+      dag.addEdge("/", "b", "/a");
+      expect(node.path).toBe("/a");
+
+      dag.unmount("/a");
+
+      expect(node.path).toBe("/b");
+      expect(dag.getNode("/b")).toBe(node);
+    });
+
+    test("removeEdge 清理后幸存下游节点的 path 同步刷新", () => {
+      const dag = new DevicesDAG();
+      const child = dag.addEdge("/", "x").target;
+      const grand = dag.addEdge("/x", "grand").target;
+      dag.addEdge("/", "alt", "/x");
+      expect(grand.path).toBe("/x/grand");
+
+      dag.removeEdge("/", "x");
+
+      expect(grand.path).toBe("/alt/grand");
+      expect(dag.getNode("/alt/grand")).toBe(grand);
+      expect(child.path).toBe("/alt");
+    });
+  });
+
   describe("unmount 边界", () => {
     test("unmount 对不存在的路径应返回 false", () => {
       const dag = new DevicesDAG();

@@ -1,4 +1,4 @@
-import { DevicesDAGNode, DevicesDAGEdge } from "../../index.js";
+import { DevicesDAGNode, DevicesDAGEdge, createSubDAG } from "../../index.js";
 
 describe("DevicesDAGNode", () => {
   describe("构造与初始状态", () => {
@@ -174,5 +174,54 @@ describe("DevicesDAGEdge", () => {
     const tgt = new DevicesDAGNode(2);
     const edge = new DevicesDAGEdge("", src, tgt);
     expect(edge.name).toBe("");
+  });
+});
+
+describe("DevicesDAGNode.createGraph", () => {
+  test("应从子图定义创建独立节点图", () => {
+    const builder = createSubDAG("/touch");
+    const root = builder.node().handler(() => {});
+    const child = builder.node().defaultRoute("next");
+    builder.edge("next", root, child);
+
+    const entry = DevicesDAGNode.createGraph(builder.build());
+
+    expect(entry).toBeInstanceOf(DevicesDAGNode);
+    expect(entry.outEdges.get("next").target).toBeInstanceOf(DevicesDAGNode);
+    // 独立图节点 path 恒为 null，不入任何 DAG
+    expect(entry.path).toBeNull();
+  });
+
+  test("重复边名应抛错（不静默覆盖损坏 inEdges 簿记）", () => {
+    const builder = createSubDAG("/dup");
+    const root = builder.node();
+    const a = builder.node();
+    const b = builder.node();
+    builder.edge("link", root, a);
+    builder.edge("link", root, b);
+
+    expect(() => DevicesDAGNode.createGraph(builder.build())).toThrow(
+      /Duplicate edge name/,
+    );
+  });
+
+  test("边引用未知节点 id 应抛错", () => {
+    expect(() =>
+      DevicesDAGNode.createGraph({
+        rootNodeId: 0,
+        nodes: new Map([[0, { handler: null }]]),
+        edges: [{ name: "x", fromNodeId: 0, toNodeId: 99 }],
+      }),
+    ).toThrow(/unknown node id/);
+  });
+
+  test("子图内部成环应抛错", () => {
+    const builder = createSubDAG("/cyc");
+    const a = builder.node();
+    const b = builder.node();
+    builder.edge("ab", a, b);
+    builder.edge("ba", b, a);
+
+    expect(() => DevicesDAGNode.createGraph(builder.build())).toThrow(/cycle/);
   });
 });

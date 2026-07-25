@@ -529,6 +529,74 @@ describe("MultiToolWrapper", () => {
     });
   });
 
+  describe("触点对账", () => {
+    test("活跃集中消失的触点应按丢失 end 处理并清理槽位", () => {
+      const instances = [];
+      const wrapper = new MultiToolWrapper(createTrackedTool(instances));
+
+      // 两个触点按下
+      wrapper.process(
+        buildContactsPacket([{ touchId: "t1", position: { x: 1, y: 1 } }]),
+        defaultCtx,
+      );
+      wrapper.process(
+        buildContactsPacket(
+          [{ touchId: "t2", position: { x: 5, y: 5 } }],
+          [{ touchId: "t1", position: { x: 1, y: 1 } }],
+        ),
+        defaultCtx,
+      );
+      expect(wrapper.getActiveTouchCount()).toBe(2);
+
+      // 模拟设备 reset：后续报告的活跃集为空（end 信号丢失）
+      wrapper.process(
+        {
+          signals: [
+            {
+              type: CONTACTS,
+              context: {
+                contacts: [],
+                changedTouchIds: [],
+                activeTouchIds: [],
+              },
+            },
+          ],
+        },
+        defaultCtx,
+      );
+
+      expect(wrapper.getActiveTouchCount()).toBe(0);
+      expect(wrapper.getDebugInfo().sessions).toEqual([]);
+      // 两个子工具都收到 end
+      expect(
+        instances[0].calls.some((call) => call.signals[0].type === "end"),
+      ).toBe(true);
+      expect(
+        instances[1].calls.some((call) => call.signals[0].type === "end"),
+      ).toBe(true);
+    });
+
+    test("静止触点仍在活跃集中时不被对账清理", () => {
+      const instances = [];
+      const wrapper = new MultiToolWrapper(createTrackedTool(instances));
+
+      wrapper.process(
+        buildContactsPacket([{ touchId: "t1", position: { x: 1, y: 1 } }]),
+        defaultCtx,
+      );
+      // t2 按下，t1 静止（在活跃集中但不在 changedTouchIds）
+      wrapper.process(
+        buildContactsPacket(
+          [{ touchId: "t2", position: { x: 5, y: 5 } }],
+          [{ touchId: "t1", position: { x: 1, y: 1 } }],
+        ),
+        defaultCtx,
+      );
+
+      expect(wrapper.getActiveTouchCount()).toBe(2);
+    });
+  });
+
   describe("动作生命周期", () => {
     test("end-action 信号应强制结束全部触点会话", () => {
       const instances = [];
