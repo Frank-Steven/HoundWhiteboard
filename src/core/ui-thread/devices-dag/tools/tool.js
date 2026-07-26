@@ -5,7 +5,7 @@
  * @author Zhou Chenyu
  */
 
-import { SignalPacket } from "../signal.js";
+import { SignalPacket } from "../dag-core/signal.js";
 
 /**
  * 将单对象或对象集合规整为数组（纯函数）
@@ -104,13 +104,21 @@ class Tool {
 
   /**
    * 创建一个可直接挂载到设备图节点上的处理器
-   * @returns {import("../devices-dag/dag.js").DevicesDAGHandler}
+   * @description
+   * DAG handler 必须是同步的：工具的异步动作结果（如 chooser 的
+   * hitTest 提交）经事件通道（`action:complete` / `afterChoose`）传递，
+   * 不允许穿透为 handler 返回值——DAG 层会忽略并告警。
+   * @returns {import("../dag-type.js").DevicesDAGHandler}
    */
   createProcessor() {
     const uiOverlayBinding = this.createUiOverlayBinding();
     const processor = (signalPacket, handlerContext = {}) => {
       uiOverlayBinding?.sync(handlerContext);
-      return this.process(SignalPacket.from(signalPacket), handlerContext);
+      const result = this.process(
+        SignalPacket.from(signalPacket),
+        handlerContext,
+      );
+      return result instanceof Promise ? undefined : result;
     };
 
     processor.dispose = (handlerContext = {}) => {
@@ -124,7 +132,7 @@ class Tool {
    * 在不处理信号的情况下将当前工具的 overlay provider 注册到 viewport。
    * 供 handoff 等场景在第一个信号到达前调用。
    * createUiOverlayBinding 内建缓存，重复调用不会重复注册。
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}]
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [context={}]
    * @returns {void}
    */
   syncUiOverlay(context = {}) {
@@ -157,7 +165,7 @@ class Tool {
 
     const binding = {
       sync: (context = {}) => {
-        const viewport = context.acc?.viewport;
+        const viewport = context.services?.viewport;
         if (!viewport?.registerUiOverlayProvider) {
           return;
         }
@@ -178,7 +186,7 @@ class Tool {
         });
       },
       cleanup: (context = {}) => {
-        const viewport = registeredViewport ?? context.acc?.viewport;
+        const viewport = registeredViewport ?? context.services?.viewport;
         if (viewport?.unregisterUiOverlayProvider) {
           viewport.unregisterUiOverlayProvider(provider, {
             invalidate: false,
@@ -186,7 +194,7 @@ class Tool {
         }
 
         registeredViewport = null;
-        context.acc?.viewport?.requestViewportUiRender?.();
+        context.services?.viewport?.requestViewportUiRender?.();
       },
     };
 
@@ -196,7 +204,7 @@ class Tool {
 
   /**
    * 读取当前路径关联的节点状态
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @param {string} [statePath=context.path] - 节点路径
    * @returns {Object}
    */
@@ -210,7 +218,7 @@ class Tool {
 
   /**
    * 写入当前路径关联的节点状态
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @param {Object} nextState - 新状态
    * @param {string} [statePath=context.path] - 节点路径
    * @returns {Object}
@@ -233,17 +241,17 @@ class Tool {
   }
 
   /**
-   * 从设备上下文中解析当前对象集合
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * 读取当前节点状态的 objects 投影
+   * @description
+   * 公开只读 API，供观察方与测试读取工具发布的 objects 投影。
+   * 禁止在工具内部逻辑中把它当作对象集合的真相源——真相源是各工具的实例字段。
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {Array<*>}
    */
   resolveContextObjects(context = {}) {
     const nodeState = this.resolveNodeState(context);
     if (nodeState.objects) {
       return this.normalizeObjectCollection(nodeState.objects);
-    }
-    if (context.acc?.objects) {
-      return this.normalizeObjectCollection(context.acc.objects);
     }
     return [];
   }
@@ -259,7 +267,7 @@ class Tool {
 
   /**
    * 批量解析对象条目的数字 id
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
    * @param {Iterable<*>|*} objects - 对象或对象集合
    * @returns {number[]} 去重后的 objectId 列表
    */
@@ -268,11 +276,11 @@ class Tool {
   }
 
   /**
-   * 将对象集合写回设备上下文与节点上下文
+   * 将对象集合发布为当前节点状态的 objects 投影
    * @description
-   * 向 `context.acc.objects` 写入对象集合（acc 是链路级共享作用域，允许有限可写），
-   * 同时同步到节点 `state.objects` 供跨 handler 观察。
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * 投影仅供跨 handler 观察；对象集合的真相源是各工具的实例字段，
+   * 工具逻辑禁止从投影读回。传入空集合时转为清除投影。
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @param {Iterable<*>|*} objects - 对象或对象集合
    * @returns {Array<*>}
    */
@@ -285,8 +293,6 @@ class Tool {
       return [];
     }
 
-    context.acc.objects = normalizedObjects;
-
     const nodeState = this.resolveNodeState(context);
     this.writeNodeState(context, {
       ...nodeState,
@@ -297,16 +303,13 @@ class Tool {
   }
 
   /**
-   * 清理设备上下文中的对象引用
+   * 清除当前节点状态的 objects 投影
    * @description
-   * 从 `context.acc.objects` 和节点 `state.objects` 中移除对象引用。
-   * acc 是链路级共享作用域，允许有限可写。
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * 从节点 `state` 中移除 `objects` 投影键；调用方需同步清理自己的实例字段真相源。
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void}
    */
   clearContextObjects(context = {}) {
-    delete context.acc?.objects;
-
     const nodeState = { ...this.resolveNodeState(context) };
     if (Object.prototype.hasOwnProperty.call(nodeState, "objects")) {
       delete nodeState.objects;
@@ -318,10 +321,10 @@ class Tool {
   /**
    * 收集当前工具声明的 ui overlay 条目
    * @param {{
-   *   viewport?: import("../components/orchestration/viewport.js").Viewport,
-   *   renderer?: import("../components/renderer/ui-renderer.js").UiRenderer,
+   *   viewport?: import("../../components/orchestration/viewport.js").Viewport,
+   *   renderer?: import("../../components/renderer/ui-renderer.js").UiRenderer,
    * }} [_overlayContext={}] - overlay 上下文
-   * @returns {import("../components/renderer/ui-overlay-factory.js").UiOverlayEntry[]}
+   * @returns {import("../../components/renderer/ui-overlay-factory.js").UiOverlayEntry[]}
    */
   collectUiOverlayEntries(_overlayContext = {}) {
     return [];
@@ -329,11 +332,11 @@ class Tool {
 
   /**
    * 主动请求 ui overlay 重绘
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void}
    */
   requestUiOverlayRefresh(context = {}) {
-    context.acc?.viewport?.requestViewportUiRender?.();
+    context.services?.viewport?.requestViewportUiRender?.();
   }
 
   /**
@@ -389,23 +392,11 @@ class Tool {
   }
 
   /**
-   * 当前工具的 completeAction 是否可能产生异步的 action:complete
-   * @description
-   * 如果为 true，handoff handler 需要在 macrotask 中延迟 cleanup，
-   * 以确保异步 action:complete 在被取消前触发。
-   * 目前只有 ObjectChooserTool（异步框选）需要覆盖此 getter。
-   * @returns {boolean}
-   */
-  get hasAsyncCompleteAction() {
-    return false;
-  }
-
-  /**
    * 动作开始
    * @description
    * 标记当前工具进入活跃动作状态。手势工具在首个 position 信号触发
    * 此方法，多指 wrapper 在首个触点到达时触发。工具切换前可调此方法确保状态机同步。
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}]
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [context={}]
    * @returns {void}
    */
   beginAction(context = {}) {
@@ -419,7 +410,7 @@ class Tool {
    * 子类 override 实现具体的提交逻辑。默认仅将 isActionActive 置 false。
    * 外部模块（如 tool-switcher）可通过此方法统一结束当前工具动作，
    * 无需理解具体工具的信号语义。
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}]
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [context={}]
    * @returns {*}
    */
   completeAction(context = {}) {
@@ -431,7 +422,7 @@ class Tool {
    * @description
    * 子类 override 实现具体的丢弃逻辑。默认调用 reset() 清理状态，
    * 并触发 action:cancel 钩子。
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}]
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [context={}]
    * @returns {void}
    */
   cancelAction(context = {}) {
@@ -441,11 +432,11 @@ class Tool {
   }
 
   /**
-   * 优雅结束当前动作（外部调用入口）
+   * 结束当前动作（外部调用入口）
    * @description
-   * 供 tool-switcher 等外部模块调用，在切换工具前让当前工具优雅结束当前工作。
+   * 供 tool-switcher 等外部模块调用，在切换工具前让当前工具完成手头工作并结束。
    * 默认调用 completeAction。手势工具会先完成手势再提交动作。
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}]
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [context={}]
    * @returns {*}
    */
   endAction(context = {}) {
@@ -457,7 +448,7 @@ class Tool {
   /**
    * 处理一个完整信号包
    * @param {SignalPacket} signalPacket - 输入信号包
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
    * @returns {void}
    * @abstract
    */
@@ -467,7 +458,7 @@ class Tool {
 
   /**
    * 工具节点被卸载时执行清理
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void}
    */
   umount(context = {}) {

@@ -16,6 +16,18 @@ chooser 本身不修改对象几何。它的职责是：
 - 真实命中与对象摘要读取通过 `BoardApiRpc` 发往 Worker
 - 选中对象进入 AOM 后，动态图由 Worker 侧 `ActiveObjectManager` 维护
 
+## 上下文模型
+
+chooser 接收的 `context` 遵循 DevicesDAG 的上下文模型：
+
+- `context.services` — 静态基础设施依赖
+  - `board` — Board 实例
+  - `boardApi` — RPC 代理（`createObject`、`addActiveObjects`、`discardActiveObjects`、`queryObjects` 等）
+  - `viewport` — 视口实例
+- `context.getNodeState() / context.setNodeState()` — 节点状态读写
+
+> 所有基础设施依赖统一通过 `context.services` 读取。
+
 ## 数据形态
 
 chooser 统一使用 `ObjectSummary` 纯数据条目，通过以下方法处理：
@@ -99,11 +111,13 @@ getSelectionRegion(context)
 
 `replaceSelection(context, objects)` 处理通用的选择替换：
 
-1. 丢弃上一轮选择（`boardApi.discardActiveObjects`）
-2. 清空 context objects
+1. 从 `_selectedObjects` 读取旧选择并丢弃（`boardApi.discardActiveObjects`）
+2. 清空 `_selectedObjects` 真相源与 objects 投影（`clearContextObjects`）
 3. 解析新条目
 4. 激活新对象（`boardApi.addActiveObjects`）
-5. 写回 context
+5. 写入 `_selectedObjects` 并同步发布 objects 投影（`setContextObjects`）
+
+选择集的唯一真相源是实例字段 `_selectedObjects`；`node.state.objects` 只是它同步发布的只读投影，工具逻辑禁止读回。
 
 ## 选择生命周期
 
@@ -144,8 +158,8 @@ renderer.createCompatSelectionEntriesForSummaries(objects, "chooser");
 `umount(context)` 依次执行：
 
 1. `clearSelectionRegion(context)` — 清理子类区域状态
-2. `discardActiveObjects` — 丢弃当前活动对象
-3. `clearContextObjects` — 清空节点上下文
+2. `discardActiveObjects` — 丢弃 `_selectedObjects` 中的当前活动对象
+3. 清空 `_selectedObjects` 真相源与 objects 投影（`clearContextObjects`）
 4. `super.umount()`
 
 ## 与 modifier 的对称性
@@ -161,5 +175,6 @@ renderer.createCompatSelectionEntriesForSummaries(objects, "chooser");
 
 - [rectangle-object-chooser-document.md](./rectangle-object-chooser-document.md)
 - [object-modifier-document.md](../../modifier/docs/object-modifier-document.md)
+- [wrapper-document.md](../../wrapper/docs/wrapper-document.md)
 - [ui-renderer-document.md](../../../../components/renderer/docs/ui-renderer-document.md)
 - [core-runtime-boundaries.md](../../../../../docs/core-runtime-boundaries.md)

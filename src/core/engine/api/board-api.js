@@ -55,7 +55,7 @@ class BoardApi {
   /**
    * 在 Engine 侧创建对象实例，注册到 AOM 动态图
    * @param {string} type - 对象类型名
-   * @param {import("../../types/board-api-types.js").CreateObjectProps} props - 创建属性
+   * @param {import("../types/board-api-types.js").CreateObjectProps} props - 创建属性
    * @returns {number} 新对象的 objectId
    */
   createObject(type, props) {
@@ -89,7 +89,7 @@ class BoardApi {
   /**
    * 修改单个对象的几何/样式属性
    * @param {number} objectId - 对象 id
-   * @param {import("../../types/board-api-types.js").ObjectPatch} patch - 修改 patch
+   * @param {import("../types/board-api-types.js").ObjectPatch} patch - 修改 patch
    * @returns {void}
    */
   modifyObject(objectId, patch) {
@@ -118,7 +118,7 @@ class BoardApi {
 
   /**
    * 批量修改多个对象
-   * @param {import("../../types/board-api-types.js").ObjectPatchEntry[]} patches - 批量 patch
+   * @param {import("../types/board-api-types.js").ObjectPatchEntry[]} patches - 批量 patch
    * @returns {void}
    */
   modifyObjects(patches) {
@@ -246,7 +246,7 @@ class BoardApi {
   /**
    * 将 AOM 动态图中的对象写回静态图
    * @param {number[]} objectIds - 要提交的对象 id 列表
-   * @returns {import("../../types/types.js").ApplyResult=} 提交结果
+   * @returns {number[]} 实际提交的对象 id（缺失的 id 被跳过，供调用方对账）
    */
   commitObjects(objectIds) {
     const boardCore = this.#boardCore;
@@ -255,8 +255,9 @@ class BoardApi {
       .map((id) => boardCore.getObjectById(id))
       .filter(Boolean);
     if (objects.length > 0) {
-      return boardCore.activeObjectManager.apply(new Set(objects));
+      boardCore.activeObjectManager.apply(new Set(objects));
     }
+    return objects.map((obj) => obj.id);
   }
 
   /**
@@ -301,7 +302,7 @@ class BoardApi {
   /**
    * 按 id 查询对象摘要
    * @param {number[]} ids - 对象 id 列表
-   * @returns {import("../../types/types.js").ObjectSummary[]} 对象摘要列表
+   * @returns {import("../types/types.js").ObjectSummary[]} 对象摘要列表
    */
   queryObjects(ids) {
     const boardCore = this.#boardCore;
@@ -320,11 +321,11 @@ class BoardApi {
           position: { x: obj.position.x, y: obj.position.y },
           transform: obj.transform
             ? {
-                a: obj.transform.a,
-                b: obj.transform.b,
-                c: obj.transform.c,
-                d: obj.transform.d,
-              }
+              a: obj.transform.a,
+              b: obj.transform.b,
+              c: obj.transform.c,
+              d: obj.transform.d,
+            }
             : undefined,
           boundingBox: obj.rich?.boundingBox,
           range: obj.getRange(),
@@ -358,7 +359,7 @@ class BoardApi {
 
   /**
    * 在合并视图上执行命中查询
-   * @param {import("../../range/range.js").Range | import("../../types/types.js").Rect} range - 命中范围
+   * @param {import("../range/range.js").Range | import("../types/types.js").Rect} range - 命中范围
    * @param {string} [mode] - 命中模式
    * @returns {Promise<number[]>} 命中的 objectId 列表
    */

@@ -28,7 +28,31 @@ const DEMO_VIEWPORT_SCALE_FACTOR = 0.5;
 const DEMO_TOOL_NAMES = Object.freeze({
   STROKE: "stroke",
   CIRCLE: "circle",
+  CIRCLE_DIAMETER: "circle-diameter",
+  ELLIPSE: "ellipse",
   SELECT: "select",
+});
+
+/**
+ * demo 按钮组设备写入共享状态 store 的键
+ * @description 按钮组设备的 stateKey 无默认值，由接线层显式注册；多个按钮组共存时各自注册互不相同的键。
+ * @type {string}
+ */
+const DEMO_BUTTON_GROUP_STATE_KEY = "activeTool";
+
+/**
+ * demo 设备路径注册表
+ * @description 设备在设备图中的挂载路径，作为挂载与连边的单一事实源。
+ * @readonly
+ * @enum {string}
+ */
+const DEMO_DEVICE_PATHS = Object.freeze({
+  MOUSE: "mouse",
+  MOUSE_PRIMARY: "mouse/primary",
+  KEYBOARD: "keyboard",
+  TOUCHSCREEN: "touchscreen",
+  TOUCHSCREEN_CONTACTS: "touchscreen/contacts",
+  TOOLBAR_BUTTON_GROUP: "toolbar/button-group",
 });
 
 /**
@@ -127,12 +151,30 @@ const SUBMIT_KEY = "Enter";
 /** 取消修改的键编码 */
 const CANCEL_KEY = "Escape";
 
+/**
+ * 数字键切工具的键编码列表
+ * @description 按工具栏工具列表顺序映射：`Digit1` 对应第一个工具，以此类推；按键在集合内但无对应工具时跳过。
+ * @type {ReadonlyArray<string>}
+ */
+const TOOL_SWITCH_KEYS = Object.freeze([
+  "Digit1",
+  "Digit2",
+  "Digit3",
+  "Digit4",
+  "Digit5",
+  "Digit6",
+  "Digit7",
+  "Digit8",
+  "Digit9",
+]);
+
 /** 所有需要 demo 处理的键盘编码集合，由各键配置派生 */
 const DEMO_KEYBOARD_INPUT_CODES = Object.freeze([
   ...new Set([
     RANDOM_CIRCLE_KEY,
     SUBMIT_KEY,
     CANCEL_KEY,
+    ...TOOL_SWITCH_KEYS,
     ...WASD_KEYS.map((k) => k.code),
     ...VIEWPORT_POSITION_KEYS.map((k) => k.code),
     ...VIEWPORT_SCALE_KEYS.map((k) => k.code),
@@ -144,7 +186,9 @@ const DEMO_KEYBOARD_INPUT_CODES = Object.freeze([
 export {
   CANCEL_KEY,
   DEBUG_KEYS,
+  DEMO_BUTTON_GROUP_STATE_KEY,
   DEMO_CIRCLE_STROKE_COLOR,
+  DEMO_DEVICE_PATHS,
   DEMO_KEYBOARD_INPUT_CODES,
   DEMO_PRIMARY_STROKE_COLOR,
   DEMO_STROKE_WIDTH,
@@ -154,6 +198,7 @@ export {
   DEMO_WORKFLOW_NAMES,
   RANDOM_CIRCLE_KEY,
   SUBMIT_KEY,
+  TOOL_SWITCH_KEYS,
   VIEWPORT_FLUSH_KEYS,
   VIEWPORT_POSITION_KEYS,
   VIEWPORT_SCALE_KEYS,

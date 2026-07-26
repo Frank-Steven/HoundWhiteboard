@@ -82,7 +82,7 @@ class PolygonCreatorTool extends MultiGestureObjectCreatorTool {
 
   /**
    * 当前正在创建多边形对象的本地状态
-   * @type {import("../../shared/types.js").LightweightObjectEntry & { data: { points: Array<{x:number, y:number}> } } | null}
+   * @type {import("../../../../engine/types/types.js").LightweightObjectEntry & { data: { points: Array<{x:number, y:number}> } } | null}
    */
   _entry;
 
@@ -137,7 +137,7 @@ class PolygonCreatorTool extends MultiGestureObjectCreatorTool {
       this._entry.data.points.push({ x: localPoint.x, y: localPoint.y });
     }
 
-    const boardApi = interaction?.context?.acc?.boardApi;
+    const boardApi = interaction?.context?.services?.boardApi;
     if (!boardApi || this.objectId == null) {
       return;
     }
@@ -158,7 +158,7 @@ class PolygonCreatorTool extends MultiGestureObjectCreatorTool {
       this._entry.data.points[index] = { x: localPoint.x, y: localPoint.y };
     }
 
-    const boardApi = interaction?.context?.acc?.boardApi;
+    const boardApi = interaction?.context?.services?.boardApi;
     if (!boardApi || this.objectId == null) {
       return;
     }

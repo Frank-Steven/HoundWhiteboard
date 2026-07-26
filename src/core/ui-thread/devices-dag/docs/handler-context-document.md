@@ -49,13 +49,13 @@ process(signalPacket, ctx) {
 | `ctx.depth`        | `number`         | 当前分发深度                        |
 | `ctx.signalPacket` | `SignalPacket`   | 当前输入信号包                      |
 
-### 累积上下文
+### 静态服务上下文
 
-| 成员      | 类型     | 说明                                                   |
-| --------- | -------- | ------------------------------------------------------ |
-| `ctx.acc` | `Object` | 沿 DAG 逐层累积的上下文（board、viewport、回调等）；上游注入，下游可有限可写 |
+| 成员           | 类型     | 说明                                                                  |
+| -------------- | -------- | --------------------------------------------------------------------- |
+| `ctx.services` | `Object` | 沿 DAG 路径由节点声明式注入的基础设施依赖（board、viewport 等），只读 |
 
-**规则**：handler 不能往 `ctx` 平级新增键。向下游传递额外数据时，通过返回值 `{ acc: { key: value } }` 写入累积上下文。
+静态服务由节点定义注入，handler 返回值无法写入。
 
 ### 状态管理
 
@@ -66,8 +66,8 @@ process(signalPacket, ctx) {
 | `ctx.setState(nextState)`             | `(Object) => Object`                  | 全量覆盖节点状态                                                       |
 | `ctx.patchState(partial)`             | `(Object) => Object`                  | 浅合并 `{ ...current, ...partial }`                                    |
 | `ctx.getNodeState(pathOrId?)`         | `(string\|number?) => Object`         | 读取任意节点（默认为当前节点）状态                                     |
-| `ctx.setNodeState(pathOrId, state)`   | `(string\|number, Object) => Object`  | 写入任意节点状态                                                       |
-| `ctx.delNodeState(pathOrId, ...keys)` | `(string\|number, ...string) => void` | 删除指定节点的状态键                                                   |
+| `ctx.setNodeState(pathOrId, state)`   | `(string\|number, Object) => Object`  | 发布自身节点状态；跨节点写入被禁止（strict 抛错，非 strict 告警）      |
+| `ctx.delNodeState(pathOrId, ...keys)` | `(string\|number, ...string) => void` | 删除自身节点的状态键；跨节点删除同 `setNodeState` 受限                 |
 
 ### 路由
 
@@ -108,15 +108,16 @@ handler(packet, ctx) {
 }
 ```
 
-若 handler 通过 `createPrefixNodeHandler` 包装且提供了 `initialState`，`ctx.state` / `ctx.getState()` 自动合并默认值：
+若 handler 通过 `createPrefixNodeHandler` 包装且提供了 `initialState`，首次调用时通过 `patchState` 将缺失的默认值写入节点 state。此后 `ctx.state` / `ctx.getState()` 与外部 `dag.getNodeState(path)` 形状一致。
 
 ```js
 // initialState = { phase: "idle" }
-// 节点实际 state = { anchor: { x: 10, y: 20 } }
+// 首次调用后 node.state = { phase: "idle" }
+// handler 后续写入：ctx.patchState({ anchor: { x: 10, y: 20 } })
+// node.state = { phase: "idle", anchor: { x: 10, y: 20 } }
 ctx.state; // { phase: "idle", anchor: { x: 10, y: 20 } }
+dag.getNodeState(path); // { phase: "idle", anchor: { x: 10, y: 20 } }  ← 形状一致
 ```
-
-写入时只写实际值，不持久化初始默认值。
 
 ### 写入
 
@@ -125,7 +126,15 @@ ctx.setState({ anchor: { x: 100, y: 200 }, active: true }); // 全量覆盖
 ctx.patchState({ anchor: null }); // 浅合并（常用）
 ```
 
-注意：`ctx.state` 是入口快照，写入后不自动更新
+### 与 React useState 的异同
+
+| 方面       | React useState                                 | DAG handler ctx                                        |
+| ---------- | ---------------------------------------------- | ------------------------------------------------------ |
+| 读快照     | `const [state] = useState()` — 一次渲染内不变  | `ctx.state` — handler 入口快照，同次分发内不变         |
+| 写新值     | `setState(nextState)` — 队列化，下次渲染才生效 | `ctx.setState(nextState)` — **同步写入节点**，立即生效 |
+| 写入后重读 | 同一渲染内不可达新值                           | `ctx.getState()` 可立即读到新值                        |
+
+DAG 的状态写入是**同步**的，`setState` / `patchState` 立即修改节点内部存储，不会延迟。
 
 `ctx.state` 在 handler 入口处一次性构造，`setState` / `patchState` 写入的是节点内部存储，
 **不会**修改已解构出来的 `ctx.state` 对象。写入后立即读取 `ctx.state` 得到的是旧值。
@@ -203,14 +212,14 @@ handler(packet, ctx) {
 
 ## createPrefixNodeHandler 的职责
 
-`createPrefixNodeHandler` 的唯一作用是为 `ctx.state` / `ctx.getState()` 提供 `initialState` 默认值合并。handler 拿到的仍是标准 `DevicesDAGHandlerContext`。
+`createPrefixNodeHandler` 的唯一作用是在首次调用时将 `initialState` 写入节点 state。handler 拿到的仍是标准 `DevicesDAGHandlerContext`。
 
 ```js
 createPrefixNodeHandler({
   initialState: { anchor: null },
   handle(packet, ctx) {
-    // ctx.state 自动带有 { anchor: null } 默认值
-    // ctx.routeToChild / ctx.stop / ctx.signal 均来自 DAG
+    // 首次调用时 node.state 已写入 { anchor: null }
+    // ctx.state 与 dag.getNodeState(ctx.path) 形状一致
     ctx.patchState({ anchor: current });
     return ctx.routeToChild("tool", packet.signals);
   },
@@ -224,11 +233,12 @@ createPrefixNodeHandler({
 以上接口适用于**所有** DevicesDAG handler，包括：
 
 - 设备根节点（`mouse-device`、`keyboard-device`、`touchscreen-device`）
-- prefix handler（`drag-anchor`、`signal-log`、`multi-tool`、`repeator`、`handoff`）
+- prefix handler（`signal-log`、`repeater`、`canvas-to-world`、`edge-prefix`）
 - 工具 processor（`Tool.createProcessor`）
 - 裸 handler（直接挂在 DAG 节点上的任意函数）
 
-工具 processor 拿到的同样是标准 handler context 全集，`ctx.acc` 中的 `board`、`boardApi`、`viewport` 等由 DAG 上游节点在 dispatch 或 mount 时注入。
+工具 processor 拿到的同样是标准 handler context 全集。
+`ctx.services` 中的 `board`、`boardApi`、`viewport` 由 DAG 上游节点通过节点声明式注入。
 
 ---
 

@@ -63,7 +63,8 @@
  * @property {number} id - 对象 id
  * @property {string} type - 对象类型名（如 "StrokeObject"、"CircleObject"）
  * @property {Vector|Point2D} position - 世界坐标位置，创建态可为 Vector 实例，摘要态为 { x, y } 纯对象
- * @property {import("../range/rectangle.js").RectangleRange} [boundingBox] - 外接矩形（摘要态有，创建态无）
+ * @property {TransformMatrix2D} [transform] - 对象变换矩阵（创建态由手势补丁写入，如椭圆的非均匀缩放）
+ * @property {import("../range/rectangle.js").RectangleRange} [boundingBox] - 外接矩形。创建态在完成时**必须**由 finalize 回填（handoff/modifier 准入检测依赖，缺失会抛错）；摘要态必有
  * @property {import("../range/range.js").Range} [range] - 主判定范围（摘要态有，创建态无）
  * @property {Record<string, any>} property - 样式属性
  * @property {Record<string, any>} data - 类型专属几何数据（如 points、radius）
@@ -83,4 +84,4 @@
  * @property {Record<string, any>} data - 类型专属几何数据快照（如 points、radius、text）
  */
 
-export {};
+export { };

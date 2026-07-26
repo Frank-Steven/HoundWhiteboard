@@ -11,7 +11,8 @@
 - `Board.signalsEventBus.emit("input", packet)`
 - `Board.devicesDAG.dispatch()` 从根节点逐段向下路由
 - device 节点规整输入
-- prefix 节点执行参数注入、状态机、handoff 或局部路由
+- prefix 节点执行参数注入、边级转换或局部路由
+- wrapper 节点内部完成顺序/互斥组合（handoff、tool-switcher）
 - tool 叶子消费最终信号
 
 本文涉及的线程边界见 [core-runtime-boundaries.md](./core-runtime-boundaries.md)。
@@ -24,7 +25,7 @@ flowchart LR
     Bus --> DAG[Board.devicesDAG]
     DAG --> ViewportRoot[/viewportId]
     ViewportRoot --> Device[Device SubDAG]
-    Device --> Prefix[Prefix / Handoff]
+    Device --> Prefix[Prefix / Wrapper]
     Prefix --> Tool[Tool Leaf]
     Tool --> RPC[BoardApiRpc / Viewport]
 ```
@@ -70,16 +71,21 @@ flowchart LR
 
 `Board` 自己不做设备语义判断，只负责把已经归属的信号送进唯一的白板级设备图。
 
-### 3. viewport 根节点补全上下文
+### 3. viewport 根节点声明 services
 
-`Board.createViewport()` 会为 `/${viewportId}` 配置一个节点 handler。当前实现会在该层向后续链路追加：
+`Board.createViewport()` 会为 `/${viewportId}` 配置节点，通过 `services` 声明式注入基础设施：
 
-- `viewport`
+```
+configureNode("/${viewportId}", {
+  services: { board, boardApi, viewport },
+  semantics: { viewport: true },
+})
+```
 
-因此下游设备、prefix、tool 都能从 `ctx.acc` 中读取：
+因此下游设备、prefix、tool 都能从 `ctx.services` 中读取：
 
-- `board`
-- `boardApi`
+- `board`（含 `allocateObjectId` 等方法）
+- `boardApi`（RPC 代理）
 - `viewport`
 
 ### 4. 设备阶段
@@ -102,18 +108,19 @@ flowchart LR
 - keyboard：从原始 `keydown` / `keyup` 规整为 `trigger` / `trigger-repeat` / `release` / `cancel`
 - touchscreen：多触点摘要或 contact 类信号
 
-### 5. prefix / handoff 阶段
+### 5. prefix / wrapper 阶段
 
 prefix 是链路中的前置处理层。当前主要承担：
 
 - 记录或观察信号
 - 生成派生参数
 - 改写信号形态
-- 维护局部状态机
-- 在多个子节点之间切换活动链路
-- 将局部决策通过 `ctx.acc` 或节点 `state` 传给下游
+- 边级坐标与信号转换
 
-`handoff-handler` 则负责 chooser → modifier 这类两阶段工作流的控制权转移。
+wrapper（`tools/wrapper/`）是复合工具节点，对外是单个 Tool，内部完成组合逻辑：
+
+- `HandoffWrapperTool` 负责 chooser / creator → modifier 这类两阶段顺序工作流的控制权转移
+- `ToolSwitcherWrapper` 负责 1-of-N 互斥工具路由
 
 ### 6. tool 阶段
 
@@ -162,17 +169,15 @@ Tool 是设备图末端的消费型处理器，只负责：
 
 ## 状态与上下文约定
 
-### `ctx.acc`
+### `ctx.services` — 静态服务上下文
 
-`ctx.acc` 是沿命中路径逐层追加的累积上下文。
+`ctx.services` 是沿 DAG 路径由节点声明式注入的基础设施依赖，handler 只读不可写。
 
 适合放：
 
-- `board`
-- `boardApi`
+- `board`（含 `allocateObjectId` 等方法）
+- `boardApi`（RPC 代理）
 - `viewport`
-- 一次性回调
-- 只读决策信息
 
 ### 节点 `state`
 
@@ -185,7 +190,7 @@ Tool 是设备图末端的消费型处理器，只负责：
 
 ### 当前约束
 
-- `acc` 只能追加，不应覆盖已有键
+- `services` 由节点定义注入，handler 返回值无法写入
 - 跨节点可变共享优先走 `state`
 - Tool 不应承担 prefix 的路由职责
 - 路由始终逐层向下，不支持向上冒泡到兄弟节点
@@ -214,6 +219,7 @@ Tool 是设备图末端的消费型处理器，只负责：
 
 - [设备图](../ui-thread/devices-dag/docs/devices-dag-document.md)
 - [设备定义](../ui-thread/devices-dag/devices/docs/device-document.md)
+- [wrapper（复合设备）](../ui-thread/devices-dag/tools/wrapper/docs/wrapper-document.md)
 - [对象创建工具](../ui-thread/devices-dag/tools/creator/docs/object-creator-document.md)
 - [对象选择工具](../ui-thread/devices-dag/tools/chooser/docs/object-chooser-document.md)
 - [对象修改工具](../ui-thread/devices-dag/tools/modifier/docs/object-modifier-document.md)

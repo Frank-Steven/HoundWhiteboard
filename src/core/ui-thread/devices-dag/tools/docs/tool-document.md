@@ -6,11 +6,11 @@ Tool 是设备图末端的消费型处理器，只做叶子节点。
 
 ### 职责边界
 
-| 层面       | 做什么                                 | 谁做                  |
-| ---------- | -------------------------------------- | --------------------- |
-| 信号预处理 | 锚点、参数注入、局部路由、状态机       | 修饰节点              |
-| 对象编排   | first → second 切换、对象桥接          | `createHandoffSubDAG` |
-| 末端消费   | 创建对象、修改对象、选择对象、更新视口 | Tool                  |
+| 层面       | 做什么                                 | 谁做                 |
+| ---------- | -------------------------------------- | -------------------- |
+| 信号预处理 | 锚点、参数注入、局部路由、状态机       | 修饰节点             |
+| 对象编排   | first → second 切换、对象桥接          | `HandoffWrapperTool` |
+| 末端消费   | 创建对象、修改对象、选择对象、更新视口 | Tool                 |
 
 ### Tool 只做三件事
 
@@ -18,11 +18,11 @@ Tool 是设备图末端的消费型处理器，只做叶子节点。
 2. 消费信号：修改白板对象或状态
 3. 默认不继续转发：它不是新的路由层
 
-所有 orchestration 都已经上移到 prefix 层。新的稳定模型优先使用：
+编排职责已经上移到 prefix 层与 wrapper 层。新的稳定模型优先使用：
 
-- 修饰节点路由
+- 修饰节点路由（边级转换、参数注入）
+- wrapper 组合（顺序流、互斥选择）
 - 节点 `state`
-- 累积 `context` 中的回调
 
 仓库中仍有少量旧工具保留兼容型完成信号输出，但那不再是新的首选设计。
 
@@ -42,37 +42,26 @@ Tool 是设备图末端的消费型处理器，只做叶子节点。
 
 当前推荐直接依赖的顶层字段有：
 
-- `tree`
-- `node`
 - `path`
-- `defaultRoute`
-- `resolvedDefaultRoutePath`
-- `depth`
-- `context`
-- `board`
-- `viewport`
-- `allocateObjectId`
-- `resolveOwnerChunkId`
+- `services`
 - `getNodeState`
 - `setNodeState`
 
-这里的 `context` 就是来自 DevicesDAG 的累积上下文。它通常会携带：
+这里的 `services` 来自 DevicesDAG 的声明式服务上下文，通常会携带：
 
-- `board`
+- `board`（含 `allocateObjectId` 等方法）
+- `boardApi`（RPC 代理）
 - `viewport`
-- 工作流回调，例如 `onToolComplete`
-- 其他由上游 prefix 注入的只读数据
 
-`deviceContext` 现在不再构造 `eventContext` / `runtimeContext` 两层兼容视图。
-工具应直接读取顶层字段与 `context`。
+基础设施依赖（`board`、`boardApi`、`viewport`）统一通过 `context.services` 读取。
 
 ## 对象上下文辅助方法
 
-Tool 现在提供一组围绕节点 `state` 的对象上下文工具：
+Tool 提供一组围绕节点 `state` 的 objects 投影工具：
 
-- `resolveContextObjects(deviceContext)`
-- `setContextObjects(deviceContext, objects)`
-- `clearContextObjects(deviceContext)`
+- `setContextObjects(deviceContext, objects)` — 将对象集合发布为 `state.objects` 投影
+- `clearContextObjects(deviceContext)` — 清除 `state.objects` 投影
+- `resolveContextObjects(deviceContext)` — 读取 `state.objects` 投影（仅供观察 / 测试）
 - `resolveObjectId(objectEntry)` — 从对象条目提取数字 id
 - `resolveObjectIds(deviceContext, objects)` — 批量提取去重 id 列表
 - `resolveNodeState(deviceContext, statePath)`
@@ -80,9 +69,9 @@ Tool 现在提供一组围绕节点 `state` 的对象上下文工具：
 
 这些方法的设计意图是：
 
-- 优先复用当前节点 `state`
-- 避免 creator、chooser、modifier 依赖同一个可变上下文对象
-- 让父节点到子节点的共享变成显式路径状态同步
+- `state.objects` 是拥有者发布的**只读投影**，唯一职责是可观察性
+- 对象集合的真相源是各工具的实例字段（chooser `_selectedObjects`、modifier `_overlayModifiedObjects`、creator `_entry`）
+- 工具逻辑禁止从投影读回当真相源用；`resolveContextObjects` 仅供观察方与测试读取
 
 ## 默认链路继续
 
@@ -109,7 +98,7 @@ Tool 与 prefix 可以在同一条链路上协作，但边界不同：
 
 - 前置 prefix 负责生成随机 `position`、`radius` 和颜色属性
 - 参数 prefix 负责把随机参数改写为圆工具可消费的信号序列
-- `CircleCreatorTool` 只负责消费这些稳定信号并创建对象
+- `CircleDataCreatorTool` 只负责消费这些稳定信号并创建对象
 
 对应路径是：
 
@@ -221,6 +210,7 @@ unsub();
 ## 相关文档
 
 - [手势工具基类](./gesture-tool-document.md)
+- [wrapper（复合设备）](../wrapper/docs/wrapper-document.md)
 - [设备图](../../docs/devices-dag-document.md)
 - [Core 输入流](../../../../docs/core-input-flow.md)
 - [阶段性稳定接口](../../../../docs/core-stable-interfaces.md)

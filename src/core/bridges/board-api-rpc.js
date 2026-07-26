@@ -132,7 +132,7 @@ class BoardApiRpc {
       this.#resolveReady = resolve;
       this.#rejectReady = reject;
     });
-    this.#readyPromise.catch(() => {});
+    this.#readyPromise.catch(() => { });
     this.#messageListener = this.#handleEndpointMessage.bind(this);
     this.#batchBuffer = new Map();
     this.#batchPending = false;
@@ -240,9 +240,9 @@ class BoardApiRpc {
       const timer =
         timeoutMs > 0
           ? setTimeout(() => {
-              this.#pending.delete(msgId);
-              reject(createRpcError(`RPC timeout: ${method}`, "RPC_TIMEOUT"));
-            }, timeoutMs)
+            this.#pending.delete(msgId);
+            reject(createRpcError(`RPC timeout: ${method}`, "RPC_TIMEOUT"));
+          }, timeoutMs)
           : null;
 
       this.#pending.set(msgId, {
@@ -281,7 +281,7 @@ class BoardApiRpc {
   /**
    * 在 Core 侧创建对象实例，注册到 AOM 动态图
    * @param {string} type - 对象类型名（如 "StrokeObject" | "CircleObject"）
-   * @param {import("../shared/board-api-types.js").CreateObjectProps} props - 创建属性
+   * @param {import("../engine/types/board-api-types.js").CreateObjectProps} props - 创建属性
    * @returns {Promise<number>} 新对象的 objectId
    */
   async createObject(type, props) {
@@ -291,7 +291,7 @@ class BoardApiRpc {
   /**
    * 修改单个对象的几何/样式属性
    * @param {number} objectId - 对象 id
-   * @param {import("../shared/board-api-types.js").ObjectPatch} patch - 修改 patch
+   * @param {import("../engine/types/board-api-types.js").ObjectPatch} patch - 修改 patch
    * @returns {Promise<void>}
    */
   async modifyObject(objectId, patch) {
@@ -312,7 +312,7 @@ class BoardApiRpc {
 
   /**
    * 批量修改多个对象
-   * @param {import("../shared/board-api-types.js").ObjectPatchEntry[]} patches - 批量 patch
+   * @param {import("../engine/types/board-api-types.js").ObjectPatchEntry[]} patches - 批量 patch
    * @returns {Promise<void>}
    */
   async modifyObjects(patches) {
@@ -395,7 +395,7 @@ class BoardApiRpc {
   /**
    * 将 AOM 动态图中的对象写回静态图
    * @param {number[]} objectIds - 要提交的对象 id 列表
-   * @returns {Promise<void>}
+   * @returns {Promise<number[]>} 实际提交的对象 id 列表
    */
   async commitObjects(objectIds) {
     return this.#call("commitObjects", { objectIds });
@@ -422,7 +422,7 @@ class BoardApiRpc {
   /**
    * 按 id 查询对象摘要
    * @param {number[]} ids - 对象 id 列表
-   * @returns {Promise<import("../shared/types.js").ObjectSummary[]>} 对象摘要列表
+   * @returns {Promise<import("../engine/types/types.js").ObjectSummary[]>} 对象摘要列表
    */
   async queryObjects(ids) {
     return this.#call("queryObjects", { ids });
@@ -439,7 +439,7 @@ class BoardApiRpc {
 
   /**
    * 在合并视图上执行命中查询
-   * @param {import("../range/range.js").Range | import("./types.js").Rect} range - 命中范围
+   * @param {import("../engine/range/range.js").Range | import("../engine/types/types.js").Rect} range - 命中范围
    * @param {string} [mode] - 命中模式
    * @returns {Promise<number[]>} 命中的 objectId 列表
    */
@@ -449,7 +449,7 @@ class BoardApiRpc {
 
   /**
    * 在 Core 侧创建 ViewportCore 实例
-   * @param {import("../shared/board-api-types.js").CreateViewportOptions} options - 创建参数
+   * @param {import("../engine/types/board-api-types.js").CreateViewportOptions} options - 创建参数
    * @returns {Promise<void>}
    */
   async createViewport(options) {

@@ -6,12 +6,16 @@
  */
 
 import { Vector } from "../../core/engine/utils/math.js";
+import { switchTool } from "../../core/ui-thread/devices-dag/tools/switch-tool.js";
 import {
+  DEMO_BUTTON_GROUP_STATE_KEY,
+  DEMO_DEVICE_PATHS,
   DEMO_KEYBOARD_INPUT_CODES,
   DEMO_TOOL_NAMES,
   DEMO_WORKFLOW_NAMES,
   SUBMIT_KEY,
   CANCEL_KEY,
+  TOOL_SWITCH_KEYS,
 } from "./constants.js";
 
 /**
@@ -135,14 +139,29 @@ function logPointerDown(event, demoLog) {
  * @description
  * 仅处理 demo 关心的键位（见 DEMO_KEYBOARD_INPUT_CODES），跳过含 meta/ctrl 的组合键。
  * Enter/Escape 额外向 tool-switcher 发送 success/cancel，使左键选择工具也能响应确认/取消。
+ * 数字键 Digit1..Digit9 按 tools 数组顺序映射为工具切换：经 switchTool 写入 sharedState，
+ * 并把 tool-switch 信号 emit 到 tool-switcher；DOM 高亮经 store 订阅自动联动。
  * @param {import("../../core/ui-thread/components/orchestration/viewport.js").Viewport} viewport - 视口实例
  * @param {import("../../core/ui-thread/components/orchestration/board.js").Board} board - 白板实例
  * @param {import("./log.js").DemoLog} demoLog - demo 日志器
+ * @param {Array<{ name: string }>|null|undefined} [tools] - 工具列表（数字键映射依据；为空/null 时不映射）
  * @returns {() => void} 解绑函数
  */
-function attachKeyboardAdapter(viewport, board, demoLog) {
+function attachKeyboardAdapter(viewport, board, demoLog, tools) {
   const canvas = viewport.canvas;
   const keyboardInputCodes = new Set(DEMO_KEYBOARD_INPUT_CODES);
+
+  // 数字键 → 工具名映射：Digit1 对应 tools[0]，最多 9 个，超出忽略
+  /** @type {Map<string, string>} */
+  const digitToolMap = new Map();
+  const toolNames = Array.isArray(tools)
+    ? tools.map((t) => t.name).filter(Boolean)
+    : [];
+  TOOL_SWITCH_KEYS.forEach((code, index) => {
+    if (index < toolNames.length) {
+      digitToolMap.set(code, toolNames[index]);
+    }
+  });
 
   /**
    * 是否处理该键盘事件
@@ -193,6 +212,26 @@ function attachKeyboardAdapter(viewport, board, demoLog) {
         signals: [{ type: signalType, context: {} }],
       });
     }
+
+    // 数字键 → 切工具：写 sharedState 并把 tool-switch 信号 emit 到 tool-switcher
+    if (event.type === "keydown" && !event.repeat) {
+      const toolName = digitToolMap.get(event.code);
+      if (toolName) {
+        const { switched, signal } = switchTool({
+          sharedState: board.sharedState,
+          stateKey: DEMO_BUTTON_GROUP_STATE_KEY,
+          toolName,
+          allowedTools: toolNames,
+        });
+        if (switched) {
+          demoLog.logToolSwitch(toolName);
+          board.signalsEventBus.emit("input", {
+            to: `/${viewport.viewportId}/workflows/${DEMO_WORKFLOW_NAMES.TOOL_SWITCHER}`,
+            signals: [signal],
+          });
+        }
+      }
+    }
   };
 
   /**
@@ -221,10 +260,11 @@ function attachKeyboardAdapter(viewport, board, demoLog) {
  * 绑定工具栏按钮适配器
  * @description
  * 读取 .toolbar-btn 按钮列表，将 pointerdown 翻译为 button-press 信号发往按钮组设备；
- * 返回工具列表、默认工具名与激活切换回调，供 mountToolSwitcher 使用。
+ * 订阅 sharedState 的激活工具键同步 DOM 高亮（订阅后立即应用一次当前值）。
+ * 返回工具列表与默认工具名，供 mountToolSwitcher 使用。
  * @param {import("../../core/ui-thread/components/orchestration/board.js").Board} board - 白板实例
  * @param {import("../../core/ui-thread/components/orchestration/viewport.js").Viewport} viewport - 视口实例
- * @returns {{ tools: Array<{ name: string }>, defaultTool: string, onToolChange: (activeTool: string) => void, cleanup: () => void } | null}
+ * @returns {{ tools: Array<{ name: string }>, defaultTool: string, cleanup: () => void } | null}
  */
 function attachToolbarAdapter(board, viewport) {
   const vpId = viewport.viewportId;
@@ -241,7 +281,7 @@ function attachToolbarAdapter(board, viewport) {
     const onPointerDown = (event) => {
       event.preventDefault();
       board.signalsEventBus.emit("input", {
-        to: `/${vpId}/toolbar/button-group`,
+        to: `/${vpId}/${DEMO_DEVICE_PATHS.TOOLBAR_BUTTON_GROUP}`,
         signals: [{ type: "button-press", context: { toolName } }],
       });
     };
@@ -257,20 +297,30 @@ function attachToolbarAdapter(board, viewport) {
   const defaultTool = buttons[0]?.dataset.tool ?? DEMO_TOOL_NAMES.STROKE;
 
   /**
-   * 工具切换回调：同步 DOM 按钮 active 类
+   * 同步 DOM 按钮 active 类
    * @param {string} activeTool - 当前激活工具名
    * @returns {void}
    */
-  const onToolChange = (activeTool) => {
+  const applyActiveTool = (activeTool) => {
     buttons.forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.tool === activeTool);
     });
   };
 
+  // 订阅 sharedState 同步高亮；订阅后立即应用一次当前值（无值时用默认工具兜底）
+  const unsubscribe = board.sharedState.subscribe(
+    DEMO_BUTTON_GROUP_STATE_KEY,
+    (activeTool) => applyActiveTool(activeTool ?? defaultTool),
+  );
+  applyActiveTool(
+    board.sharedState.get(DEMO_BUTTON_GROUP_STATE_KEY) ??
+    defaultTool,
+  );
+  unbinds.push(unsubscribe);
+
   return {
     tools,
     defaultTool,
-    onToolChange,
     cleanup: () => unbinds.forEach((fn) => fn()),
   };
 }

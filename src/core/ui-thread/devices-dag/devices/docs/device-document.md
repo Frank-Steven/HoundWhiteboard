@@ -19,8 +19,21 @@
 - 路由逐层向下
 - 节点只能把信号继续发给自己的后继节点
 - 跨节点可变共享数据写入节点 `state`
-- 短程只读协作通过累积 `context` 追加
+- 静态基础设施依赖通过节点 `services` 声明式注入
 - 同一节点允许有多条入边，多条路径可达同一个节点
+
+## 设备哲学
+
+**设备 = 输入信道 + 输出信道组成的集合，万物皆设备。** 这是 Unix 哲学的类比——Unix 中万物皆文件，输入系统中万物皆设备，这也是“设备图”名称的由来。
+
+- **输入信道**：外部事件 → 语义信号。例如 mouse 把 DOM 事件规整为 `position` / `end` 信号。
+- **输出信道**：设备 → 外部的反向通知。例如 button-group 设备发布当前激活工具名，驱动 DOM 工具栏高亮。输出信道是设备的一等组成部分，不是违规。
+
+**输出信道的标准接口是共享状态 store**（`SharedStateStore`，挂在 `Board` 上）。store 本身也是一台设备：输入信道是 `set` / `subscribe`，输出信道是变更通知。于是 `button-group | store | DOM` 构成一条 Unix 管线式的三段链——按钮组只管写入，DOM 只管订阅，互不知道对方存在。
+
+这把输出信道从"构造时焊死的回调"变成"标准插座"：接线移到外部，设备无需知道消费者。button-group 设备的 `onUpdate` 特设回调已按此退役；touchscreen 设备的 `onUpdate` 也已移除——其载荷与 `touch-contacts` 信号完全重复且零消费者，将来图外需要触点信息时应走 sharedState。
+
+wrapper（`tools/wrapper/`）是复合设备：输入信道是上游信号，输出信道是转发给内部子工具的信号，内部组合对外不可见。对外部编排而言，它呈现为普通 `Tool` 接口，与单工具设备遵循同一套挂载契约。详见 [wrapper 文档](../../tools/wrapper/docs/wrapper-document.md)。
 
 ## 结构
 
@@ -184,6 +197,19 @@ workflow 负责：
 - 一旦设备已经按这些字段把输入分发到正确的子节点或工具叶子，这些字段就不应再成为工具自己的判断条件
 - 因此，“哪个按钮触发了这次输入”应由设备决定；“收到这组稳定信号后做什么”才由工具决定
 
+## 坐标转换约定
+
+`position` 信号携带的坐标分两种：canvas 相对坐标（DOM 事件原始坐标）与世界坐标（白板坐标系）。
+
+约定如下：
+
+- **设备根节点负责完成 canvas→world 转换**——mouse 与 touchscreen 的根 handler 都通过 `viewport.convertCanvasSignalsToWorld` 在分流前完成转换，下游通道节点与工具拿到的已是世界坐标
+- 转换逻辑的唯一实现是 `viewport.convertCanvasSignalsToWorld`，任何转换点都必须委托它，禁止各自重写换算公式
+- **`canvas-to-world-handler` prefix 用于非标准链路**：信号源未经设备根节点转换时（如测试桩、自定义 adapter 直连 workflow），在边上插入该 prefix 补齐转换
+- 工具与下游 prefix 一律假定 `position` 信号已是世界坐标，不再做二次转换
+
+新设备接入时应遵循同一模式：在根 handler 中委托 `viewport.convertCanvasSignalsToWorld` 完成转换，而不是让下游各自处理。
+
 ## 设备挂载
 
 业务侧应优先通过 Viewport 挂载设备：
@@ -235,4 +261,5 @@ viewport.mountSubDAG("/presentation", createKeyboardDevice());
 
 - [设备图](../../docs/devices-dag-document.md)
 - [键盘设备](./keyboard-device-document.md)
+- [shared-state-store](../../../../engine/utils/docs/shared-state-store-document.md)
 - [输入流](../../../../docs/core-input-flow.md)

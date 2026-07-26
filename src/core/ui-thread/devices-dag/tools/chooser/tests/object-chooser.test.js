@@ -33,7 +33,7 @@ describe("ObjectChooserTool", () => {
       return this.chosenObjects;
     }
 
-    reset() { }
+    reset() {}
   }
 
   test("process 应通过 boardApi.addActiveObjects 写回选择结果", () => {
@@ -44,7 +44,7 @@ describe("ObjectChooserTool", () => {
     };
     const stateAccess = createStateAccess();
     const deviceContext = {
-      acc: { boardApi },
+      services: { boardApi },
       path: "/viewport/chooser/tool",
       getNodeState: stateAccess.getState,
       setNodeState: stateAccess.setState,
@@ -62,7 +62,7 @@ describe("ObjectChooserTool", () => {
     );
 
     expect(boardApi.addActiveObjects).toHaveBeenCalledWith([1]);
-    expect(deviceContext.acc.objects).toEqual([chosenObject]);
+    expect(stateAccess.getState().objects).toEqual([chosenObject]);
     expect(stateAccess.getState()).toEqual({
       objects: [chosenObject],
     });
@@ -75,20 +75,24 @@ describe("ObjectChooserTool", () => {
       discardActiveObjects: jest.fn(),
     };
     const tool = new TestChooserTool();
-    const stateAccess = createStateAccess({
-      objects: [chosenObject],
-    });
+    const stateAccess = createStateAccess();
     const deviceContext = {
-      acc: { boardApi, objects: [chosenObject] },
+      services: { boardApi },
       path: "/viewport/chooser/tool",
       getNodeState: stateAccess.getState,
       setNodeState: stateAccess.setState,
     };
 
+    // 经 replaceSelection 建立选择集（真相源为 _selectedObjects，state.objects 是投影）
+    tool.replaceSelection(deviceContext, [chosenObject]);
+    expect(tool._selectedObjects).toEqual([chosenObject]);
+    expect(stateAccess.getState().objects).toEqual([chosenObject]);
+
     tool.umount(deviceContext);
 
     expect(boardApi.discardActiveObjects).toHaveBeenCalledWith([4]);
-    expect(deviceContext.acc.objects).toBeUndefined();
+    expect(tool._selectedObjects).toEqual([]);
+    expect(stateAccess.getState().objects).toBeUndefined();
     expect(stateAccess.getState()).toEqual({});
   });
 
@@ -99,7 +103,7 @@ describe("ObjectChooserTool", () => {
     };
     const stateAccess = createStateAccess();
     const deviceContext = {
-      acc: { boardApi },
+      services: { boardApi },
       path: "/viewport/chooser/tool",
       getNodeState: stateAccess.getState,
       setNodeState: stateAccess.setState,
@@ -125,7 +129,7 @@ describe("ObjectChooserTool", () => {
     );
 
     expect(boardApi.addActiveObjects).toHaveBeenCalledWith([31]);
-    expect(deviceContext.acc.objects).toEqual([
+    expect(stateAccess.getState().objects).toEqual([
       {
         id: 31,
         position: { x: 10, y: 20 },
@@ -155,7 +159,7 @@ describe("ObjectChooserTool", () => {
     };
     const stateAccess = createStateAccess();
     const deviceContext = {
-      acc: {
+      services: {
         boardApi,
         board: {
           getObjectById: jest.fn(() => staleBoardObject),
@@ -180,8 +184,8 @@ describe("ObjectChooserTool", () => {
     );
 
     expect(boardApi.addActiveObjects).toHaveBeenCalledWith([32]);
-    expect(deviceContext.acc.objects).toEqual([rpcSummary]);
-    expect(deviceContext.acc.board.getObjectById).not.toHaveBeenCalled();
+    expect(stateAccess.getState().objects).toEqual([rpcSummary]);
+    expect(deviceContext.services.board.getObjectById).not.toHaveBeenCalled();
     expect(stateAccess.getState()).toEqual({ objects: [rpcSummary] });
   });
 
@@ -189,26 +193,75 @@ describe("ObjectChooserTool", () => {
     const chosenObject = { id: 41 };
     const discardActiveObjects = jest.fn();
     const tool = new TestChooserTool();
-    const stateAccess = createStateAccess({
-      objects: [chosenObject],
-    });
+    const stateAccess = createStateAccess();
     const deviceContext = {
-      acc: {
+      services: {
         boardApi: {
+          addActiveObjects: jest.fn(),
           discardActiveObjects,
         },
-        objects: [chosenObject],
       },
       path: "/viewport/chooser/tool",
       getNodeState: stateAccess.getState,
       setNodeState: stateAccess.setState,
     };
 
+    tool.replaceSelection(deviceContext, [chosenObject]);
     tool.umount(deviceContext);
 
     expect(discardActiveObjects).toHaveBeenCalledWith([41]);
-    expect(deviceContext.acc.objects).toBeUndefined();
+    expect(tool._selectedObjects).toEqual([]);
+    expect(stateAccess.getState().objects).toBeUndefined();
     expect(stateAccess.getState()).toEqual({});
+  });
+
+  test("选择集被丢弃后 process 应按真相源同步清空 overlay", () => {
+    const chosenObject = { id: 60 };
+    const boardApi = {
+      addActiveObjects: jest.fn(),
+      discardActiveObjects: jest.fn(),
+    };
+    const stateAccess = createStateAccess();
+    const deviceContext = {
+      services: { boardApi },
+      path: "/test",
+      getNodeState: stateAccess.getState,
+      setNodeState: stateAccess.setState,
+    };
+    const tool = new TestChooserTool({ chosenObjects: [chosenObject] });
+
+    // 真实信号流程建立选择集：_selectedObjects 与 overlay 同时填充
+    tool.process(
+      {
+        signals: [
+          { type: "position", context: { value: new Vector(0, 0) } },
+          { type: "end" },
+        ],
+      },
+      deviceContext,
+    );
+    expect(tool._selectedObjects).toEqual([chosenObject]);
+    expect(tool._overlaySelectedObjects).toEqual([chosenObject]);
+
+    // 选择集仍持有时，后续信号不影响 overlay
+    tool.process(
+      { signals: [{ type: "position", context: { value: new Vector(1, 1) } }] },
+      deviceContext,
+    );
+    expect(tool._overlaySelectedObjects).toEqual([chosenObject]);
+
+    // 直接丢弃选择集（清空真相源与投影，不触碰 overlay）
+    tool.discardAction(deviceContext);
+    expect(tool._selectedObjects).toEqual([]);
+    expect(stateAccess.getState().objects).toBeUndefined();
+    expect(tool._overlaySelectedObjects).toEqual([chosenObject]);
+
+    // 下一个信号到达时按真相源对齐，清空失效的 overlay 选中框
+    tool.process(
+      { signals: [{ type: "position", context: { value: new Vector(2, 2) } }] },
+      deviceContext,
+    );
+    expect(tool._overlaySelectedObjects).toEqual([]);
   });
 
   test("collectUiOverlayEntries 应调用 factory 生成选择框条目", () => {
@@ -312,7 +365,7 @@ describe("ObjectChooserTool", () => {
       };
       const stateAccess = createStateAccess();
       const deviceContext = {
-        acc: { boardApi },
+        services: { boardApi },
         path: "/test",
         getNodeState: stateAccess.getState,
         setNodeState: stateAccess.setState,
@@ -352,10 +405,10 @@ describe("ObjectChooserTool", () => {
           ],
         },
         {
-          acc: { boardApi },
+          services: { boardApi },
           path: "/test",
           getNodeState: () => ({}),
-          setNodeState: () => { },
+          setNodeState: () => {},
         },
       );
 
@@ -370,9 +423,10 @@ describe("ObjectChooserTool", () => {
       const tool = new TestChooserTool({ chosenObjects: [chosenObject] });
       tool.beforeConfirmSelection = () => false;
 
-      const result = tool.confirmSelection({ acc: { board }, path: "/test" }, [
-        chosenObject,
-      ]);
+      const result = tool.confirmSelection(
+        { services: { board }, path: "/test" },
+        [chosenObject],
+      );
 
       expect(result).toBe(false);
     });
@@ -382,7 +436,7 @@ describe("ObjectChooserTool", () => {
       const tool = new TestChooserTool({ chosenObjects: [chosenObject] });
 
       const result = tool.confirmSelection(
-        { acc: { board: {} }, path: "/test" },
+        { services: { board: {} }, path: "/test" },
         [chosenObject],
       );
 
@@ -397,7 +451,7 @@ describe("ObjectChooserTool", () => {
       };
       const stateAccess = createStateAccess();
       const deviceContext = {
-        acc: { boardApi },
+        services: { boardApi },
         path: "/test",
         getNodeState: stateAccess.getState,
         setNodeState: stateAccess.setState,
@@ -442,7 +496,7 @@ describe("ObjectChooserTool", () => {
       };
       const stateAccess = createStateAccess();
       const deviceContext = {
-        acc: { boardApi },
+        services: { boardApi },
         path: "/viewport/chooser",
         getNodeState: stateAccess.getState,
         setNodeState: stateAccess.setState,
@@ -501,7 +555,7 @@ describe("ObjectChooserTool", () => {
       };
       const stateAccess = createStateAccess();
       const deviceContext = {
-        acc: { boardApi },
+        services: { boardApi },
         path: "/test",
         getNodeState: stateAccess.getState,
         setNodeState: stateAccess.setState,
@@ -520,13 +574,13 @@ describe("ObjectChooserTool", () => {
       );
 
       expect(boardApi.addActiveObjects).toHaveBeenCalledWith([15]);
-      expect(deviceContext.acc.objects).toEqual([chosenObject]);
+      expect(stateAccess.getState().objects).toEqual([chosenObject]);
 
       // cancel 应撤销已选中的对象
       tool.process({ signals: [{ type: "cancel" }] }, deviceContext);
 
       expect(boardApi.discardActiveObjects).toHaveBeenCalledWith([15]);
-      expect(deviceContext.acc.objects).toBeUndefined();
+      expect(stateAccess.getState().objects).toBeUndefined();
       // nodeState 中 objects 应被清理
       expect(stateAccess.getState()).toEqual({});
     });

@@ -6,36 +6,24 @@
  */
 
 /**
- * @typedef {import("../../devices-dag/dag.js").SubDAGDefinition & {
+ * 触摸屏设备子图定义
+ * @typedef {import("../../devices-dag/dag-type.js").SubDAGDefinition & {
  *   clearTouches: () => void,
  *   getActiveTouches: () => Array<{touchId: string, position: any}>,
  * }} TouchscreenSubDAGDefinition
  */
 
 import { createSubDAG } from "../index.js";
-import { SignalPacket } from "../signal.js";
+import { SignalPacket } from "../dag-core/signal.js";
+import { SIGNAL_TYPES } from "../dag-core/signal-types.js";
 import { DEVICE_DEFAULT_ROUTE } from "./constant.js";
 
 /**
- * 触摸屏设备输出信号类型
- * @type {{CONTACTS: string}}
- */
-const TOUCHSCREEN_DEVICE_SIGNAL_TYPES = Object.freeze({
-  CONTACTS: "touch-contacts",
-});
-
-/**
  * 创建一张触摸屏设备子图
- * @param {{onUpdate?: Function}} [options={}] - 触摸屏设备选项
- * @returns {import("../devices-dag/dag.js").SubDAGDefinition & {
- *   clearTouches: () => void,
- *   getActiveTouches: () => Array<{touchId: string, position: any}>,
- * }}
+ * @returns {TouchscreenSubDAGDefinition}
  */
-function createTouchscreenDevice(options = {}) {
+function createTouchscreenDevice() {
   const activeTouches = new Map();
-  const onUpdate =
-    typeof options.onUpdate === "function" ? options.onUpdate : null;
   let lastChangedTouchIds = [];
 
   /**
@@ -108,11 +96,6 @@ function createTouchscreenDevice(options = {}) {
     }
 
     lastChangedTouchIds = Array.from(new Set(changedTouchIds));
-    onUpdate?.({
-      contacts: getActiveTouches(),
-      changedTouchIds: [...lastChangedTouchIds],
-      activeTouchIds: Array.from(activeTouches.keys()),
-    });
   };
 
   /**
@@ -122,13 +105,13 @@ function createTouchscreenDevice(options = {}) {
    * 2. 更新内部触点状态
    * 3. 路由到 contacts 子节点输出聚合的触点报告
    * @param {SignalPacket|Object} signalPacket - 输入信号包
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [ctx={}] - 处理上下文（含 acc.viewport）
-   * @returns {Object}
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [ctx={}] - 处理上下文（含 services.viewport）
+   * @returns {import("../dag-type.js").DevicesDAGHandlerResult}
    */
   const rootHandler = (signalPacket, ctx = {}) => {
     const packet = SignalPacket.from(signalPacket, { defaultTo: "/" });
 
-    const viewport = ctx?.acc?.viewport;
+    const viewport = ctx?.services?.viewport;
     const convertedSignals =
       viewport && typeof viewport.convertCanvasSignalsToWorld === "function"
         ? viewport.convertCanvasSignalsToWorld(packet.signals)
@@ -142,14 +125,14 @@ function createTouchscreenDevice(options = {}) {
   /**
    * 触点报告处理器
    * @param {SignalPacket|Object} signalPacket - 输入信号包
-   * @param {import("../devices-dag/dag.js").DevicesDAGHandlerContext} [ctx={}] - 当前路由上下文
-   * @returns {Object}
+   * @param {import("../dag-type.js").DevicesDAGHandlerContext} [ctx={}] - 当前路由上下文
+   * @returns {import("../dag-type.js").DevicesDAGHandlerResult}
    */
   const contactsHandler = (signalPacket, ctx = {}) => {
     const packet = SignalPacket.from(signalPacket, { defaultTo: "/" });
     const contacts = getActiveTouches();
     return ctx.routeToChild(ctx.defaultRoute || "", [
-      ctx.signal(TOUCHSCREEN_DEVICE_SIGNAL_TYPES.CONTACTS, undefined, {
+      ctx.signal(SIGNAL_TYPES.TOUCH_CONTACTS, undefined, {
         contacts,
         changedTouchIds: [...lastChangedTouchIds],
         activeTouchIds: contacts.map((contact) => contact.touchId),
@@ -159,7 +142,10 @@ function createTouchscreenDevice(options = {}) {
 
   const builder = createSubDAG("/touchscreen");
   const root = builder.node().handler(rootHandler).defaultRoute("contacts");
-  const contacts = builder.node().handler(contactsHandler).defaultRoute(DEVICE_DEFAULT_ROUTE);
+  const contacts = builder
+    .node()
+    .handler(contactsHandler)
+    .defaultRoute(DEVICE_DEFAULT_ROUTE);
   builder.edge("contacts", root, contacts);
 
   return builder
@@ -173,4 +159,4 @@ function createTouchscreenDevice(options = {}) {
     .build();
 }
 
-export { createTouchscreenDevice, TOUCHSCREEN_DEVICE_SIGNAL_TYPES };
+export { createTouchscreenDevice };

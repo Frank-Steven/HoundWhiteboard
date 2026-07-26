@@ -23,6 +23,7 @@
 - `createViewport(rootElement, { width, height }, viewportId)`
 - `allocateObjectId()`
 - `getBoardApi()`
+- `sharedState`
 
 `Board.signalsEventBus` 当前稳定的输入相关事件包括：
 
@@ -40,6 +41,27 @@ board.signalsEventBus.emit("input", {
 - `to` 必须已包含目标 `viewportId`
 - `Board` 会把它分发到唯一的 `Board.devicesDAG`
 - 初始 dispatch context 会附带 `{ board, boardApi }`
+
+## SharedStateStore
+
+`Board.sharedState` 是跨信道会话状态的共享存储，服务于"多个设备 + 图外 UI 必须达成一致"的场景。
+
+当前稳定接口：
+
+- `get(key)`
+- `set(key, value)`
+- `subscribe(key, callback)` — 返回退订函数
+- `getSnapshot()`
+
+### 稳定语义
+
+- 多写者 LWW，不做访问控制，最后写入获胜
+- `set` 在值变化时同步通知该键全部订阅者；`Object.is` 相同则跳过
+- 订阅者会收到自己写入的回声，需自行容忍
+- 订阅者禁止在回调内同步 dispatch 进设备图
+- 写 store 不等于触发图内行为——以工具切换为例，完整切换 = `set` store + 发 `tool-switch` 信号
+
+DAG 内经 `services.sharedState` 注入，图外代码持 `Board` 引用直接访问。详见 [shared-state-store 文档](../engine/utils/docs/shared-state-store-document.md)。
 
 ## BoardApiRpc
 
@@ -118,7 +140,6 @@ board.signalsEventBus.emit("input", {
 - `resolvedDefaultRoutePath`
 - `depth`
 - `signalPacket`
-- `acc`
 - `state`
 - `getState()`
 - `setState(nextState)`
@@ -132,8 +153,8 @@ board.signalsEventBus.emit("input", {
 
 ### 稳定语义
 
-- `acc` 是逐层追加的累积上下文视图
-- 可变共享数据优先写入节点 `state`
+- 节点 `state` 是拥有者发布的只读投影；真理源放闭包 / 实例字段
+- `setNodeState` / `delNodeState` 仅限写入自身节点，跨节点写入在 strict 模式抛错、非 strict 模式告警
 - `ctx.state` 是入口快照；写入后若要读取最新值，应调用 `getState()`
 - `routeToChild()` 是向下转发信号的统一方式
 - `signal()` 统一构造 `{ type, context }` 结构
@@ -145,7 +166,6 @@ board.signalsEventBus.emit("input", {
 ```js
 {
   packets?: SignalPacket[],
-  acc?: Object,
   redirect?: string,
   stop?: boolean,
 }
@@ -154,7 +174,6 @@ board.signalsEventBus.emit("input", {
 ### 稳定语义
 
 - `packets`：后续要继续路由的包列表
-- `acc`：要追加给下游节点的累积上下文
 - `redirect`：覆盖接下来要走的路径段
 - `stop`：立即终止当前链路
 - 若显式返回 `packets: []`，当前链路终止
@@ -205,8 +224,20 @@ board.signalsEventBus.emit("input", {
 - Tool 是 **叶子消费型处理器**，不承担上层路由结构
 - `createProcessor()` 会把 Tool 包装成可挂到 DAG 节点上的 handler
 - overlay provider 的注册/注销由 `createUiOverlayBinding()` 负责
-- 工具共享对象优先走节点 `state` 与 `acc.objects`
+- 工具共享对象优先走节点 `state`
 - 需要显式转发信号时，应由 prefix 或外层 DAG handler 负责；不要把 Tool 当成新的路由层
+
+## 已移除接口（breaking change）
+
+以下接口曾经稳定，现已移除：
+
+- **`ctx.acc` / handler 返回值的 `acc` 字段（累积上下文）**：整体拆除。
+  - 基础设施依赖 → 改用节点声明式 `services`
+  - 工具行为控制标志（`autoCommit`、`autoUmountOnApply`）→ 改用工具的显式实例属性
+  - 其余链路级参数 → 改用信号字段或平铺 context 键（如 `context.resolvePosition`）
+- **handoff / tool-switcher 的 prefix 子图工厂**（`createHandoffSubDAG`、`createToolSwitcherSubDAG`、`createMultiToolPrefixHandler`）：由 `tools/wrapper/` 的 `HandoffWrapperTool`、`ToolSwitcherWrapper` 取代，wrapper 作为普通 Tool 通过 `mountWorkflow` 单节点挂载。
+- **button-group 设备的 `onUpdate` 构造选项**：输出信道改走共享状态——设备写入 `services.sharedState`（键为必传的 `stateKey` 选项，由接线层注册，无默认值），消费者（如 DOM 工具栏）通过 `board.sharedState.subscribe` 订阅，接线移到设备外部。
+- **touchscreen 设备的 `onUpdate` 构造选项**：载荷与 `touch-contacts` 信号完全重复且零消费者，已删除；`createTouchscreenDevice()` 不再接受参数。
 
 ## Viewport
 
@@ -264,6 +295,7 @@ board.signalsEventBus.emit("input", {
 - [handler 上下文（ctx）用法](../ui-thread/devices-dag/docs/handler-context-document.md)
 - [设备图](../ui-thread/devices-dag/docs/devices-dag-document.md)
 - [设备定义](../ui-thread/devices-dag/devices/docs/device-document.md)
+- [wrapper（复合设备）](../ui-thread/devices-dag/tools/wrapper/docs/wrapper-document.md)
 - [对象创建工具](../ui-thread/devices-dag/tools/creator/docs/object-creator-document.md)
 - [对象选择工具](../ui-thread/devices-dag/tools/chooser/docs/object-chooser-document.md)
 - [对象修改工具](../ui-thread/devices-dag/tools/modifier/docs/object-modifier-document.md)

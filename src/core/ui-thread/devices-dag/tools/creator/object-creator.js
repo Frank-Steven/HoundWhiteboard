@@ -1,33 +1,14 @@
 /**
  * @file 对象创建工具
- * @description 提供对象创建流程与信号类型定义的工具基类。
+ * @description 提供对象创建流程的工具基类。
  * @module core/ui-thread/devices-dag/tools/creator/object-creator
  * @author Zhou Chenyu
  */
 
 import { Vector } from "../../../../engine/utils/math.js";
-import { SignalPacket } from "../../signal.js";
+import { SignalPacket } from "../../dag-core/signal.js";
+import { SIGNAL_TYPES } from "../../dag-core/signal-types.js";
 import { GestureTool } from "../gesture-tool.js";
-
-/**
- * 对象创建工具相关信号类型常量
- * @readonly
- * @enum {string}
- * @description
- * 定义对象创建工具处理的信号类型，包括位置更新、手势结束/取消、对象结束/取消等。
- * 这些信号类型用于工具在处理输入时识别不同的交互阶段和事件。
- * @author Zhou Chenyu
- */
-const OBJECT_CREATOR_SIGNAL_TYPES = Object.freeze({
-  POSITION: "position",
-  PROPERTY: "property",
-  GESTURE_END: "end",
-  GESTURE_CANCEL: "cancel",
-  OBJECT_END: "object-end",
-  OBJECT_CANCEL: "object-cancel",
-  END: "end",
-  CANCEL: "cancel",
-});
 
 /**
  * 从信号列表中提取 prefix 注入的对象属性
@@ -36,7 +17,7 @@ const OBJECT_CREATOR_SIGNAL_TYPES = Object.freeze({
  */
 function extractInjectedProperty(signals) {
   const propertySignal = signals.find(
-    (signal) => signal.type === OBJECT_CREATOR_SIGNAL_TYPES.PROPERTY,
+    (signal) => signal.type === SIGNAL_TYPES.PROPERTY,
   );
   const value = propertySignal?.context?.value;
   return value && typeof value === "object" && !Array.isArray(value)
@@ -62,7 +43,7 @@ class ObjectCreatorTool extends GestureTool {
    * 纯数据对象，遵循 LightweightObjectEntry 协议，不再持有 BasicObject 实例。
    * 手势期几何读写均通过此对象完成，Worker 侧同步通过 RPC fire-and-forget 平行维护。
    * 子类的 `create()` 实现应设置 `type` 字段与其 `getCreatedObjectType()` 返回值一致。
-   * @type {import("../../shared/types.js").LightweightObjectEntry | null}
+   * @type {import("../../../../engine/types/types.js").LightweightObjectEntry | null}
    */
   _entry;
 
@@ -92,16 +73,37 @@ class ObjectCreatorTool extends GestureTool {
   _pendingActionInteraction;
 
   /**
+   * 创建失败闩锁
+   * @description
+   * Worker 侧 createObject 失败后置位，阻断同一手势内的重复创建尝试；
+   * 在 `_onEnd` 与 `umount` 中清除，使下一次落笔获得全新机会。
+   * @type {boolean}
+   * @protected
+   */
+  _hasCreationFailed;
+
+  /**
+   * 动作完成时是否自动将对象提交到静态图
+   * @description wrapper 嵌入场景（如 HandoffWrapperTool）由 wrapper 置为 false，
+   * 阻止对象提前进入静态图，使其留在 AOM 动态图等待 modifier 最终提交。
+   * @type {boolean}
+   */
+  autoCommit;
+
+  /**
+   * @param {{ autoCommit?: boolean }} [options={}] - 配置选项
    * @constructor
    */
-  constructor() {
+  constructor(options = {}) {
     super();
     this.autoActionOnGestureEnd = true;
+    this.autoCommit = options.autoCommit !== false;
     this._entry = null;
     this.objectId = null;
     this.isObjectCreationCompleted = false;
     this._pendingProperty = null;
     this._pendingActionInteraction = null;
+    this._hasCreationFailed = false;
   }
 
   /**
@@ -127,7 +129,7 @@ class ObjectCreatorTool extends GestureTool {
   /**
    * 构建 Creator 交互上下文
    * @param {SignalPacket|Object} signalPacket - 输入信号包
-   * @param {import("../../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {Object} 交互上下文
    */
   buildInteractionContext(signalPacket, context = {}) {
@@ -135,7 +137,7 @@ class ObjectCreatorTool extends GestureTool {
     const baseInteraction = super.buildInteraction(normalizedPacket, context);
     const signals = normalizedPacket.signals;
     const positionSignal = signals.find(
-      (signal) => signal.type === OBJECT_CREATOR_SIGNAL_TYPES.POSITION,
+      (signal) => signal.type === SIGNAL_TYPES.POSITION,
     );
 
     return {
@@ -145,7 +147,7 @@ class ObjectCreatorTool extends GestureTool {
       isGestureCancelled: baseInteraction.hasCancel,
       isObjectEnded: baseInteraction.hasObjectEnd,
       isObjectCancelled: baseInteraction.hasObjectCancel,
-      objectId: positionSignal?.context?.objectId ?? context.acc?.objectId,
+      objectId: positionSignal?.context?.objectId,
       injectedProperty: extractInjectedProperty(signals),
     };
   }
@@ -153,7 +155,7 @@ class ObjectCreatorTool extends GestureTool {
   /**
    * 兼容 GestureTool 的交互构建入口
    * @param {SignalPacket} signalPacket - 输入信号包
-   * @param {import("../../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {Object} 交互上下文
    */
   buildInteraction(signalPacket, context = {}) {
@@ -234,7 +236,7 @@ class ObjectCreatorTool extends GestureTool {
    * @protected
    */
   createObjectViaRpc(interaction) {
-    const boardApi = interaction?.context?.acc?.boardApi;
+    const boardApi = interaction?.context?.services?.boardApi;
     const objectType = this.getCreatedObjectType();
 
     if (
@@ -262,10 +264,7 @@ class ObjectCreatorTool extends GestureTool {
         data,
       }),
     ).catch((error) => {
-      console.error(
-        `[Creator] Failed to create object ${interaction.objectId} via RPC:`,
-        error,
-      );
+      this.handleCreationFailure(error, interaction);
     });
 
     this.objectId = interaction.objectId;
@@ -274,17 +273,49 @@ class ObjectCreatorTool extends GestureTool {
   }
 
   /**
+   * 处理 Worker 侧对象创建失败
+   * @description
+   * createObject 的回执经 rpc-response 异步返回。失败时（如对象类型未在
+   * Worker 侧注册）必须终止本地草稿，否则 UI 的 `_entry` 会与 Worker 状态
+   * 永久分叉：对象看似存在，实则从未被创建。
+   * 处理顺序：先置空 `objectId`（阻断后续 modifyObject/discard 的无效 RPC），
+   * 再清理本地状态并置失败闩锁，最后走标准 cancelAction 收尾
+   * （此时 discard 路径因 objectId 为空不会再发 RPC）。
+   * @param {Error} error - RPC 返回的创建错误
+   * @param {Object} interaction - 当前交互上下文
+   * @returns {void}
+   * @protected
+   */
+  handleCreationFailure(error, interaction) {
+    console.error(
+      `[Creator] Failed to create object ${interaction?.objectId ?? this.objectId} via RPC:`,
+      error,
+    );
+
+    this.objectId = null;
+    this._entry = null;
+    this.isObjectCreationCompleted = false;
+    this.isGestureActive = false;
+    this._hasCreationFailed = true;
+    this.cancelAction(interaction?.context ?? {});
+  }
+
+  /**
    * 确保当前交互已拥有对象实例
    * @param {Object} interaction - 当前交互上下文
    * @returns {boolean} 是否已拥有对象实例
    */
   ensureObject(interaction) {
+    if (this._hasCreationFailed) {
+      return false;
+    }
+
     if (!this._entry || this.isObjectCreationCompleted) {
       this._pendingProperty = interaction?.injectedProperty ?? null;
 
       if (interaction.objectId == null) {
         const allocatedId =
-          interaction?.context?.acc?.board?.allocateObjectId?.();
+          interaction?.context?.services?.board?.allocateObjectId?.();
         if (allocatedId != null) {
           interaction.objectId = allocatedId;
         }
@@ -320,7 +351,7 @@ class ObjectCreatorTool extends GestureTool {
 
   /**
    * 将当前创建对象写回上下文
-   * @param {import("../../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @param {BasicObject} [objectEntry=this.obj] - 当前对象
    * @returns {Array<BasicObject>}
    */
@@ -329,12 +360,46 @@ class ObjectCreatorTool extends GestureTool {
   }
 
   /**
+   * 应用手势 processor 编译出的对象补丁
+   * @description
+   * 手势 processor 的唯一写入口：先更新本地 `_entry`
+   * （position 规整为 Vector、data 合并、transform 存 `{a,b,c,d}` 纯对象），
+   * 再通过 RPC fire-and-forget 平行维护 Worker 侧对象。
+   * patch 形状与 `boardApi.modifyObject(objectId, patch)` 的补丁契约一致。
+   * @param {import("./gesture/two-point-processor.js").GesturePatch} patch - 手势补丁
+   * @param {Object} interaction - 当前交互上下文
+   * @returns {void}
+   */
+  applyGesturePatch(patch, interaction) {
+    if (!patch || typeof patch !== "object") {
+      return;
+    }
+
+    if (this._entry) {
+      if (patch.position) {
+        this._entry.position = new Vector(patch.position.x, patch.position.y);
+      }
+      if (patch.data && typeof patch.data === "object") {
+        Object.assign(this._entry.data, patch.data);
+      }
+      if (patch.transform && typeof patch.transform === "object") {
+        this._entry.transform = { ...patch.transform };
+      }
+    }
+
+    const boardApi = interaction?.context?.services?.boardApi;
+    if (boardApi && this.objectId != null) {
+      boardApi.modifyObject(this.objectId, patch);
+    }
+  }
+
+  /**
    * 卸载或结束 workflow 时撤销未提交对象
-   * @param {import("../../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void}
    */
   discardCreatedObjects(context = {}) {
-    const boardApi = context?.acc?.boardApi;
+    const boardApi = context?.services?.boardApi;
     if (boardApi && this.objectId != null) {
       boardApi.discardActiveObjects([this.objectId]);
     }
@@ -434,15 +499,16 @@ class ObjectCreatorTool extends GestureTool {
   /**
    * 解析已完成对象的局部外接矩形
    * @description
-   * 子类覆写此方法，在 `finalizeCreatedObject` 中被调用，
+   * 子类必须覆写此方法，在 `finalizeCreatedObject` 中被调用，
    * 将计算结果回填到 `this._entry.boundingBox`，使创建态条目
    * 可以被 modifier 直接消费（准入检测、overlay 渲染）。
    * @param {Object} interaction - 当前交互上下文
-   * @returns {{ left: number, top: number, width: number, height: number }|undefined} 局部外接矩形
+   * @returns {{ left: number, top: number, width: number, height: number }} 局部外接矩形
    * @protected
+   * @abstract
    */
   resolveCreatedObjectBoundingBox(interaction) {
-    return undefined;
+    throw new Error("Method not implemented.");
   }
 
   /**
@@ -462,17 +528,31 @@ class ObjectCreatorTool extends GestureTool {
    * 固化对象上下文（同步到 node state、标记完成）
    * @description
    * 无论后续是否 commit，此步骤始终执行。
-   * 同时回填 `boundingBox`，确保条目在后续 handoff 桥接时
-   * 携带完整的几何边界信息。
+   * 同时校验并回填 `boundingBox`，确保条目在后续 handoff 桥接时
+   * 携带完整的几何边界信息。entry 协议违例（type 不匹配、
+   * boundingBox 缺失）会抛错——modifier 的准入检测依赖这些字段，
+   * 缺失时宁可显式失败也不让对象静默不可选。
    * @param {Object} interaction - 当前交互上下文
    * @protected
    */
   finalizeCreatedObject(interaction) {
     const context = interaction?.context ?? {};
-    const boundingBox = this.resolveCreatedObjectBoundingBox(interaction);
-    if (boundingBox && this._entry) {
-      this._entry.boundingBox = boundingBox;
+
+    if (this._entry?.type !== this.getCreatedObjectType()) {
+      throw new Error(
+        `${this.constructor.name}: entry.type (${this._entry?.type}) must match getCreatedObjectType() (${this.getCreatedObjectType()}). ` +
+        "Check the `create()` implementation against the LightweightObjectEntry protocol.",
+      );
     }
+
+    const boundingBox = this.resolveCreatedObjectBoundingBox(interaction);
+    if (!boundingBox) {
+      throw new Error(
+        `${this.constructor.name}: resolveCreatedObjectBoundingBox() must return a bounding box. ` +
+        "The handoff/modifier admission check depends on entry.boundingBox.",
+      );
+    }
+    this._entry.boundingBox = boundingBox;
 
     this.syncCreatedObjectContext(context, this._entry);
     this.isObjectCreationCompleted = true;
@@ -483,15 +563,32 @@ class ObjectCreatorTool extends GestureTool {
    * @description
    * 仅当 {@link beforeCommitCreatedObject} 返回 true 时由
    * {@link completeCreatedObject} 调用。
+   * 提交回执（Worker 返回的实际提交 id 列表）用于对账：
+   * 期望 id 缺失时告警——正常路径已被创建失败兜底拦截，
+   * 此处是防止对象静默丢失的最后一张网。
    * @param {Object} interaction - 当前交互上下文
    * @protected
    */
   commitCreatedObject(interaction) {
     const context = interaction?.context ?? {};
-    const boardApi = context.acc?.boardApi;
+    const boardApi = context.services?.boardApi;
 
     if (boardApi && this.objectId != null) {
-      boardApi.commitObjects([this.objectId]);
+      const objectId = this.objectId;
+      Promise.resolve(boardApi.commitObjects([objectId]))
+        .then((committedIds) => {
+          if (Array.isArray(committedIds) && !committedIds.includes(objectId)) {
+            console.error(
+              `[Creator] Object ${objectId} was lost: commitObjects did not report it as committed.`,
+            );
+          }
+        })
+        .catch((error) => {
+          console.error(
+            `[Creator] Failed to commit object ${objectId}:`,
+            error,
+          );
+        });
     }
 
     this.clearContextObjects(context);
@@ -524,7 +621,7 @@ class ObjectCreatorTool extends GestureTool {
 
   /**
    * GestureTool 生命周期适配：完成 Creator 动作
-   * @param {import("../../devices-dag/dag.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
    * @returns {undefined}
    */
   completeAction(context = {}) {
@@ -545,9 +642,9 @@ class ObjectCreatorTool extends GestureTool {
     // finalize 总是执行
     this.finalizeCreatedObject(interaction);
 
-    // handoff 通过注入 autoCommit: false 阻止提前 commit
+    // handoff wrapper 通过将 autoCommit 置为 false 阻止提前 commit
     // 除此之外通过 beforeCommitCreatedObject 判断
-    const autoCommit = context?.acc?.autoCommit !== false;
+    const autoCommit = this.autoCommit !== false;
     if (autoCommit && this.beforeCommitCreatedObject(interaction) !== false) {
       this.commitCreatedObject(interaction);
     }
@@ -569,7 +666,7 @@ class ObjectCreatorTool extends GestureTool {
 
   /**
    * GestureTool 生命周期适配：丢弃当前创建对象
-   * @param {import("../../devices-dag/dag.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
    * @returns {void}
    * @protected
    */
@@ -589,6 +686,8 @@ class ObjectCreatorTool extends GestureTool {
    * @protected
    */
   _onEnd(interaction) {
+    this._hasCreationFailed = false;
+
     if (this.isGestureActive) {
       this.completeGesture(interaction);
       this.isGestureActive = false;
@@ -625,7 +724,7 @@ class ObjectCreatorTool extends GestureTool {
 
   /**
    * 工具节点被卸载时撤销未提交对象
-   * @param {import("../../devices-dag/dag.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void}
    */
   umount(context = {}) {
@@ -636,6 +735,7 @@ class ObjectCreatorTool extends GestureTool {
     this.isGestureActive = false;
     this.isObjectCreationCompleted = false;
     this._pendingActionInteraction = null;
+    this._hasCreationFailed = false;
     super.umount(context);
   }
 }
@@ -667,6 +767,8 @@ class MultiGestureObjectCreatorTool extends ObjectCreatorTool {
    * @protected
    */
   _onEnd(interaction) {
+    this._hasCreationFailed = false;
+
     if (!this.isGestureActive) {
       return;
     }
@@ -735,5 +837,4 @@ export {
   ObjectCreatorTool,
   SingleGestureObjectCreatorTool,
   MultiGestureObjectCreatorTool,
-  OBJECT_CREATOR_SIGNAL_TYPES,
 };

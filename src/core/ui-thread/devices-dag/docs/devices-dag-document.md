@@ -10,7 +10,7 @@ DevicesDAG 是 Core 输入系统唯一的分发引擎。
 - 每个命中的节点通过 `DevicesDAGNode.dispatch` 递归路由到子节点
 - 每个命中的节点都可以执行自己的 `handler`
 - `handler` 只能把后续包继续发给当前节点的后继节点
-- 累积上下文通过 `acc` 沿当前路由链逐层追加，不能覆盖已有键
+- 静态服务上下文通过节点 `services` 声明式注入，沿 DAG 路径累积
 - 需要可变共享数据时使用节点 `state`
 - 同一个节点允许被多条路径到达，节点状态按节点身份共享，而不是按路径复制
 
@@ -32,6 +32,20 @@ DevicesDAG 不负责：
 - 从 DOM 事件直接生成设备信号
 - 判断某个输入属于哪个 Viewport
 - 决定业务工具如何修改对象或视口
+
+### 四类角色
+
+设备图上的参与者分为四类角色：
+
+| 角色               | 职责                                    | 形态                            |
+| ------------------ | --------------------------------------- | ------------------------------- |
+| 设备（device）     | 外部事件 → 语义信号；反向通知外部       | `SubDAGDefinition`              |
+| 修饰节点（prefix） | 记录、参数注入、边级转换、局部路由      | 带 `semantics.prefix` 的节点    |
+| 工具（tool）       | 末端消费信号，修改白板或视口            | `Tool` 实例                     |
+| **wrapper**        | 复合设备 / 组合子：顺序或互斥组合子工具 | `WrapperTool` 子类（单个 Tool） |
+
+wrapper 是第四角色：它对外呈现为普通 `Tool`，内部把多个子工具组合为一个整体。
+详见 [wrapper 文档](../tools/wrapper/docs/wrapper-document.md)。
 
 ## 节点路由能力
 
@@ -65,12 +79,11 @@ DevicesDAG 不负责：
 
 ### 结果规整
 
-handler 的原生返回值可以是多种形式——单个 `SignalPacket`、数组、纯对象、`undefined` 等——但分发引擎只认经过 `normalizeHandlerResult()` 规整后的四个**稳定结果字段**：
+handler 的原生返回值可以是多种形式——单个 `SignalPacket`、数组、纯对象、`undefined` 等——但分发引擎只认经过 `normalizeHandlerResult()` 规整后的三个**稳定结果字段**：
 
 | 字段       | 类型             | 含义                           | 对分发引擎的影响                                                     |
 | ---------- | ---------------- | ------------------------------ | -------------------------------------------------------------------- |
 | `packets`  | `SignalPacket[]` | 继续路由到后继节点的信号包列表 | 第一个包作为主包继续下传；其余排入延迟路由队列，待主链结束后依次分发 |
-| `acc`  | `Object`         | 要追加到累积上下文的键值对     | 合并到累积上下文供下游节点读取；已有键重复则抛错                     |
 | `redirect` | `string`         | 改写主链接下来的路径段         | 把当前路径的剩余段全部替换为指定路径，继续分发                       |
 | `stop`     | `boolean`        | 强制终止当前链路               | 立即结束当前链路，不再向下路由                                       |
 
@@ -79,7 +92,11 @@ handler 的原生返回值可以是多种形式——单个 `SignalPacket`、数
 **1. `packets` 路由规则**
 
 - handler 返回了 `packets`，则提取第一个作为主包继续主链，其余放入延迟路由队列
-- 主包的 `to` 字段决定下一段路径；若无 `to` 且节点有 `defaultRoute`，则走默认出边
+- 主包的 `to` 字段决定下一段路径；主包 `to` 为空时按优先级依次适用：
+  - 节点有 `defaultRoute` → 走默认出边
+  - 无剩余路径段 → 主包成为终结包，计入 dispatch 返回值
+  - 否则 → **就地替换信号**：保留原包的路由信息（`to` 不变），仅将信号替换为 handler 返回的信号，沿剩余路径继续下传。这是 prefix“原地转换信号”语义：返回 `{ signals: [...] }` 即可让下游收到转换后的信号
+- 延迟队列中的额外包：`to` 非空时按 `to` 延迟分发；`to` 为空时沿主包生效路径延迟分发，主链已到叶子时转为终结包
 - 若 handler 显式返回空 `packets`（`return { packets: [] }`），则终止当前链路
 - 若 handler 无返回值（未显式声明 packets），链路按默认行为继续
 
@@ -93,19 +110,11 @@ handler 的原生返回值可以是多种形式——单个 `SignalPacket`、数
 - `redirect` 的优先级高于主包 `to` 和节点 `defaultRoute`
 - `redirect` 和主包 `to` 同时存在时，后者覆盖前者（redirect 先作用，主包 to 再覆盖）
 
-**4. `acc` 合并规则**
-
-- 仅在当前节点追加，不可覆盖已有键（重复键抛错）
-- 即使当前链路因 `stop` 或边缺失而终止，累积的上下文仍会随结果返回
-
 ### 返回值样例
 
 ```js
 // 基础：继续走默认出边
 return { packets: [new SignalPacket("", packet.signals)] };
-
-// 注入上下文给下游节点
-return { acc: { onToolComplete: () => console.log("done") } };
 
 // 改写后续路由
 return { redirect: "alternate-child" };
@@ -133,16 +142,16 @@ return { stop: true };
 - `resolvedDefaultRoutePath`
 - `depth`：当前路由深度
 - `signalPacket`：当前信号包
-- `acc`：累积上下文
+- `services`：静态服务上下文
 - `getNodeState(pathOrId?)`
 - `setNodeState(pathOrId, state)`
 
-这里有两条边界需要明确：
+这里有两条原则需要明确：
 
-- `acc` 是逐层追加的只读视图。上游节点可通过返回 `{ acc: { key: value } }` 注入数据，下游节点只能读取，不能覆盖已有键。
+- `services` 是声明式的——由节点定义注入，handler 返回值无法写入。
 - 需要可变共享数据时，应显式写入节点 `state`。例如对象桥接、拖拽锚点、局部状态机都应落在节点状态里。
 
-如果一条链路需要“向上通知”，当前推荐做法不是返回向上的 `to`，而是在 `acc` 里注入回调函数，例如 `onToolComplete`。
+如果一条链路需要"向上通知"，推荐做法是使用事件钩子（如 `action:complete`）。
 
 ## 状态模型与约定
 
@@ -150,19 +159,18 @@ return { stop: true };
 
 ### 三种状态
 
-| 状态类别       | 存储位置               | 作用域                        | 读写规则                           | 生命周期             |
-| -------------- | ---------------------- | ----------------------------- | ---------------------------------- | -------------------- |
-| **累积上下文** | `handlerContext.acc`   | 当前分发链路                  | 上游注入，下游只读；不可覆盖已有键 | 单次 `dispatch`      |
-| **节点状态**   | `DevicesDAGNode.state` | 全图可读；由节点 handler 拥有 | 外部优先只读；写入由 handler 控制  | 节点存续期间         |
-| **闭包状态**   | handler 工厂闭包       | 仅 handler 自身可访问         | 彻底私有，外部不可见不可写         | handler 实例存续期间 |
+| 状态类别           | 存储位置                  | 作用域                        | 读写规则                          | 生命周期             |
+| ------------------ | ------------------------- | ----------------------------- | --------------------------------- | -------------------- |
+| **静态服务上下文** | `handlerContext.services` | 沿 DAG 路径静态累积           | 节点定义注入，handler 只读        | 节点存续期间         |
+| **节点状态**       | `DevicesDAGNode.state`    | 全图可读；由节点 handler 拥有 | 外部优先只读；写入由 handler 控制 | 节点存续期间         |
+| **闭包状态**       | handler 工厂闭包          | 仅 handler 自身可访问         | 彻底私有，外部不可见不可写        | handler 实例存续期间 |
 
-### 三种状态的分工
+### 状态的分工
 
-**累积上下文** 适合沿链路传递一次性的决策信息：
+**静态服务上下文** 适合放：
 
-- 共享资源引用（`board`、`viewport`、`renderer`）
-- 向上通知的回调函数（`onToolComplete`）
-- 链路级别的元数据标记
+- 共享资源引用（`board`、`boardApi`、`viewport`）
+- 任何与路由决策无关的只读基础设施依赖
 
 **节点状态** 适合需要长期维护且允许外部观察的数据：
 
@@ -179,14 +187,51 @@ return { stop: true };
 
 ### 节点状态的写入约定
 
-节点状态由**该节点的 handler 拥有**。读写规则如下：
+节点状态是**拥有者发布的只读投影**（真理源在拥有者的闭包 / 实例字段）。读写规则如下：
 
 - **读取**：任何代码可以通过 `dag.getNodeState(path)` 或 `handlerContext.getNodeState(path)` 读取任意节点的状态。这是节点状态区别于闭包状态的核心价值——可外部观察。
-- **写入自身**：handler 通过 `handlerContext.setNodeState(handlerContext.path, state)` 写入当前节点的状态。这是最常用的写入方式。
-- **跨节点写入**：仅允许**父节点协调子节点状态**的场景（如 handoff-handler 中父 prefix 切换子节点 phases 时转移数据），属于父节点对其子树的协调职责。除此之外，不应随意写入其他节点的状态。
-- **外部写入**：非 handler 代码不应直接调用 `dag.setNodeState()` 写入。若确有需要（如测试、初始化），应通过图配置层面的 API 完成，而非直接操作节点状态。
+- **发布（写入自身）**：handler 通过 `handlerContext.setNodeState(handlerContext.path, state)` / `patchState` 发布自己节点的投影。这是唯一合法的写入方式。
+- **跨节点写入**：禁止。`ctx.setNodeState` / `ctx.delNodeState` 写入非自身节点时，strict 模式抛错，非 strict 模式经 log 工具告警。需要影响其他节点时，应通过信号或事件传递，而不是直接改对方状态。
+- **外部写入**：非 handler 代码不应直接调用 `dag.setNodeState()` 写入——投影由拥有者发布，外部写入不产生真实效果，且会被下次发布覆盖。
 
-简而言之，闭包存实现细节，节点状态存可观察数据。节点状态由 handler 拥有，外部只读优先。
+简而言之：闭包管对错（真理源），state 管看见（只读投影）。
+
+## 设计判据（并发论点）
+
+设备图中的节点与路径支持并发路由——同一时间可以有多条路径同时活跃：fan-out 一对多分发、多入边汇聚、多指并发输入。
+
+由此得到一条核心判据：
+
+- **图表达并发拓扑**：fan-out、汇聚、多路径并发必须用图表达，这是图结构不可替代的能力。
+- **wrapper 表达顺序/互斥组合**：1-of-N 互斥选择（tool-switcher）和 first→second 顺序流（handoff）不利用图的并发能力，应塌缩为 wrapper，作为单个 Tool 节点挂载。
+- **判据**：一个节点只有参与多路径拓扑时才配得上成为图节点。
+
+Unix 类比：管线 `a | b | c` 组合出来本身仍是一条命令，可以再进管线——handoff / tool-switcher 就是这种"打包好的管线"：内部是多步组合，对外是单个可挂载单元。
+
+## 信号解释的三层机制
+
+「信号 → 语义」的解释工作分布在三层机制上，按职责选址：
+
+- **prefix（图级信号流变换）**：变换需要参与路由、被多个下游复用、或发生在任何具体工具之外时使用。
+  例：random-circle 把 `trigger` 编译为 `position` 序列喂给下游工具。
+- **processor（工具内手势解释）**：绑定特定数据创建器、把 `position` 流编译为 `modifyObject` 补丁、
+  不参与路由时使用。例：circle 的圆心半径 / 直径手势、ellipse 的外接矩形手势。
+- **wrapper（顺序/互斥组合）**：不解释信号，只做工具组合的编排（handoff 顺序流、tool-switcher 互斥路由）。
+
+prefix 与 processor 是同构的信号编译器——都是纯函数式的「信号流 → 语义输出」——
+分别住在图节点与工具内部。选址判据：**需要路由与跨节点复用选 prefix，绑定单一工具选 processor。**
+
+## 信号类型注册表
+
+信道上跑的信号类型有单一事实源：`dag-core/signal-types.js` 的 `SIGNAL_TYPES`。
+
+- **框架级信号类型必须使用注册表**：设备 / 工具 / wrapper 生产或消费框架级信号时，
+  从 `SIGNAL_TYPES` 取值（`POSITION` / `END` / `CANCEL` / `TOOL_SWITCH` / `TRIGGER` 等），
+  禁止在模块内另起本地枚举。注册表逐条注明信道方向与 payload 契约。
+- **应用级自定义类型不进注册表**：demo / 应用层的私有信号（如 `radius`、`debug:*`）
+  由应用层自行声明，与框架契约隔离。
+- 测试构造原始信号包时使用字符串字面量（`"position"`、`"tool-switch"`），
+  作为线上协议值的独立见证；注册表自身有键值锁定测试防漂移。
 
 ## 路由规则
 
@@ -199,7 +244,7 @@ return { stop: true };
 5. 若 `handler` 返回多个包，dispatcher 会保留返回顺序，先完成主链，再按顺序处理额外包。
 6. 若某一段路径不存在，则当前链路在该处终止，并返回已收集结果或一个 `to: ""` 的叶子包。
 7. 若返回 `stop: true`，则当前链路立即结束。
-8. 同一节点可被多条路径命中，但单次 dispatch 的 `acc` 只沿当前路由链累积。
+8. 同一节点可被多条路径命中，但单次 dispatch 的 services 只沿当前路由链累积。
 
 ## 修饰节点语义
 
@@ -209,7 +254,6 @@ return { stop: true };
 - 注入或改写信号字段
 - 维护局部状态机
 - 决定当前信号应路由到哪个子节点
-- 通过 `acc` 注入回调，把局部决策传给下游节点
 
 当前实现里，prefix 不需要新的节点类。
 
@@ -223,12 +267,11 @@ return { stop: true };
 
 当前使用的取值：
 
-| 值                | 含义                                      | 示例                                                                                        |
-| ----------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `"inject"`        | 拦截上游信号后从零生成新信号注入子节点    | `random-circle-generator`：拦截 trigger → 随机计算 position/radius/property → 注入给 params |
-| `"transform"`     | 接收上游信号做变换后转发                  | `circle-params`：接收 position+radius → 变换为三阶段信号的 sequence                         |
-| `"state-machine"` | 节点维护局部状态机，按状态决定路由        | `handoff-handler`：根据 phase 状态在不同子节点间切换                                        |
-| `"inspect"`       | 被动观测/记录信号元数据，原样转发给子节点 | `debug` prefix：记录 entryIndex/path/originalTo 后原样路由到 report 子节点                  |
+| 值            | 含义                                      | 示例                                                                                        |
+| ------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `"inject"`    | 拦截上游信号后从零生成新信号注入子节点    | `random-circle-generator`：拦截 trigger → 随机计算 position/radius/property → 注入给 params |
+| `"transform"` | 接收上游信号做变换后转发                  | `circle-params`：接收 position+radius → 变换为三阶段信号的 sequence                         |
+| `"inspect"`   | 被动观测/记录信号元数据，原样转发给子节点 | `debug` prefix：记录 entryIndex/path/originalTo 后原样路由到 report 子节点                  |
 
 `prefixKind` 则是更细粒度的业务角色标签（如 `"random-circle-generator"`、`"circle-params"`），用于在日志/调试中快速识别前缀节点类型。
 
@@ -271,6 +314,10 @@ workflow 节点统一挂载到 `/<viewportId>/workflows/` 路径下，通过有�
 ```
 
 `mountWorkflow` 的第一个参数现在是 workflow 在 `/workflows/` 下的路径，不再是设备子路径。设备节点与 workflow 的连接通过 `addEdge` 在 wiring 层完成。
+
+需要把工具挂到子图内部的已存在节点时，`InputScope.mountWorkflow` 的 name 支持嵌套路径（如 `"parent-workflow/child"`），同样走完整挂载契约。
+
+> **handler 写入约定**：节点的 `handler` 只允许通过 `mountWorkflow`（或子图定义中的 `builder.node().handler()`）写入。禁止直接给 `node.handler` 赋值——那会绕过 tool 实例注册与 umount 钩子链，导致卸载行为不一致。
 
 ### 独立子图实例化
 
@@ -330,18 +377,19 @@ viewport.addEdge(
 - Viewport 只做代理入口，不再拥有独立设备路由器
 - 路由始终逐层向下，不支持向上或跨兄弟节点跳转
 - 工具共享状态必须显式写入节点 `state`
-- 累积上下文只能追加，不能覆盖
 - `handler` 与 `tool` 不能在同一结构化节点上同时声明
 - 节点身份由 id 决定，路径只是一条可达路由表示
 - `addEdge()` 和 `mountSubDAG()` 在形成环时直接抛错，不允许构造 cyclic 图
-- DAG handler 必须是同步函数；返回 Promise 会在 strict 模式下抛错，非 strict 模式下静默忽略
-- `DevicesDAG` 构造选项 `strict: true` 时，handler 报错直接抛出而非 `console.error` 吞掉
+- DAG handler 必须是同步函数；返回 Promise 会在 strict 模式下抛错，非 strict 模式下经 log 工具告警后忽略
+- `DevicesDAG` 构造选项 `strict: true` 时，handler 报错直接抛出；非 strict 模式下经 log 工具（`utils/log`）记录后继续
+- `dispose` / `umount` 钩子抛错不中断卸载链，错误经 log 工具按 WARN 级记录
 
 ## 相关文档
 
 - [handler 上下文（ctx）用法](./handler-context-document.md)
 - [状态模型](./state-model-document.md)
 - [设备定义](../devices/docs/device-document.md)
+- [wrapper（复合设备）](../tools/wrapper/docs/wrapper-document.md)
 - [设备图示例](./devices-dag-example.md)
 - [对象创建工具](../tools/creator/docs/object-creator-document.md)
 - [对象选择工具](../tools/chooser/docs/object-chooser-document.md)

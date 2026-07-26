@@ -9,16 +9,25 @@
 
 import { CounterPool } from "../../../engine/utils/counter-pool.js";
 import { EventBus } from "../../../engine/utils/event-bus.js";
+import { SharedStateStore } from "../../../engine/utils/shared-state-store.js";
 import { DevicesDAG } from "../../devices-dag/index.js";
 import { BoardApiRpc } from "../../../bridges/board-api-rpc.js";
 import { Viewport } from "./viewport.js";
 import { joinPath } from "../../../engine/utils/path.js";
+import { Logger } from "../../../../utils/log/logger.js";
+import { logBus } from "../../../../utils/log/log-bus.js";
+
+/**
+ * Board 日志
+ * @type {Logger}
+ */
+const boardLog = new Logger("Board", "WARN", logBus);
 
 /**
  * Board 运行时节点配置事件载荷。
  * @typedef {Object} BoardConfigureEventPayload
  * @property {string} to - 目标设备图节点绝对路径，必须包含 viewportId
- * @property {import("../../devices-dag/dag.js").DevicesDAGNodeConfig} options - 要更新到节点上的配置片段；`defaultRoute` 传 `null` 或空串表示清空，`handler` 传 `null` 表示清空
+ * @property {import("../../devices-dag/dag-type.js").DevicesDAGNodeConfig} options - 要更新到节点上的配置片段；`defaultRoute` 传 `null` 或空串表示清空，`handler` 传 `null` 表示清空
  */
 
 /**
@@ -79,6 +88,15 @@ class Board {
   devicesDAG;
 
   /**
+   * 跨信道会话状态的共享存储
+   * @description
+   * 服务于"多个设备与图外 UI 必须达成一致"的场景（如按钮组与工具栏高亮）。
+   * 多写者 LWW，订阅同步通知；DAG 内经 `services.sharedState` 注入。
+   * @type {SharedStateStore}
+   */
+  sharedState;
+
+  /**
    * 对象 id 池
    * @type {CounterPool}
    */
@@ -107,11 +125,17 @@ class Board {
       maxDispatchDepth: 32,
       strict: globalThis.__JEST__ === true,
     });
+    this.sharedState = new SharedStateStore();
 
-    // 根节点 handler：注入全局共享上下文
+    // 根节点 services：声明全局共享基础设施依赖
+    const board = this;
     this.devicesDAG.configureNode("/", {
-      handler: (_pkt, _ctx) => {
-        return { acc: { board: this, boardApi: this.#boardApi } };
+      services: {
+        board,
+        sharedState: this.sharedState,
+        get boardApi() {
+          return board.getBoardApi();
+        },
       },
     });
 
@@ -235,7 +259,7 @@ class Board {
 
     this.viewports.set(viewportId, viewport);
     this.devicesDAG.configureNode(viewportId, {
-      handler: () => ({ acc: { viewport } }),
+      services: { viewport },
       semantics: { viewport: true },
     });
 
@@ -257,12 +281,17 @@ class Board {
 
   /**
    * 绑定信道相关事件
+   * @description 单个信号包的分发失败只记录日志，不中断输入循环。
    * @private
    */
   #bindSignalsEventBus() {
     // input 事件负责将信号送往对应节点
     this.signalsEventBus.on("input", ({ to, signals }) => {
-      this.devicesDAG.dispatch({ to, signals });
+      try {
+        this.devicesDAG.dispatch({ to, signals });
+      } catch (error) {
+        boardLog.error(`dispatch failed for "${to}":`, error);
+      }
     });
   }
 

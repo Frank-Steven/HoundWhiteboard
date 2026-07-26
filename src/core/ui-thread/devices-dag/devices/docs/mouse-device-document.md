@@ -64,23 +64,34 @@ flowchart LR
 
 坐标转换规则：`worldX = canvasX / viewport.zoom + viewport.origin.x`，`worldY = canvasY / viewport.zoom + viewport.origin.y`。
 
-视口实例来自 `ctx.acc.viewport`（由上游 `/<viewportId>` 节点注入）。如果视口不可达，信号原样透传，不发生转换报错。
+视口实例来自 `ctx.services.viewport`（由上游 `/<viewportId>` 节点声明）。如果视口不可达，信号原样透传，不发生转换报错。
 
 ### 路由规则
 
-根节点接收输入包后，按以下规则决定下一跳路由：
+根节点接收输入包后，**按信号类型拆分路由**，各通道只收到属于自己的信号列表：
 
-- 包含 `position` 信号 → 路由到 `pointer` 通道
-- 包含 `wheel` 信号 → 路由到 `wheel` 通道
-- 通道活跃判定：如果某个按钮在上次处理前后状态为按下，或本次刚释放，则路由对应的按钮通道
+| 信号类型         | 路由目标                                         |
+| ---------------- | ------------------------------------------------ |
+| `position`       | `pointer` 通道 + 活跃按钮通道                    |
+| `wheel`          | `wheel` 通道 + 活跃按钮通道                      |
+| `end` / `cancel` | 仅 `context.button` 归属的按钮通道（见下方说明） |
+| 其他类型         | 活跃按钮通道                                     |
 
-| 通道        | 路由条件                                                                            |
-| ----------- | ----------------------------------------------------------------------------------- |
-| `pointer`   | 包中有 `position` 信号                                                              |
-| `primary`   | `previousButtons.primary` 或 `nextButtons.primary` 或 `endedChannels.primary`       |
-| `secondary` | `previousButtons.secondary` 或 `nextButtons.secondary` 或 `endedChannels.secondary` |
-| `auxiliary` | `previousButtons.auxiliary` 或 `nextButtons.auxiliary` 或 `endedChannels.auxiliary` |
-| `wheel`     | 包中有 `wheel` 信号                                                                 |
+通道活跃判定：`previousButtons[channel]` 或 `nextButtons[channel]` 为真（按钮在上次处理前或本次处理后处于按下状态）。
+
+**end/cancel 的归属路由**：
+
+- `end` / `cancel` 信号是手势终止事件，只路由到 `context.button`（0 / 1 / 2 → primary / auxiliary / secondary）归属的通道，**不会广播到所有活跃通道**——多键同按时，松开某键的 end 不会提前终结其他仍按住按钮的手势
+- 无按钮信息的 end/cancel（`button` 为 -1 或缺失，如 pointerleave / blur）广播到所有活跃通道，保留“终结全部手势”的兑底语义
+- 例：按住右键（secondary 框选中）再松开左键，`end(button=0)` 仅路由到 primary 通道，secondary 的框选手势不受影响
+
+**end 信号的合成（不依赖事件源派发）**：
+
+设备以自身按钮状态机的 `buttons` 位掩码 **1→0 跳变**为准合成 end——某些环境（如多键同按时浏览器不逐键派发 pointerup）下事件源可能不产出 end 信号，手势因此永远不结束。只要某个按键松开了，下一个带来新掩码的事件就会触发合成：
+
+- 合成条件：某通道按钮由按下变为未按下，且本包内没有覆盖该通道的显式 end/cancel
+- 已被显式 end/cancel 覆盖的通道不重复合成；无归属广播 end 抑制全部合成
+- 合成信号形如 `{ type: "end", context: { button, buttons, synthetic: true } }`，按归属路由规则送达对应通道
 
 ### 按钮状态推导
 

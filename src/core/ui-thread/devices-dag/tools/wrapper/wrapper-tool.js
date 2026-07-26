@@ -1,0 +1,289 @@
+/**
+ * @file 包装器工具基座
+ * @description 提供将多个子工具作为内部槽位托管的 wrapper tool 基类。
+ * @module core/ui-thread/devices-dag/tools/wrapper/wrapper-tool
+ * @author Zhou Chenyu
+ */
+
+import { SignalPacket } from "../../dag-core/signal.js";
+import { DevicesDAGNode } from "../../dag-core/dag-node-edge.js";
+import { isPlainObject } from "../../dag-core/dag-utils.js";
+import { Tool } from "../tool.js";
+
+/**
+ * 包装器工具基类
+ * @class
+ * @abstract
+ * @extends Tool
+ * @description
+ * WrapperTool 将一组子工具托管为内部槽位（slot），每个槽位由一个
+ * 不进入真实 DAG 的 shell 节点承载，wrapper 通过 {@link DevicesDAGNode#dispatch}
+ * 将信号转发到目标槽位。
+ *
+ * 槽位分两类：
+ * - **静态 tool 槽位**（`_addSlot`）：由 Tool 实例创建 shell 节点，
+ *   槽位生命周期与 wrapper 一致（handoff / switcher）
+ * - **动态 node 槽位**（`_addNodeSlot`）：登记外部工厂已构建好的多节点
+ *   子图入口节点，槽位随外部条件动态创建销毁（multi-tool 的 per-touch 子图）
+ *
+ * 状态隔离机制：shell 节点不属于任何 DAG（`dag=null`），dispatch 时
+ * handlerContext 的 state 读写降级为 shell 节点自身的 `state`，因此各槽位
+ * 子工具的节点状态天然隔离。禁止用虚拟路径调真实 `dag.setNodeState` 模拟子节点。
+ *
+ * 可观察性约定：shell 节点不在真实 DAG 中，原 DAG 结构可观察性丢失，
+ * 子类必须把可观察状态（如 phase / activeName）通过 `context.patchState`
+ * 镜像到 wrapper 自己的节点 state；同时子类必须提供 `getDebugInfo()` 供调试。
+ */
+class WrapperTool extends Tool {
+  /**
+   * 子工具槽位表
+   * @type {Map<string, { node: DevicesDAGNode, tool: Tool|null, processor: Function|null }>}
+   */
+  #slots = new Map();
+
+  /**
+   * shell 节点 id 分配计数器
+   * @type {number}
+   */
+  #nextSlotNodeId = 0;
+
+  /**
+   * 最近一次 process/dispatch 时的 services，供完成回调使用
+   * @type {Object|null}
+   */
+  #latestServices = null;
+
+  /**
+   * 添加一个子工具槽位
+   * @description
+   * 创建不进入真实 DAG 的 shell 节点，`shell.handler = tool.createProcessor()`。
+   * shell 节点的 `dag` 为 null，其 dispatch 上下文的 state 读写落在 shell 节点
+   * 自身 state 上，与其他槽位互不干扰。
+   * @param {string} scopeId - 槽位标识
+   * @param {Tool} tool - 子工具实例
+   * @returns {{ node: DevicesDAGNode, tool: Tool, processor: Function }} 新建的槽位
+   * @protected
+   */
+  _addSlot(scopeId, tool) {
+    const shell = new DevicesDAGNode(this.#nextSlotNodeId++);
+    const processor = tool.createProcessor();
+    shell.handler = processor;
+
+    const slot = { node: shell, tool, processor };
+    this.#slots.set(scopeId, slot);
+    return slot;
+  }
+
+  /**
+   * 登记一个预构建的子图入口节点槽位
+   * @description
+   * 与 `_addSlot` 并存：`_addSlot` 服务「Tool 实例 → shell 节点」的静态槽位，
+   * 本方法服务「外部工厂已构建好多节点子图」的动态槽位——入口节点由调用方
+   * 构建并持有完整子图拓扑（outEdges），wrapper 只负责登记与信号转发。
+   * 槽位形状为 `{ node, tool: null, processor: node.handler ?? null }`，
+   * 无 Tool 实例可持有；子图的递归清理由子类覆写 `_teardownSlot` 完成。
+   * @param {string} scopeId - 槽位标识
+   * @param {DevicesDAGNode} node - 预构建的子图入口节点
+   * @returns {{ node: DevicesDAGNode, tool: null, processor: Function|null }} 新建的槽位
+   * @protected
+   */
+  _addNodeSlot(scopeId, node) {
+    const slot = { node, tool: null, processor: node.handler ?? null };
+    this.#slots.set(scopeId, slot);
+    return slot;
+  }
+
+  /**
+   * 获取指定槽位
+   * @param {string} scopeId - 槽位标识
+   * @returns {{ node: DevicesDAGNode, tool: Tool|null, processor: Function|null }|undefined} 槽位或 undefined
+   * @protected
+   */
+  _getSlot(scopeId) {
+    return this.#slots.get(scopeId);
+  }
+
+  /**
+   * 列出全部已实例化槽位的标识
+   * @returns {string[]} 槽位标识列表
+   * @protected
+   */
+  _listSlotIds() {
+    return [...this.#slots.keys()];
+  }
+
+  /**
+   * 读取最近一次 dispatch 时的 services
+   * @returns {Object|null}
+   * @protected
+   */
+  _resolveLatestServices() {
+    return this.#latestServices;
+  }
+
+  /**
+   * 将信号包分发到指定槽位
+   * @description
+   * services 从父上下文透传并缓存为最近一次 services（供完成回调使用）；
+   * 子上下文路径为 `${parentContext.path}/${scopeId}`，仅作标识用途。
+   * @param {string} scopeId - 槽位标识
+   * @param {SignalPacket|Object} packet - 输入信号包
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [parentContext={}] - 父级处理器上下文
+   * @returns {*} dispatch 结果
+   * @protected
+   */
+  _dispatchToSlot(scopeId, packet, parentContext = {}) {
+    const slot = this.#slots.get(scopeId);
+    if (!slot) {
+      return undefined;
+    }
+
+    if (parentContext?.services) {
+      this.#latestServices = parentContext.services;
+    }
+
+    return slot.node.dispatch(SignalPacket.from(packet), {
+      services: parentContext?.services,
+      path: `${parentContext?.path ?? ""}/${scopeId}`,
+    });
+  }
+
+  /**
+   * 构造面向指定槽位的工具调用上下文
+   * @description
+   * 形状对齐真实 DAG 的 handlerContext：state 读写落在槽位 shell 节点自身 state 上
+   * （`dag` 恒为 null，状态不会穿透到真实 DAG），services 从父上下文透传。
+   * 用于在信号分发之外直接调用子工具的生命周期方法（如 `endAction` / `cancelAction` / `discardAction`），
+   * 保证子工具在这些路径上的状态读写与信号流程中一致。
+   * @param {string} scopeId - 槽位标识
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [parentContext={}] - 父级处理器上下文
+   * @returns {Object} 槽位作用域上下文
+   * @protected
+   */
+  _buildSlotContext(scopeId, parentContext = {}) {
+    const slot = this.#slots.get(scopeId);
+    const services = parentContext?.services ?? {};
+    const path = `${parentContext?.path ?? ""}/${scopeId}`;
+    if (!slot) {
+      return { services, path };
+    }
+
+    const node = slot.node;
+    const readState = () => ({ ...node.state });
+
+    /**
+     * 写入槽位 shell 节点状态
+     * @param {Object} state - 新状态
+     * @returns {Object} 写入后的状态
+     */
+    const writeState = (state) => {
+      node.state = isPlainObject(state) ? { ...state } : {};
+      return { ...node.state };
+    };
+
+    return {
+      node,
+      dag: null,
+      path,
+      services,
+      semantics: { ...node.semantics },
+      state: readState(),
+      getState: readState,
+      setState: writeState,
+      patchState(partial = {}) {
+        return writeState(
+          isPlainObject(partial) ? { ...node.state, ...partial } : node.state,
+        );
+      },
+      getNodeState: () => readState(),
+      setNodeState: (_pathOrId, state) => writeState(state),
+      delNodeState(_pathOrId, ...keys) {
+        for (const key of keys) delete node.state[key];
+      },
+      routeToChild: (to, signals) => ({
+        packets: [new SignalPacket(to, signals)],
+      }),
+      stop: () => ({ packets: [] }),
+      signal(type, value, extra) {
+        const base = isPlainObject(extra) ? { ...extra } : {};
+        if (value !== undefined) base.value = value;
+        return { type, context: base };
+      },
+    };
+  }
+
+  /**
+   * 清理单个槽位占用的资源
+   * @description
+   * 默认实现先调用 `slot.processor?.dispose?.(context)`，再以槽位上下文调用
+   * `slot.tool?.umount(...)`（与 DAG 挂载路径的卸载契约对齐）；
+   * 任一环节抛错均吞掉，避免单个槽位的清理失败中断其余槽位。
+   * 子类可覆写本钩子扩展清理逻辑（如沿子图 outEdges 递归 dispose），
+   * 覆写时应自行保证容错，不要抛出异常。
+   * @param {{ node: DevicesDAGNode, tool: Tool|null, processor: Function|null }} slot - 待清理的槽位
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @param {string} [scopeId] - 槽位标识（用于构造槽位上下文）
+   * @protected
+   */
+  _teardownSlot(slot, context = {}, scopeId) {
+    try {
+      slot.processor?.dispose?.(context);
+    } catch {
+      // dispose 错误不中断其余槽位清理
+    }
+    if (slot.tool) {
+      try {
+        slot.tool.umount(
+          scopeId ? this._buildSlotContext(scopeId, context) : context,
+        );
+      } catch {
+        // umount 错误不中断其余槽位清理
+      }
+    }
+  }
+
+  /**
+   * 销毁指定槽位
+   * @description 先经 `_teardownSlot` 钩子清理槽位资源，再从槽位表删除。
+   * @param {string} scopeId - 槽位标识
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @returns {void}
+   * @protected
+   */
+  _disposeSlot(scopeId, context = {}) {
+    const slot = this.#slots.get(scopeId);
+    if (!slot) {
+      return;
+    }
+
+    this._teardownSlot(slot, context, scopeId);
+    this.#slots.delete(scopeId);
+  }
+
+  /**
+   * 销毁全部槽位
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @returns {void}
+   * @protected
+   */
+  _disposeAllSlots(context = {}) {
+    for (const scopeId of [...this.#slots.keys()]) {
+      this._disposeSlot(scopeId, context);
+    }
+  }
+
+  /**
+   * 工具节点被卸载时执行清理
+   * @description
+   * 先走基类卸载契约（取消活跃动作 + 调用覆写的 `reset`），再 dispose 全部槽位
+   * （各槽位子工具的 `umount` 随 `_teardownSlot` 一并执行）。
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @returns {void}
+   */
+  umount(context = {}) {
+    super.umount(context);
+    this._disposeAllSlots(context);
+  }
+}
+
+export { WrapperTool };

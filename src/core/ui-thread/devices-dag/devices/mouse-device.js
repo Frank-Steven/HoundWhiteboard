@@ -13,7 +13,7 @@ import { DEVICE_DEFAULT_ROUTE } from "./constant.js";
  * @description
  * 五个通道路由节点（pointer / primary / secondary / auxiliary / wheel）
  * 均只设 defaultRoute = "default"，不再接受外部 processor 定制。
- * @returns {import("../devices-dag/dag.js").SubDAGDefinition & {
+ * @returns {import("../dag-type.js").SubDAGDefinition & {
  *   resetState: () => void,
  *   getState: () => {
  *     activeButtons: {primary: boolean, secondary: boolean, auxiliary: boolean},
@@ -102,15 +102,6 @@ function createMouseDevice() {
   });
 
   /**
-   * 判断一个信号包中是否包含指定类型的信号
-   * @param {SignalPacket} packet - 当前信号包
-   * @param {string} type - 目标信号类型
-   * @returns {boolean}
-   */
-  const hasSignalType = (packet, type) =>
-    packet.signals.some((signal) => signal.type === type);
-
-  /**
    * 根据输入包更新鼠标设备的内部状态
    * @param {SignalPacket} packet - 当前信号包
    * @returns {{
@@ -158,6 +149,14 @@ function createMouseDevice() {
 
   /**
    * 解析当前输入包应继续路由到哪些子节点
+   * @description
+   * 按信号类型拆分路由，各通道只收到属于自己的信号列表：
+   * - `position` → pointer 通道 + 活跃按钮通道
+   * - `wheel` → wheel 通道 + 活跃按钮通道
+   * - `end` / `cancel` → 仅 `context.button` 归属的通道
+   *   （避免误伤其他仍按住按钮的手势）；无按钮信息时（如 pointerleave / blur）
+   *   广播到所有活跃通道，保留“终结全部手势”的兑底语义
+   * - 其他类型 → 活跃按钮通道
    * @param {SignalPacket} packet - 当前信号包
    * @param {{
    *   previousButtons: {primary: boolean, secondary: boolean, auxiliary: boolean},
@@ -167,33 +166,85 @@ function createMouseDevice() {
    * @returns {Array<{to: string, signals: Array<Object>}>}
    */
   const resolveRouteTargets = (packet, routeState) => {
-    const targets = [];
+    const positionSignals = [];
+    const wheelSignals = [];
+    const endLikeSignals = [];
+    const otherSignals = [];
 
-    if (hasSignalType(packet, "position")) {
-      targets.push("pointer");
-    }
-
-    if (hasSignalType(packet, "wheel")) {
-      targets.push("wheel");
-    }
-
-    for (const [channel, path] of Object.entries({
-      primary: "primary",
-      secondary: "secondary",
-      auxiliary: "auxiliary",
-    })) {
-      if (
-        routeState.previousButtons[channel] ||
-        routeState.nextButtons[channel] ||
-        routeState.endedChannels.has(channel)
-      ) {
-        targets.push(path);
+    for (const signal of packet.signals) {
+      if (signal.type === "position") {
+        positionSignals.push(signal);
+      } else if (signal.type === "wheel") {
+        wheelSignals.push(signal);
+      } else if (signal.type === "end" || signal.type === "cancel") {
+        endLikeSignals.push(signal);
+      } else {
+        otherSignals.push(signal);
       }
     }
 
-    return Array.from(new Set(targets)).map((childPath) => ({
+    /** @type {Map<string, Array<Object>>} 通道路径 → 拆分后的信号列表 */
+    const targets = new Map();
+
+    /**
+     * 向指定通道追加信号
+     * @param {string} path - 通道路径
+     * @param {Array<Object>} signals - 信号列表
+     * @returns {void}
+     */
+    const append = (path, signals) => {
+      if (signals.length === 0) return;
+      const existing = targets.get(path);
+      if (existing) {
+        existing.push(...signals);
+      } else {
+        targets.set(path, [...signals]);
+      }
+    };
+
+    // pointer / wheel 通道只接收对应类型的信号
+    append("pointer", positionSignals);
+    append("wheel", wheelSignals);
+
+    const channelPaths = {
+      primary: "primary",
+      secondary: "secondary",
+      auxiliary: "auxiliary",
+    };
+
+    /**
+     * 判断按钮通道当前是否活跃（按住中或本包刚按下）
+     * @param {string} channel - 通道名
+     * @returns {boolean}
+     */
+    const isChannelActive = (channel) =>
+      routeState.previousButtons[channel] || routeState.nextButtons[channel];
+
+    // 活跃按钮通道接收 position / wheel / 其他类型信号
+    for (const [channel, path] of Object.entries(channelPaths)) {
+      if (!isChannelActive(channel)) continue;
+      append(path, positionSignals);
+      append(path, wheelSignals);
+      append(path, otherSignals);
+    }
+
+    // end/cancel 按按钮归属路由；无归属的广播到活跃通道
+    const broadcastEndLikes = endLikeSignals.filter(
+      (signal) => buttonIndexToChannel(signal?.context?.button) === null,
+    );
+    for (const [channel, path] of Object.entries(channelPaths)) {
+      const ownEndLikes = endLikeSignals.filter(
+        (signal) => buttonIndexToChannel(signal?.context?.button) === channel,
+      );
+      append(path, ownEndLikes);
+      if (isChannelActive(channel) || ownEndLikes.length > 0) {
+        append(path, broadcastEndLikes);
+      }
+    }
+
+    return Array.from(targets.entries()).map(([childPath, signals]) => ({
       to: childPath,
-      signals: packet.signals,
+      signals,
     }));
   };
 
@@ -214,29 +265,89 @@ function createMouseDevice() {
   };
 
   /**
+   * 按钮通道与按钮编号的映射（路由与合成共用）
+   * @type {Object<string, number>}
+   */
+  const CHANNEL_BUTTONS = {
+    primary: 0,
+    secondary: 2,
+    auxiliary: 1,
+  };
+
+  /**
+   * 为按钮位掩码 1→0 跳变但未被显式 end/cancel 覆盖的通道合成 end 信号
+   * @description
+   * 某些环境（如多键同按时 WebView2/浏览器不逐键派发 pointerup）下，
+   * 适配器无法为每次按钮释放翻译出 end 信号，手势因此永远不结束。
+   * 设备以按钮状态机的 1→0 跳变为准自行合成 end：
+   * 只要某个按键松开了（无论事件源是否派发 pointerup），就向对应通道发 end。
+   * 已被包内显式 end/cancel（含无归属广播）覆盖的通道不重复合成。
+   * @param {SignalPacket} packet - 当前信号包
+   * @param {{
+   *   previousButtons: {primary: boolean, secondary: boolean, auxiliary: boolean},
+   *   nextButtons: {primary: boolean, secondary: boolean, auxiliary: boolean},
+   * }} routeState - 路由决策所需的状态快照
+   * @returns {SignalPacket} 补齐合成 end 后的信号包（无合成时返回原包）
+   */
+  const withSynthesizedEnds = (packet, routeState) => {
+    // 已被显式 end/cancel 覆盖的通道
+    const coveredChannels = new Set();
+    let hasBroadcastEnd = false;
+    for (const signal of packet.signals) {
+      if (signal.type !== "end" && signal.type !== "cancel") continue;
+      const channel = buttonIndexToChannel(signal?.context?.button);
+      if (channel) {
+        coveredChannels.add(channel);
+      } else {
+        hasBroadcastEnd = true;
+      }
+    }
+
+    const nextMask =
+      (routeState.nextButtons.primary ? BUTTON_MASKS.primary : 0) |
+      (routeState.nextButtons.secondary ? BUTTON_MASKS.secondary : 0) |
+      (routeState.nextButtons.auxiliary ? BUTTON_MASKS.auxiliary : 0);
+
+    const synthesized = [];
+    for (const [channel, buttonIndex] of Object.entries(CHANNEL_BUTTONS)) {
+      const wasPressed = routeState.previousButtons[channel];
+      const isPressed = routeState.nextButtons[channel];
+      if (!wasPressed || isPressed) continue; // 无 1→0 跳变
+      if (coveredChannels.has(channel) || hasBroadcastEnd) continue; // 已被覆盖
+      synthesized.push({
+        type: "end",
+        context: { button: buttonIndex, buttons: nextMask, synthetic: true },
+      });
+    }
+
+    if (synthesized.length === 0) return packet;
+    return new SignalPacket(packet.to, [...packet.signals, ...synthesized]);
+  };
+
+  /**
    * 根节点处理器
    * @description
    * 1. 将 position 信号的 canvas 相对坐标转为世界坐标
    * 2. 更新设备内部状态（按钮掩码、最近位置）
-   * 3. 按按钮状态分流到对应的通道路由节点
+   * 3. 为按钮位掩码 1→0 跳变合成缺失的 end 信号（见 {@link withSynthesizedEnds}）
+   * 4. 按按钮状态分流到对应的通道路由节点
    * @param {SignalPacket|Object} signalPacket - 输入信号包
-   * @param {Object} [context={}] - handler context（含 acc.viewport）
+   * @param {Object} [context={}] - handler context（含 services.viewport）
    * @returns {Array<SignalPacket|Object>}
    */
   const rootHandler = (signalPacket, context = {}) => {
     const packet = SignalPacket.from(signalPacket, { defaultTo: "/" });
 
-    const viewport = context?.acc?.viewport;
+    const viewport = context?.services?.viewport;
     const convertedSignals =
       viewport && typeof viewport.convertCanvasSignalsToWorld === "function"
         ? viewport.convertCanvasSignalsToWorld(packet.signals)
         : packet.signals;
 
     const convertedPacket = new SignalPacket(packet.to, convertedSignals);
-    const nextPackets = resolveRouteTargets(
-      convertedPacket,
-      updateStateFromPacket(convertedPacket),
-    );
+    const routeState = updateStateFromPacket(convertedPacket);
+    const routedPacket = withSynthesizedEnds(convertedPacket, routeState);
+    const nextPackets = resolveRouteTargets(routedPacket, routeState);
     const explicitDescendantPath = resolveExplicitDescendantPath(
       convertedPacket,
       context,
@@ -247,7 +358,8 @@ function createMouseDevice() {
     ) {
       nextPackets.push({
         to: explicitDescendantPath,
-        signals: convertedPacket.signals,
+        // 浅拷贝信号数组，避免下游分支共享同一可变数组
+        signals: [...convertedPacket.signals],
       });
     }
     return nextPackets;

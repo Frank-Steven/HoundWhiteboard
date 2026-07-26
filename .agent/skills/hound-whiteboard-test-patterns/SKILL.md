@@ -31,15 +31,23 @@ src/core/
 ├── tools/
 │   ├── creator/tests/
 │   │   ├── stroke-creator.test.js  ← StrokeCreatorTool 所有测试
-│   │   ├── polygon-creator.test.js
-│   │   └── circle-creator.test.js
+│   │   └── polygon-creator.test.js
+│   ├── creator/circle/tests/
+│   │   ├── data-creator.test.js    ← CircleDataCreatorTool 生命周期
+│   │   └── processors.test.js      ← 三种圆手势 interpret + 端到端
+│   ├── creator/gesture/tests/
+│   │   └── two-point-processor.test.js
 │   ├── modifier/tests/
 │   │   └── common-object-modifier.test.js
-│   └── chooser/tests/
-│       ├── obj-chooser.test.js
-│       └── rectangle-object-chooser.test.js
+│   ├── chooser/tests/
+│   │   ├── obj-chooser.test.js
+│   │   └── rectangle-object-chooser.test.js
+│   └── wrapper/tests/
+│       ├── wrapper-tool.test.js      ← WrapperTool 基座
+│       ├── handoff-wrapper.test.js   ← handoff 机制 + 真实工具集成
+│       └── switcher-wrapper.test.js  ← tool-switcher 路由
 └── prefixs/tests/
-    └── handoff-handler.test.js    ← handoff 机制 + 真实工具集成
+    └── prefix-node.test.js          ← prefix 基础设施
 ```
 
 **规则**：
@@ -121,10 +129,10 @@ emit("input", {
 
 Displacement 特性：
 
-- **无准入检测**：displacement 信号到达时跳过 `canBeginModifyGesture`
+- **无准入检测**：displacement 信号到达时跳过 `canBeginGesture`
 - **可与 position 叠加**：同帧内先执行 position 手势更新，再累加 displacement 增量
-- **锚点同步**：`CommonObjectModifierTool.onAfterDisplacement` 自动平移锚点和基准位置，使后续 position 不产生跳跃
-- **cancel 兼容**：如果手势未激活，`onBeforeDisplacement` 会在首次 displacement 时记录 `_initialPositions`，确保 cancel 能正确回退
+- **锚点同步**：`DragGestureProcessor.displace` 在平移对象后同步平移各对象基准位置（锚点不动），使后续 position 不产生跳跃
+- **cancel 兼容**：如果手势未激活，`DragGestureProcessor.displace` 会在首次 displacement 时记录初始位置，确保 cancel 能正确回退
 
 ### 4. 断言要验证实际效果
 

@@ -7,9 +7,10 @@
 
 import { createSubDAG } from "../../core/ui-thread/devices-dag/index.js";
 import { createPrefixNodeHandler } from "../../core/ui-thread/devices-dag/prefixes/index.js";
-import { SignalPacket } from "../../core/ui-thread/devices-dag/signal.js";
-import { CircleCreatorTool } from "../../core/ui-thread/devices-dag/tools/creator/circle-creator.js";
-import { OBJECT_CREATOR_SIGNAL_TYPES } from "../../core/ui-thread/devices-dag/tools/creator/object-creator.js";
+import { SignalPacket } from "../../core/ui-thread/devices-dag/dag-core/signal.js";
+import { CircleDataCreatorTool } from "../../core/ui-thread/devices-dag/tools/creator/circle/data-creator.js";
+import { createCircleRadiusProcessor } from "../../core/ui-thread/devices-dag/tools/creator/circle/radius-processor.js";
+import { SIGNAL_TYPES } from "../../core/ui-thread/devices-dag/dag-core/signal-types.js";
 import { Vector } from "../../core/engine/utils/math.js";
 import { isPlainObject } from "../../core/ui-thread/devices-dag/prefixes/utils.js";
 
@@ -20,14 +21,14 @@ import { isPlainObject } from "../../core/ui-thread/devices-dag/prefixes/utils.j
  */
 const RANDOM_CIRCLE_PREFIX_SIGNAL_TYPES = Object.freeze({
   RADIUS: "radius",
-  PROPERTY: OBJECT_CREATOR_SIGNAL_TYPES.PROPERTY,
+  PROPERTY: SIGNAL_TYPES.PROPERTY,
 });
 
 /**
  * 创建随机圆修饰节点工作流
  * @description
  * 工厂函数，接收配置选项后一次性生成包含 random-circle-generator prefix、
- * circle-params prefix 和 CircleCreatorTool 的三层修饰节点子树。
+ * circle-params prefix 和 CircleDataCreatorTool 的三层修饰节点子树。
  * 无需手动实例化工具类，挂载后任意 trigger 信号即可生成随机圆。
  * @param {{
  *   rootPath: string,
@@ -36,8 +37,8 @@ const RANDOM_CIRCLE_PREFIX_SIGNAL_TYPES = Object.freeze({
  *   maxRadius?: number,
  *   property?: Record<string, any>,
  * }} [options={}] - 随机圆工作流配置
- * @returns {import("../../core/devices-dag/dag.js").SubDAGDefinition} 可直接传入 inputScope.mountWorkflow(name, subDAG) 的结构化子树定义
- * @see CircleCreatorTool
+ * @returns {import("../../core/ui-thread/devices-dag/dag-type.js").SubDAGDefinition} 可直接传入 inputScope.mountWorkflow(name, subDAG) 的结构化子树定义
+ * @see CircleDataCreatorTool
  * @example
  * const subDAG = createRandomCircleSubDAG({
  *   rootPath: "/workflows/random-circle",
@@ -62,7 +63,10 @@ function createRandomCircleSubDAG(options = {}) {
     options.property && Object.hasOwn(options.property, "fillColor"),
   );
 
-  const tool = new CircleCreatorTool({ property: baseProperty });
+  const tool = new CircleDataCreatorTool({
+    property: baseProperty,
+    processor: createCircleRadiusProcessor(),
+  });
 
   const builder = createSubDAG(rootPath);
 
@@ -80,7 +84,7 @@ function createRandomCircleSubDAG(options = {}) {
             return ctx.stop();
           }
 
-          const viewport = ctx.acc?.viewport;
+          const viewport = ctx.services?.viewport;
           const viewportWorldRect = viewport?.getViewportWorldRect?.();
           if (!viewportWorldRect) {
             return ctx.stop();
@@ -103,7 +107,7 @@ function createRandomCircleSubDAG(options = {}) {
           return ctx.routeToChild("params", [
             ctx.signal("position", { x: centerX, y: centerY }),
             ctx.signal(RANDOM_CIRCLE_PREFIX_SIGNAL_TYPES.RADIUS, radius),
-            ctx.signal(OBJECT_CREATOR_SIGNAL_TYPES.PROPERTY, {
+            ctx.signal(SIGNAL_TYPES.PROPERTY, {
               ...baseProperty,
               strokeColor: hasCustomStrokeColor
                 ? baseProperty.strokeColor
@@ -122,7 +126,7 @@ function createRandomCircleSubDAG(options = {}) {
     )
     .defaultRoute("params");
 
-  // circle-params prefix 节点，接收随机圆参数信号并转换为工具输入信号路由到 CircleCreatorTool
+  // circle-params prefix 节点，接收随机圆参数信号并转换为工具输入信号路由到 CircleDataCreatorTool
   const paramsNode = builder
     .node()
     .prefix(
@@ -137,7 +141,7 @@ function createRandomCircleSubDAG(options = {}) {
               signal.type === RANDOM_CIRCLE_PREFIX_SIGNAL_TYPES.RADIUS,
           );
           const propertySignal = packet.signals.find(
-            (signal) => signal.type === OBJECT_CREATOR_SIGNAL_TYPES.PROPERTY,
+            (signal) => signal.type === SIGNAL_TYPES.PROPERTY,
           );
           const position = positionSignal?.context?.value;
           const radius = radiusSignal?.context?.value;
@@ -156,7 +160,7 @@ function createRandomCircleSubDAG(options = {}) {
           const signalsA = [
             ctx.signal("position", position),
             ctx.signal(
-              OBJECT_CREATOR_SIGNAL_TYPES.PROPERTY,
+              SIGNAL_TYPES.PROPERTY,
               isPlainObject(propertySignal?.context?.value)
                 ? propertySignal.context.value
                 : { ...baseProperty },
@@ -196,7 +200,7 @@ function createRandomCircleSubDAG(options = {}) {
     )
     .defaultRoute("tool");
 
-  // CircleCreatorTool 节点，接收信号并创建圆对象
+  // CircleDataCreatorTool 节点，接收信号并创建圆对象
   const toolNode = builder.node().tool(tool);
 
   builder.edge("params", root, paramsNode);

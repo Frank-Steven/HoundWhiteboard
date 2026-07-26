@@ -94,16 +94,15 @@ async function bootstrapWhiteboard() {
 
   const toolbar = attachToolbarAdapter(board, viewport);
   if (toolbar) {
-    mountToolSwitcher(board, viewport, {
+    mountToolSwitcher(viewport, {
       tools: toolbar.tools,
       defaultTool: toolbar.defaultTool,
       primaryStrokeTool: demoResults.primaryStrokeTool,
-      onToolChange: toolbar.onToolChange,
     });
   }
 
   attachPointerAdapter(viewport, board, demoLog);
-  attachKeyboardAdapter(viewport, board, demoLog);
+  attachKeyboardAdapter(viewport, board, demoLog, toolbar?.tools);
   attachResizeAdapter(viewport, appLeft);
   attachWheelAdapter(viewport, board, appLeft);
 

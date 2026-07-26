@@ -73,7 +73,7 @@ function createMockCreator(onProcess) {
         this.isObjectCreationCompleted = true;
       } else {
         this.isObjectCreationCompleted = true;
-        interaction?.context?.acc?.board?.activeObjectManager?.apply?.(
+        interaction?.context?.services?.board?.activeObjectManager?.apply?.(
           new Set([draft].filter(Boolean)),
         );
       }
@@ -160,12 +160,36 @@ function createMockChooser(onProcess) {
  */
 function createMockModifier(onProcess) {
   return new (class extends GestureTool {
+    /**
+     * handoff 桥接的对象缓存，类似真实 ObjectModifierTool._overlayModifiedObjects
+     * @type {Array<*>}
+     */
+    _handoffObjects = [];
+
     constructor() {
       super();
       this.autoActionOnGestureEnd = false;
     }
 
+    /**
+     * 接收 handoff 桥接对象
+     * @param {Array<*>} objects
+     * @param {Object} [_context={}]
+     */
+    receiveHandoffObjects(objects, _context = {}) {
+      this._handoffObjects = Array.isArray(objects) ? [...objects] : [];
+    }
+
     process(packet, ctx) {
+      // 将 handoff 桥接的对象同步到节点状态（类似真实 modifier resolveActiveModifiedObjects 后的 setContextObjects）
+      if (this._handoffObjects.length > 0) {
+        ctx.setNodeState?.(ctx.path, {
+          objects: [...this._handoffObjects],
+          touched: true,
+        });
+        this._handoffObjects = [];
+      }
+
       if (onProcess) onProcess(packet, ctx);
       const sigs = packet?.signals ?? [];
       const hasCancel =
@@ -208,18 +232,14 @@ function createMockModifier(onProcess) {
     afterApplyModifiedObjects(ctx, objects) {}
 
     discardAction(context = {}) {
-      const objects = Array.isArray(context.acc?.objects)
-        ? context.acc.objects
-        : context.acc?.objects
-          ? [context.acc.objects]
-          : [];
+      const objects = context.getNodeState?.(context.path)?.objects ?? [];
       const objectIds = objects
         .map((objectEntry) =>
           typeof objectEntry?.id === "number" ? objectEntry.id : null,
         )
         .filter((objectId) => objectId != null);
       if (objectIds.length > 0) {
-        context.acc?.boardApi?.discardActiveObjects?.(objectIds);
+        context.services?.boardApi?.discardActiveObjects?.(objectIds);
       }
     }
 

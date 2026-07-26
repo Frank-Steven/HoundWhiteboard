@@ -23,7 +23,7 @@ describe("Tool", () => {
       {
         path: "/viewport/s-pen/pen",
         context: {},
-        acc: { customFlag: true },
+        customFlag: true,
       },
     );
 
@@ -36,13 +36,40 @@ describe("Tool", () => {
         },
         context: expect.objectContaining({
           path: "/viewport/s-pen/pen",
-          acc: expect.objectContaining({
-            customFlag: true,
-          }),
+          customFlag: true,
         }),
       },
     ]);
-    expect(tool.calls[0].context.acc.allocateObjectId).toBeUndefined();
+  });
+
+  test("createProcessor 应吞掉工具的异步动作结果，不穿透为 handler 返回值", () => {
+    class AsyncTestTool extends Tool {
+      process() {
+        return Promise.resolve([{ id: 1 }]);
+      }
+
+      reset() {}
+    }
+
+    const processor = new AsyncTestTool().createProcessor();
+    const result = processor({ signals: [] }, { path: "/test" });
+
+    expect(result).toBeUndefined();
+  });
+
+  test("createProcessor 应透传工具的同步返回值", () => {
+    class SyncTestTool extends Tool {
+      process() {
+        return { to: "child", signals: [] };
+      }
+
+      reset() {}
+    }
+
+    const processor = new SyncTestTool().createProcessor();
+    const result = processor({ signals: [] }, { path: "/test" });
+
+    expect(result).toEqual({ to: "child", signals: [] });
   });
 
   test("createProcessor 应默认暴露来自 Board 的 allocateObjectId", () => {
@@ -71,14 +98,14 @@ describe("Tool", () => {
       {
         path: "/viewport/s-pen/pen",
         context: {},
-        acc: { board },
+        services: { board },
       },
     );
 
-    expect(tool.calls[0].context.acc.board.allocateObjectId()).toBe(7);
+    expect(tool.calls[0].context.services.board.allocateObjectId()).toBe(7);
   });
 
-  test("createProcessor 应优先使用累积 context 中显式提供的 allocateObjectId", () => {
+  test("createProcessor 应优先使用 services 中显式提供的 allocateObjectId", () => {
     class TestTool extends Tool {
       calls = [];
 
@@ -103,14 +130,14 @@ describe("Tool", () => {
       { signals: [{ type: "pressure", context: { value: 0.5 } }] },
       {
         path: "/viewport/s-pen/pen",
-        acc: {
+        services: {
           board,
           allocateObjectId: explicitAllocateObjectId,
         },
       },
     );
 
-    expect(tool.calls[0].context.acc.allocateObjectId()).toBe(11);
+    expect(tool.calls[0].context.services.allocateObjectId()).toBe(11);
     expect(explicitAllocateObjectId).toHaveBeenCalledTimes(1);
   });
 
@@ -145,26 +172,24 @@ describe("Tool", () => {
       { signals: [{ type: "trigger", context: {} }] },
       {
         path: "/viewport/s-pen/pen",
-        acc: {
+        services: {
           board,
           boardApi,
           viewport,
-          customFlag: true,
         },
       },
     );
 
     expect(tool.calls[0].context).toEqual(
       expect.objectContaining({
-        acc: expect.objectContaining({
+        services: expect.objectContaining({
           board,
           boardApi,
           viewport,
-          customFlag: true,
         }),
       }),
     );
-    expect(tool.calls[0].context.acc.board.allocateObjectId()).toBe(13);
+    expect(tool.calls[0].context.services.board.allocateObjectId()).toBe(13);
     expect(tool.calls[0].context.path).toBe("/viewport/s-pen/pen");
     expect(tool.calls[0].context.semantics).toBeUndefined();
     expect(tool.calls[0].context.eventContext).toBeUndefined();
