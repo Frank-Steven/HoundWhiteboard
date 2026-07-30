@@ -326,9 +326,12 @@ class BoardApiRpc {
 
   /**
    * 修改单个对象的几何/样式属性
-   * @param {number} objectId - 对象 id
+   * @description
+   * fire-and-forget 批写：同帧合并入队即 resolve，不代表 Core 已应用；
+   * Core 侧失败经 onBatchError 旁路上报。需要确认语义请改用 modifyObjects。
+   * @param {string} objectId - 对象 id
    * @param {import("../engine/types/board-api-types.js").ObjectPatch} patch - 修改 patch
-   * @returns {Promise<void>}
+   * @returns {Promise<void>} 入队后 resolve
    */
   async modifyObject(objectId, patch) {
     const batchKey = `modifyObject:${objectId}`;
@@ -357,10 +360,12 @@ class BoardApiRpc {
 
   /**
    * 向对象的列表属性追加元素
-   * @param {number} objectId - 对象 id
+   * @description
+   * fire-and-forget 批写：同帧合并入队即 resolve，不代表 Core 已应用，语义同 modifyObject。
+   * @param {string} objectId - 对象 id
    * @param {string} key - 列表属性名
    * @param {any[]} items - 追加的元素集合
-   * @returns {Promise<void>}
+   * @returns {Promise<void>} 入队后 resolve
    */
   async appendListItem(objectId, key, items) {
     const batchKey = `appendListItem:${objectId}:${key}`;
@@ -381,11 +386,13 @@ class BoardApiRpc {
 
   /**
    * 替换对象列表属性中指定索引的元素
-   * @param {number} objectId - 对象 id
+   * @description
+   * fire-and-forget 批写：同帧合并入队即 resolve，不代表 Core 已应用，语义同 modifyObject。
+   * @param {string} objectId - 对象 id
    * @param {string} key - 列表属性名
    * @param {number} index - 目标索引
    * @param {any} item - 新元素
-   * @returns {Promise<void>}
+   * @returns {Promise<void>} 入队后 resolve
    */
   async replaceListItem(objectId, key, index, item) {
     const batchKey = `replaceListItem:${objectId}:${key}:${index}`;
@@ -402,10 +409,12 @@ class BoardApiRpc {
 
   /**
    * 删除对象列表属性中指定索引的元素
-   * @param {number} objectId - 对象 id
+   * @description
+   * fire-and-forget 批写：同帧合并入队即 resolve，不代表 Core 已应用，语义同 modifyObject。
+   * @param {string} objectId - 对象 id
    * @param {string} key - 列表属性名
    * @param {number} index - 目标索引
-   * @returns {Promise<void>}
+   * @returns {Promise<void>} 入队后 resolve
    */
   async removeListItem(objectId, key, index) {
     const batchKey = `removeListItem:${objectId}:${key}:${index}`;
