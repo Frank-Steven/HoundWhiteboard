@@ -295,8 +295,10 @@ class CoreWorkerRuntime {
 
   /**
    * 处理批量 RPC 请求
-   * @description 批量消息为 fire-and-forget，不产生 rpc-response。
-   * @param {{ items?: Array<{ method: string } & Record<string, any>> }} message - 批量请求消息
+   * @description
+   * 批量消息为 fire-and-forget，不产生 rpc-response；
+   * 单条目失败不影响其余条目执行，全部失败条目以 rpc-batch-error 统一回传。
+   * @param {{ batchId?: number, items?: Array<{ method: string } & Record<string, any>> }} message - 批量请求消息
    * @returns {void}
    */
   #handleBatchMessage(message) {
@@ -305,16 +307,31 @@ class CoreWorkerRuntime {
       return;
     }
 
-    for (const item of items) {
+    const errors = [];
+    items.forEach((item, index) => {
       try {
         const { method, ...params } = item;
         this.#invokeBoardApi(method, params);
       } catch (error) {
+        errors.push({
+          index,
+          method: item?.method ?? "unknown",
+          code: error?.code ?? "INTERNAL_ERROR",
+          message: error?.message ?? String(error),
+        });
         this.#log.error(
           `Batch item failed: ${item?.method ?? "unknown"}`,
           error,
         );
       }
+    });
+
+    if (errors.length > 0) {
+      this.#postMessage({
+        type: "rpc-batch-error",
+        batchId: message?.batchId,
+        errors,
+      });
     }
   }
 
@@ -498,7 +515,7 @@ class CoreWorkerRuntime {
        * 按对象范围刷新 ViewportCore 的静态层
        * @param {import("./objects/basic-obj.js").BasicObject[]} objectInstances - 受影响对象
        * @param {import("./chunk/chunk.js").Chunk[]} fallbackChunks - 回退区块
-       * @param {Map<number, import("./range/index.js").RectangleRange>} previousWorldRects - 旧世界范围快照
+       * @param {Map<string, import("./range/index.js").RectangleRange>} previousWorldRects - 旧世界范围快照
        */
       requestStaticRenderForObjects: (
         objectInstances = [],

@@ -194,6 +194,12 @@ class Board {
     }
 
     const boardApi = new BoardApiRpc(worker, options);
+    boardApi.onBatchError((errors, batchId) => {
+      boardLog.warn(
+        `Batch ${batchId} reported ${errors.length} failed item(s):`,
+        errors,
+      );
+    });
 
     try {
       await boardApi.waitUntilReady(

@@ -112,6 +112,18 @@ class BoardApiRpc {
   #batchPending;
 
   /**
+   * 下一个批处理消息 id
+   * @type {number}
+   */
+  #nextBatchId;
+
+  /**
+   * 批处理错误订阅者集合
+   * @type {Set<Function>}
+   */
+  #batchErrorHandlers;
+
+  /**
    * @param {{ postMessage: Function, addEventListener: Function, removeEventListener: Function }} endpoint - Worker 或 MessagePort 端点
    * @param {{ timeoutMs?: number }} [options={}] - RPC 配置选项
    */
@@ -136,6 +148,8 @@ class BoardApiRpc {
     this.#messageListener = this.#handleEndpointMessage.bind(this);
     this.#batchBuffer = new Map();
     this.#batchPending = false;
+    this.#nextBatchId = 1;
+    this.#batchErrorHandlers = new Set();
     this.#endpoint.addEventListener("message", this.#messageListener);
   }
 
@@ -194,6 +208,18 @@ class BoardApiRpc {
       this.#resolveReady?.();
       this.#resolveReady = null;
       this.#rejectReady = null;
+      return;
+    }
+
+    if (message.type === "rpc-batch-error") {
+      const errors = Array.isArray(message.errors) ? message.errors : [];
+      for (const handler of this.#batchErrorHandlers) {
+        try {
+          handler(errors, message.batchId);
+        } catch {
+          // 订阅者异常不应中断消息分发
+        }
+      }
       return;
     }
 
@@ -518,12 +544,38 @@ class BoardApiRpc {
   }
 
   /**
+   * 强制 flush 当前批处理缓冲
+   * @description
+   * resolve 时机为缓冲消息已写入传输层，不代表 Core 已应用；
+   * 用于页面隐藏前或关键读取前确保批写不滞留。
+   * @returns {Promise<void>} 缓冲写入传输层后 resolve
+   */
+  flush() {
+    this.#flushBatchNow();
+    return Promise.resolve();
+  }
+
+  /**
+   * 订阅批处理条目失败回执
+   * @description
+   * rpc-batch 为 fire-and-forget，单条目失败时 Worker 以 rpc-batch-error 回传，
+   * 由本方法注册的订阅者接收；全部成功时不产生任何回传消息。
+   * @param {(errors: Array<{ index: number, method: string, code: string, message: string }>, batchId: number) => void} handler - 错误处理器
+   * @returns {Function} 取消订阅函数
+   */
+  onBatchError(handler) {
+    this.#batchErrorHandlers.add(handler);
+    return () => this.#batchErrorHandlers.delete(handler);
+  }
+
+  /**
    * 销毁 RPC 端点绑定并拒绝所有未完成请求
    * @param {string} [reason="BoardApiRpc destroyed."] - 销毁原因
    * @returns {void}
    */
   destroy(reason = "BoardApiRpc destroyed.") {
     this.#endpoint.removeEventListener("message", this.#messageListener);
+    this.#batchErrorHandlers.clear();
 
     if (!this.#ready) {
       this.#rejectReady?.(createRpcError(reason, "RPC_DESTROYED"));
@@ -631,6 +683,7 @@ class BoardApiRpc {
 
     this.#endpoint.postMessage({
       type: "rpc-batch",
+      batchId: this.#nextBatchId++,
       items: paramsList,
     });
   }
