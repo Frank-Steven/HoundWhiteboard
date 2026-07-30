@@ -151,7 +151,7 @@ class BasicObject {
    * @param {string[]} keys - 变更的字段名列表
    * @protected
    */
-  _onDataChange(keys) {}
+  _onDataChange(keys) { }
 
   /**
    * 获取对象渲染额外留白
@@ -199,6 +199,19 @@ class BasicObject {
    * @description 可擦对象可以被对象擦除工具擦除。
    */
   isErasable() {
+    throw new Error("Method not implemented.");
+  }
+
+  /**
+   * 按橡皮轨迹擦除对象数据
+   * @description
+   * 数据擦除的多态入口，与 isErasable 配对：isErasable() 返回 true 的子类必须重写本方法。
+   * 子类重写后返回剩余数据片段（形状由子类定义），供 Core 侧分流回写、分裂或删除。
+   * @param {Array<{x: number, y: number}>} trailPoints - 橡皮轨迹点列（世界坐标）
+   * @param {number} radius - 橡皮半径（世界单位）
+   * @returns {Array<Array<*>>|null} null 表示未命中；空数组表示整体擦没；否则为剩余数据片段
+   */
+  eraseData(trailPoints, radius) {
     throw new Error("Method not implemented.");
   }
 
