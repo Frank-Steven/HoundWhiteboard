@@ -340,7 +340,7 @@ class CoreWorkerRuntime {
 
   /**
    * 创建 Worker 侧 BoardCore
-   * @param {{ width?: number, height?: number, rootPath?: string }} [options={}] - Board 初始化选项
+   * @param {{ width?: number, height?: number, rootPath?: string, idSource?: string }} [options={}] - Board 初始化选项
    * @returns {{ ok: boolean }} 创建结果
    */
   createBoard(options = {}) {
@@ -352,6 +352,7 @@ class CoreWorkerRuntime {
       width: options.width,
       height: options.height,
       rootPath: options.rootPath,
+      idSource: options.idSource,
       persistenceAdapter: createDefaultPersistenceAdapter(),
       aomRenderHooks: createDefaultAomRenderHooks(),
     });

@@ -21,7 +21,7 @@ import {
 
 /**
  * 构造 creator 场景的服务上下文
- * @param {number} objectId - 分配的对象 id
+ * @param {string} objectId - 分配的对象 id
  * @returns {{ services: Object, board: Object, boardApi: Object, viewport: Object }}
  */
 function createCreatorServices(objectId) {
@@ -107,7 +107,7 @@ describe("HandoffWrapperTool", () => {
     const stroke = new StrokeCreatorTool();
     const modifier = new CommonObjectModifierTool({ processor: new DragGestureProcessor() });
     const wrapper = new HandoffWrapperTool({ first: stroke, second: modifier });
-    const { services, boardApi } = createCreatorServices(100);
+    const { services, boardApi } = createCreatorServices("100");
     const { dag } = mountHandoff(wrapper, services);
 
     dispatchToHandoff(dag, [
@@ -122,7 +122,7 @@ describe("HandoffWrapperTool", () => {
     ]);
 
     // 笔画实际创建：3 个路径点
-    expect(stroke._entry.id).toBe(100);
+    expect(stroke._entry.id).toBe("100");
     expect(stroke._entry.data.points).toEqual([
       { x: 0, y: 0 },
       { x: 1, y: 1 },
@@ -140,7 +140,7 @@ describe("HandoffWrapperTool", () => {
 
     // 对象桥接到 modifier
     expect(modifier._overlayModifiedObjects).toHaveLength(1);
-    expect(modifier._overlayModifiedObjects[0].id).toBe(100);
+    expect(modifier._overlayModifiedObjects[0].id).toBe("100");
 
     // 后续信号路由到 second：modifier 开始手势并写入自己的 shell 节点 state
     dispatchToHandoff(dag, [
@@ -148,7 +148,7 @@ describe("HandoffWrapperTool", () => {
     ]);
     expect(modifier.isGestureActive).toBe(true);
     expect(wrapper._getSlot("second").node.state.objects).toHaveLength(1);
-    expect(wrapper._getSlot("second").node.state.objects[0].id).toBe(100);
+    expect(wrapper._getSlot("second").node.state.objects[0].id).toBe("100");
   });
 
   test("first 完成但无产出对象 → 不切换相位", () => {
@@ -159,7 +159,7 @@ describe("HandoffWrapperTool", () => {
     // 不设置 _entry → 完成结果为 null → 空对象数组
     const second = createMockModifier();
     const wrapper = new HandoffWrapperTool({ first, second });
-    const { services } = createCreatorServices(1);
+    const { services } = createCreatorServices("1");
     const { dag } = mountHandoff(wrapper, services);
 
     dispatchToHandoff(dag, [{ type: "position", context: {} }]);
@@ -177,13 +177,13 @@ describe("HandoffWrapperTool", () => {
   });
 
   test("second 完成 → 提交对象并切回 first", () => {
-    const object = { id: 7, position: new Vector(5, 5) };
+    const object = { id: "7", position: new Vector(5, 5) };
     const first = createMockCreator();
     first._entry = object;
     const second = new CommonObjectModifierTool({ processor: new DragGestureProcessor() });
     const wrapper = new HandoffWrapperTool({ first, second });
 
-    const { services, board, boardApi } = createCreatorServices(7);
+    const { services, board, boardApi } = createCreatorServices("7");
     board.activeObjectManager.activeObjectIndex.set(object.id, object);
     const { dag } = mountHandoff(wrapper, services);
 
@@ -212,13 +212,13 @@ describe("HandoffWrapperTool", () => {
   });
 
   test("second 阶段收到 cancel → 回滚几何、丢弃活动对象并切回 first", () => {
-    const object = { id: 8, position: new Vector(5, 5) };
+    const object = { id: "8", position: new Vector(5, 5) };
     const first = createMockCreator();
     first._entry = object;
     const second = new CommonObjectModifierTool({ processor: new DragGestureProcessor() });
     const wrapper = new HandoffWrapperTool({ first, second });
 
-    const { services, board, boardApi, viewport } = createCreatorServices(8);
+    const { services, board, boardApi, viewport } = createCreatorServices("8");
     board.activeObjectManager.activeObjectIndex.set(object.id, object);
     const { dag } = mountHandoff(wrapper, services);
 
@@ -254,7 +254,7 @@ describe("HandoffWrapperTool", () => {
     const wrapper = new HandoffWrapperTool({ first: chooser, second: modifier });
 
     const selectedSummary = {
-      id: 199,
+      id: "199",
       type: "CircleObject",
       position: { x: 12, y: 12 },
       range: new RectangleRange(-8, -8, 16, 16),
@@ -263,7 +263,7 @@ describe("HandoffWrapperTool", () => {
       data: { radius: 8 },
     };
     const boardApi = {
-      hitTest: jest.fn(async () => [199]),
+      hitTest: jest.fn(async () => ["199"]),
       queryObjects: jest.fn(async () => [selectedSummary]),
       addActiveObjects: jest.fn(),
       discardActiveObjects: jest.fn(),
@@ -287,7 +287,7 @@ describe("HandoffWrapperTool", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(boardApi.hitTest).toHaveBeenCalled();
-    expect(boardApi.queryObjects).toHaveBeenCalledWith([199]);
+    expect(boardApi.queryObjects).toHaveBeenCalledWith(["199"]);
     expect(wrapper.getDebugInfo().phase).toBe("second");
     expect(dag.getNodeState("/viewport/handoff")).toMatchObject({
       phase: "second",
@@ -301,7 +301,7 @@ describe("HandoffWrapperTool", () => {
     const stroke = new StrokeCreatorTool();
     const modifier = new CommonObjectModifierTool({ processor: new DragGestureProcessor() });
     const wrapper = new HandoffWrapperTool({ first: stroke, second: modifier });
-    const { services } = createCreatorServices(300);
+    const { services } = createCreatorServices("300");
     const { dag } = mountHandoff(wrapper, services);
 
     dispatchToHandoff(dag, [
@@ -320,19 +320,19 @@ describe("HandoffWrapperTool", () => {
     expect(stroke.isGestureActive).toBe(false);
     expect(wrapper.getDebugInfo().phase).toBe("second");
     expect(modifier._overlayModifiedObjects).toHaveLength(1);
-    expect(modifier._overlayModifiedObjects[0].id).toBe(300);
+    expect(modifier._overlayModifiedObjects[0].id).toBe("300");
   });
 
   test("autoBridgeObjects = false 时跳过对象桥接但仍切换相位", () => {
     const first = createMockCreator();
-    first._entry = { id: 42, type: "circle" };
+    first._entry = { id: "42", type: "circle" };
     const second = createMockModifier();
     const wrapper = new HandoffWrapperTool({
       first,
       second,
       autoBridgeObjects: false,
     });
-    const { services } = createCreatorServices(42);
+    const { services } = createCreatorServices("42");
     const { dag } = mountHandoff(wrapper, services);
 
     dispatchToHandoff(dag, [{ type: "position", context: {} }]);
@@ -347,7 +347,7 @@ describe("HandoffWrapperTool", () => {
       process(signalPacket, context) {
         super.process(signalPacket, context);
         this.beginAction(context);
-        this.setContextObjects(context, [{ id: 1 }]);
+        this.setContextObjects(context, [{ id: "1" }]);
       }
 
       completeAction(context = {}) {
@@ -359,7 +359,7 @@ describe("HandoffWrapperTool", () => {
     const first = new ObjectHoldingTool();
     const second = new CollectingTool();
     const wrapper = new HandoffWrapperTool({ first, second });
-    const { services } = createCreatorServices(1);
+    const { services } = createCreatorServices("1");
     const { dag } = mountHandoff(wrapper, services);
 
     dispatchToHandoff(dag, [

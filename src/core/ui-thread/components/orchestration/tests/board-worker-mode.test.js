@@ -131,7 +131,7 @@ function installMockDocument() {
       const canvas = createNoopCanvas();
       canvas.className = "";
       canvas.style = {};
-      canvas.appendChild = () => {};
+      canvas.appendChild = () => { };
       return canvas;
     }
 
@@ -195,6 +195,7 @@ describe("Board worker mode", () => {
               width: 800,
               height: 600,
               rootPath: undefined,
+              idSource: "",
             },
           }),
           expect.objectContaining({

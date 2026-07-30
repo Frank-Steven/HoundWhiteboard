@@ -10,6 +10,7 @@
 import { BasicObject } from "../objects/basic-obj.js";
 import { deserialize } from "../objects/object-deserializer.js";
 import { EventBus } from "../utils/event-bus.js";
+import { IncrementalIdPool } from "../utils/incremental-id-pool.js";
 import { Logger } from "../../../utils/log/logger.js";
 import { logBus } from "../../../utils/log/log-bus.js";
 import { UndoTree } from "../hit/undo-tree-core.js";
@@ -58,7 +59,7 @@ import { createDefaultPersistenceAdapter } from "../../bridges/persistence-adapt
  * 白板核心类
  * @description
  * BoardCore 是白板在 Worker 中的纯数据/逻辑实现。
- * - 承载对象注册表（objectLoaded）、区块加载状态（chunkLoaded）、CounterPool、UndoTree、AOM
+ * - 承载对象注册表（objectLoaded）、区块加载状态（chunkLoaded）、IncrementalIdPool、UndoTree、AOM
  * - 通过注入式 persistenceAdapter 完成文件读写，不直接依赖 file-operate-bridge-renderer
  * - 通过注入式 renderHooks 消除 AOM 对 viewport/renderer 的直接依赖
  * - 不持有 DevicesDAG、signalsEventBus、DOM 引用
@@ -136,6 +137,13 @@ class BoardCore {
   aomRenderHooks;
 
   /**
+   * 对象 id 池（Core 侧）
+   * @description 供 Core 内部创建对象（如数据擦除分裂）时分配 id，与 UI 侧 id 池命名空间隔离。
+   * @type {IncrementalIdPool}
+   */
+  #idPool;
+
+  /**
    * 日志 Logger
    * @type {Logger}
    */
@@ -146,6 +154,7 @@ class BoardCore {
    *   width?: number,
    *   height?: number,
    *   rootPath?: string,
+   *   idSource?: string,
    *   persistenceAdapter?: PersistenceAdapter,
    *   aomRenderHooks?: AomRenderHooks,
    * }} [options={}] - 白板核心初始化选项
@@ -155,6 +164,9 @@ class BoardCore {
     this.width = options.width ?? 0;
     this.height = options.height ?? 0;
     this.rootPath = options.rootPath;
+    this.#idPool = new IncrementalIdPool(
+      options.idSource ? `${options.idSource}/core` : "core",
+    );
     this.undoTree = new UndoTree();
     this.chunkLoaded = new Map();
     this.objectLoaded = new Map();
@@ -184,6 +196,15 @@ class BoardCore {
    */
   memoryMode() {
     return !isValidBoardRootPath(this.rootPath);
+  }
+
+  /**
+   * 申请 Core 侧对象 id
+   * @description 供 Core 内部创建对象（如数据擦除分裂）时使用，与 UI 侧分配的 id 命名空间隔离。
+   * @returns {string} 携带来源命名空间的字符串 id
+   */
+  allocateObjectId() {
+    return this.#idPool.allocate();
   }
 
   /**

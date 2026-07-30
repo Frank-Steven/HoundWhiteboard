@@ -17,7 +17,7 @@
 /**
  * 创建对象参数
  * @typedef {Object} CreateObjectProps
- * @property {number} [id] - 可选显式 objectId，供同步分配复用既有 id 分配逻辑
+ * @property {string} [id] - 可选显式 objectId，供同步分配复用既有 id 分配逻辑
  * @property {import("./types.js").Point2D} position - 新对象位置
  * @property {Record<string, any>} [property] - 初始样式属性
  * @property {Record<string, any>} [data] - 初始对象专属数据
@@ -26,7 +26,7 @@
 /**
  * 批量对象修改条目
  * @typedef {Object} ObjectPatchEntry
- * @property {number} objectId - 对象 id
+ * @property {string} objectId - 对象 id
  * @property {ObjectPatch} patch - 该对象的 patch
  */
 
@@ -41,19 +41,19 @@
 /**
  * BoardApi 接口摘要
  * @typedef {Object} BoardApi
- * @property {(type: string, props: CreateObjectProps) => Promise<number>} createObject - 创建对象并返回 objectId
- * @property {(objectId: number, patch: ObjectPatch) => Promise<void>} modifyObject - 修改单个对象
+ * @property {(type: string, props: CreateObjectProps) => Promise<string>} createObject - 创建对象并返回 objectId
+ * @property {(objectId: string, patch: ObjectPatch) => Promise<void>} modifyObject - 修改单个对象
  * @property {(patches: ObjectPatchEntry[]) => Promise<void>} modifyObjects - 批量修改多个对象
- * @property {(objectId: number, key: string, items: any[]) => Promise<void>} appendListItem - 追加列表属性元素
- * @property {(objectId: number, key: string, index: number, item: any) => Promise<void>} replaceListItem - 替换列表属性元素
- * @property {(objectId: number, key: string, index: number) => Promise<void>} removeListItem - 删除列表属性元素
- * @property {(objectIds: number[]) => Promise<void>} deleteObjects - 删除对象集合
- * @property {(objectIds: number[]) => Promise<number[]>} commitObjects - 提交活动对象集合，返回实际提交的对象 id
- * @property {(objectIds: number[]) => Promise<void>} addActiveObjects - 将对象加入 AOM
- * @property {(objectIds: number[]) => Promise<void>} discardActiveObjects - 将对象从 AOM 丢弃
- * @property {(ids: number[]) => Promise<import("./types.js").ObjectSummary[]>} queryObjects - 按 id 查询对象摘要
- * @property {(chunkIds: number[]) => Promise<number[]>} queryChunkObjects - 按区块查询对象 id
- * @property {(range: import("../range/range.js").Range | import("./types.js").Rect, mode?: string) => Promise<number[]>} hitTest - 执行命中查询
+ * @property {(objectId: string, key: string, items: any[]) => Promise<void>} appendListItem - 追加列表属性元素
+ * @property {(objectId: string, key: string, index: number, item: any) => Promise<void>} replaceListItem - 替换列表属性元素
+ * @property {(objectId: string, key: string, index: number) => Promise<void>} removeListItem - 删除列表属性元素
+ * @property {(objectIds: string[]) => Promise<void>} deleteObjects - 删除对象集合
+ * @property {(objectIds: string[]) => Promise<string[]>} commitObjects - 提交活动对象集合，返回实际提交的对象 id
+ * @property {(objectIds: string[]) => Promise<void>} addActiveObjects - 将对象加入 AOM
+ * @property {(objectIds: string[]) => Promise<void>} discardActiveObjects - 将对象从 AOM 丢弃
+ * @property {(ids: string[]) => Promise<import("./types.js").ObjectSummary[]>} queryObjects - 按 id 查询对象摘要
+ * @property {(chunkIds: number[]) => Promise<string[]>} queryChunkObjects - 按区块查询对象 id
+ * @property {(range: import("../range/range.js").Range | import("./types.js").Rect, mode?: string) => Promise<string[]>} hitTest - 执行命中查询
  * @property {(options: CreateViewportOptions) => Promise<void>} createViewport - 创建 ViewportCore
  * @property {(viewportId: string | number) => Promise<void>} destroyViewport - 销毁 ViewportCore
  * @property {() => Promise<void>} undo - 执行撤销

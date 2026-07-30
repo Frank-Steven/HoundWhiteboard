@@ -34,7 +34,7 @@ function createBoardDeviceContext(objectId, { viewport } = {}) {
 describe("PolygonCreatorTool", () => {
   test("PolygonCreatorTool 应在同一手势内更新当前顶点，并在 end 时固化", () => {
     const tool = new PolygonCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(10);
+    const { deviceContext } = createBoardDeviceContext("10");
 
     tool.process(
       {
@@ -77,7 +77,7 @@ describe("PolygonCreatorTool", () => {
         strokeWidth: 3,
       },
     });
-    const { deviceContext } = createBoardDeviceContext(99);
+    const { deviceContext } = createBoardDeviceContext("99");
 
     tool.process(
       {
@@ -96,7 +96,7 @@ describe("PolygonCreatorTool", () => {
 
   test("cancel 信号应重置当前手势", () => {
     const tool = new PolygonCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(10);
+    const { deviceContext } = createBoardDeviceContext("10");
 
     tool.process(
       {
@@ -126,7 +126,7 @@ describe("PolygonCreatorTool", () => {
 
   test("object-cancel 信号应取消整个多边形对象并撤销 transient 对象", () => {
     const tool = new PolygonCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(10);
+    const { deviceContext } = createBoardDeviceContext("10");
     const board = deviceContext.services.board;
     const boardApi = deviceContext.services.boardApi;
     const discardSpy = jest.spyOn(boardApi, "discardActiveObjects");
@@ -150,7 +150,7 @@ describe("PolygonCreatorTool", () => {
       { services: { board, boardApi } },
     );
 
-    expect(discardSpy).toHaveBeenCalledWith([10]);
+    expect(discardSpy).toHaveBeenCalledWith(["10"]);
     expect(tool._entry).toBeNull();
     expect(tool.count).toBe(0);
     expect(tool.lastPoint).toBeNull();
@@ -159,7 +159,7 @@ describe("PolygonCreatorTool", () => {
 
   test("object-end 信号应固化整个多边形对象", () => {
     const tool = new PolygonCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(10);
+    const { deviceContext } = createBoardDeviceContext("10");
 
     tool.process(
       {
@@ -187,7 +187,7 @@ describe("PolygonCreatorTool", () => {
 
   test("object-end 后应通过 boardApi.commitObjects 提交对象", () => {
     const tool = new PolygonCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(10);
+    const { deviceContext } = createBoardDeviceContext("10");
     const boardApi = deviceContext.services.boardApi;
     const commitSpy = jest.spyOn(boardApi, "commitObjects");
 
@@ -215,7 +215,7 @@ describe("PolygonCreatorTool", () => {
       deviceContext,
     );
 
-    expect(commitSpy).toHaveBeenCalledWith([10]);
+    expect(commitSpy).toHaveBeenCalledWith(["10"]);
   });
 
   test("顶点更新后仅请求 UI overlay 刷新，不再直调 renderer", () => {
@@ -227,7 +227,7 @@ describe("PolygonCreatorTool", () => {
       },
       requestViewportUiRender: jest.fn(),
     };
-    const { deviceContext } = createBoardDeviceContext(31, { viewport });
+    const { deviceContext } = createBoardDeviceContext("31", { viewport });
 
     tool.process(
       {
@@ -266,7 +266,7 @@ describe("PolygonCreatorTool", () => {
 
   test("显式提供 boardApi 时应通过 RPC 创建并提交多边形对象", () => {
     const tool = new PolygonCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(24);
+    const { deviceContext } = createBoardDeviceContext("24");
     const boardApi = deviceContext.services.boardApi;
     const createSpy = jest.spyOn(boardApi, "createObject");
     const appendSpy = jest.spyOn(boardApi, "appendListItem");
@@ -299,14 +299,14 @@ describe("PolygonCreatorTool", () => {
     expect(createSpy).toHaveBeenCalledWith(
       "PolygonObject",
       expect.objectContaining({
-        id: 24,
+        id: "24",
         position: new Vector(5, 5),
       }),
     );
     expect(appendSpy).toHaveBeenCalled();
-    expect(commitSpy).toHaveBeenCalledWith([24]);
+    expect(commitSpy).toHaveBeenCalledWith(["24"]);
     expect(tool._entry).toMatchObject({
-      id: 24,
+      id: "24",
       position: new Vector(5, 5),
     });
   });
@@ -314,7 +314,7 @@ describe("PolygonCreatorTool", () => {
   test("RPC 风格 boardApi 下应维护本地草稿顶点并提交", () => {
     const tool = new PolygonCreatorTool();
     const board = {
-      allocateObjectId: jest.fn(() => 703),
+      allocateObjectId: jest.fn(() => "703"),
     };
     const boardApi = {
       createObject: jest.fn(),
@@ -354,18 +354,18 @@ describe("PolygonCreatorTool", () => {
     expect(boardApi.createObject).toHaveBeenCalledWith(
       "PolygonObject",
       expect.objectContaining({
-        id: 703,
+        id: "703",
         position: new Vector(5, 5),
       }),
     );
     expect(boardApi.appendListItem).toHaveBeenCalled();
-    expect(boardApi.commitObjects).toHaveBeenCalledWith([703]);
+    expect(boardApi.commitObjects).toHaveBeenCalledWith(["703"]);
     expect(tool._entry.data.points).toEqual([{ x: 0, y: 0 }]);
   });
 
   test("object-end 后应通过 commitObjects 提交对象", () => {
     const tool = new PolygonCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(23);
+    const { deviceContext } = createBoardDeviceContext("23");
     const boardApi = deviceContext.services.boardApi;
 
     tool.process(
@@ -392,7 +392,7 @@ describe("PolygonCreatorTool", () => {
       deviceContext,
     );
 
-    expect(boardApi.commitObjects).toHaveBeenCalledWith([23]);
+    expect(boardApi.commitObjects).toHaveBeenCalledWith(["23"]);
   });
 
   describe("端到端集成（通过 Board 输入链路）", () => {
@@ -457,7 +457,7 @@ describe("PolygonCreatorTool", () => {
             }),
           }),
         ]);
-        expect(tool._entry.id).toBe(1);
+        expect(tool._entry.id).toBe("1");
         expect(tool._entry.position.serialize()).toEqual({ x: 125, y: 80 });
         expect(tool._entry.data.points).toEqual([{ x: 0, y: 0 }]);
       } finally {

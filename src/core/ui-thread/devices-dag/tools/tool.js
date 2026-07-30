@@ -8,7 +8,7 @@
 import { SignalPacket } from "../dag-core/signal.js";
 
 /**
- * 将单对象或对象集合规整为数组（纯函数）
+ * 将单对象或对象集合规整为数组
  * @param {Iterable<*>|*} objects - 原始对象或对象集合
  * @returns {Array<*>}
  */
@@ -26,18 +26,19 @@ function normalizeObjectCollection(objects) {
 }
 
 /**
- * 解析对象条目的数字 id（纯函数）
+ * 解析对象条目的 id
  * @param {*} objectEntry - 对象实例或兼容条目
- * @returns {number|null}
+ * @returns {string|null}
  */
 function resolveObjectId(objectEntry) {
-  return typeof objectEntry?.id === "number" ? objectEntry.id : null;
+  const id = objectEntry?.id;
+  return typeof id === "string" ? id : null;
 }
 
 /**
- * 批量解析对象条目的数字 id，去重（纯函数）
+ * 批量解析对象条目的 id，去重
  * @param {Iterable<*>|*} objects - 对象或对象集合
- * @returns {number[]}
+ * @returns {string[]}
  */
 function resolveObjectIds(objects) {
   return [
@@ -257,19 +258,19 @@ class Tool {
   }
 
   /**
-   * 解析对象条目的数字 id
+   * 解析对象条目的 id
    * @param {*} objectEntry - 对象实例或兼容条目
-   * @returns {number|null} objectId
+   * @returns {string|null} objectId
    */
   resolveObjectId(objectEntry) {
     return resolveObjectId(objectEntry);
   }
 
   /**
-   * 批量解析对象条目的数字 id
+   * 批量解析对象条目的 id
    * @param {import("../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
    * @param {Iterable<*>|*} objects - 对象或对象集合
-   * @returns {number[]} 去重后的 objectId 列表
+   * @returns {string[]} 去重后的 objectId 列表
    */
   resolveObjectIds(context, objects) {
     return resolveObjectIds(objects);

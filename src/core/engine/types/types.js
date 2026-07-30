@@ -60,7 +60,7 @@
  * 消费端（如 modifier 的 `resolveModifiedObjectPosition`）通过 `Vector.parse()` 统一处理
  * `position` 的 `Vector` 和 `{ x, y }` 两种形态。
  * @typedef {Object} LightweightObjectEntry
- * @property {number} id - 对象 id
+ * @property {string} id - 对象 id
  * @property {string} type - 对象类型名（如 "StrokeObject"、"CircleObject"）
  * @property {Vector|Point2D} position - 世界坐标位置，创建态可为 Vector 实例，摘要态为 { x, y } 纯对象
  * @property {TransformMatrix2D} [transform] - 对象变换矩阵（创建态由手势补丁写入，如椭圆的非均匀缩放）
@@ -73,7 +73,7 @@
 /**
  * 跨线程对象摘要
  * @typedef {Object} ObjectSummary
- * @property {number} id - 对象 id
+ * @property {string} id - 对象 id
  * @property {string} type - 对象类型名
  * @property {boolean} isActive - 是否在 AOM 动态图中
  * @property {Point2D} position - 世界坐标位置

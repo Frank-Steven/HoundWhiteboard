@@ -9,7 +9,7 @@ describe("RectangleObjectChooserTool", () => {
     const tool = new RectangleObjectChooserTool();
     const stateAccess = createStateAccess();
     const selectedSummary = {
-      id: 1,
+      id: "1",
       type: "CircleObject",
       position: { x: 10, y: 10 },
       range: new RectangleRange(0, 0, 20, 20),
@@ -19,7 +19,7 @@ describe("RectangleObjectChooserTool", () => {
     };
 
     const boardApi = {
-      hitTest: jest.fn(async () => [1]),
+      hitTest: jest.fn(async () => ["1"]),
       queryObjects: jest.fn(async () => [selectedSummary]),
       addActiveObjects: jest.fn(),
       discardActiveObjects: jest.fn(),
@@ -77,8 +77,8 @@ describe("RectangleObjectChooserTool", () => {
       new RectangleRange(5, 5, 35, 35),
       "intersect",
     );
-    expect(boardApi.queryObjects).toHaveBeenCalledWith([1]);
-    expect(boardApi.addActiveObjects).toHaveBeenCalledWith([1]);
+    expect(boardApi.queryObjects).toHaveBeenCalledWith(["1"]);
+    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["1"]);
     expect(stateAccess.getState().objects).toEqual([selectedSummary]);
     expect(stateAccess.getState()).toEqual({
       objects: [selectedSummary],
@@ -88,7 +88,7 @@ describe("RectangleObjectChooserTool", () => {
   test("空框选应通过 discardActiveObjects 清空上一轮选择", async () => {
     const tool = new RectangleObjectChooserTool();
     const previousSummary = {
-      id: 1,
+      id: "1",
       type: "CircleObject",
       position: { x: 100, y: 100 },
       range: new RectangleRange(0, 0, 10, 10),
@@ -100,7 +100,7 @@ describe("RectangleObjectChooserTool", () => {
     const boardApi = {
       hitTest: jest
         .fn()
-        .mockResolvedValueOnce([1])
+        .mockResolvedValueOnce(["1"])
         .mockResolvedValueOnce([]),
       queryObjects: jest.fn(async (ids) =>
         ids.length > 0 ? [previousSummary] : [],
@@ -178,7 +178,7 @@ describe("RectangleObjectChooserTool", () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith([1]);
+    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith(["1"]);
     expect(boardApi.addActiveObjects).toHaveBeenCalledTimes(1);
     expect(tool._selectedObjects).toEqual([]);
     expect(stateAccess.getState().objects).toBeUndefined();
@@ -196,7 +196,7 @@ describe("RectangleObjectChooserTool", () => {
     const drawRectEntry = jest.fn();
 
     tool._overlaySelectedObjects = [
-      { id: 1, position: { x: 0, y: 0 }, property: {} },
+      { id: "1", position: { x: 0, y: 0 }, property: {} },
     ];
     tool._overlayDragState = {
       isSelecting: true,
@@ -225,7 +225,7 @@ describe("RectangleObjectChooserTool", () => {
     const tool = new RectangleObjectChooserTool();
     const stateAccess = createStateAccess();
     const selectedSummary = {
-      id: 121,
+      id: "121",
       type: "CircleObject",
       position: { x: 12, y: 12 },
       range: new RectangleRange(-10, -10, 20, 20),
@@ -234,13 +234,13 @@ describe("RectangleObjectChooserTool", () => {
       data: { radius: 10 },
     };
     const boardApi = {
-      hitTest: jest.fn(async () => [121]),
+      hitTest: jest.fn(async () => ["121"]),
       queryObjects: jest.fn(async () => [selectedSummary]),
       addActiveObjects: jest.fn(),
       discardActiveObjects: jest.fn(),
     };
     const staleBoardObject = {
-      id: 121,
+      id: "121",
       stale: true,
       position: new Vector(999, 999),
       getRange() {
@@ -287,8 +287,8 @@ describe("RectangleObjectChooserTool", () => {
       new RectangleRange(0, 0, 30, 30),
       "intersect",
     );
-    expect(boardApi.queryObjects).toHaveBeenCalledWith([121]);
-    expect(boardApi.addActiveObjects).toHaveBeenCalledWith([121]);
+    expect(boardApi.queryObjects).toHaveBeenCalledWith(["121"]);
+    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["121"]);
     expect(stateAccess.getState().objects).toEqual([selectedSummary]);
     expect(deviceContext.services.board.getObjectById).not.toHaveBeenCalled();
     expect(stateAccess.getState()).toEqual({ objects: [selectedSummary] });

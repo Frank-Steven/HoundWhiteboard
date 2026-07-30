@@ -7,7 +7,7 @@
  * @author Zhou Chenyu
  */
 
-import { CounterPool } from "../../../engine/utils/counter-pool.js";
+import { IncrementalIdPool } from "../../../engine/utils/incremental-id-pool.js";
 import { EventBus } from "../../../engine/utils/event-bus.js";
 import { SharedStateStore } from "../../../engine/utils/shared-state-store.js";
 import { DevicesDAG } from "../../devices-dag/index.js";
@@ -98,15 +98,16 @@ class Board {
 
   /**
    * 对象 id 池
-   * @type {CounterPool}
+   * @type {IncrementalIdPool}
    */
-  #counterPool;
+  #idPool;
 
   /**
    * @param {{
    *   width?: number,
    *   height?: number,
    *   rootPath?: string,
+   *   idSource?: string,
    * }} [options={}] - 白板初始化选项
    */
   constructor(options = {}) {
@@ -118,7 +119,7 @@ class Board {
 
     this.#boardApi = null;
     this.#worker = null;
-    this.#counterPool = new CounterPool();
+    this.#idPool = new IncrementalIdPool(options.idSource ?? "");
     this.viewports = new Map();
     this.signalsEventBus = new EventBus();
     this.devicesDAG = new DevicesDAG({
@@ -160,10 +161,10 @@ class Board {
 
   /**
    * 申请新的对象 id
-   * @returns {number}
+   * @returns {string} 携带来源命名空间的字符串 id
    */
   allocateObjectId() {
-    return this.#counterPool.generate();
+    return this.#idPool.allocate();
   }
 
   /**
@@ -194,6 +195,7 @@ class Board {
         width: this.width,
         height: this.height,
         rootPath: this.rootPath,
+        idSource: this.#idPool.source,
       });
     } catch (error) {
       boardApi.destroy(error?.message ?? "Failed to enable worker mode.");
@@ -297,10 +299,10 @@ class Board {
 
   /**
    * 申请新的对象 id
-   * @returns {number}
+   * @returns {string} 携带来源命名空间的字符串 id
    */
   allocateObjectId() {
-    return this.#counterPool.generate();
+    return this.#idPool.allocate();
   }
 
   /**

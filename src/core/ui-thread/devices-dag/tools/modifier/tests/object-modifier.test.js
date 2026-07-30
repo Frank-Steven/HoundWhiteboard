@@ -19,7 +19,7 @@ describe("ObjectModifierTool", () => {
     }
 
     const tool = new TestModifierTool();
-    const object = { id: 1, changed: false };
+    const object = { id: "1", changed: false };
     const calls = [];
     const modificationContext = {
       path: "/test",
@@ -60,7 +60,7 @@ describe("ObjectModifierTool", () => {
     }
 
     const tool = new TestModifierTool();
-    const objects = [{ id: 1 }, { id: 2 }];
+    const objects = [{ id: "1" }, { id: "2" }];
     const viewport = {
       renderer: {
         captureObjectSnapshot: jest.fn(),
@@ -96,7 +96,7 @@ describe("ObjectModifierTool", () => {
     }
 
     const tool = new TestModifierTool();
-    const object = { id: 21, changed: false };
+    const object = { id: "21", changed: false };
     const viewport = {
       renderer: {
         captureObjectSnapshot: jest.fn(),
@@ -130,7 +130,7 @@ describe("ObjectModifierTool", () => {
 
     const tool = new TestModifierTool();
     const object = {
-      id: 3,
+      id: "3",
       position: { x: 10, y: 20 },
       range: new RectangleRange(0, 0, 30, 40),
       property: {},
@@ -150,7 +150,7 @@ describe("ObjectModifierTool", () => {
     });
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].objectId).toBe(3);
+    expect(entries[0].objectId).toBe("3");
     expect(entries[0].type).toBe("rect");
   });
 
@@ -164,7 +164,7 @@ describe("ObjectModifierTool", () => {
       const actionComplete = jest.fn();
       tool.on("action:complete", actionComplete);
 
-      const object = { id: 10 };
+      const object = { id: "10" };
       const boardApi = {
         commitObjects: jest.fn(),
         discardActiveObjects: jest.fn(),
@@ -175,7 +175,7 @@ describe("ObjectModifierTool", () => {
         [object],
       );
 
-      expect(boardApi.commitObjects).toHaveBeenCalledWith([10]);
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["10"]);
       expect(actionComplete).toHaveBeenCalledTimes(1);
       expect(actionComplete).toHaveBeenCalledWith(
         expect.objectContaining({ path: "/test" }),
@@ -193,7 +193,7 @@ describe("ObjectModifierTool", () => {
       tool.on("action:complete", actionComplete);
       tool.beforeApplyModifiedObjects = () => false;
 
-      const object = { id: 11 };
+      const object = { id: "11" };
       const commitObjects = jest.fn();
       const boardApi = {
         commitObjects,
@@ -217,7 +217,7 @@ describe("ObjectModifierTool", () => {
 
       const tool = new TestModifier();
       tool.autoUmountOnApply = false;
-      const object = { id: 12 };
+      const object = { id: "12" };
       const unmount = jest.fn();
       const boardApi = {
         commitObjects: jest.fn(),
@@ -234,7 +234,7 @@ describe("ObjectModifierTool", () => {
       );
 
       // apply 正常执行
-      expect(boardApi.commitObjects).toHaveBeenCalledWith([12]);
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["12"]);
       // 但 unmount 不应被调用
       expect(unmount).not.toHaveBeenCalled();
     });
@@ -245,7 +245,7 @@ describe("ObjectModifierTool", () => {
       }
 
       const tool = new TestModifier();
-      const object = { id: 13 };
+      const object = { id: "13" };
       const unmount = jest.fn();
       const boardApi = {
         commitObjects: jest.fn(),
@@ -261,7 +261,7 @@ describe("ObjectModifierTool", () => {
         [object],
       );
 
-      expect(boardApi.commitObjects).toHaveBeenCalledWith([13]);
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["13"]);
       expect(unmount).toHaveBeenCalledWith("/test");
     });
 
@@ -271,7 +271,7 @@ describe("ObjectModifierTool", () => {
       }
 
       const tool = new TestModifier();
-      const object = { id: 14 };
+      const object = { id: "14" };
       const commitObjects = jest.fn();
       const discardActiveObjects = jest.fn();
       const boardApi = {
@@ -310,7 +310,7 @@ describe("ObjectModifierTool", () => {
 
       const tool = new TestModifier();
       const object = {
-        id: 42,
+        id: "42",
         position: { x: 1, y: 2 },
         data: { radius: 5 },
         transform: { a: 1, b: 0, c: 0, d: 1 },
@@ -327,7 +327,7 @@ describe("ObjectModifierTool", () => {
       });
 
       expect(boardApi.modifyObject).toHaveBeenCalledTimes(1);
-      expect(boardApi.modifyObject).toHaveBeenCalledWith(42, patch);
+      expect(boardApi.modifyObject).toHaveBeenCalledWith("42", patch);
       expect(object.position).toEqual(new Vector(10, 20));
       expect(object.data).toEqual({ radius: 8 });
       expect(object.transform).toEqual({ a: 2, b: 0, c: 0, d: 0.5 });
@@ -339,7 +339,7 @@ describe("ObjectModifierTool", () => {
       }
 
       const tool = new TestModifier();
-      const object = { id: 43, position: { x: 0, y: 0 }, data: { a: 1, b: 2 } };
+      const object = { id: "43", position: { x: 0, y: 0 }, data: { a: 1, b: 2 } };
 
       tool.applyGesturePatch(object, { data: { b: 3 } }, { context: {} });
 
@@ -361,7 +361,7 @@ describe("ObjectModifierTool", () => {
       expect(boardApi.modifyObject).not.toHaveBeenCalled();
       expect(noIdObject.position).toEqual(new Vector(5, 6));
 
-      const plainObject = { id: 44, position: { x: 0, y: 0 } };
+      const plainObject = { id: "44", position: { x: 0, y: 0 } };
       tool.applyGesturePatch(plainObject, { position: { x: 7, y: 8 } }, {
         context: {},
       });
@@ -374,7 +374,7 @@ describe("ObjectModifierTool", () => {
       }
 
       const tool = new TestModifier();
-      const object = { id: 45, position: { x: 1, y: 1 } };
+      const object = { id: "45", position: { x: 1, y: 1 } };
       const boardApi = { modifyObject: jest.fn() };
 
       tool.setModifiedObjectPosition(
@@ -384,7 +384,7 @@ describe("ObjectModifierTool", () => {
       );
 
       expect(object.position).toEqual(new Vector(13, 24));
-      expect(boardApi.modifyObject).toHaveBeenCalledWith(45, {
+      expect(boardApi.modifyObject).toHaveBeenCalledWith("45", {
         position: { x: 13, y: 24 },
       });
     });
