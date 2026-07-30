@@ -31,6 +31,7 @@ const DEMO_TOOL_NAMES = Object.freeze({
   CIRCLE_DIAMETER: "circle-diameter",
   ELLIPSE: "ellipse",
   SELECT: "select",
+  ERASER: "eraser",
 });
 
 /**

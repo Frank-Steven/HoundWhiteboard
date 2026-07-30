@@ -1,3 +1,4 @@
+import { jest } from "@jest/globals";
 import { BoardApi } from "../board-api.js";
 import { BoardCore } from "../../orchestration/board-core.js";
 import { createDefaultAomRenderHooks } from "../../orchestration/aom-render-hooks.js";
@@ -290,5 +291,79 @@ describe("BoardApi.eraseData", () => {
     expect(boardCore.getObjectById("A").data.points).toEqual(
       horizontalPoints(),
     );
+  });
+
+  test("并发调用串行化：fire-and-forget 的轨迹段不把分裂对象漏擦", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+
+    const points = [];
+    for (let x = 0; x <= 200; x += 10) {
+      points.push({ x, y: 100 });
+    }
+    createStaticStroke(api, "s1", points);
+
+    // 模拟工具的 fire-and-forget：不等待前一条完成就连发全部轨迹段。
+    // 先发中段强制分裂，其余段从左到右覆盖整条笔画；
+    // 若并发执行，后续调用的候选快照早于分裂提交，新尾巴对象会被漏擦。
+    const segmentAt = (x) => ({
+      points: [
+        { x, y: 100 },
+        { x: x + 10, y: 100 },
+      ],
+      radius: 4,
+      source: "test",
+    });
+    const pending = [api.eraseData(segmentAt(100))];
+    for (let x = 0; x <= 190; x += 10) {
+      pending.push(api.eraseData(segmentAt(x)));
+    }
+    await Promise.all(pending);
+
+    expect(boardCore.getObjectById("s1")).toBeUndefined();
+    expect(boardCore.objectLoaded.size).toBe(0);
+  });
+
+  test("修改静态对象时随渲染请求携带切割前的旧世界范围", async () => {
+    const requestStaticRenderForObjects = jest.fn();
+    const boardCore = new BoardCore({
+      width: 800,
+      height: 600,
+      aomRenderHooks: {
+        ...createDefaultAomRenderHooks(),
+        requestStaticRenderForObjects,
+      },
+      persistenceAdapter: createDefaultPersistenceAdapter(),
+    });
+    const api = new BoardApi(boardCore);
+
+    const points = [];
+    for (let x = 0; x <= 200; x += 10) {
+      points.push({ x, y: 100 });
+    }
+    createStaticStroke(api, "s1", points);
+    requestStaticRenderForObjects.mockClear();
+
+    // 竖向一刀切成两段：被擦缺口与残端的旧像素要靠旧范围清理
+    await api.eraseData({
+      points: [
+        { x: 100, y: 90 },
+        { x: 100, y: 110 },
+      ],
+      radius: 4,
+      source: "test",
+    });
+
+    expect(requestStaticRenderForObjects).toHaveBeenCalled();
+    const [modifiedObjects, , previousWorldRects] =
+      requestStaticRenderForObjects.mock.calls.at(-1);
+    expect(modifiedObjects.map((obj) => obj.id)).toEqual(["s1"]);
+
+    const previousRect = previousWorldRects.get("s1");
+    expect(previousRect).toBeDefined();
+    expect(previousRect.left).toBeLessThanOrEqual(0);
+    expect(previousRect.top).toBeLessThanOrEqual(100);
+    expect(previousRect.left + previousRect.width).toBeGreaterThanOrEqual(200);
+    expect(previousRect.top + previousRect.height).toBeGreaterThanOrEqual(100);
   });
 });

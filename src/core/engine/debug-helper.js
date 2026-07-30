@@ -168,7 +168,7 @@ function logObjectsDetail(boardCore, params = {}) {
 
   const aom = boardCore.activeObjectManager;
   const details = ids.map((objectId) => {
-    const obj = boardCore.getObjectById(Number(objectId));
+    const obj = boardCore.getObjectById(objectId);
     if (!obj) return { objectId, error: "not found" };
 
     return {

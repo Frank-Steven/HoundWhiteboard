@@ -65,6 +65,7 @@ class ObjectEraserTool extends GestureTool {
     if (position) {
       this.applyTrailSegment(position, position, interaction);
     }
+    this.requestUiOverlayRefresh(interaction.context);
   }
 
   /**
@@ -95,6 +96,7 @@ class ObjectEraserTool extends GestureTool {
    */
   completeGesture(interaction) {
     this._lastTrailPoint = null;
+    this.requestUiOverlayRefresh(interaction.context);
   }
 
   /**
@@ -104,6 +106,7 @@ class ObjectEraserTool extends GestureTool {
    */
   cancelGesture(interaction) {
     this._lastTrailPoint = null;
+    this.requestUiOverlayRefresh(interaction.context);
   }
 
   /**

@@ -14,6 +14,7 @@ import { createCircleDiameterProcessor } from "../../../core/ui-thread/devices-d
 import { EllipseDataCreatorTool } from "../../../core/ui-thread/devices-dag/tools/creator/ellipse/data-creator.js";
 import { createEllipseBoundingProcessor } from "../../../core/ui-thread/devices-dag/tools/creator/ellipse/bounding-processor.js";
 import { RectangleObjectChooserTool } from "../../../core/ui-thread/devices-dag/tools/chooser/rectangle-object-chooser.js";
+import { DataObjectEraserTool } from "../../../core/ui-thread/devices-dag/tools/eraser/data-object-eraser.js";
 import { CommonObjectModifierTool } from "../../../core/ui-thread/devices-dag/tools/modifier/common-object-modifier.js";
 import { DragGestureProcessor } from "../../../core/ui-thread/devices-dag/tools/modifier/gesture/drag-processor.js";
 import {
@@ -91,6 +92,7 @@ function mountToolSwitcher(viewport, options) {
     first: new RectangleObjectChooserTool(),
     second: new CommonObjectModifierTool({ processor: new DragGestureProcessor() }),
   });
+  const eraserTool = new DataObjectEraserTool();
   const switcherWrapper = new ToolSwitcherWrapper({
     tools: [
       { name: DEMO_TOOL_NAMES.STROKE, tool: primaryStrokeTool },
@@ -98,6 +100,7 @@ function mountToolSwitcher(viewport, options) {
       { name: DEMO_TOOL_NAMES.CIRCLE_DIAMETER, tool: circleDiameterCreatorTool },
       { name: DEMO_TOOL_NAMES.ELLIPSE, tool: ellipseCreatorTool },
       { name: DEMO_TOOL_NAMES.SELECT, tool: selectHandoffTool },
+      { name: DEMO_TOOL_NAMES.ERASER, tool: eraserTool },
     ],
     defaultTool,
   });

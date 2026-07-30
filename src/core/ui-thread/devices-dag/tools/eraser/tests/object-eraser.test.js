@@ -1,3 +1,4 @@
+import { jest } from "@jest/globals";
 import { Vector } from "../../../../../engine/utils/math.js";
 import { ObjectEraserTool } from "../object-eraser.js";
 
@@ -118,6 +119,35 @@ describe("ObjectEraserTool", () => {
 
     tool.process({ to: "/test", signals: [{ type: "end" }] }, context);
 
+    expect(tool.collectUiOverlayEntries({ viewport })).toEqual([]);
+  });
+
+  test("按下与松手都请求 overlay 刷新，光标随状态显隐", () => {
+    const viewport = { zoom: 1, requestViewportUiRender: jest.fn() };
+    const tool = new TestEraserTool();
+    const context = createDeviceContext({ viewport });
+
+    tool.process(positionSignal(10, 20), context);
+    expect(viewport.requestViewportUiRender).toHaveBeenCalled();
+    expect(tool.collectUiOverlayEntries({ viewport })).toHaveLength(1);
+
+    viewport.requestViewportUiRender.mockClear();
+    tool.process({ to: "/test", signals: [{ type: "end" }] }, context);
+
+    expect(viewport.requestViewportUiRender).toHaveBeenCalled();
+    expect(tool.collectUiOverlayEntries({ viewport })).toEqual([]);
+  });
+
+  test("cancel 时请求 overlay 刷新清除光标", () => {
+    const viewport = { zoom: 1, requestViewportUiRender: jest.fn() };
+    const tool = new TestEraserTool();
+    const context = createDeviceContext({ viewport });
+
+    tool.process(positionSignal(10, 20), context);
+    viewport.requestViewportUiRender.mockClear();
+    tool.process({ to: "/test", signals: [{ type: "cancel" }] }, context);
+
+    expect(viewport.requestViewportUiRender).toHaveBeenCalled();
     expect(tool.collectUiOverlayEntries({ viewport })).toEqual([]);
   });
 

@@ -37,6 +37,19 @@ function hasStaticBoardObject(boardCore, objectId) {
 }
 
 /**
+ * 计算对象当前的世界坐标包围矩形
+ * @param {import("../objects/basic-obj.js").BasicObject} obj - 对象实例
+ * @returns {import("../range/index.js").RectangleRange | null} 世界包围矩形
+ */
+function getObjectWorldRect(obj) {
+  if (typeof obj?.getRange !== "function" || !obj.position) return null;
+  const range = obj.getRange();
+  if (!range || typeof range.withPosition !== "function") return null;
+  const positioned = range.withPosition(obj.position);
+  return positioned ? RectangleRange.from(positioned) : null;
+}
+
+/**
  * Engine 侧 BoardApi
  * @class
  * @description
@@ -51,6 +64,18 @@ class BoardApi {
    * @type {import("../orchestration/board-core.js").BoardCore}
    */
   #boardCore;
+
+  /**
+   * 数据擦除的串行队列
+   * @description
+   * eraseData 是异步读写：粗筛候选可能挂起等待区块加载，之后才切割与提交。
+   * 工具侧按轨迹段 fire-and-forget，若并发执行，后到的调用持有的候选快照
+   * 早于前序调用提交的分裂对象，会对新对象漏擦。串行队列保证每条调用的
+   * 快照、切割与提交都发生在前一条完成之后。
+   * @type {Promise<void>}
+   * @private
+   */
+  #eraseDataQueue = Promise.resolve();
 
   /**
    * @param {import("../orchestration/board-core.js").BoardCore} boardCore - BoardCore 实例
@@ -253,7 +278,21 @@ class BoardApi {
   /**
    * 按橡皮轨迹擦除命中对象的数据
    * @description
-   * 数据擦除的 Core 侧统一入口：粗筛命中 → 过滤 → 逐对象 eraseData 精确切割，
+   * 数据擦除的 Core 侧统一入口。调用进入串行队列依次执行，返回的 Promise
+   * 在本次调用（含队列等待）完成后兑现。
+   * @param {{ points: Array<{x: number, y: number}>, radius: number, source?: string }} payload - 轨迹段（世界坐标）、橡皮半径与来源标识
+   * @returns {Promise<{ modified: string[], created: string[], deleted: string[] }>} 受影响对象 id 三组
+   */
+  eraseData(payload) {
+    const run = this.#eraseDataQueue.then(() => this.#performEraseData(payload));
+    this.#eraseDataQueue = run.catch(() => { });
+    return run;
+  }
+
+  /**
+   * 执行单次数据擦除
+   * @description
+   * 粗筛命中 → 过滤 → 逐对象 eraseData 精确切割，
    * 按剩余点段分流（整笔删除 / 首段回写 / 其余段分裂新建并提交静态图）。
    * 分裂对象的 id 从 Core 侧分配器表按来源取用。
    *
@@ -262,8 +301,9 @@ class BoardApi {
    * 非活动层成员（被 pickup 一并纳入 AOM）与静态对象均可擦除。
    * @param {{ points: Array<{x: number, y: number}>, radius: number, source?: string }} payload - 轨迹段（世界坐标）、橡皮半径与来源标识
    * @returns {Promise<{ modified: string[], created: string[], deleted: string[] }>} 受影响对象 id 三组
+   * @private
    */
-  async eraseData(payload) {
+  async #performEraseData(payload) {
     const boardCore = this.#boardCore;
     const points = Array.isArray(payload?.points) ? payload.points : [];
     const radius = Number.isFinite(payload?.radius) ? payload.radius : 0;
@@ -291,6 +331,7 @@ class BoardApi {
     const candidateIds = await this.#collectHitObjects(boardCore, queryRange);
 
     const modifiedStaticObjects = [];
+    const previousWorldRects = new Map();
     for (const objectId of candidateIds) {
       const obj = boardCore.getObjectById(objectId);
       if (!obj) continue;
@@ -307,6 +348,13 @@ class BoardApi {
       if (runs.length === 0) {
         result.deleted.push(objectId);
         continue;
+      }
+
+      // 切割前快照旧世界范围：输出层按脏区增量更新，
+      // 被擦区域与回缩残端的旧像素要靠旧范围失效才能清理
+      const previousWorldRect = getObjectWorldRect(obj);
+      if (previousWorldRect) {
+        previousWorldRects.set(objectId, previousWorldRect);
       }
 
       this.modifyObject(objectId, { data: { points: runs[0] } });
@@ -339,6 +387,7 @@ class BoardApi {
       boardCore.aomRenderHooks?.requestStaticRenderForObjects?.(
         modifiedStaticObjects,
         [],
+        previousWorldRects,
       );
     }
 

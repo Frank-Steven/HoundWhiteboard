@@ -2,7 +2,7 @@
 
 ## 概述
 
-对象擦除工具族（也称橡皮工具）负责擦除白板上已有的内容。本文档是设计稿：对象擦除工具族整体未实现，下文描述设计目标与关键决策，对应 `src/core/ui-thread/devices-dag/tools/eraser/` 下的实现。
+对象擦除工具族（也称橡皮工具）负责擦除白板上已有的内容。FD 已实现，FT / FC 未实现；未实现部分为设计意向。对应 `src/core/ui-thread/devices-dag/tools/eraser/` 下的实现。
 
 按擦除语义的作用层面，对象擦除工具分三种：
 
@@ -46,21 +46,20 @@ classDiagram
 
     class ObjectEraserTool {
         +eraserSize: number
-        #_trail: Range
-        #resolveTrailRange(interaction)*
-        #applyEraseToHit(objects, trail, context)*
+        #_lastTrailPoint: Vector
+        +applyTrailSegment(from, to, interaction)*
     }
 
     class DataObjectEraserTool {
-        +applyEraseToHit(objects, trail, context)
+        +applyTrailSegment(from, to, interaction)
     }
 
     class TraitObjectEraserTool {
-        +applyEraseToHit(objects, trail, context)
+        +applyTrailSegment(from, to, interaction)
     }
 
     class CompositeObjectEraserTool {
-        +applyEraseToHit(objects, trail, context)
+        +applyTrailSegment(from, to, interaction)
     }
 
     GestureTool <|-- ObjectEraserTool
@@ -71,10 +70,10 @@ classDiagram
 
 `ObjectEraserTool` 承担公共职责：
 
-- 手势期间把 `position` 流累积为橡皮轨迹 Range（候选：`RopeRange` / `PathRange`）
-- 通过 `collectUiOverlayEntries()` 声明橡皮光标与轨迹预览 overlay
+- 手势期间把 `position` 流累积为增量轨迹段：`beginGesture` 记录锚点并按点擦除一次（支持单击），`updateGesture` 逐段推进
+- 通过 `collectUiOverlayEntries()` 声明圆形橡皮光标 overlay
 
-命中查询不归公共层：FD 经专用 RPC 委托 Core 完成（见下文），FC 不做命中查询，FT 待特征系统确定。子类只实现命中后的处理 hook `applyEraseToHit()`。
+命中查询不归公共层：FD 经 `boardApi.eraseData` 委托 Core 完成（见下文），FC 不做命中查询，FT 待特征系统确定。子类只实现轨迹段处理 hook `applyTrailSegment(from, to, interaction)`。
 
 ## FD 对象擦除工具（For Data）
 
@@ -91,7 +90,7 @@ classDiagram
 
 ### 处理流程
 
-擦除计算在 Core 侧完成，由专用 FD 擦除 RPC 触发（暂记 `boardApi.eraseData(range)`，签名在实现时确定）：
+擦除计算在 Core 侧完成，由 `boardApi.eraseData({ points, radius, source })` 触发（fire-and-forget）：
 
 1. UI 线程在手势期间累积轨迹，按手势增量分段发送，fire-and-forget；单段 payload 小，可走 `BoardApiRpc` 的批量合并
 2. Core 在合并视图上命中查询，只处理 `isErasable()` 为 `true` 且不是活动对象的对象
@@ -111,7 +110,7 @@ classDiagram
 ### 语义特征
 
 - 擦除结果直接落在持久化数据上：序列化、命中测试、撤销都自然跟随
-- 橡皮尺寸与轨迹平滑度影响切割精度，取值在实现时确定
+- 橡皮尺寸与轨迹平滑度影响切割精度
 
 ## FT 对象擦除工具（For Trait）
 
@@ -182,7 +181,7 @@ ctx.globalCompositeOperation = "destination-out"; // 透出背景的效果
 
 ## 实现状态
 
-对象擦除工具族整体未实现，本文档描述设计目标。文中引用的既有事实以当前代码为准：
+FD 已实现：几何原语（`range/segment-math.js` 的距离判定）、`StrokeObject.eraseData` 切割、`BoardApi.eraseData` Core 入口（含活动对象互斥）、RPC 贯通、`DataObjectEraserTool` 与 demo 接线均已落地。FT / FC 未实现，对应章节为设计意向。文中引用的既有事实以当前代码为准：
 
 - `StrokeObject.isErasable()` 返回 `true`，`GraphObject` / `Container` 返回 `false`
 - `ObjectSummary.data` 携带完整类型专属数据（如 `points`）
