@@ -87,7 +87,7 @@ function createBoardRenderHooks(viewportsOrFn) {
      * 按对象范围刷新 viewport 的静态层
      * @param {import("../../../engine/objects/basic-obj.js").BasicObject[]} objectInstances - 受影响对象
      * @param {Object[]} fallbackChunks - 回退区块
-     * @param {Map<number, RectangleRange>} previousWorldRects - 旧世界范围快照
+     * @param {Map<string, RectangleRange>} previousWorldRects - 旧世界范围快照
      */
     requestStaticRenderForObjects(
       objectInstances = [],

@@ -331,7 +331,7 @@ class Chunk {
 
   /**
    * 从区块静态图中移除对象
-   * @param {number} objectId - 要移除的对象 id
+   * @param {string} objectId - 要移除的对象 id
    */
   removeObject(objectId) {
     if (!this.objectManager) return;

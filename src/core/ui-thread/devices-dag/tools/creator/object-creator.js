@@ -710,7 +710,7 @@ class ObjectCreatorTool extends GestureTool {
   /**
    * 创建当前手势使用的本地状态对象
    * @param {Vector} position - 新对象的位置
-   * @param {number} id - 新对象的 id
+   * @param {string} id - 新对象的 id
    * @description
    * 子类应初始化 this._entry 为纯数据对象，遵循 LightweightObjectEntry 协议。
    * 其中 `type` 字段应与 {@link getCreatedObjectType} 的返回值一致。

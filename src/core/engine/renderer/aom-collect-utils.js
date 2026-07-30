@@ -10,8 +10,8 @@ import { Layer } from "../orchestration/active-object-manager.js";
 
 /**
  * 按对象 id 序列解析并收集可绘制对象
- * @param {Iterable<number>} objectIds - 对象 id 序列
- * @param {(objectId: number) => BasicObject | undefined} resolveObject - 对象解析器
+ * @param {Iterable<string>} objectIds - 对象 id 序列
+ * @param {(objectId: string) => BasicObject | undefined} resolveObject - 对象解析器
  * @param {Set<number>} seenObjectIds - 已收集对象 id
  * @returns {BasicObject[]}
  */

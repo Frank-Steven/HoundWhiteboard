@@ -79,7 +79,7 @@
  * 对象结构变更推送消息
  * @typedef {Object} ObjectChangedMessage
  * @property {"object-changed"} type - 消息类型
- * @property {number} objectId - 对象 id
+ * @property {string} objectId - 对象 id
  * @property {import("./types.js").ObjectSummary} summary - 变更后的对象摘要
  */
 
@@ -87,7 +87,7 @@
  * 列表属性变更消息
  * @typedef {Object} MutateListPropertyMessage
  * @property {"mutate-list-property"} type - 消息类型
- * @property {number} objectId - 对象 id
+ * @property {string} objectId - 对象 id
  * @property {string} key - 列表属性名
  * @property {"append" | "replace" | "remove"} operation - 变更操作类型
  * @property {number} [index] - replace/remove 时的目标索引

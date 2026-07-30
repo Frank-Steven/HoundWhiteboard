@@ -101,7 +101,7 @@ class BoardApiRpc {
 
   /**
    * 当前帧内待合并发送的 RPC 条目缓冲
-   * @type {Map<string, { method: string, objectId: number, patch?: Object, key?: string, items?: any[], index?: number, item?: any }>}
+   * @type {Map<string, { method: string, objectId: string, patch?: Object, key?: string, items?: any[], index?: number, item?: any }>}
    */
   #batchBuffer;
 
@@ -232,7 +232,17 @@ class BoardApiRpc {
    * @returns {Promise<any>} RPC 响应结果
    */
   #call(method, params = {}, timeoutMs = this.#timeoutMs) {
-    this.#flushBatchNow();
+    // flush 失败（如端点已断开）必须立即 reject，避免请求悬挂到超时
+    try {
+      this.#flushBatchNow();
+    } catch (error) {
+      return Promise.reject(
+        createRpcError(
+          `Batch flush failed before ${method}: ${error?.message ?? String(error)}`,
+          "RPC_FLUSH_ERROR",
+        ),
+      );
+    }
 
     const msgId = createRpcMessageId();
 
@@ -282,7 +292,7 @@ class BoardApiRpc {
    * 在 Core 侧创建对象实例，注册到 AOM 动态图
    * @param {string} type - 对象类型名（如 "StrokeObject" | "CircleObject"）
    * @param {import("../engine/types/board-api-types.js").CreateObjectProps} props - 创建属性
-   * @returns {Promise<number>} 新对象的 objectId
+   * @returns {Promise<string>} 新对象的 objectId
    */
   async createObject(type, props) {
     return this.#call("createObject", { type, props });
@@ -385,7 +395,7 @@ class BoardApiRpc {
 
   /**
    * 永久删除对象集合
-   * @param {number[]} objectIds - 要删除的对象 id 列表
+   * @param {string[]} objectIds - 要删除的对象 id 列表
    * @returns {Promise<void>}
    */
   async deleteObjects(objectIds) {
@@ -394,8 +404,8 @@ class BoardApiRpc {
 
   /**
    * 将 AOM 动态图中的对象写回静态图
-   * @param {number[]} objectIds - 要提交的对象 id 列表
-   * @returns {Promise<number[]>} 实际提交的对象 id 列表
+   * @param {string[]} objectIds - 要提交的对象 id 列表
+   * @returns {Promise<string[]>} 实际提交的对象 id 列表
    */
   async commitObjects(objectIds) {
     return this.#call("commitObjects", { objectIds });
@@ -403,7 +413,7 @@ class BoardApiRpc {
 
   /**
    * 将对象加入 AOM 动态图
-   * @param {number[]} objectIds - 对象 id 列表
+   * @param {string[]} objectIds - 对象 id 列表
    * @returns {Promise<void>}
    */
   async addActiveObjects(objectIds) {
@@ -412,7 +422,7 @@ class BoardApiRpc {
 
   /**
    * 将对象从 AOM 动态图移除
-   * @param {number[]} objectIds - 对象 id 列表
+   * @param {string[]} objectIds - 对象 id 列表
    * @returns {Promise<void>}
    */
   async discardActiveObjects(objectIds) {
@@ -421,7 +431,7 @@ class BoardApiRpc {
 
   /**
    * 按 id 查询对象摘要
-   * @param {number[]} ids - 对象 id 列表
+   * @param {string[]} ids - 对象 id 列表
    * @returns {Promise<import("../engine/types/types.js").ObjectSummary[]>} 对象摘要列表
    */
   async queryObjects(ids) {
@@ -431,7 +441,7 @@ class BoardApiRpc {
   /**
    * 按区块查询对象 id
    * @param {number[]} chunkIds - 区块 id 列表
-   * @returns {Promise<number[]>} 对象 id 列表
+   * @returns {Promise<string[]>} 对象 id 列表
    */
   async queryChunkObjects(chunkIds) {
     return this.#call("queryChunkObjects", { chunkIds });
@@ -441,7 +451,7 @@ class BoardApiRpc {
    * 在合并视图上执行命中查询
    * @param {import("../engine/range/range.js").Range | import("../engine/types/types.js").Rect} range - 命中范围
    * @param {string} [mode] - 命中模式
-   * @returns {Promise<number[]>} 命中的 objectId 列表
+   * @returns {Promise<string[]>} 命中的 objectId 列表
    */
   async hitTest(range, mode) {
     return this.#call("hitTest", { range, mode });

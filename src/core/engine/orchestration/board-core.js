@@ -50,9 +50,9 @@ import { createDefaultPersistenceAdapter } from "../../bridges/persistence-adapt
  * @typedef {Object} PersistenceAdapter
  * @property {(chunkId: number) => Promise<{ tierGraph: any[], objectCoverIndex: any[] }>} loadChunkMetadata
  * @property {(chunkId: number, metadata: { tierGraph: any[], objectCoverIndex: any[] }) => Promise<boolean>} saveChunkMetadata
- * @property {(objectIds: number[]) => Promise<object[]>} loadObjects
+ * @property {(objectIds: string[]) => Promise<object[]>} loadObjects
  * @property {(objects: object[]) => Promise<boolean>} saveObjects
- * @property {(objectId: number) => Promise<boolean>} deleteObject
+ * @property {(objectId: string) => Promise<boolean>} deleteObject
  */
 
 /**
@@ -87,7 +87,7 @@ class BoardCore {
 
   /**
    * 白板级对象实例注册表
-   * @type {Map<number, BoardObjectLoadedState>}
+   * @type {Map<string, BoardObjectLoadedState>}
    */
   objectLoaded;
 
@@ -303,7 +303,7 @@ class BoardCore {
 
   /**
    * 获取对象加载状态条目
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {BoardObjectLoadedState | undefined}
    */
   getObjectEntry(objectId) {
@@ -312,7 +312,7 @@ class BoardCore {
 
   /**
    * 获取对象实例
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {BasicObject | undefined}
    */
   getObjectById(objectId) {
@@ -321,7 +321,7 @@ class BoardCore {
 
   /**
    * 获取对象当前完整加载计数
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {number}
    */
   getObjectLoadCount(objectId) {
@@ -356,14 +356,14 @@ class BoardCore {
   /**
    * 对象覆盖区块索引（对象 id → 覆盖的区块 id 集合）
    * 全 BoardCore 唯一的权威副本，不再按 ChunkObjectManager 重复存储
-   * @type {Map<number, Set<number>>}
+   * @type {Map<string, Set<number>>}
    * @private
    */
   #objectCoverChunks = new Map();
 
   /**
    * 写入对象覆盖区块索引
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @param {Iterable<number>} chunkIds - 覆盖的区块 id 集合
    * @returns {void}
    */
@@ -373,7 +373,7 @@ class BoardCore {
 
   /**
    * 读取对象覆盖区块集合
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {Set<number>|undefined}
    */
   getObjectCoverChunks(objectId) {
@@ -382,7 +382,7 @@ class BoardCore {
 
   /**
    * 删除对象覆盖区块索引
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {void}
    */
   unsetObjectCoverChunks(objectId) {
@@ -777,7 +777,7 @@ class BoardCore {
 
   /**
    * 确保对象实例已加载到白板级注册表
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @param {Iterable<number>} candidateChunkIds - 候选区块 id
    * @returns {Promise<BasicObject | undefined>}
    * @private
@@ -802,7 +802,7 @@ class BoardCore {
   /**
    * 同步区块内单个对象的 loadedCount 与实例状态
    * @param {Chunk} chunk - 区块实例
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {Promise<void>}
    * @private
    */

@@ -24,7 +24,7 @@ const ERASE_COARSE_MARGIN = 64;
 /**
  * 判断对象是否已进入 Worker 侧的区块静态图
  * @param {import("../orchestration/board-core.js").BoardCore} boardCore - BoardCore 实例
- * @param {number} objectId - 对象 id
+ * @param {string} objectId - 对象 id
  * @returns {boolean}
  */
 function hasStaticBoardObject(boardCore, objectId) {
@@ -88,7 +88,7 @@ class BoardApi {
    * 在 Engine 侧创建对象实例，注册到 AOM 动态图
    * @param {string} type - 对象类型名
    * @param {import("../types/board-api-types.js").CreateObjectProps} props - 创建属性
-   * @returns {number} 新对象的 objectId
+   * @returns {string} 新对象的 objectId
    */
   createObject(type, props) {
     const boardCore = this.#boardCore;
@@ -120,7 +120,7 @@ class BoardApi {
 
   /**
    * 修改单个对象的几何/样式属性
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @param {import("../types/board-api-types.js").ObjectPatch} patch - 修改 patch
    * @returns {void}
    */
@@ -186,7 +186,7 @@ class BoardApi {
 
   /**
    * 向对象的列表属性追加元素
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @param {string} key - 列表属性名
    * @param {any[]} items - 追加的元素集合
    * @returns {void}
@@ -202,7 +202,7 @@ class BoardApi {
 
   /**
    * 替换对象列表属性中指定索引的元素
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @param {string} key - 列表属性名
    * @param {number} index - 目标索引
    * @param {any} item - 新元素
@@ -219,7 +219,7 @@ class BoardApi {
 
   /**
    * 删除对象列表属性中指定索引的元素
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @param {string} key - 列表属性名
    * @param {number} index - 目标索引
    * @returns {void}
@@ -235,7 +235,7 @@ class BoardApi {
 
   /**
    * 永久删除对象集合
-   * @param {number[]} objectIds - 要删除的对象 id 列表
+   * @param {string[]} objectIds - 要删除的对象 id 列表
    * @returns {void}
    */
   deleteObjects(objectIds) {
@@ -396,8 +396,8 @@ class BoardApi {
 
   /**
    * 将 AOM 动态图中的对象写回静态图
-   * @param {number[]} objectIds - 要提交的对象 id 列表
-   * @returns {number[]} 实际提交的对象 id（缺失的 id 被跳过，供调用方对账）
+   * @param {string[]} objectIds - 要提交的对象 id 列表
+   * @returns {string[]} 实际提交的对象 id（缺失的 id 被跳过，供调用方对账）
    */
   commitObjects(objectIds) {
     const boardCore = this.#boardCore;
@@ -413,7 +413,7 @@ class BoardApi {
 
   /**
    * 将对象加入 AOM 动态图
-   * @param {number[]} objectIds - 对象 id 列表
+   * @param {string[]} objectIds - 对象 id 列表
    * @returns {void}
    */
   addActiveObjects(objectIds) {
@@ -429,7 +429,7 @@ class BoardApi {
 
   /**
    * 将对象从 AOM 动态图移除
-   * @param {number[]} objectIds - 对象 id 列表
+   * @param {string[]} objectIds - 对象 id 列表
    * @returns {void}
    */
   discardActiveObjects(objectIds) {
@@ -452,7 +452,7 @@ class BoardApi {
 
   /**
    * 按 id 查询对象摘要
-   * @param {number[]} ids - 对象 id 列表
+   * @param {string[]} ids - 对象 id 列表
    * @returns {import("../types/types.js").ObjectSummary[]} 对象摘要列表
    */
   queryObjects(ids) {
@@ -490,7 +490,7 @@ class BoardApi {
   /**
    * 按区块查询对象 id
    * @param {number[]} chunkIds - 区块 id 列表
-   * @returns {number[]} 对象 id 列表
+   * @returns {string[]} 对象 id 列表
    */
   queryChunkObjects(chunkIds) {
     const boardCore = this.#boardCore;
@@ -512,7 +512,7 @@ class BoardApi {
    * 在合并视图上执行命中查询
    * @param {import("../range/range.js").Range | import("../types/types.js").Rect} range - 命中范围
    * @param {string} [mode] - 命中模式
-   * @returns {Promise<number[]>} 命中的 objectId 列表
+   * @returns {Promise<string[]>} 命中的 objectId 列表
    */
   async hitTest(range, mode) {
     const boardCore = this.#boardCore;
@@ -537,7 +537,7 @@ class BoardApi {
    * 执行命中检测后销毁 loader 释放引用。
    * @param {import("../orchestration/board-core.js").BoardCore} boardCore - BoardCore 实例
    * @param {RectangleRange} queryRange - 查询范围
-   * @returns {Promise<number[]>} 命中的对象 id 列表
+   * @returns {Promise<string[]>} 命中的对象 id 列表
    * @private
    */
   async #collectHitObjects(boardCore, queryRange) {
@@ -595,7 +595,7 @@ class BoardApi {
    * @param {import("../orchestration/board-core.js").BoardCore} boardCore - BoardCore 实例
    * @param {RectangleRange} queryRange - 查询范围
    * @param {Set<number>} [chunkIds] - 查询范围覆盖的区块 id 集合，用于粗筛
-   * @returns {number[]}
+   * @returns {string[]}
    * @private
    */
   #runHitTest(boardCore, queryRange, chunkIds) {

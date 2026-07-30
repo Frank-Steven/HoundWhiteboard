@@ -26,7 +26,7 @@ const COMPAT_SELECTION_FRAME_MARGIN = 4;
  * UI overlay 条目
  * @typedef {Object} UiOverlayEntry
  * @property {string} source - 条目来源标识（如 "compat-selection-object-frame:chooser"）
- * @property {number} [objectId] - 关联的白板对象 id
+ * @property {string} [objectId] - 关联的白板对象 id
  * @property {"rect"|"point"|"path"} type - 条目类型
  * @property {Record<string, any>} geometry - 类型专属几何，字段按 type 约定
  * @property {UiOverlayStyle} [style] - 画法属性
@@ -45,7 +45,7 @@ const COMPAT_SELECTION_FRAME_MARGIN = 4;
 /**
  * Summary-like 条目
  * @typedef {Object} SummaryLikeEntry
- * @property {number} [id] - 对象 id
+ * @property {string} [id] - 对象 id
  * @property {{ x: number, y: number }} [position] - 对象世界坐标
  * @property {Object} [range] - 带 withPosition 方法的局部范围
  * @property {Object} [boundingBox] - 局部包围盒（left, top, width, height 或 left, top, right, bottom）

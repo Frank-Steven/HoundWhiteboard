@@ -63,7 +63,7 @@ function intersectsObjects(left, right) {
 /**
  * 收集某层按 inactive 语义参与计算的对象 id（纯函数）
  * @param {Layer} layer
- * @returns {Set<number>}
+ * @returns {Set<string>}
  */
 function collectLayerSemanticInactiveObjectIds(layer) {
   const objectIds = new Set(layer?.inactiveGraph?.getNodes?.() ?? []);
@@ -96,7 +96,7 @@ class Layer {
   /**
    * 该层上的活动对象 id 集合
    * @description 当 `active === false` 时，该集合中的对象按 inactive 语义处理
-   * @type {Set<number>}
+   * @type {Set<string>}
    */
   activeObjects;
 
@@ -151,7 +151,7 @@ class ActiveObjectManager {
   /**
    * 对象所在的层
    * @description 对象 id -> 层实例的引用，便于快速查找某对象所在层。
-   * @type {Map<number, Layer>}
+   * @type {Map<string, Layer>}
    */
   onLayer;
 
@@ -176,14 +176,14 @@ class ActiveObjectManager {
    * activeObjectIndex 是 AOM 的本地快速查找缓存，与 BoardCore 指向同一个实例，
    * 两者之间不会产生分歧。该缓存使渲染和交互过程中频繁的实例查找
    * 可以直接在 AOM 内部完成，无需绕经 BoardCore。
-   * @type {Map<number, BasicObject>}
+   * @type {Map<string, BasicObject>}
    */
   activeObjectIndex;
 
   /**
    * 活动对象进入动态图前的世界范围快照
    * @description 用于在提交回静态层时同时失效旧静态像素与新静态像素。
-   * @type {Map<number, RectangleRange>}
+   * @type {Map<string, RectangleRange>}
    */
   baseObjectSnapshotWorldRanges;
 
@@ -193,7 +193,7 @@ class ActiveObjectManager {
    * 用于在 apply 时正确识别应从哪些旧区块中移除对象。
    * 和 baseObjectSnapshotWorldRanges 不同，该快照不依赖 ownerChunk 的覆盖索引，
    * 因此多次 apply 间移动对象时仍能定位到正确的旧覆盖区块。
-   * @type {Map<number, Set<number>>}
+   * @type {Map<string, Set<number>>}
    */
   baseObjectSnapshotCoverChunks;
 
@@ -383,9 +383,9 @@ class ActiveObjectManager {
 
   /**
    * 从最终静态图中收集某对象的邻接对象 id
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @param {Iterable<number>} [coveredChunkIds = []] - 相关覆盖区块
-   * @returns {Set<number>}
+   * @returns {Set<string>}
    * @private
    */
   collectStaticGraphNeighborIds(objectId, coveredChunkIds = []) {
@@ -410,7 +410,7 @@ class ActiveObjectManager {
 
   /**
    * 从全局活动对象索引中移除对象实例
-   * @param {number} objectId - 要移除的对象 id
+   * @param {string} objectId - 要移除的对象 id
    * @private
    */
   unregisterTrackedActiveObject(objectId) {
@@ -437,7 +437,7 @@ class ActiveObjectManager {
   /**
    * 从给定层的结构中移除对象
    * @param {Layer | undefined} layer - 目标层
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @private
    */
   removeObjectFromLayerStorage(layer, objectId) {
@@ -456,7 +456,7 @@ class ActiveObjectManager {
 
   /**
    * 从对象所在层的结构中移除对象
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @private
    */
   removeObjectFromLayer(objectId) {
@@ -590,7 +590,7 @@ class ActiveObjectManager {
 
   /**
    * 在当前白板中查找对象实例
-   * @param {number} objectId - 要查找的对象 id
+   * @param {string} objectId - 要查找的对象 id
    * @param {Iterable<number>} [candidateChunkIds = []] - 可能包含该对象的区块 id 集合，若提供则优先在这些区块中查找以提升性能
    * @returns {BasicObject | undefined} 查找到的对象实例，若未找到则返回 undefined
    * @private
@@ -689,7 +689,7 @@ class ActiveObjectManager {
   /**
    * 收集覆盖区块中的静态对象 id
    * @param {Iterable<number>} coveredChunkIds
-   * @returns {Set<number>}
+   * @returns {Set<string>}
    * @private
    */
   collectCoveredStaticObjectIds(coveredChunkIds = []) {
@@ -712,7 +712,7 @@ class ActiveObjectManager {
   /**
    * 收集某层按 inactive 语义参与计算的对象 id
    * @param {Layer} layer
-   * @returns {Set<number>}
+   * @returns {Set<string>}
    * @private
    */
   collectLayerSemanticInactiveObjectIds(layer) {
@@ -732,9 +732,9 @@ class ActiveObjectManager {
    * 还会扫描覆盖区块中所有不在 AOM 中的静态对象，与 applied 对象相交的加入 `below`。
    * @param {BasicObject} obj - 要计算的对象实例
    * @param {Set<number>} coveredChunkIds - 该对象的覆盖区块集合
-   * @param {Set<number>} applyingObjectIds - 正在被提交的对象 id 集合
+   * @param {Set<string>} applyingObjectIds - 正在被提交的对象 id 集合
    * @param {{includeUntrackedCoveredObjectsBelow?: boolean}} [options]
-   * @returns {{below: Set<number>, above: Set<number>}}
+   * @returns {{below: Set<string>, above: Set<string>}}
    * @private
    */
   calculateStaticRelations(
@@ -957,7 +957,7 @@ class ActiveObjectManager {
     startFrom = null; // 释放内存
 
     // 获取对象所在层
-    /** @description 对象 id -> 层索引 @type {Map<number, number>} */
+    /** @description 对象 id -> 层索引 @type {Map<string, number>} */
     let layerIndex = new Map();
     // BFS logic
     let visit = new Set();
@@ -1005,7 +1005,7 @@ class ActiveObjectManager {
       { length: layerCount },
       () => new Layer(this.layerPool.generate()),
     );
-    /** 记录重复对象 id @type {Set<number>} */
+    /** 记录重复对象 id @type {Set<string>} */
     let duplicates = new Set();
     for (const node of graph.getNodes()) {
       let layerIdx = layerIndex.get(node);
@@ -1190,7 +1190,7 @@ class ActiveObjectManager {
    * 将对象集合写入静态图的覆盖区块
    * @description 供 {@link _writeLayersToBoard} 和 {@link apply} 的活动路径复用。
    * @param {BasicObject[]} objects - 待写入的对象集合
-   * @param {Set<number>} allObjectIds - 本次提交涉及的全部对象 id，用于 {@link calculateStaticRelations} 去除同批对象防止形成环路
+   * @param {Set<string>} allObjectIds - 本次提交涉及的全部对象 id，用于 {@link calculateStaticRelations} 去除同批对象防止形成环路
    * @returns {Set<number>} 受影响的区块 id 集合
    * @private
    */
@@ -1661,7 +1661,7 @@ class ActiveObjectManager {
 
   /**
    * 判断指定的对象是否当前在 AOM 中（不论活跃与否）
-   * @param {number} objectId - 指定的对象 id
+   * @param {string} objectId - 指定的对象 id
    * @returns {boolean}
    */
   has(objectId) {
@@ -1675,7 +1675,7 @@ class ActiveObjectManager {
    * 与 has() 不同，本方法不包括被 pickup 纳入的非活动层成员，
    * 也不包括整层失活后仍保留结构的 dormant 对象——它们都已从 activeObjectIndex 注销。
    * 需要排除或特判活动对象时一律使用本方法，不要直接读 activeObjectIndex。
-   * @param {number | string} objectId - 指定的对象 id
+   * @param {string} objectId - 指定的对象 id
    * @returns {boolean}
    */
   isActive(objectId) {

@@ -305,14 +305,6 @@ class Board {
   }
 
   /**
-   * 申请新的对象 id
-   * @returns {string} 携带来源命名空间的字符串 id
-   */
-  allocateObjectId() {
-    return this.#idPool.allocate();
-  }
-
-  /**
    * 获取 BoardApiRpc 实例
    * @returns {BoardApiRpc | null}
    */

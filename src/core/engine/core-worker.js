@@ -18,6 +18,7 @@ import { logBus } from "../../utils/log/log-bus.js";
 import { createConsolePrinter } from "../../utils/log/console-printer.js";
 import { handleDebugQuery } from "./debug-helper.js";
 import { BoardApi } from "./api/board-api.js";
+import { BOARD_API_ROUTES } from "./api/board-api-routes.js";
 
 /**
  * 判断值是否可作为 Worker 消息宿主
@@ -600,9 +601,12 @@ class CoreWorkerRuntime {
 
   /**
    * 将 RPC 方法转发到 Engine 侧 BoardApi
+   * @description
+   * 通过 {@link ./api/board-api-routes.js} 的路由表分发，
+   * 并按路由条目声明的 flush 时机在调用完成后调度渲染帧 flush。
    * @param {string} method - RPC 方法名
    * @param {Record<string, any>} params - RPC 参数
-   * @returns {*}
+   * @returns {*} 调用结果（异步方法返回 Promise）
    */
   #invokeBoardApi(method, params = {}) {
     const api = this.#boardApi;
@@ -610,89 +614,23 @@ class CoreWorkerRuntime {
       throw new Error("BoardApi is not initialized. Call createBoard first.");
     }
 
-    let result;
-    switch (method) {
-      case "createObject":
-        result = api.createObject(params.type, params.props);
-        break;
-      case "modifyObject":
-        result = api.modifyObject(params.objectId, params.patch);
-        break;
-      case "modifyObjects":
-        result = api.modifyObjects(params.patches);
-        break;
-      case "appendListItem":
-        result = api.appendListItem(params.objectId, params.key, params.items);
-        break;
-      case "replaceListItem":
-        result = api.replaceListItem(
-          params.objectId,
-          params.key,
-          params.index,
-          params.item,
-        );
-        break;
-      case "removeListItem":
-        result = api.removeListItem(params.objectId, params.key, params.index);
-        break;
-      case "deleteObjects":
-        result = api.deleteObjects(params.objectIds);
-        break;
-      case "commitObjects":
-        result = api.commitObjects(params.objectIds);
-        break;
-      case "addActiveObjects":
-        result = api.addActiveObjects(params.objectIds);
-        break;
-      case "discardActiveObjects":
-        result = api.discardActiveObjects(params.objectIds);
-        break;
-      case "queryObjects":
-        result = api.queryObjects(params.ids);
-        break;
-      case "queryChunkObjects":
-        result = api.queryChunkObjects(params.chunkIds);
-        break;
-      case "hitTest":
-        return api.hitTest(params.range, params.mode);
-      case "eraseData":
-        // 异步擦除可能经历区块加载，flush 挂在完成时机之后
-        return api.eraseData(params).then((eraseResult) => {
-          this.#scheduleFlushRenderFrames();
-          return eraseResult;
-        });
-      case "undo":
-        result = api.undo();
-        break;
-      case "redo":
-        result = api.redo();
-        break;
-      default:
-        throw new Error(`Unknown RPC method: ${method}`);
+    const route = BOARD_API_ROUTES[method];
+    if (!route) {
+      throw new Error(`Unknown RPC method: ${method}`);
     }
 
-    // 对象修改后调度渲染帧 flush
-    if (this.#isMutationMethod(method)) {
+    const result = route.invoke(api, params);
+
+    if (route.flush === "sync") {
       this.#scheduleFlushRenderFrames();
+    } else if (route.flush === "async" && result instanceof Promise) {
+      return result.then((value) => {
+        this.#scheduleFlushRenderFrames();
+        return value;
+      });
     }
 
     return result;
-  }
-
-  /**
-   * 判断 RPC 方法是否为对象修改类方法
-   * @param {string} method - RPC 方法名
-   * @returns {boolean}
-   */
-  #isMutationMethod(method) {
-    return [
-      "modifyObject",
-      "modifyObjects",
-      "appendListItem",
-      "replaceListItem",
-      "removeListItem",
-      "deleteObjects",
-    ].includes(method);
   }
 
   /**

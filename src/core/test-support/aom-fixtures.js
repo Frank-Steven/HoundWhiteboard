@@ -213,7 +213,7 @@ function createMockBoard(chunks, options = {}) {
 
 /**
  * 创建位于指定区块中心位置的对象
- * @param {number} id - 对象 id
+ * @param {string} id - 对象 id
  * @param {number} chunkId - 目标区块 id
  * @param {number} chunkSize - 区块尺寸
  * @returns {BasicObject}
@@ -250,7 +250,7 @@ function verticalChunkConnect(lowerChunk, upperChunk) {
 /**
  * 为指定区块集合中的目标对象批量设置覆盖区块索引
  * @param {Chunk[]} chunks - 区块实例数组
- * @param {number[]} objectIds - 对象 id 数组
+ * @param {string[]} objectIds - 对象 id 数组
  */
 function setObjectCoverage(chunks, objectIds) {
   const chunkIds = chunks.map((item) => item.id);
@@ -266,12 +266,12 @@ function setObjectCoverage(chunks, objectIds) {
  * 创建覆盖区块索引存储
  * @returns {{
  *   setObjectCoverChunks: (objectId: number, chunkIds: Iterable<number>) => void,
- *   getObjectCoverChunks: (objectId: number) => Set<number> | undefined,
- *   unsetObjectCoverChunks: (objectId: number) => void,
+ *   getObjectCoverChunks: (objectId: string) => Set<number> | undefined,
+ *   unsetObjectCoverChunks: (objectId: string) => void,
  * }}
  */
 function createCoverChunkStorage() {
-  /** @type {Map<number, Set<number>>} */
+  /** @type {Map<string, Set<number>>} */
   const coverChunks = new Map();
   return {
     setObjectCoverChunks(objectId, chunkIds) {
