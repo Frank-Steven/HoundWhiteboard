@@ -340,7 +340,7 @@ class CoreWorkerRuntime {
 
   /**
    * 创建 Worker 侧 BoardCore
-   * @param {{ width?: number, height?: number, rootPath?: string, idSource?: string }} [options={}] - Board 初始化选项
+   * @param {{ width?: number, height?: number, rootPath?: string }} [options={}] - Board 初始化选项
    * @returns {{ ok: boolean }} 创建结果
    */
   createBoard(options = {}) {
@@ -352,7 +352,6 @@ class CoreWorkerRuntime {
       width: options.width,
       height: options.height,
       rootPath: options.rootPath,
-      idSource: options.idSource,
       persistenceAdapter: createDefaultPersistenceAdapter(),
       aomRenderHooks: createDefaultAomRenderHooks(),
     });
@@ -656,6 +655,12 @@ class CoreWorkerRuntime {
         break;
       case "hitTest":
         return api.hitTest(params.range, params.mode);
+      case "eraseData":
+        // 异步擦除可能经历区块加载，flush 挂在完成时机之后
+        return api.eraseData(params).then((eraseResult) => {
+          this.#scheduleFlushRenderFrames();
+          return eraseResult;
+        });
       case "undo":
         result = api.undo();
         break;

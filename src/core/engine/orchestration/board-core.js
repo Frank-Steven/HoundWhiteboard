@@ -137,11 +137,11 @@ class BoardCore {
   aomRenderHooks;
 
   /**
-   * 对象 id 池（Core 侧）
-   * @description 供 Core 内部创建对象（如数据擦除分裂）时分配 id，与 UI 侧 id 池命名空间隔离。
-   * @type {IncrementalIdPool}
+   * Core 侧对象 id 分配器表
+   * @description 键为来源标识，值为该来源的 Core id 分配器；首次使用时 lazy 创建。
+   * @type {Map<string, IncrementalIdPool>}
    */
-  #idPool;
+  #idAllocatorTable = new Map();
 
   /**
    * 日志 Logger
@@ -154,7 +154,6 @@ class BoardCore {
    *   width?: number,
    *   height?: number,
    *   rootPath?: string,
-   *   idSource?: string,
    *   persistenceAdapter?: PersistenceAdapter,
    *   aomRenderHooks?: AomRenderHooks,
    * }} [options={}] - 白板核心初始化选项
@@ -164,9 +163,6 @@ class BoardCore {
     this.width = options.width ?? 0;
     this.height = options.height ?? 0;
     this.rootPath = options.rootPath;
-    this.#idPool = new IncrementalIdPool(
-      options.idSource ? `${options.idSource}/core` : "core",
-    );
     this.undoTree = new UndoTree();
     this.chunkLoaded = new Map();
     this.objectLoaded = new Map();
@@ -200,11 +196,20 @@ class BoardCore {
 
   /**
    * 申请 Core 侧对象 id
-   * @description 供 Core 内部创建对象（如数据擦除分裂）时使用，与 UI 侧分配的 id 命名空间隔离。
+   * @description
+   * 供 Core 内部创建对象（如数据擦除分裂）时使用。
+   * 每个来源标识对应独立的分配器，首次使用时 lazy 创建，
+   * 生成的 id 形如 `"{source}/core/{n}"`（空来源为 `"core/{n}"`）。
+   * @param {string} [source=""] - 来源标识
    * @returns {string} 携带来源命名空间的字符串 id
    */
-  allocateObjectId() {
-    return this.#idPool.allocate();
+  allocateObjectId(source = "") {
+    let allocator = this.#idAllocatorTable.get(source);
+    if (!allocator) {
+      allocator = new IncrementalIdPool(source ? `${source}/core` : "core");
+      this.#idAllocatorTable.set(source, allocator);
+    }
+    return allocator.allocate();
   }
 
   /**
@@ -515,7 +520,7 @@ class BoardCore {
 
       if (
         entry.loadedCount <= 0 &&
-        !this.activeObjectManager?.activeObjectIndex?.has?.(objectId)
+        !this.activeObjectManager?.isActive?.(objectId)
       ) {
         this.objectLoaded.delete(objectId);
       }
@@ -818,7 +823,7 @@ class BoardCore {
 
     if (
       entry.loadedCount <= 0 &&
-      !this.activeObjectManager?.activeObjectIndex?.has?.(objectId)
+      !this.activeObjectManager?.isActive?.(objectId)
     ) {
       this.objectLoaded.delete(objectId);
     }

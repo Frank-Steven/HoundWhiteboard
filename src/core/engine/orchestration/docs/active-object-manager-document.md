@@ -48,14 +48,15 @@ AOM 本身不依赖 DOM，也不直接持有 viewport 列表。它通过 `render
 
 ### 公开方法
 
-| 方法      | 签名                                                     | 说明                                                |
-| --------- | -------------------------------------------------------- | --------------------------------------------------- |
-| `has`     | `(objectId: number) => boolean`                          | 判断对象 id 是否在 AOM 的任意层中（含 inactive 层） |
-| `add`     | `(objects: Iterable<BasicObject>) => Layer \| undefined` | 将白板外新对象加入 AOM 顶层，返回新创建的层         |
-| `choose`  | `(startFrom: Iterable<BasicObject>) => Promise<void>`    | 从静态图中拾取对象到 AOM（异步，内部 BFS 遍历）     |
-| `discard` | `(objects: Iterable<BasicObject>) => void`               | 取消活动态，不提交几何变化回静态图                  |
-| `apply`   | `(objects: Iterable<BasicObject>) => Promise<void>`      | 提交活动态变化回静态图（异步，含 FullLoad 预加载）  |
-| `remove`  | `(objects: Iterable<BasicObject>) => void`               | 从白板彻底删除对象并移出 AOM                        |
+| 方法       | 签名                                                     | 说明                                                |
+| ---------- | -------------------------------------------------------- | --------------------------------------------------- |
+| `has`      | `(objectId: number) => boolean`                          | 判断对象 id 是否在 AOM 的任意层中（含 inactive 层） |
+| `isActive` | `(objectId: number \| string) => boolean`                | 判断对象是否为活动对象（不含非活动层成员）          |
+| `add`      | `(objects: Iterable<BasicObject>) => Layer \| undefined` | 将白板外新对象加入 AOM 顶层，返回新创建的层         |
+| `choose`   | `(startFrom: Iterable<BasicObject>) => Promise<void>`    | 从静态图中拾取对象到 AOM（异步，内部 BFS 遍历）     |
+| `discard`  | `(objects: Iterable<BasicObject>) => void`               | 取消活动态，不提交几何变化回静态图                  |
+| `apply`    | `(objects: Iterable<BasicObject>) => Promise<void>`      | 提交活动态变化回静态图（异步，含 FullLoad 预加载）  |
+| `remove`   | `(objects: Iterable<BasicObject>) => void`               | 从白板彻底删除对象并移出 AOM                        |
 
 ### 私有方法
 

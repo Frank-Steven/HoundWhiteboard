@@ -448,6 +448,18 @@ class BoardApiRpc {
   }
 
   /**
+   * 按橡皮轨迹擦除命中对象的数据
+   * @description
+   * 轨迹段有序且语义不可交换，不进批处理合并；
+   * 作为非批处理 #call 会先同步清空批处理队列保序。
+   * @param {{ points: Array<{x: number, y: number}>, radius: number, source?: string }} payload - 轨迹段、橡皮半径与来源标识
+   * @returns {Promise<{ modified: string[], created: string[], deleted: string[] }>} 受影响对象 id 三组
+   */
+  async eraseData(payload) {
+    return this.#call("eraseData", payload);
+  }
+
+  /**
    * 在 Core 侧创建 ViewportCore 实例
    * @param {import("../engine/types/board-api-types.js").CreateViewportOptions} options - 创建参数
    * @returns {Promise<void>}

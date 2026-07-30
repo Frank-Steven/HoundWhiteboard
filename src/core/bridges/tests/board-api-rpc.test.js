@@ -122,6 +122,58 @@ describe("BoardApiRpc", () => {
     boardApi.destroy();
   });
 
+  test("eraseData 应发送 rpc 请求并在收到 rpc-response 后 resolve", async () => {
+    const endpoint = new FakeRpcEndpoint();
+    const boardApi = new BoardApiRpc(endpoint);
+
+    const payload = {
+      points: [
+        { x: 1, y: 2 },
+        { x: 3, y: 4 },
+      ],
+      radius: 8,
+      source: "test",
+    };
+    const erasePromise = boardApi.eraseData(payload);
+
+    expect(endpoint.postedMessages).toHaveLength(1);
+    expect(endpoint.postedMessages[0]).toEqual(
+      expect.objectContaining({
+        type: "rpc",
+        method: "eraseData",
+        params: payload,
+      }),
+    );
+
+    endpoint.emit({
+      type: "rpc-response",
+      msgId: endpoint.postedMessages[0].msgId,
+      result: { modified: ["s1"], created: [], deleted: [] },
+    });
+
+    await expect(erasePromise).resolves.toEqual({
+      modified: ["s1"],
+      created: [],
+      deleted: [],
+    });
+
+    boardApi.destroy();
+  });
+
+  test("eraseData 不进批处理合并，逐次立即发送", async () => {
+    const endpoint = new FakeRpcEndpoint();
+    const boardApi = new BoardApiRpc(endpoint);
+
+    boardApi.eraseData({ points: [{ x: 0, y: 0 }], radius: 8, source: "t" }).catch(() => { });
+    boardApi.eraseData({ points: [{ x: 1, y: 1 }], radius: 8, source: "t" }).catch(() => { });
+
+    expect(endpoint.postedMessages).toHaveLength(2);
+    expect(endpoint.postedMessages[0].method).toBe("eraseData");
+    expect(endpoint.postedMessages[1].method).toBe("eraseData");
+
+    boardApi.destroy();
+  });
+
   test("destroy 应拒绝所有 pending 请求", async () => {
     const endpoint = new FakeRpcEndpoint();
     const boardApi = new BoardApiRpc(endpoint);
@@ -153,6 +205,21 @@ describe("BoardApiRpc", () => {
       expect(endpoint.postedMessages[1].type).toBe("rpc");
       expect(endpoint.postedMessages[1].method).toBe("commitObjects");
       expect(endpoint.postedMessages[1].params).toEqual({ objectIds: [1] });
+
+      boardApi.destroy();
+    });
+
+    test("modifyObject 批缓冲应先于 eraseData 发出", () => {
+      const endpoint = new FakeRpcEndpoint();
+      const boardApi = new BoardApiRpc(endpoint);
+
+      boardApi.modifyObject("s1", { data: { points: [{ x: 0, y: 0 }] } }).catch(() => { });
+      boardApi.eraseData({ points: [{ x: 1, y: 1 }], radius: 8, source: "t" }).catch(() => { });
+
+      expect(endpoint.postedMessages).toHaveLength(2);
+      expect(endpoint.postedMessages[0].type).toBe("rpc-batch");
+      expect(endpoint.postedMessages[1].type).toBe("rpc");
+      expect(endpoint.postedMessages[1].method).toBe("eraseData");
 
       boardApi.destroy();
     });

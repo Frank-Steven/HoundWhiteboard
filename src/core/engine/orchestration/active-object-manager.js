@@ -934,7 +934,7 @@ class ActiveObjectManager {
   }
 
   /**
-   * 选取非活动对象并加入活动对象管理器
+   * 选取静态对象并加入活动对象管理器
    * @description
    * 通过 pickup 提取子图，按层依赖关系为对象分配动态层，
    * 再将新层插入到 layerOrder 中的正确位置。
@@ -1666,6 +1666,20 @@ class ActiveObjectManager {
    */
   has(objectId) {
     return this.onLayer.has(objectId);
+  }
+
+  /**
+   * 判断指定的对象是否为活动对象
+   * @description
+   * 活动对象 = 被选中（或新建未提交）、正在被操作的对象。
+   * 与 has() 不同，本方法不包括被 pickup 纳入的非活动层成员，
+   * 也不包括整层失活后仍保留结构的 dormant 对象——它们都已从 activeObjectIndex 注销。
+   * 需要排除或特判活动对象时一律使用本方法，不要直接读 activeObjectIndex。
+   * @param {number | string} objectId - 指定的对象 id
+   * @returns {boolean}
+   */
+  isActive(objectId) {
+    return this.activeObjectIndex.has(objectId);
   }
 
   /**

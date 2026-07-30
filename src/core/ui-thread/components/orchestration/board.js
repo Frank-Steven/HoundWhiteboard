@@ -160,6 +160,14 @@ class Board {
   }
 
   /**
+   * 对象 id 池的来源标识
+   * @type {string}
+   */
+  get idSource() {
+    return this.#idPool.source;
+  }
+
+  /**
    * 申请新的对象 id
    * @returns {string} 携带来源命名空间的字符串 id
    */
@@ -195,7 +203,6 @@ class Board {
         width: this.width,
         height: this.height,
         rootPath: this.rootPath,
-        idSource: this.#idPool.source,
       });
     } catch (error) {
       boardApi.destroy(error?.message ?? "Failed to enable worker mode.");

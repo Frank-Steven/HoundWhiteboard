@@ -15,6 +15,13 @@ import { ChunkObjectManager } from "../chunk/chunk-object-manager.js";
 import { CHUNK_LOAD_EVENTS } from "../chunk/chunk-loader.js";
 
 /**
+ * 数据擦除粗筛的范围余量（世界单位）
+ * @description 覆盖笔画宽度等对象自身渲染留白；宽度超过该余量的对象可能在粗筛阶段被遗漏。
+ * @type {number}
+ */
+const ERASE_COARSE_MARGIN = 64;
+
+/**
  * 判断对象是否已进入 Worker 侧的区块静态图
  * @param {import("../orchestration/board-core.js").BoardCore} boardCore - BoardCore 实例
  * @param {number} objectId - 对象 id
@@ -75,7 +82,7 @@ class BoardApi {
       type,
       id: objectId,
       position: props?.position ?? { x: 0, y: 0 },
-      transform: { a: 1, b: 0, c: 0, d: 1 },
+      transform: props?.transform ?? { a: 1, b: 0, c: 0, d: 1 },
       property: { ...(props?.property ?? {}) },
       data: { ...(props?.data ?? {}) },
     });
@@ -217,7 +224,7 @@ class BoardApi {
       const obj = boardCore.getObjectById(objectId);
       if (!obj) continue;
 
-      if (aom?.activeObjectIndex?.has?.(objectId)) {
+      if (aom?.isActive?.(objectId)) {
         activeToDiscard.push(obj);
       }
 
@@ -241,6 +248,101 @@ class BoardApi {
     ) {
       boardCore.aomRenderHooks.requestStaticRender([...affectedChunks]);
     }
+  }
+
+  /**
+   * 按橡皮轨迹擦除命中对象的数据
+   * @description
+   * 数据擦除的 Core 侧统一入口：粗筛命中 → 过滤 → 逐对象 eraseData 精确切割，
+   * 按剩余点段分流（整笔删除 / 首段回写 / 其余段分裂新建并提交静态图）。
+   * 分裂对象的 id 从 Core 侧分配器表按来源取用。
+   *
+   * 过滤规则：仅处理 isErasable() 为 true 且不是活动对象的对象——
+   * 已被选中的对象不能被擦除，与选择逻辑的互斥一致；
+   * 非活动层成员（被 pickup 一并纳入 AOM）与静态对象均可擦除。
+   * @param {{ points: Array<{x: number, y: number}>, radius: number, source?: string }} payload - 轨迹段（世界坐标）、橡皮半径与来源标识
+   * @returns {Promise<{ modified: string[], created: string[], deleted: string[] }>} 受影响对象 id 三组
+   */
+  async eraseData(payload) {
+    const boardCore = this.#boardCore;
+    const points = Array.isArray(payload?.points) ? payload.points : [];
+    const radius = Number.isFinite(payload?.radius) ? payload.radius : 0;
+    const source = typeof payload?.source === "string" ? payload.source : "";
+
+    const result = { modified: [], created: [], deleted: [] };
+    if (points.length === 0 || radius <= 0) {
+      return result;
+    }
+
+    const xs = points.map((p) => p.x);
+    const ys = points.map((p) => p.y);
+    const margin = radius + ERASE_COARSE_MARGIN;
+    const minX = Math.min(...xs) - margin;
+    const minY = Math.min(...ys) - margin;
+    const maxX = Math.max(...xs) + margin;
+    const maxY = Math.max(...ys) + margin;
+    const queryRange = new RectangleRange(
+      minX,
+      minY,
+      maxX - minX,
+      maxY - minY,
+    );
+
+    const candidateIds = await this.#collectHitObjects(boardCore, queryRange);
+
+    const modifiedStaticObjects = [];
+    for (const objectId of candidateIds) {
+      const obj = boardCore.getObjectById(objectId);
+      if (!obj) continue;
+      if (typeof obj.isErasable !== "function" || !obj.isErasable()) continue;
+      if (typeof obj.eraseData !== "function") continue;
+      // 已被选中的对象（活动对象）不能被擦除
+      if (boardCore.activeObjectManager?.isActive?.(objectId)) {
+        continue;
+      }
+
+      const runs = obj.eraseData(points, radius);
+      if (runs == null) continue;
+
+      if (runs.length === 0) {
+        result.deleted.push(objectId);
+        continue;
+      }
+
+      this.modifyObject(objectId, { data: { points: runs[0] } });
+      result.modified.push(objectId);
+      modifiedStaticObjects.push(obj);
+
+      if (runs.length > 1) {
+        const serialized = obj.serialize();
+        for (let i = 1; i < runs.length; i++) {
+          const newObjectId = boardCore.allocateObjectId(source);
+          this.createObject(serialized.type, {
+            id: newObjectId,
+            position: serialized.position,
+            transform: serialized.transform,
+            property: serialized.property,
+            data: { ...serialized.data, points: runs[i] },
+          });
+          result.created.push(newObjectId);
+        }
+      }
+    }
+
+    if (result.deleted.length > 0) {
+      this.deleteObjects(result.deleted);
+    }
+    if (result.created.length > 0) {
+      this.commitObjects(result.created);
+    }
+    if (modifiedStaticObjects.length > 0) {
+      boardCore.aomRenderHooks?.requestStaticRenderForObjects?.(
+        modifiedStaticObjects,
+        [],
+      );
+    }
+
+    return result;
   }
 
   /**
@@ -313,7 +415,7 @@ class BoardApi {
       .map((objectId) => {
         const obj = boardCore.getObjectById(objectId);
         if (!obj) return null;
-        const isActive = aom?.activeObjectIndex?.has?.(objectId) ?? false;
+        const isActive = aom?.isActive?.(objectId) ?? false;
         return {
           id: obj.id,
           type: obj.constructor.name,

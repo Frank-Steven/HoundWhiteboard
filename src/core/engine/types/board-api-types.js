@@ -19,6 +19,7 @@
  * @typedef {Object} CreateObjectProps
  * @property {string} [id] - 可选显式 objectId，供同步分配复用既有 id 分配逻辑
  * @property {import("./types.js").Point2D} position - 新对象位置
+ * @property {import("./types.js").TransformMatrix2D} [transform] - 初始变换矩阵，缺省为恒等变换
  * @property {Record<string, any>} [property] - 初始样式属性
  * @property {Record<string, any>} [data] - 初始对象专属数据
  */
@@ -54,6 +55,7 @@
  * @property {(ids: string[]) => Promise<import("./types.js").ObjectSummary[]>} queryObjects - 按 id 查询对象摘要
  * @property {(chunkIds: number[]) => Promise<string[]>} queryChunkObjects - 按区块查询对象 id
  * @property {(range: import("../range/range.js").Range | import("./types.js").Rect, mode?: string) => Promise<string[]>} hitTest - 执行命中查询
+ * @property {(payload: { points: import("./types.js").Point2D[], radius: number, source?: string }) => Promise<{ modified: string[], created: string[], deleted: string[] }>} eraseData - 按橡皮轨迹擦除命中对象的数据
  * @property {(options: CreateViewportOptions) => Promise<void>} createViewport - 创建 ViewportCore
  * @property {(viewportId: string | number) => Promise<void>} destroyViewport - 销毁 ViewportCore
  * @property {() => Promise<void>} undo - 执行撤销

@@ -195,7 +195,6 @@ describe("Board worker mode", () => {
               width: 800,
               height: 600,
               rootPath: undefined,
-              idSource: "",
             },
           }),
           expect.objectContaining({
