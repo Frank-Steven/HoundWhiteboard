@@ -107,9 +107,17 @@ classDiagram
 - **撤销天然成组**：一次手势的全部变更在 Core 内记为一次分子操作
 - **职责匹配**：chooser / modifier 把 `ObjectSummary` 取到 UI 是因为 UI 要显示选择框、拖拽对象；FD 只销毁 / 分裂命中对象，UI 不需要持有对象本体
 
-### 语义特征
+### 分裂对象的 id 分配
 
-- 擦除结果直接落在持久化数据上：序列化、命中测试、撤销都自然跟随
+分裂产生的新对象 id 由 Core 侧分配，采用来源命名空间的字符串 id（`"{source}/{n}"`）：
+
+- UI 侧 `Board` 持有来源为 `idSource` 的递增 id 池，用户创建的对象 id 形如 `"demo/1"`
+- Core 侧按擦除 payload 携带的 `source` 懒建分配器，分裂对象 id 形如 `"demo/core/1"`（空来源时为 `"core/1"`）
+- 来源前缀保证各端并发分配互不冲突，无需跨端协调
+
+被切割对象保留原 id（首段回写原对象），只有分裂出的新段消耗新 id。
+
+### 语义特征
 - 橡皮尺寸与轨迹平滑度影响切割精度
 
 ## FT 对象擦除工具（For Trait）
@@ -168,7 +176,7 @@ ctx.globalCompositeOperation = "destination-out"; // 透出背景的效果
 ### FD
 
 - 需要对象配合：每种 `isErasable()` 为 `true` 的类型都要实现"按 Range 切割 `data`"；当前对象族中只有 `StrokeObject` 满足准入
-- 分裂产生的新 id 分配、撤销树中的组合记录（一次擦除 = 修改 + 新建 + 删除）需要与 `hit/undo-tree` 对齐
+- 撤销树中的组合记录（一次擦除 = 修改 + 新建 + 删除）需要与 `hit/undo-tree` 对齐
 
 ### FT
 

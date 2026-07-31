@@ -12,6 +12,7 @@ import {
   configureWhiteboardDemo,
   mountToolSwitcher,
 } from "./config/whiteboard-demo.js";
+import { DEMO_ID_SOURCE } from "./config/constants.js";
 import { DemoLog } from "./config/log.js";
 import { ViewportTool } from "./config/viewport-tool.js";
 import {
@@ -30,7 +31,7 @@ createConsolePrinter(logBus, { timestamps: true });
  * @returns {Promise<void>}
  */
 async function bootstrapWhiteboard() {
-  const board = new Board();
+  const board = new Board({ idSource: DEMO_ID_SOURCE });
   board.width = 800;
   board.height = 600;
 
