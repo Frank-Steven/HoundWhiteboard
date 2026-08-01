@@ -34,7 +34,7 @@ Worker 层负责真正的数据与渲染权威：
 - `ViewportCore`：Worker 视口状态、区块缓冲、`ViewportRenderer` 渲染输出
 - `ActiveObjectManager`：交互态对象与动态层关系
 - `engine/chunk/`：区块、加载器、区块对象管理
-- `engine/renderer/`：`ViewportRenderer` 与 Worker 侧脏区绘制
+- `renderers/canvas/`：`ViewportRenderer` 与 Worker 侧脏区绘制
 
 ### Engine 核心层
 
@@ -42,7 +42,7 @@ Engine 不依赖 DOM，也不依赖 Worker 宿主：
 
 - `engine/objects/`：对象模型、反序列化
 - `engine/range/`：几何范围与相交判断
-- `engine/renderer/`：渲染器基类、调度器
+- `renderers/canvas/`：渲染器基类、调度器
 - `engine/types/`：跨线程共享类型定义
 - `engine/utils/`：数学、图结构、事件总线、路径工具、计数池
 

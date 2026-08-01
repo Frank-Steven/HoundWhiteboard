@@ -2,7 +2,7 @@
 
 /**
  * @file 文件头路径检查
- * @description 扫描 src/core 下所有 .js 文件，验证 @module 路径与实际文件路径一致。
+ * @description 扫描 src/core 与 src/renderers 下所有 .js 文件，验证 @module 路径与实际文件路径一致。
  * @module scripts/ci/check-module-paths
  */
 
@@ -12,11 +12,19 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.HOUND_BUILD_ROOT || path.resolve(__dirname, "../..");
-const CORE_DIR = path.join(ROOT, "src", "core");
 
 let checked = 0;
 let mismatched = 0;
 const errors = [];
+
+/**
+ * 校验根目录：目录名即 @module 路径的基准。
+ * @type {Array<{ dir: string, prefix: string }>}
+ */
+const ROOTS = [
+  { dir: path.join(ROOT, "src", "core"), prefix: "core/" },
+  { dir: path.join(ROOT, "src", "renderers"), prefix: "" },
+];
 
 /**
  * 递归收集所有 .js 文件（排除 node_modules）
@@ -36,30 +44,34 @@ function collectJsFiles(dir) {
   return files;
 }
 
-const jsFiles = collectJsFiles(CORE_DIR);
+for (const { dir, prefix } of ROOTS) {
+  if (!fs.existsSync(dir)) continue;
+  const jsFiles = collectJsFiles(dir);
 
-for (const file of jsFiles) {
-  const content = fs.readFileSync(file, "utf-8");
-  const match = content.match(/@module\s+(\S+)/);
-  if (!match) continue;
+  for (const file of jsFiles) {
+    const content = fs.readFileSync(file, "utf-8");
+    const match = content.match(/@module\s+(\S+)/);
+    if (!match) continue;
 
-  checked++;
-  const modulePath = match[1];
+    checked++;
+    const modulePath = match[1];
 
-  // 计算实际路径（相对于 src/core，去掉 .js 后缀）
-  const relPath = path.relative(CORE_DIR, file);
-  const actualPath = relPath.replace(/\\/g, "/").replace(/\.js$/, "");
+    // 计算实际路径（相对于根目录，去掉 .js 后缀）
+    const relPath = path.relative(dir, file);
+    const actualPath = relPath.replace(/\\/g, "/").replace(/\.js$/, "");
 
-  // 规范化：module 路径可能以 core/ 开头
-  const normalizedModule = modulePath.startsWith("core/")
-    ? modulePath.slice(5)
-    : modulePath;
+    // 规范化：module 路径可能以根前缀开头
+    const normalizedModule =
+      prefix && modulePath.startsWith(prefix)
+        ? modulePath.slice(prefix.length)
+        : modulePath;
 
-  if (normalizedModule !== actualPath) {
-    mismatched++;
-    errors.push(
-      `${path.relative(ROOT, file)}\n    module: ${modulePath}\n    actual: core/${actualPath}`
-    );
+    if (normalizedModule !== actualPath) {
+      mismatched++;
+      errors.push(
+        `${path.relative(ROOT, file)}\n    module: ${modulePath}\n    actual: ${prefix}${actualPath}`
+      );
+    }
   }
 }
 

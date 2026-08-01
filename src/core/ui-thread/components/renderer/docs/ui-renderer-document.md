@@ -172,7 +172,7 @@ creator、chooser、modifier 都可能推动 ui 层刷新，但 `UiRenderer` 仅
 
 ## 相关文档
 
-- [canvas-lifecycle-document.md](../../../../engine/renderer/docs/canvas-lifecycle-document.md)
+- [canvas-lifecycle-document.md](../../../../../renderers/canvas/docs/canvas-lifecycle-document.md)
 - [ui-overlay-factory-document.md](./ui-overlay-factory-document.md)
 - [viewport-document.md](../../../../ui-thread/components/orchestration/docs/viewport-document.md)
 - [object-chooser-document.md](../../../devices-dag/tools/chooser/docs/object-chooser-document.md)

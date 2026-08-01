@@ -1,13 +1,13 @@
 /**
  * @file 渲染器基类
  * @description 提供视口变换、脏区裁剪、渲染调度与渲染管线骨架的通用抽象。
- * @module core/engine/renderer/renderer
+ * @module canvas/renderer
  * @author Zhou Chenyu
  */
 
-import { BasicObject } from "../objects/basic-obj.js";
-import { intersectsRanges, RectangleRange } from "../range/index.js";
-import { PathRange } from "../range/path.js";
+import { BasicObject } from "../../core/engine/objects/basic-obj.js";
+import { intersectsRanges, RectangleRange } from "../../core/engine/range/index.js";
+import { PathRange } from "../../core/engine/range/path.js";
 import { createRectangleDirtyRectMerger } from "./render-scheduler.js";
 import { CanvasHost } from "./canvas-lifecycle.js";
 
@@ -51,7 +51,7 @@ function normalizeDirtyRectsForScreenUpdate(dirtyRects = []) {
  */
 class Renderer extends CanvasHost {
   /**
-   * @param {import("../types/types.js").ViewportLike} viewport - 目标视口
+   * @param {import("../../core/engine/types/types.js").ViewportLike} viewport - 目标视口
    * @param {{ canvas?: HTMLCanvasElement | null }} [options = {}] - 初始化选项
    */
   constructor(viewport, options = {}) {

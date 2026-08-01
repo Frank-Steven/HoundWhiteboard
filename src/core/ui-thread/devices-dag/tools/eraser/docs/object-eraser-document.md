@@ -206,5 +206,5 @@ FD 已实现：几何原语（`range/segment-math.js` 的距离判定）、`Stro
 - [对象修改工具](../../modifier/docs/object-modifier-document.md)
 - [笔画对象](../../../../../engine/objects/stroke/stroke-classes-document.md)
 - [基础类型文档](../../../../../engine/objects/docs/basic-classes-document.md)
-- [视口渲染器](../../../../../engine/renderer/docs/viewport-renderer-document.md)
+- [视口渲染器](../../../../../../renderers/canvas/docs/viewport-renderer-document.md)
 - [操作文档](../../../../../engine/hit/docs/operation-document.md)

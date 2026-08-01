@@ -117,6 +117,6 @@ const renderer = new ViewportRenderer(viewport, activeObjectManager, {
 
 ## 相关文档
 
-- [viewport-core-document.md](../../orchestration/docs/viewport-core-document.md)
-- [active-object-manager-document.md](../../orchestration/docs/active-object-manager-document.md)
-- [ui-renderer-document.md](../../../ui-thread/components/renderer/docs/ui-renderer-document.md)
+- [viewport-core-document.md](../../../core/engine/orchestration/docs/viewport-core-document.md)
+- [active-object-manager-document.md](../../../core/engine/orchestration/docs/active-object-manager-document.md)
+- [ui-renderer-document.md](../../../core/ui-thread/components/renderer/docs/ui-renderer-document.md)

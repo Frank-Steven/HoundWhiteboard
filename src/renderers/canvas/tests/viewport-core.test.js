@@ -4,15 +4,15 @@
 
 import { jest } from "@jest/globals";
 
-import { BoardCore } from "../board-core.js";
+import { BoardCore } from "../../../core/engine/orchestration/board-core.js";
 import { ViewportCore } from "../viewport-core.js";
-import { RectangleRange } from "../../range/index.js";
-import { Vector } from "../../utils/math.js";
+import { RectangleRange } from "../../../core/engine/range/index.js";
+import { Vector } from "../../../core/engine/utils/math.js";
 import {
   createNoopCanvasContext2D,
   createNoopImageBitmap,
   installNoopOffscreenCanvas,
-} from "../../../test-support/noop-canvas.js";
+} from "../../../core/test-support/noop-canvas.js";
 
 describe("ViewportCore", () => {
   /**

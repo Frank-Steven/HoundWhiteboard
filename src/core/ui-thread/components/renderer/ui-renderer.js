@@ -9,13 +9,13 @@ import {
   RectangleRange,
   intersectsRanges,
 } from "../../../engine/range/index.js";
-import { expandRectForClear } from "../../../engine/renderer/renderer.js";
+import { expandRectForClear } from "../../../../renderers/canvas/renderer.js";
 import { Viewport } from "../orchestration/viewport.js";
 import { Logger } from "../../../../utils/log/logger.js";
 import { logBus } from "../../../../utils/log/log-bus.js";
-import { createRectangleDirtyRectMerger } from "../../../engine/renderer/render-scheduler.js";
-import { createLiveDirtyRectThresholdStrategy } from "../../../engine/renderer/dirty-rect-strategy-shared.js";
-import { CanvasHost } from "../../../engine/renderer/canvas-lifecycle.js";
+import { createRectangleDirtyRectMerger } from "../../../../renderers/canvas/render-scheduler.js";
+import { createLiveDirtyRectThresholdStrategy } from "../../../../renderers/canvas/dirty-rect-strategy-shared.js";
+import { CanvasHost } from "../../../../renderers/canvas/canvas-lifecycle.js";
 import { normalizeOverlayEntry as normalizeOverlayEntryFactory } from "./ui-overlay-factory.js";
 
 /**

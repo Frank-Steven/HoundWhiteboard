@@ -34,7 +34,7 @@ UI 与 Worker 共用：
 
 - `engine/objects/`
 - `engine/range/`
-- `engine/renderer/`
+- `renderers/canvas/`
 - `engine/types/`
 - `engine/utils/`
 

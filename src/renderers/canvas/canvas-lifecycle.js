@@ -1,7 +1,7 @@
 /**
  * @file 画布生命周期管理器
  * @description 提供画布引用、尺寸管理、渲染调度器初始化的通用组合基类。
- * @module core/engine/renderer/canvas-lifecycle
+ * @module canvas/canvas-lifecycle
  * @author Zhou Chenyu
  */
 
@@ -18,7 +18,7 @@ import { RenderScheduler } from "./render-scheduler.js";
 class CanvasHost {
   /**
    * 绑定的视口
-   * @type {import("../types/types.js").ViewportLike}
+   * @type {import("../../core/engine/types/types.js").ViewportLike}
    */
   viewport;
 
@@ -37,7 +37,7 @@ class CanvasHost {
   _scheduler;
 
   /**
-   * @param {import("../types/types.js").ViewportLike} viewport - 目标视口
+   * @param {import("../../core/engine/types/types.js").ViewportLike} viewport - 目标视口
    * @param {{ canvas?: HTMLCanvasElement | null }} [options={}] - 初始化选项
    */
   constructor(viewport, options = {}) {

@@ -12,7 +12,7 @@
 import { createDefaultPersistenceAdapter } from "../bridges/persistence-adapter.js";
 import { createDefaultAomRenderHooks } from "./orchestration/aom-render-hooks.js";
 import { BoardCore } from "./orchestration/board-core.js";
-import { ViewportCore } from "./orchestration/viewport-core.js";
+import { ViewportCore } from "../../renderers/canvas/viewport-core.js";
 import { Logger } from "../../utils/log/logger.js";
 import { logBus } from "../../utils/log/log-bus.js";
 import { createConsolePrinter } from "../../utils/log/console-printer.js";

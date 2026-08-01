@@ -63,7 +63,7 @@ request-render-flush ──→ flushRenderFrame()
 
 失效路径分两类：`invalidateActiveObjects`（AOM 变更，仅刷新输出层）和 `invalidateCachedObjects` / `invalidateChunks`（静态图或区块变更，标记缓存脏 + 输出层刷新）。
 
-详见 [viewport-renderer-document.md](../../renderer/docs/viewport-renderer-document.md)。
+详见 [viewport-renderer-document.md](../../../../renderers/canvas/docs/viewport-renderer-document.md)。
 
 ## 视口同步
 

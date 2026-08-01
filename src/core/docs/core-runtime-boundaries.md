@@ -24,15 +24,15 @@
 | `ui-thread/devices-dag/**`                                 | UI       | 设备图、设备子图、prefix、tool 全部在 UI 线程                   |
 | `engine/core-worker.js`                                    | Worker   | Worker 入口与 `CoreWorkerRuntime`                               |
 | `engine/orchestration/board-core.js`                       | Worker   | 对象、区块、AOM、UndoTree、持久化协调                           |
-| `engine/orchestration/viewport-core.js`                    | Worker   | Worker 视口状态、区块缓冲、渲染帧输出                           |
+| `renderers/canvas/viewport-core.js`                    | Worker   | Worker 视口状态、区块缓冲、渲染帧输出                           |
 | `engine/orchestration/active-object-manager.js`            | Worker   | 动态图与交互态对象生命周期                                      |
 | `engine/orchestration/aom-render-hooks.js`                 | Worker   | Worker 侧使用的 render hook 协议与默认实现                      |
 | `engine/chunk/**`                                          | Worker   | 区块、加载器、静态图、覆盖区块索引                              |
-| `engine/renderer/**` （Worker 端）                         | Worker   | Worker 侧 base/live 渲染器                                      |
+| `renderers/canvas/**` （Worker 端）                         | Worker   | Worker 侧 base/live 渲染器                                      |
 | `engine/hit/**`                                            | Worker   | UndoTree 与操作结构                                             |
 | `engine/objects/**`                                        | Engine   | 对象模型与反序列化                                              |
 | `engine/range/**`                                          | Engine   | 几何范围与碰撞判断                                              |
-| `engine/renderer/**` （基类）                              | Engine   | 渲染器基类、调度器、共享脏区策略                                |
+| `renderers/canvas/**` （基类）                              | Engine   | 渲染器基类、调度器、共享脏区策略                                |
 | `engine/types/**`                                          | Engine   | 跨线程共享 typedef 与协议                                       |
 | `engine/utils/**`                                          | Engine   | 数学、图结构、事件总线、路径、计数池                            |
 | `test-support/**`                                          | Any      | 测试 mock 与 fixture                                            |
@@ -58,7 +58,7 @@ Worker 是当前 Core 数据与渲染的权威侧：
 - `BoardCore` 维护对象、区块、AOM、UndoTree 与持久化协调
 - `ViewportCore` 维护视口区块缓冲、base/live renderer 与帧输出
 - `ActiveObjectManager` 只在 Worker 中存在
-- `engine/renderer/` 中的 `ViewportRenderer` 只在 Worker 中绘制 `OffscreenCanvas`
+- `renderers/canvas/` 中的 `ViewportRenderer` 只在 Worker 中绘制 `OffscreenCanvas`
 
 Worker 不解析 DOM 事件，也不持有 DevicesDAG。
 
@@ -72,8 +72,8 @@ Worker 不解析 DOM 事件，也不持有 DevicesDAG。
 
 尤其要注意：
 
-- 共享的渲染基类位于 `engine/renderer/`（`BaseRenderer`、`RenderScheduler`）
-- Worker 专用渲染器也位于 `engine/renderer/`（`ViewportRenderer`）
+- 共享的渲染基类位于 `renderers/canvas/`（`BaseRenderer`、`RenderScheduler`）
+- Worker 专用渲染器也位于 `renderers/canvas/`（`ViewportRenderer`）
 - 对象与 range 在 `engine/objects/` 和 `engine/range/` 下
 
 ## 当前数据权威关系

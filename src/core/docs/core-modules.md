@@ -104,7 +104,7 @@
 - `chunk-loader.js`：区块加载器与加载事件
 - `chunk-object-manager.js`：静态图与覆盖区块索引管理
 
-### `engine/renderer/`
+### `renderers/canvas/`
 
 - `renderer.js`：`BaseRenderer` 基类
 - `canvas-lifecycle.js`：Canvas 生命周期管理
@@ -113,7 +113,7 @@
 - `viewport-renderer.js`：Worker 侧视口渲染器
 - `aom-collect-utils.js`：AOM 渲染收集辅助
 
-`ViewportRenderer` 建立在 `engine/renderer/` 的 `BaseRenderer` 基类之上，在单类内管理静态缓存与输出合成。
+`ViewportRenderer` 建立在 `renderers/canvas/` 的 `BaseRenderer` 基类之上，在单类内管理静态缓存与输出合成。
 
 ### `engine/hit/`
 

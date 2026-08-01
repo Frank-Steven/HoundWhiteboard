@@ -1,12 +1,12 @@
 /**
  * @file AOM 可绘制对象收集工具
  * @description 提供从 ActiveObjectManager 按层/语义收集 AOM 绘制对象的纯函数。不依赖渲染器内部状态。
- * @module core/engine/renderer/aom-collect-utils
+ * @module canvas/aom-collect-utils
  * @author Zhou Chenyu
  */
 
-import { BasicObject } from "../objects/basic-obj.js";
-import { Layer } from "../orchestration/active-object-manager.js";
+import { BasicObject } from "../../core/engine/objects/basic-obj.js";
+import { Layer } from "../../core/engine/orchestration/active-object-manager.js";
 
 /**
  * 按对象 id 序列解析并收集可绘制对象
@@ -53,7 +53,7 @@ function collectSemanticInactiveLayerObjectIds(layer) {
 
 /**
  * 按 inactive 语义收集某层的对象
- * @param {import("../orchestration/active-object-manager.js").ActiveObjectManager} aom - 活动对象管理器
+ * @param {import("../../core/engine/orchestration/active-object-manager.js").ActiveObjectManager} aom - 活动对象管理器
  * @param {Layer} layer - 当前层
  * @param {Set<number>} seenObjectIds - 已收集对象 id
  * @returns {BasicObject[]}
@@ -70,7 +70,7 @@ function collectInactiveLayerDrawables(aom, layer, seenObjectIds) {
 
 /**
  * 收集某层的活动对象
- * @param {import("../orchestration/active-object-manager.js").ActiveObjectManager} aom - 活动对象管理器
+ * @param {import("../../core/engine/orchestration/active-object-manager.js").ActiveObjectManager} aom - 活动对象管理器
  * @param {Layer} layer - 当前层
  * @param {Set<number>} seenObjectIds - 已收集对象 id
  * @returns {BasicObject[]}
@@ -87,7 +87,7 @@ function collectActiveLayerDrawables(aom, layer, seenObjectIds) {
 
 /**
  * 收集某层的可绘制对象
- * @param {import("../orchestration/active-object-manager.js").ActiveObjectManager} aom - 活动对象管理器
+ * @param {import("../../core/engine/orchestration/active-object-manager.js").ActiveObjectManager} aom - 活动对象管理器
  * @param {Layer} layer - 当前层
  * @param {Set<number>} seenObjectIds - 已收集对象 id
  * @returns {BasicObject[]}
@@ -101,7 +101,7 @@ function collectLayerDrawables(aom, layer, seenObjectIds) {
 
 /**
  * 收集未落入 layerOrder 的活动对象
- * @param {import("../orchestration/active-object-manager.js").ActiveObjectManager} aom - 活动对象管理器
+ * @param {import("../../core/engine/orchestration/active-object-manager.js").ActiveObjectManager} aom - 活动对象管理器
  * @param {Set<number>} seenObjectIds - 已收集对象 id
  * @returns {BasicObject[]}
  */
@@ -121,7 +121,7 @@ function collectFallbackActiveDrawables(aom, seenObjectIds) {
 
 /**
  * 收集应绘制的 AOM 对象
- * @param {import("../orchestration/active-object-manager.js").ActiveObjectManager | undefined} aom - 活动对象管理器
+ * @param {import("../../core/engine/orchestration/active-object-manager.js").ActiveObjectManager | undefined} aom - 活动对象管理器
  * @returns {BasicObject[]}
  */
 function collectActiveDrawables(aom) {

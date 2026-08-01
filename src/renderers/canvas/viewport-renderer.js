@@ -3,7 +3,7 @@
  * @description
  * 在单类内管理静态缓存（OffscreenCanvas）与输出 canvas 的合成渲染。
  * 对外提供 active / cached 两类失效路径，内部调度器、脏区跟踪、时序同步由本类统一管理。
- * @module core/engine/renderer/viewport-renderer
+ * @module canvas/viewport-renderer
  * @author Zhou Chenyu
  */
 
@@ -11,17 +11,17 @@ import {
   Renderer,
   expandRectForClear,
   normalizeDirtyRectsForScreenUpdate,
-} from "../renderer/renderer.js";
-import { BasicObject } from "../objects/basic-obj.js";
-import { RectangleRange } from "../range/rectangle.js";
-import { DirectedGraph } from "../utils/directed-graph.js";
-import { ActiveObjectManager } from "../orchestration/active-object-manager.js";
+} from "./renderer.js";
+import { BasicObject } from "../../core/engine/objects/basic-obj.js";
+import { RectangleRange } from "../../core/engine/range/rectangle.js";
+import { DirectedGraph } from "../../core/engine/utils/directed-graph.js";
+import { ActiveObjectManager } from "../../core/engine/orchestration/active-object-manager.js";
 import { collectActiveDrawables as _collectActiveDrawables } from "./aom-collect-utils.js";
-import { RenderScheduler, createRectangleDirtyRectMerger } from "../renderer/render-scheduler.js";
+import { RenderScheduler, createRectangleDirtyRectMerger } from "./render-scheduler.js";
 import {
   createBaseDirtyRectThresholdStrategy,
   createLiveDirtyRectThresholdStrategy,
-} from "../renderer/dirty-rect-strategy-shared.js";
+} from "./dirty-rect-strategy-shared.js";
 
 
 /**
@@ -117,7 +117,7 @@ class ViewportRenderer extends Renderer {
   #outputScheduler;
 
   /**
-   * @param {import("../orchestration/viewport-core.js").ViewportCore} viewport - 目标视口
+   * @param {import("./viewport-core.js").ViewportCore} viewport - 目标视口
    * @param {ActiveObjectManager | undefined} aom - 活动对象管理器
    * @param {{ canvas?: HTMLCanvasElement | OffscreenCanvas | null }} [options = {}] - 初始化选项
    */

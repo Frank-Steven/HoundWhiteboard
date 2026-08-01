@@ -4,14 +4,14 @@
 
 import { jest } from "@jest/globals";
 import { ViewportRenderer } from "../viewport-renderer.js";
-import { DirectedGraph } from "../../utils/directed-graph.js";
-import { Vector, Matrix } from "../../utils/math.js";
-import { BasicObject } from "../../objects/basic-obj.js";
-import { CircleObject } from "../../objects/graph/circle.js";
-import { RectangleRange } from "../../range/rectangle.js";
-import { PathRange } from "../../range/path.js";
-import { Layer } from "../../orchestration/active-object-manager.js";
-import { installNoopOffscreenCanvas } from "../../../test-support/noop-canvas.js";
+import { DirectedGraph } from "../../../core/engine/utils/directed-graph.js";
+import { Vector, Matrix } from "../../../core/engine/utils/math.js";
+import { BasicObject } from "../../../core/engine/objects/basic-obj.js";
+import { CircleObject } from "../../../core/engine/objects/graph/circle.js";
+import { RectangleRange } from "../../../core/engine/range/rectangle.js";
+import { PathRange } from "../../../core/engine/range/path.js";
+import { Layer } from "../../../core/engine/orchestration/active-object-manager.js";
+import { installNoopOffscreenCanvas } from "../../../core/test-support/noop-canvas.js";
 
 /**
  * 假矩形对象

@@ -1,13 +1,13 @@
 /**
  * @file dirty rect 策略
  * @description 聚合 Core 专属的 chunk 脏区解析逻辑，并兼容导出共享 dirty rect 策略函数。
- * @module core/engine/renderer/dirty-rect-strategy
+ * @module canvas/dirty-rect-strategy
  * @author Zhou Chenyu
  */
 
-import { ChunkObjectManager } from "../chunk/chunk-object-manager.js";
-import { intersectsRanges } from "../range/geometry.js";
-import { RectangleRange } from "../range/rectangle.js";
+import { ChunkObjectManager } from "../../core/engine/chunk/chunk-object-manager.js";
+import { intersectsRanges } from "../../core/engine/range/geometry.js";
+import { RectangleRange } from "../../core/engine/range/rectangle.js";
 import {
   createBaseDirtyRectThresholdStrategy,
   createDirtyRectPolicyResolver,
@@ -18,7 +18,7 @@ import {
   createZoomScaledThresholdStrategy,
   normalizeDirtyRectZoomScale,
   screenRectToWorldRect,
-} from "../renderer/dirty-rect-strategy-shared.js";
+} from "./dirty-rect-strategy-shared.js";
 
 /**
  * 收集世界坐标矩形覆盖到的已加载区块

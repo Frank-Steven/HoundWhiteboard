@@ -3,17 +3,17 @@
  * @description
  * ViewportCore 承载 Worker 侧的视口状态、chunk buffer 与 ViewportRenderer。
  * 它不依赖 DOM，仅通过 OffscreenCanvas 渲染并产出可回传到 UI 的帧数据。
- * @module core/engine/orchestration/viewport-core
+ * @module canvas/viewport-core
  * @author Zhou Chenyu
  */
 
-import { RectangleRange } from "../range/index.js";
-import { Vector } from "../utils/math.js";
-import { Chunk } from "../chunk/chunk.js";
-import { CHUNK_LOAD_STRATEGIES, ChunkLoader } from "../chunk/chunk-loader.js";
-import { ChunkObjectManager } from "../chunk/chunk-object-manager.js";
-import { ViewportRenderer } from "../renderer/viewport-renderer.js";
-import { BoardCore } from "./board-core.js";
+import { RectangleRange } from "../../core/engine/range/index.js";
+import { Vector } from "../../core/engine/utils/math.js";
+import { Chunk } from "../../core/engine/chunk/chunk.js";
+import { CHUNK_LOAD_STRATEGIES, ChunkLoader } from "../../core/engine/chunk/chunk-loader.js";
+import { ChunkObjectManager } from "../../core/engine/chunk/chunk-object-manager.js";
+import { ViewportRenderer } from "./viewport-renderer.js";
+import { BoardCore } from "../../core/engine/orchestration/board-core.js";
 
 /**
  * Worker 侧视口核心
@@ -250,7 +250,7 @@ class ViewportCore {
    * 获取当前视口可见区块集合
    * @param {Vector} [origin=this.origin] - 视口原点
    * @param {number} [zoom=this.zoom] - 缩放因子
-   * @returns {import("../chunk/chunk.js").Chunk[]}
+   * @returns {import("../../core/engine/chunk/chunk.js").Chunk[]}
    */
   getVisibleChunksForViewport(origin = this.origin, zoom = this.zoom) {
     if (
@@ -341,7 +341,7 @@ class ViewportCore {
    * @description 加载区 = 视口世界矩形向四周各扩展 50%。
    * @param {Vector} [origin=this.origin] - 视口原点
    * @param {number} [zoom=this.zoom] - 缩放因子
-   * @returns {import("../chunk/chunk.js").Chunk[]} 当前视口可见区块
+   * @returns {import("../../core/engine/chunk/chunk.js").Chunk[]} 当前视口可见区块
    */
   syncChunkBufferWithViewport(origin = this.origin, zoom = this.zoom) {
     const chunkWidth = this.chunkWidth;
@@ -404,7 +404,7 @@ class ViewportCore {
 
   /**
    * 请求一次视口范围内的静态缓存刷新
-   * @param {import("../chunk/chunk.js").Chunk[]} [previousChunks=[]] - 视口变化前可见区块
+   * @param {import("../../core/engine/chunk/chunk.js").Chunk[]} [previousChunks=[]] - 视口变化前可见区块
    * @param {{ origin?: { x: number, y: number }, zoom?: number }} [previousViewportState={}] - 旧视口状态
    */
   requestViewportStaticRefresh(previousChunks = [], previousViewportState = {}) {
