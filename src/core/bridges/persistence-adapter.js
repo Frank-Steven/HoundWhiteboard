@@ -60,7 +60,7 @@ function createDefaultPersistenceAdapter() {
 
     /**
      * 删除指定对象 JSON
-     * @param {number} _objectId - 对象 id
+     * @param {string} _objectId - 对象 id
      * @returns {Promise<boolean>}
      */
     async deleteObject(_objectId) {

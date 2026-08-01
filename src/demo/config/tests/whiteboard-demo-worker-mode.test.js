@@ -160,11 +160,11 @@ function installMockDocument() {
       const canvas = createNoopCanvas();
       canvas.className = "";
       canvas.style = {};
-      canvas.appendChild = () => {};
+      canvas.appendChild = () => { };
       canvas.tabIndex = -1;
-      canvas.focus = () => {};
-      canvas.addEventListener = () => {};
-      canvas.removeEventListener = () => {};
+      canvas.focus = () => { };
+      canvas.addEventListener = () => { };
+      canvas.removeEventListener = () => { };
       return canvas;
     }
 
@@ -288,13 +288,13 @@ describe("whiteboard demo worker mode", () => {
       await flushMicrotasks();
 
       expect(primaryStrokeTool._entry).toBeDefined();
-      expect(primaryStrokeTool._entry.id).toBe(1);
+      expect(primaryStrokeTool._entry.id).toBe("1");
 
       // object 在 commit 前不在 Worker 侧
-      const summaries = await board.getBoardApi().queryObjects([1]);
+      const summaries = await board.getBoardApi().queryObjects(["1"]);
       expect(summaries).toHaveLength(1);
       expect(summaries[0]).toMatchObject({
-        id: 1,
+        id: "1",
         isActive: false,
         position: { x: 10, y: 20 },
         property: {
@@ -468,9 +468,9 @@ describe("whiteboard demo worker mode", () => {
       });
       await flushMicrotasks();
 
-      await expect(board.getBoardApi().queryObjects([1])).resolves.toEqual([
+      await expect(board.getBoardApi().queryObjects(["1"])).resolves.toEqual([
         expect.objectContaining({
-          id: 1,
+          id: "1",
           position: { x: 20, y: 25 },
         }),
       ]);
@@ -556,15 +556,15 @@ describe("whiteboard demo worker mode", () => {
       await flushMicrotasks();
 
       // 两次左键应各自提交独立笔画对象
-      const strokes = await board.getBoardApi().queryObjects([1, 2]);
+      const strokes = await board.getBoardApi().queryObjects(["1", "2"]);
       expect(strokes).toHaveLength(2);
       expect(strokes[0]).toMatchObject({
-        id: 1,
+        id: "1",
         isActive: false,
         position: { x: 10, y: 10 },
       });
       expect(strokes[1]).toMatchObject({
-        id: 2,
+        id: "2",
         isActive: false,
         position: { x: 50, y: 50 },
       });

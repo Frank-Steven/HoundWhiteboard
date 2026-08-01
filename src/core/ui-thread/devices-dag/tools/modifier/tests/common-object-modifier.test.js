@@ -51,7 +51,7 @@ describe("CommonObjectModifierTool", () => {
 
   test("首个 position 应启动手势，对象不动，第二个 position 才应用位移", () => {
     const object = {
-      id: 1,
+      id: "1",
       position: new Vector(10, 20),
     };
 
@@ -88,7 +88,7 @@ describe("CommonObjectModifierTool", () => {
 
   test("后续 position 信号应继续以锚点为基准计算位移", () => {
     const object = {
-      id: 1,
+      id: "1",
       position: new Vector(10, 20),
     };
 
@@ -131,7 +131,7 @@ describe("CommonObjectModifierTool", () => {
 
   test("end 信号结束手势后新一轮手势应有新锚点", () => {
     const object = {
-      id: 1,
+      id: "1",
       position: new Vector(10, 20),
     };
 
@@ -182,7 +182,7 @@ describe("CommonObjectModifierTool", () => {
 
   test("success 信号应通过 commitObjects 提交对象并卸载", () => {
     const object = {
-      id: 7,
+      id: "7",
       position: new Vector(5, 5),
     };
 
@@ -237,7 +237,7 @@ describe("CommonObjectModifierTool", () => {
 
     expect(result).toBeUndefined();
     expect(object.position).toEqual(new Vector(8, 6));
-    expect(boardApi.commitObjects).toHaveBeenCalledWith([7]);
+    expect(boardApi.commitObjects).toHaveBeenCalledWith(["7"]);
     expect(mockDag.unmount).toHaveBeenCalledWith(
       "/viewport/mouse/primary/tool/tool",
     );
@@ -247,7 +247,7 @@ describe("CommonObjectModifierTool", () => {
   test("显式提供 boardApi 时应通过 modifyObject 更新位置并在 success 后提交", () => {
     const tool = new CommonObjectModifierTool({ processor: new DragGestureProcessor() });
     const object = {
-      id: 501,
+      id: "501",
       position: new Vector(10, 20),
       data: { radius: 5 },
     };
@@ -293,7 +293,7 @@ describe("CommonObjectModifierTool", () => {
       context,
     );
     expect(object.position).toEqual(new Vector(13, 24));
-    expect(modifySpy).toHaveBeenCalledWith(501, {
+    expect(modifySpy).toHaveBeenCalledWith("501", {
       position: { x: 13, y: 24 },
     });
 
@@ -304,7 +304,7 @@ describe("CommonObjectModifierTool", () => {
       context,
     );
 
-    expect(commitSpy).toHaveBeenCalledWith([501]);
+    expect(commitSpy).toHaveBeenCalledWith(["501"]);
     expect(mockDag.unmount).toHaveBeenCalledWith(
       "/viewport/mouse/primary/tool/tool",
     );
@@ -320,7 +320,7 @@ describe("CommonObjectModifierTool", () => {
       discardActiveObjects: jest.fn(),
     };
     const summaryLikeObject = {
-      id: 502,
+      id: "502",
       type: "CircleObject",
       position: { x: 30, y: 40 },
       range: new RectangleRange(-5, -5, 10, 10),
@@ -360,7 +360,7 @@ describe("CommonObjectModifierTool", () => {
     );
 
     expect(summaryLikeObject.position).toEqual(new Vector(34, 43));
-    expect(boardApi.modifyObject).toHaveBeenCalledWith(502, {
+    expect(boardApi.modifyObject).toHaveBeenCalledWith("502", {
       position: { x: 34, y: 43 },
     });
   });
@@ -368,7 +368,7 @@ describe("CommonObjectModifierTool", () => {
   test("显式提供 RPC boardApi 时不应读取本地 stale activeObjectIndex", () => {
     const tool = new CommonObjectModifierTool({ processor: new DragGestureProcessor() });
     const summaryLikeObject = {
-      id: 503,
+      id: "503",
       type: "CircleObject",
       position: { x: 30, y: 40 },
       range: new RectangleRange(-5, -5, 10, 10),
@@ -416,14 +416,14 @@ describe("CommonObjectModifierTool", () => {
     );
 
     expect(summaryLikeObject.position).toEqual(new Vector(34, 43));
-    expect(modifyObject).toHaveBeenCalledWith(503, {
+    expect(modifyObject).toHaveBeenCalledWith("503", {
       position: { x: 34, y: 43 },
     });
   });
 
   test("不传 position 信号时应保持原状态", () => {
     const object = {
-      id: 1,
+      id: "1",
       position: new Vector(5, 5),
     };
 
@@ -435,7 +435,7 @@ describe("CommonObjectModifierTool", () => {
 
   test("首个 position 在合矩形内应启动手势（对象暂不动），后续才应用位移", () => {
     const object = {
-      id: 1,
+      id: "1",
       position: new Vector(10, 20),
       getRange: () => new RectangleRange(0, 0, 50, 30),
     };
@@ -473,7 +473,7 @@ describe("CommonObjectModifierTool", () => {
 
   test("首个 position 不在合矩形内时应拒绝手势", () => {
     const object = {
-      id: 1,
+      id: "1",
       position: new Vector(10, 20),
       getRange: () => new RectangleRange(0, 0, 50, 30),
     };
@@ -501,12 +501,12 @@ describe("CommonObjectModifierTool", () => {
 
   test("多对象合矩形准入检测：应在所有对象合矩形内通过后方可启动", () => {
     const objectA = {
-      id: 1,
+      id: "1",
       position: new Vector(10, 20),
       getRange: () => new RectangleRange(0, 0, 50, 30),
     };
     const objectB = {
-      id: 2,
+      id: "2",
       position: new Vector(70, 80),
       getRange: () => new RectangleRange(0, 0, 40, 20),
     };
@@ -546,12 +546,12 @@ describe("CommonObjectModifierTool", () => {
 
   test("多对象合矩形准入检测：position 在合矩形外应拒绝", () => {
     const objectA = {
-      id: 1,
+      id: "1",
       position: new Vector(10, 20),
       getRange: () => new RectangleRange(0, 0, 50, 30),
     };
     const objectB = {
-      id: 2,
+      id: "2",
       position: new Vector(70, 80),
       getRange: () => new RectangleRange(0, 0, 40, 20),
     };
@@ -580,7 +580,7 @@ describe("CommonObjectModifierTool", () => {
 
   test("对象无 getRange 时跳过准入检测（兼容旧版对象）", () => {
     const object = {
-      id: 1,
+      id: "1",
       position: new Vector(10, 20),
     };
 
@@ -615,7 +615,7 @@ describe("CommonObjectModifierTool", () => {
 
   test("reset 应清空手势状态，新一轮手势从新光标位置开始", () => {
     const object = {
-      id: 1,
+      id: "1",
       position: new Vector(10, 20),
     };
 
@@ -664,7 +664,7 @@ describe("CommonObjectModifierTool", () => {
 
   test("同一信号包中 position + end：应启动并立即结束手势，且不触发多余的快照", () => {
     const object = {
-      id: 1,
+      id: "1",
       position: new Vector(10, 20),
       getRange: () => new RectangleRange(0, 0, 50, 30),
     };
@@ -718,7 +718,7 @@ describe("CommonObjectModifierTool", () => {
   describe("cancel 多手势回退", () => {
     test("多轮手势后 cancel 应回退到第一轮手势开始前的初始位置", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
       };
 
@@ -772,7 +772,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("cancel 后新一轮手势应重新记录初始位置", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
       };
 
@@ -822,7 +822,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("success 后 _initialPositions 应被清空，新一组对象不以旧位置为 baseline", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
       };
       const board = {
@@ -857,7 +857,7 @@ describe("CommonObjectModifierTool", () => {
 
       // 模拟新对象（id=2）进入 modifier
       const object2 = {
-        id: 2,
+        id: "2",
         position: new Vector(50, 60),
       };
       const board2 = {
@@ -872,7 +872,7 @@ describe("CommonObjectModifierTool", () => {
         {
           signals: [{ type: "position", context: { value: { x: 55, y: 65 } } }],
         },
-        aomCtx(tool, object2,  { board: board2 }),
+        aomCtx(tool, object2, { board: board2 }),
       );
       // 锚点=(55,65)，新 initPos=(50,60)，dx=0 → (50,60)
       expect(object2.position).toEqual(new Vector(50, 60));
@@ -881,7 +881,7 @@ describe("CommonObjectModifierTool", () => {
         {
           signals: [{ type: "position", context: { value: { x: 60, y: 70 } } }],
         },
-        aomCtx(tool, object2,  { board: board2 }),
+        aomCtx(tool, object2, { board: board2 }),
       );
       // dx=60-55=5, dy=70-65=5 → (55, 65)
       expect(object2.position).toEqual(new Vector(55, 65));
@@ -924,7 +924,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("position 恰好在合矩形边界上应通过准入检测", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
         getRange: () => new RectangleRange(0, 0, 50, 30),
       };
@@ -979,7 +979,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("准入检测拒绝后新一轮 position 可以重新启动手势", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
         getRange: () => new RectangleRange(0, 0, 50, 30),
       };
@@ -1029,7 +1029,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("准入检测只发生在手势开始时，手势激活后不再检测", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
         getRange: () => new RectangleRange(0, 0, 50, 30),
       };
@@ -1070,7 +1070,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("未持有任何对象时不应触发手势", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
       };
 
@@ -1088,7 +1088,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("end 信号后新一轮手势应重新执行准入检测", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
         getRange: () => new RectangleRange(0, 0, 50, 30),
       };
@@ -1146,7 +1146,7 @@ describe("CommonObjectModifierTool", () => {
   describe("displacement 信号支持", () => {
     test("位移信号单独到达时应直接移动对象，不启动手势状态机", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
       };
 
@@ -1184,7 +1184,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("手势激活期间位移到达：对象位置叠加、锚点跟随同步", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
       };
 
@@ -1233,7 +1233,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("同一信号包中 position + displacement 应先 position 再位移叠加", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
       };
 
@@ -1275,7 +1275,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("end 之后 displacement 应直接累加，无需锚点", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
       };
 
@@ -1318,7 +1318,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("cancel 应回退到手势开始时的初始位置（含 displacement 修正）", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
       };
 
@@ -1356,7 +1356,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("纯 displacement 多次累加后 cancel 应回退到首次 displacement 前的位置", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
       };
 
@@ -1391,7 +1391,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("displacement 不应触发准入检测（即使 position 在合矩形外）", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
         getRange: () => new RectangleRange(0, 0, 50, 30),
       };
@@ -1411,8 +1411,8 @@ describe("CommonObjectModifierTool", () => {
     });
 
     test("多对象 displacement 应移动所有对象", () => {
-      const objectA = { id: 1, position: new Vector(10, 20) };
-      const objectB = { id: 2, position: new Vector(30, 40) };
+      const objectA = { id: "1", position: new Vector(10, 20) };
+      const objectB = { id: "2", position: new Vector(30, 40) };
 
       const tool = new CommonObjectModifierTool({ processor: new DragGestureProcessor() });
       tool.process(
@@ -1430,7 +1430,7 @@ describe("CommonObjectModifierTool", () => {
 
     test("success 应提交纯 displacement 修改后的对象", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: new Vector(10, 20),
       };
       const boardApi = {
@@ -1455,12 +1455,12 @@ describe("CommonObjectModifierTool", () => {
         { signals: [{ type: "success", context: {} }] },
         aomCtx(tool, object, { boardApi }),
       );
-      expect(boardApi.commitObjects).toHaveBeenCalledWith([1]);
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["1"]);
     });
 
     test("Worker mode 下 summary-like 对象应能基于 plain boundingBox 启动 modifier 手势", () => {
       const object = {
-        id: 1,
+        id: "1",
         position: { x: 30, y: 40 },
         boundingBox: { left: 0, top: 0, width: 20, height: 10 },
       };
@@ -1496,7 +1496,7 @@ describe("CommonObjectModifierTool", () => {
         context,
       );
 
-      expect(boardApi.modifyObject).toHaveBeenLastCalledWith(1, {
+      expect(boardApi.modifyObject).toHaveBeenLastCalledWith("1", {
         position: { x: 40, y: 45 },
       });
       expect(object.position).toEqual(new Vector(40, 45));

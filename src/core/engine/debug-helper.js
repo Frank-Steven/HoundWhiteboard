@@ -64,7 +64,7 @@ function logObjectLoadState(boardCore) {
       objectId: id,
       loadedCount: state?.loadedCount ?? 0,
       isActive:
-        boardCore.activeObjectManager?.activeObjectIndex?.has?.(id) ?? false,
+        boardCore.activeObjectManager?.isActive?.(id) ?? false,
       coveredChunkIds: [...(boardCore.getObjectCoverChunks(id) ?? [])].sort(
         (a, b) => a - b,
       ),
@@ -168,21 +168,21 @@ function logObjectsDetail(boardCore, params = {}) {
 
   const aom = boardCore.activeObjectManager;
   const details = ids.map((objectId) => {
-    const obj = boardCore.getObjectById(Number(objectId));
+    const obj = boardCore.getObjectById(objectId);
     if (!obj) return { objectId, error: "not found" };
 
     return {
       id: obj.id,
       type: obj.constructor.name,
-      isActive: aom?.activeObjectIndex?.has?.(obj.id) ?? false,
+      isActive: aom?.isActive?.(obj.id) ?? false,
       position: { x: obj.position.x, y: obj.position.y },
       transform: obj.transform
         ? {
-            a: obj.transform.a,
-            b: obj.transform.b,
-            c: obj.transform.c,
-            d: obj.transform.d,
-          }
+          a: obj.transform.a,
+          b: obj.transform.b,
+          c: obj.transform.c,
+          d: obj.transform.d,
+        }
         : undefined,
       boundingBox: obj.rich?.boundingBox,
       range: obj.getRange(),

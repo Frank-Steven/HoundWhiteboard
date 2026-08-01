@@ -151,7 +151,7 @@ class Renderer extends CanvasHost {
   /**
    * 在绘制完成之后执行的钩子
    * @param {BasicObject[]} drawables - 已绘制的对象
-   * @param {Array<{ objectId: number, object: BasicObject, screenRect?: RectangleRange }>} drawableEntries - drawable 条目
+   * @param {Array<{ objectId: string, object: BasicObject, screenRect?: RectangleRange }>} drawableEntries - drawable 条目
    * @protected
    */
   _afterRender(drawables, drawableEntries) {
@@ -222,7 +222,7 @@ class Renderer extends CanvasHost {
   /**
    * 创建 drawable 条目
    * @param {BasicObject[]} drawables - 对象实例集合
-   * @returns {Array<{ objectId: number, object: BasicObject, screenRect?: RectangleRange }>}
+   * @returns {Array<{ objectId: string, object: BasicObject, screenRect?: RectangleRange }>}
    */
   createDrawableEntries(drawables) {
     return drawables.map((objectInstance) => ({

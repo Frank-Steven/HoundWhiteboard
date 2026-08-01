@@ -18,6 +18,7 @@ import { logBus } from "../../utils/log/log-bus.js";
 import { createConsolePrinter } from "../../utils/log/console-printer.js";
 import { handleDebugQuery } from "./debug-helper.js";
 import { BoardApi } from "./api/board-api.js";
+import { BOARD_API_ROUTES } from "./api/board-api-routes.js";
 
 /**
  * 判断值是否可作为 Worker 消息宿主
@@ -294,8 +295,10 @@ class CoreWorkerRuntime {
 
   /**
    * 处理批量 RPC 请求
-   * @description 批量消息为 fire-and-forget，不产生 rpc-response。
-   * @param {{ items?: Array<{ method: string } & Record<string, any>> }} message - 批量请求消息
+   * @description
+   * 批量消息为 fire-and-forget，不产生 rpc-response；
+   * 单条目失败不影响其余条目执行，全部失败条目以 rpc-batch-error 统一回传。
+   * @param {{ batchId?: number, items?: Array<{ method: string } & Record<string, any>> }} message - 批量请求消息
    * @returns {void}
    */
   #handleBatchMessage(message) {
@@ -304,16 +307,31 @@ class CoreWorkerRuntime {
       return;
     }
 
-    for (const item of items) {
+    const errors = [];
+    items.forEach((item, index) => {
       try {
         const { method, ...params } = item;
         this.#invokeBoardApi(method, params);
       } catch (error) {
+        errors.push({
+          index,
+          method: item?.method ?? "unknown",
+          code: error?.code ?? "INTERNAL_ERROR",
+          message: error?.message ?? String(error),
+        });
         this.#log.error(
           `Batch item failed: ${item?.method ?? "unknown"}`,
           error,
         );
       }
+    });
+
+    if (errors.length > 0) {
+      this.#postMessage({
+        type: "rpc-batch-error",
+        batchId: message?.batchId,
+        errors,
+      });
     }
   }
 
@@ -497,7 +515,7 @@ class CoreWorkerRuntime {
        * 按对象范围刷新 ViewportCore 的静态层
        * @param {import("./objects/basic-obj.js").BasicObject[]} objectInstances - 受影响对象
        * @param {import("./chunk/chunk.js").Chunk[]} fallbackChunks - 回退区块
-       * @param {Map<number, import("./range/index.js").RectangleRange>} previousWorldRects - 旧世界范围快照
+       * @param {Map<string, import("./range/index.js").RectangleRange>} previousWorldRects - 旧世界范围快照
        */
       requestStaticRenderForObjects: (
         objectInstances = [],
@@ -600,9 +618,12 @@ class CoreWorkerRuntime {
 
   /**
    * 将 RPC 方法转发到 Engine 侧 BoardApi
+   * @description
+   * 通过 {@link ./api/board-api-routes.js} 的路由表分发，
+   * 并按路由条目声明的 flush 时机在调用完成后调度渲染帧 flush。
    * @param {string} method - RPC 方法名
    * @param {Record<string, any>} params - RPC 参数
-   * @returns {*}
+   * @returns {*} 调用结果（异步方法返回 Promise）
    */
   #invokeBoardApi(method, params = {}) {
     const api = this.#boardApi;
@@ -610,83 +631,23 @@ class CoreWorkerRuntime {
       throw new Error("BoardApi is not initialized. Call createBoard first.");
     }
 
-    let result;
-    switch (method) {
-      case "createObject":
-        result = api.createObject(params.type, params.props);
-        break;
-      case "modifyObject":
-        result = api.modifyObject(params.objectId, params.patch);
-        break;
-      case "modifyObjects":
-        result = api.modifyObjects(params.patches);
-        break;
-      case "appendListItem":
-        result = api.appendListItem(params.objectId, params.key, params.items);
-        break;
-      case "replaceListItem":
-        result = api.replaceListItem(
-          params.objectId,
-          params.key,
-          params.index,
-          params.item,
-        );
-        break;
-      case "removeListItem":
-        result = api.removeListItem(params.objectId, params.key, params.index);
-        break;
-      case "deleteObjects":
-        result = api.deleteObjects(params.objectIds);
-        break;
-      case "commitObjects":
-        result = api.commitObjects(params.objectIds);
-        break;
-      case "addActiveObjects":
-        result = api.addActiveObjects(params.objectIds);
-        break;
-      case "discardActiveObjects":
-        result = api.discardActiveObjects(params.objectIds);
-        break;
-      case "queryObjects":
-        result = api.queryObjects(params.ids);
-        break;
-      case "queryChunkObjects":
-        result = api.queryChunkObjects(params.chunkIds);
-        break;
-      case "hitTest":
-        return api.hitTest(params.range, params.mode);
-      case "undo":
-        result = api.undo();
-        break;
-      case "redo":
-        result = api.redo();
-        break;
-      default:
-        throw new Error(`Unknown RPC method: ${method}`);
+    const route = BOARD_API_ROUTES[method];
+    if (!route) {
+      throw new Error(`Unknown RPC method: ${method}`);
     }
 
-    // 对象修改后调度渲染帧 flush
-    if (this.#isMutationMethod(method)) {
+    const result = route.invoke(api, params);
+
+    if (route.flush === "sync") {
       this.#scheduleFlushRenderFrames();
+    } else if (route.flush === "async" && result instanceof Promise) {
+      return result.then((value) => {
+        this.#scheduleFlushRenderFrames();
+        return value;
+      });
     }
 
     return result;
-  }
-
-  /**
-   * 判断 RPC 方法是否为对象修改类方法
-   * @param {string} method - RPC 方法名
-   * @returns {boolean}
-   */
-  #isMutationMethod(method) {
-    return [
-      "modifyObject",
-      "modifyObjects",
-      "appendListItem",
-      "replaceListItem",
-      "removeListItem",
-      "deleteObjects",
-    ].includes(method);
   }
 
   /**

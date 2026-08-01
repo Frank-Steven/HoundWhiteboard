@@ -5,6 +5,9 @@
  * @author Zhou Chenyu
  */
 
+/** demo 用户标识（对象 id 的来源命名空间） */
+const DEMO_ID_SOURCE = "demo";
+
 /** 笔画颜色（鼠标左键与触摸多指笔画共用） */
 const DEMO_PRIMARY_STROKE_COLOR = "#ff0000";
 
@@ -31,6 +34,7 @@ const DEMO_TOOL_NAMES = Object.freeze({
   CIRCLE_DIAMETER: "circle-diameter",
   ELLIPSE: "ellipse",
   SELECT: "select",
+  ERASER: "eraser",
 });
 
 /**
@@ -189,6 +193,7 @@ export {
   DEMO_BUTTON_GROUP_STATE_KEY,
   DEMO_CIRCLE_STROKE_COLOR,
   DEMO_DEVICE_PATHS,
+  DEMO_ID_SOURCE,
   DEMO_KEYBOARD_INPUT_CODES,
   DEMO_PRIMARY_STROKE_COLOR,
   DEMO_STROKE_WIDTH,

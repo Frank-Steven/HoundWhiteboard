@@ -7,7 +7,7 @@
  * @author Zhou Chenyu
  */
 
-import { CounterPool } from "../../../engine/utils/counter-pool.js";
+import { IncrementalIdPool } from "../../../engine/utils/incremental-id-pool.js";
 import { EventBus } from "../../../engine/utils/event-bus.js";
 import { SharedStateStore } from "../../../engine/utils/shared-state-store.js";
 import { DevicesDAG } from "../../devices-dag/index.js";
@@ -98,15 +98,16 @@ class Board {
 
   /**
    * 对象 id 池
-   * @type {CounterPool}
+   * @type {IncrementalIdPool}
    */
-  #counterPool;
+  #idPool;
 
   /**
    * @param {{
    *   width?: number,
    *   height?: number,
    *   rootPath?: string,
+   *   idSource?: string,
    * }} [options={}] - 白板初始化选项
    */
   constructor(options = {}) {
@@ -118,7 +119,7 @@ class Board {
 
     this.#boardApi = null;
     this.#worker = null;
-    this.#counterPool = new CounterPool();
+    this.#idPool = new IncrementalIdPool(options.idSource ?? "");
     this.viewports = new Map();
     this.signalsEventBus = new EventBus();
     this.devicesDAG = new DevicesDAG({
@@ -159,11 +160,19 @@ class Board {
   }
 
   /**
+   * 对象 id 池的来源标识
+   * @type {string}
+   */
+  get idSource() {
+    return this.#idPool.source;
+  }
+
+  /**
    * 申请新的对象 id
-   * @returns {number}
+   * @returns {string} 携带来源命名空间的字符串 id
    */
   allocateObjectId() {
-    return this.#counterPool.generate();
+    return this.#idPool.allocate();
   }
 
   /**
@@ -185,6 +194,12 @@ class Board {
     }
 
     const boardApi = new BoardApiRpc(worker, options);
+    boardApi.onBatchError((errors, batchId) => {
+      boardLog.warn(
+        `Batch ${batchId} reported ${errors.length} failed item(s):`,
+        errors,
+      );
+    });
 
     try {
       await boardApi.waitUntilReady(
@@ -293,14 +308,6 @@ class Board {
         boardLog.error(`dispatch failed for "${to}":`, error);
       }
     });
-  }
-
-  /**
-   * 申请新的对象 id
-   * @returns {number}
-   */
-  allocateObjectId() {
-    return this.#counterPool.generate();
   }
 
   /**

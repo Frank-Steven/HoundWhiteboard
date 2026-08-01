@@ -32,7 +32,7 @@ import {
 /**
  * @typedef {Object} ViewportRendererInvalidateCachedOptions
  * @property {Iterable<BasicObject>} [objects=[]] - 待失效的静态对象集合
- * @property {Map<number, RectangleRange>} [previousWorldRects] - 对象进入 AOM 前的世界范围快照
+ * @property {Map<string, RectangleRange>} [previousWorldRects] - 对象进入 AOM 前的世界范围快照
  */
 
 /**
@@ -68,7 +68,7 @@ class ViewportRenderer extends Renderer {
    * 条目额外携带 `drawnRects`：该对象上一次实际绘制时使用的 clip 脏区（跳过帧继承）。
    * 清除覆盖不变量——任一帧实际绘制的像素区域 ⊆ 下一帧清除区域——
    * 由 drawnRects 保证，与渲染留白是否精确无关。
-   * @type {Array<{ objectId: number, object: BasicObject, screenRect?: RectangleRange, drawnRects?: RectangleRange[] }>}
+   * @type {Array<{ objectId: string, object: BasicObject, screenRect?: RectangleRange, drawnRects?: RectangleRange[] }>}
    * @private
    */
   #previousAomEntries;
@@ -76,7 +76,7 @@ class ViewportRenderer extends Renderer {
   /**
    * 待刷新的旧几何快照
    * @description 用于在对象尚未经历上一帧 render 时，仍能显式保留变更前的屏幕范围。
-   * @type {Map<number, RectangleRange>}
+   * @type {Map<string, RectangleRange>}
    * @private
    */
   #objectSnapshotRects;
@@ -334,7 +334,7 @@ class ViewportRenderer extends Renderer {
   /**
    * 解析静态对象实例
    * @param {*} chunk - 当前区块
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {BasicObject | undefined}
    */
   resolveStaticObject(chunk, objectId) {
@@ -350,7 +350,7 @@ class ViewportRenderer extends Renderer {
   /**
    * 在当前已加载区块内解析静态对象实例
    * @param {Iterable<*>} chunks - 当前已加载区块
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {BasicObject | undefined}
    */
   resolveStaticObjectFromChunks(chunks, objectId) {
@@ -486,8 +486,8 @@ class ViewportRenderer extends Renderer {
 
   /**
    * 按对象 id 索引 drawable 条目
-   * @param {Array<{ objectId: number, object: BasicObject, screenRect?: RectangleRange }>} entries - drawable 条目
-   * @returns {Map<number, { objectId: number, object: BasicObject, screenRect?: RectangleRange }>}
+   * @param {Array<{ objectId: string, object: BasicObject, screenRect?: RectangleRange }>} entries - drawable 条目
+   * @returns {Map<number, { objectId: string, object: BasicObject, screenRect?: RectangleRange }>}
    */
   indexDrawableEntries(entries) {
     return new Map(entries.map((entry) => [entry.objectId, entry]));
@@ -548,7 +548,7 @@ class ViewportRenderer extends Renderer {
    * 对象离开 AOM 前最后一次实际绘制区域（`drawnRects`），
    * 确保 commit / delete 等静态图变更场景下旧像素被完整清理。
    * @param {Iterable<BasicObject>} [objects = []] - 待失效的静态对象集合
-   * @param {{ previousWorldRects?: Map<number, RectangleRange> }} [options = {}] - 旧世界范围快照
+   * @param {{ previousWorldRects?: Map<string, RectangleRange> }} [options = {}] - 旧世界范围快照
    * @returns {RectangleRange[]} 实际提交的脏区
    */
   invalidateCachedObjects(objects = [], options = {}) {

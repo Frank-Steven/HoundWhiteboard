@@ -165,7 +165,7 @@ const boardFileOperateBridge = {
   /**
    * 删除指定对象 JSON
    * @param {string} rootPath - 白板根目录路径
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {Promise<boolean>} 是否成功删除
    */
   deleteObject(rootPath, objectId) {

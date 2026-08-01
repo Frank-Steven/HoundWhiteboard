@@ -210,7 +210,7 @@ function handleSaveChunkMetadata(payload) {
 
 /**
  * 按对象 ID 批量读取对象 JSON
- * @param {{rootPath: string, objectIds: number[]}} payload - 请求参数
+ * @param {{rootPath: string, objectIds: string[]}} payload - 请求参数
  * @returns {object[]}
  */
 function handleLoadObjects(payload) {
@@ -256,7 +256,7 @@ function handleSaveObjects(payload) {
 
 /**
  * 删除指定对象 JSON
- * @param {{rootPath: string, objectId: number}} payload - 请求参数
+ * @param {{rootPath: string, objectId: string}} payload - 请求参数
  * @returns {boolean}
  */
 function handleDeleteObject(payload) {

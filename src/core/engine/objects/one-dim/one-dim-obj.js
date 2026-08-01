@@ -30,7 +30,7 @@ class OneDimensionObject extends Container {
 
   /**
    * 创建一个新的一维对象
-   * @param {number} id - 对象 id
+   * @param {string} id - 对象 id
    * @param {Vector} position - 对象的初始位置
    * @param {Record<string, any>} [property={}] - 对象属性
    * @param {Record<string, any>} [data={}] - 对象类型专属数据

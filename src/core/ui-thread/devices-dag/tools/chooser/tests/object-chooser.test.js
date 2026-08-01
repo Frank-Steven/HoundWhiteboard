@@ -33,11 +33,11 @@ describe("ObjectChooserTool", () => {
       return this.chosenObjects;
     }
 
-    reset() {}
+    reset() { }
   }
 
   test("process 应通过 boardApi.addActiveObjects 写回选择结果", () => {
-    const chosenObject = { id: 1 };
+    const chosenObject = { id: "1" };
     const boardApi = {
       addActiveObjects: jest.fn(),
       discardActiveObjects: jest.fn(),
@@ -61,7 +61,7 @@ describe("ObjectChooserTool", () => {
       deviceContext,
     );
 
-    expect(boardApi.addActiveObjects).toHaveBeenCalledWith([1]);
+    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["1"]);
     expect(stateAccess.getState().objects).toEqual([chosenObject]);
     expect(stateAccess.getState()).toEqual({
       objects: [chosenObject],
@@ -69,7 +69,7 @@ describe("ObjectChooserTool", () => {
   });
 
   test("umount 应通过 boardApi.discardActiveObjects 撤销当前选择并清理上下文", () => {
-    const chosenObject = { id: 4 };
+    const chosenObject = { id: "4" };
     const boardApi = {
       addActiveObjects: jest.fn(),
       discardActiveObjects: jest.fn(),
@@ -90,7 +90,7 @@ describe("ObjectChooserTool", () => {
 
     tool.umount(deviceContext);
 
-    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith([4]);
+    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith(["4"]);
     expect(tool._selectedObjects).toEqual([]);
     expect(stateAccess.getState().objects).toBeUndefined();
     expect(stateAccess.getState()).toEqual({});
@@ -111,7 +111,7 @@ describe("ObjectChooserTool", () => {
     const tool = new TestChooserTool({
       chosenObjects: [
         {
-          id: 31,
+          id: "31",
           position: { x: 10, y: 20 },
           range: new RectangleRange(0, 0, 5, 5),
         },
@@ -128,10 +128,10 @@ describe("ObjectChooserTool", () => {
       deviceContext,
     );
 
-    expect(boardApi.addActiveObjects).toHaveBeenCalledWith([31]);
+    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["31"]);
     expect(stateAccess.getState().objects).toEqual([
       {
-        id: 31,
+        id: "31",
         position: { x: 10, y: 20 },
         range: new RectangleRange(0, 0, 5, 5),
       },
@@ -139,7 +139,7 @@ describe("ObjectChooserTool", () => {
     expect(stateAccess.getState()).toEqual({
       objects: [
         {
-          id: 31,
+          id: "31",
           position: { x: 10, y: 20 },
           range: new RectangleRange(0, 0, 5, 5),
         },
@@ -149,11 +149,11 @@ describe("ObjectChooserTool", () => {
 
   test("显式提供 RPC boardApi 时不应回填到本地 stale board 对象", () => {
     const rpcSummary = {
-      id: 32,
+      id: "32",
       position: { x: 12, y: 24 },
       range: new RectangleRange(0, 0, 6, 6),
     };
-    const staleBoardObject = { id: 32, stale: true };
+    const staleBoardObject = { id: "32", stale: true };
     const boardApi = {
       addActiveObjects: jest.fn(),
     };
@@ -183,14 +183,14 @@ describe("ObjectChooserTool", () => {
       deviceContext,
     );
 
-    expect(boardApi.addActiveObjects).toHaveBeenCalledWith([32]);
+    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["32"]);
     expect(stateAccess.getState().objects).toEqual([rpcSummary]);
     expect(deviceContext.services.board.getObjectById).not.toHaveBeenCalled();
     expect(stateAccess.getState()).toEqual({ objects: [rpcSummary] });
   });
 
   test("显式提供 boardApi 时 umount 应走 discardActiveObjects", () => {
-    const chosenObject = { id: 41 };
+    const chosenObject = { id: "41" };
     const discardActiveObjects = jest.fn();
     const tool = new TestChooserTool();
     const stateAccess = createStateAccess();
@@ -209,14 +209,14 @@ describe("ObjectChooserTool", () => {
     tool.replaceSelection(deviceContext, [chosenObject]);
     tool.umount(deviceContext);
 
-    expect(discardActiveObjects).toHaveBeenCalledWith([41]);
+    expect(discardActiveObjects).toHaveBeenCalledWith(["41"]);
     expect(tool._selectedObjects).toEqual([]);
     expect(stateAccess.getState().objects).toBeUndefined();
     expect(stateAccess.getState()).toEqual({});
   });
 
   test("选择集被丢弃后 process 应按真相源同步清空 overlay", () => {
-    const chosenObject = { id: 60 };
+    const chosenObject = { id: "60" };
     const boardApi = {
       addActiveObjects: jest.fn(),
       discardActiveObjects: jest.fn(),
@@ -266,7 +266,7 @@ describe("ObjectChooserTool", () => {
 
   test("collectUiOverlayEntries 应调用 factory 生成选择框条目", () => {
     const chosenObject = {
-      id: 5,
+      id: "5",
       position: { x: 10, y: 20 },
       range: new RectangleRange(0, 0, 30, 40),
       property: {},
@@ -287,7 +287,7 @@ describe("ObjectChooserTool", () => {
     });
 
     expect(entries).toHaveLength(1);
-    expect(entries[0].objectId).toBe(5);
+    expect(entries[0].objectId).toBe("5");
     expect(entries[0].type).toBe("rect");
     expect(entries[0].source).toBe("compat-selection-object-frame:chooser");
   });
@@ -306,7 +306,7 @@ describe("ObjectChooserTool", () => {
 
   test("collectUiOverlayEntries 在 summary-like 条目时应走 summaries 入口", () => {
     const chosenObject = {
-      id: 51,
+      id: "51",
       position: { x: 10, y: 20 },
       range: new RectangleRange(0, 0, 5, 5),
     };
@@ -326,13 +326,13 @@ describe("ObjectChooserTool", () => {
     });
 
     expect(visible).toHaveLength(1);
-    expect(visible[0].objectId).toBe(51);
+    expect(visible[0].objectId).toBe("51");
   });
 
   test("resolveObjectSelectionWorldRange 应优先使用 range 而非 boundingBox", () => {
     const tool = new TestChooserTool();
     const objectEntry = {
-      id: 6,
+      id: "6",
       position: new Vector(100, 200),
       range: new RectangleRange(10, 20, 5, 6),
       boundingBox: new RectangleRange(0, 0, 40, 50),
@@ -346,7 +346,7 @@ describe("ObjectChooserTool", () => {
   test("resolveObjectSelectionWorldRange 应支持 summary-like 条目的 range 字段", () => {
     const tool = new TestChooserTool();
     const objectEntry = {
-      id: 7,
+      id: "7",
       position: new Vector(50, 80),
       range: new RectangleRange(5, 10, 20, 30),
     };
@@ -358,7 +358,7 @@ describe("ObjectChooserTool", () => {
 
   describe("生命周期钩子", () => {
     test("afterChoose 在有选中对象时触发", () => {
-      const chosenObject = { id: 10 };
+      const chosenObject = { id: "10" };
       const boardApi = {
         addActiveObjects: jest.fn(),
         discardActiveObjects: jest.fn(),
@@ -408,7 +408,7 @@ describe("ObjectChooserTool", () => {
           services: { boardApi },
           path: "/test",
           getNodeState: () => ({}),
-          setNodeState: () => {},
+          setNodeState: () => { },
         },
       );
 
@@ -416,7 +416,7 @@ describe("ObjectChooserTool", () => {
     });
 
     test("confirmSelection → beforeConfirm 返回 false 时阻止后续完成", () => {
-      const chosenObject = { id: 11 };
+      const chosenObject = { id: "11" };
       const board = {
         activeObjectManager: { choose: jest.fn() },
       };
@@ -432,7 +432,7 @@ describe("ObjectChooserTool", () => {
     });
 
     test("confirmSelection 默认返回 true", () => {
-      const chosenObject = { id: 12 };
+      const chosenObject = { id: "12" };
       const tool = new TestChooserTool({ chosenObjects: [chosenObject] });
 
       const result = tool.confirmSelection(
@@ -444,7 +444,7 @@ describe("ObjectChooserTool", () => {
     });
 
     test("选择确认成功后触发 action:complete", () => {
-      const chosenObject = { id: 13 };
+      const chosenObject = { id: "13" };
       const boardApi = {
         addActiveObjects: jest.fn(),
         discardActiveObjects: jest.fn(),
@@ -480,7 +480,7 @@ describe("ObjectChooserTool", () => {
     test("RectangleObjectChooserTool 在 end 信号时触发 action:complete", async () => {
       // 准备一个虚拟对象用于框选命中
       const selectedSummary = {
-        id: 20,
+        id: "20",
         type: "CircleObject",
         position: { x: 50, y: 50 },
         range: new RectangleRange(0, 0, 10, 10),
@@ -489,7 +489,7 @@ describe("ObjectChooserTool", () => {
         data: {},
       };
       const boardApi = {
-        hitTest: jest.fn(async () => [20]),
+        hitTest: jest.fn(async () => ["20"]),
         queryObjects: jest.fn(async () => [selectedSummary]),
         addActiveObjects: jest.fn(),
         discardActiveObjects: jest.fn(),
@@ -548,7 +548,7 @@ describe("ObjectChooserTool", () => {
     });
 
     test("cancel 信号应撤销上一轮已确认的选择", () => {
-      const chosenObject = { id: 15 };
+      const chosenObject = { id: "15" };
       const boardApi = {
         addActiveObjects: jest.fn(),
         discardActiveObjects: jest.fn(),
@@ -573,13 +573,13 @@ describe("ObjectChooserTool", () => {
         deviceContext,
       );
 
-      expect(boardApi.addActiveObjects).toHaveBeenCalledWith([15]);
+      expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["15"]);
       expect(stateAccess.getState().objects).toEqual([chosenObject]);
 
       // cancel 应撤销已选中的对象
       tool.process({ signals: [{ type: "cancel" }] }, deviceContext);
 
-      expect(boardApi.discardActiveObjects).toHaveBeenCalledWith([15]);
+      expect(boardApi.discardActiveObjects).toHaveBeenCalledWith(["15"]);
       expect(stateAccess.getState().objects).toBeUndefined();
       // nodeState 中 objects 应被清理
       expect(stateAccess.getState()).toEqual({});

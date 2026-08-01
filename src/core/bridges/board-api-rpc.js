@@ -101,7 +101,7 @@ class BoardApiRpc {
 
   /**
    * 当前帧内待合并发送的 RPC 条目缓冲
-   * @type {Map<string, { method: string, objectId: number, patch?: Object, key?: string, items?: any[], index?: number, item?: any }>}
+   * @type {Map<string, { method: string, objectId: string, patch?: Object, key?: string, items?: any[], index?: number, item?: any }>}
    */
   #batchBuffer;
 
@@ -110,6 +110,18 @@ class BoardApiRpc {
    * @type {boolean}
    */
   #batchPending;
+
+  /**
+   * 下一个批处理消息 id
+   * @type {number}
+   */
+  #nextBatchId;
+
+  /**
+   * 批处理错误订阅者集合
+   * @type {Set<Function>}
+   */
+  #batchErrorHandlers;
 
   /**
    * @param {{ postMessage: Function, addEventListener: Function, removeEventListener: Function }} endpoint - Worker 或 MessagePort 端点
@@ -136,6 +148,8 @@ class BoardApiRpc {
     this.#messageListener = this.#handleEndpointMessage.bind(this);
     this.#batchBuffer = new Map();
     this.#batchPending = false;
+    this.#nextBatchId = 1;
+    this.#batchErrorHandlers = new Set();
     this.#endpoint.addEventListener("message", this.#messageListener);
   }
 
@@ -197,6 +211,18 @@ class BoardApiRpc {
       return;
     }
 
+    if (message.type === "rpc-batch-error") {
+      const errors = Array.isArray(message.errors) ? message.errors : [];
+      for (const handler of this.#batchErrorHandlers) {
+        try {
+          handler(errors, message.batchId);
+        } catch {
+          // 订阅者异常不应中断消息分发
+        }
+      }
+      return;
+    }
+
     if (message.type !== "rpc-response") {
       return;
     }
@@ -232,7 +258,17 @@ class BoardApiRpc {
    * @returns {Promise<any>} RPC 响应结果
    */
   #call(method, params = {}, timeoutMs = this.#timeoutMs) {
-    this.#flushBatchNow();
+    // flush 失败（如端点已断开）必须立即 reject，避免请求悬挂到超时
+    try {
+      this.#flushBatchNow();
+    } catch (error) {
+      return Promise.reject(
+        createRpcError(
+          `Batch flush failed before ${method}: ${error?.message ?? String(error)}`,
+          "RPC_FLUSH_ERROR",
+        ),
+      );
+    }
 
     const msgId = createRpcMessageId();
 
@@ -282,7 +318,7 @@ class BoardApiRpc {
    * 在 Core 侧创建对象实例，注册到 AOM 动态图
    * @param {string} type - 对象类型名（如 "StrokeObject" | "CircleObject"）
    * @param {import("../engine/types/board-api-types.js").CreateObjectProps} props - 创建属性
-   * @returns {Promise<number>} 新对象的 objectId
+   * @returns {Promise<string>} 新对象的 objectId
    */
   async createObject(type, props) {
     return this.#call("createObject", { type, props });
@@ -290,9 +326,12 @@ class BoardApiRpc {
 
   /**
    * 修改单个对象的几何/样式属性
-   * @param {number} objectId - 对象 id
+   * @description
+   * fire-and-forget 批写：同帧合并入队即 resolve，不代表 Core 已应用；
+   * Core 侧失败经 onBatchError 旁路上报。需要确认语义请改用 modifyObjects。
+   * @param {string} objectId - 对象 id
    * @param {import("../engine/types/board-api-types.js").ObjectPatch} patch - 修改 patch
-   * @returns {Promise<void>}
+   * @returns {Promise<void>} 入队后 resolve
    */
   async modifyObject(objectId, patch) {
     const batchKey = `modifyObject:${objectId}`;
@@ -321,10 +360,12 @@ class BoardApiRpc {
 
   /**
    * 向对象的列表属性追加元素
-   * @param {number} objectId - 对象 id
+   * @description
+   * fire-and-forget 批写：同帧合并入队即 resolve，不代表 Core 已应用，语义同 modifyObject。
+   * @param {string} objectId - 对象 id
    * @param {string} key - 列表属性名
    * @param {any[]} items - 追加的元素集合
-   * @returns {Promise<void>}
+   * @returns {Promise<void>} 入队后 resolve
    */
   async appendListItem(objectId, key, items) {
     const batchKey = `appendListItem:${objectId}:${key}`;
@@ -345,11 +386,13 @@ class BoardApiRpc {
 
   /**
    * 替换对象列表属性中指定索引的元素
-   * @param {number} objectId - 对象 id
+   * @description
+   * fire-and-forget 批写：同帧合并入队即 resolve，不代表 Core 已应用，语义同 modifyObject。
+   * @param {string} objectId - 对象 id
    * @param {string} key - 列表属性名
    * @param {number} index - 目标索引
    * @param {any} item - 新元素
-   * @returns {Promise<void>}
+   * @returns {Promise<void>} 入队后 resolve
    */
   async replaceListItem(objectId, key, index, item) {
     const batchKey = `replaceListItem:${objectId}:${key}:${index}`;
@@ -366,10 +409,12 @@ class BoardApiRpc {
 
   /**
    * 删除对象列表属性中指定索引的元素
-   * @param {number} objectId - 对象 id
+   * @description
+   * fire-and-forget 批写：同帧合并入队即 resolve，不代表 Core 已应用，语义同 modifyObject。
+   * @param {string} objectId - 对象 id
    * @param {string} key - 列表属性名
    * @param {number} index - 目标索引
-   * @returns {Promise<void>}
+   * @returns {Promise<void>} 入队后 resolve
    */
   async removeListItem(objectId, key, index) {
     const batchKey = `removeListItem:${objectId}:${key}:${index}`;
@@ -385,7 +430,7 @@ class BoardApiRpc {
 
   /**
    * 永久删除对象集合
-   * @param {number[]} objectIds - 要删除的对象 id 列表
+   * @param {string[]} objectIds - 要删除的对象 id 列表
    * @returns {Promise<void>}
    */
   async deleteObjects(objectIds) {
@@ -394,8 +439,8 @@ class BoardApiRpc {
 
   /**
    * 将 AOM 动态图中的对象写回静态图
-   * @param {number[]} objectIds - 要提交的对象 id 列表
-   * @returns {Promise<number[]>} 实际提交的对象 id 列表
+   * @param {string[]} objectIds - 要提交的对象 id 列表
+   * @returns {Promise<string[]>} 实际提交的对象 id 列表
    */
   async commitObjects(objectIds) {
     return this.#call("commitObjects", { objectIds });
@@ -403,7 +448,7 @@ class BoardApiRpc {
 
   /**
    * 将对象加入 AOM 动态图
-   * @param {number[]} objectIds - 对象 id 列表
+   * @param {string[]} objectIds - 对象 id 列表
    * @returns {Promise<void>}
    */
   async addActiveObjects(objectIds) {
@@ -412,7 +457,7 @@ class BoardApiRpc {
 
   /**
    * 将对象从 AOM 动态图移除
-   * @param {number[]} objectIds - 对象 id 列表
+   * @param {string[]} objectIds - 对象 id 列表
    * @returns {Promise<void>}
    */
   async discardActiveObjects(objectIds) {
@@ -421,7 +466,7 @@ class BoardApiRpc {
 
   /**
    * 按 id 查询对象摘要
-   * @param {number[]} ids - 对象 id 列表
+   * @param {string[]} ids - 对象 id 列表
    * @returns {Promise<import("../engine/types/types.js").ObjectSummary[]>} 对象摘要列表
    */
   async queryObjects(ids) {
@@ -431,7 +476,7 @@ class BoardApiRpc {
   /**
    * 按区块查询对象 id
    * @param {number[]} chunkIds - 区块 id 列表
-   * @returns {Promise<number[]>} 对象 id 列表
+   * @returns {Promise<string[]>} 对象 id 列表
    */
   async queryChunkObjects(chunkIds) {
     return this.#call("queryChunkObjects", { chunkIds });
@@ -441,10 +486,22 @@ class BoardApiRpc {
    * 在合并视图上执行命中查询
    * @param {import("../engine/range/range.js").Range | import("../engine/types/types.js").Rect} range - 命中范围
    * @param {string} [mode] - 命中模式
-   * @returns {Promise<number[]>} 命中的 objectId 列表
+   * @returns {Promise<string[]>} 命中的 objectId 列表
    */
   async hitTest(range, mode) {
     return this.#call("hitTest", { range, mode });
+  }
+
+  /**
+   * 按橡皮轨迹擦除命中对象的数据
+   * @description
+   * 轨迹段有序且语义不可交换，不进批处理合并；
+   * 作为非批处理 #call 会先同步清空批处理队列保序。
+   * @param {{ points: Array<{x: number, y: number}>, radius: number, source?: string }} payload - 轨迹段、橡皮半径与来源标识
+   * @returns {Promise<{ modified: string[], created: string[], deleted: string[] }>} 受影响对象 id 三组
+   */
+  async eraseData(payload) {
+    return this.#call("eraseData", payload);
   }
 
   /**
@@ -496,12 +553,38 @@ class BoardApiRpc {
   }
 
   /**
+   * 强制 flush 当前批处理缓冲
+   * @description
+   * resolve 时机为缓冲消息已写入传输层，不代表 Core 已应用；
+   * 用于页面隐藏前或关键读取前确保批写不滞留。
+   * @returns {Promise<void>} 缓冲写入传输层后 resolve
+   */
+  flush() {
+    this.#flushBatchNow();
+    return Promise.resolve();
+  }
+
+  /**
+   * 订阅批处理条目失败回执
+   * @description
+   * rpc-batch 为 fire-and-forget，单条目失败时 Worker 以 rpc-batch-error 回传，
+   * 由本方法注册的订阅者接收；全部成功时不产生任何回传消息。
+   * @param {(errors: Array<{ index: number, method: string, code: string, message: string }>, batchId: number) => void} handler - 错误处理器
+   * @returns {Function} 取消订阅函数
+   */
+  onBatchError(handler) {
+    this.#batchErrorHandlers.add(handler);
+    return () => this.#batchErrorHandlers.delete(handler);
+  }
+
+  /**
    * 销毁 RPC 端点绑定并拒绝所有未完成请求
    * @param {string} [reason="BoardApiRpc destroyed."] - 销毁原因
    * @returns {void}
    */
   destroy(reason = "BoardApiRpc destroyed.") {
     this.#endpoint.removeEventListener("message", this.#messageListener);
+    this.#batchErrorHandlers.clear();
 
     if (!this.#ready) {
       this.#rejectReady?.(createRpcError(reason, "RPC_DESTROYED"));
@@ -609,6 +692,7 @@ class BoardApiRpc {
 
     this.#endpoint.postMessage({
       type: "rpc-batch",
+      batchId: this.#nextBatchId++,
       items: paramsList,
     });
   }

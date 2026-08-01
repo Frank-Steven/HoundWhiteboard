@@ -16,6 +16,9 @@ import {
   crossProduct,
   getRangeSegments,
   pointOnSegment,
+  pointToPolylineDistance,
+  pointToSegmentDistance,
+  segmentSegmentDistance,
   segmentsIntersect,
 } from "./segment-math.js";
 
@@ -122,6 +125,9 @@ export {
   RANGE_EPSILON,
   crossProduct,
   pointOnSegment,
+  pointToPolylineDistance,
+  pointToSegmentDistance,
+  segmentSegmentDistance,
   containsPointInPolygon,
   containsPointInRope,
   boundsIntersect,

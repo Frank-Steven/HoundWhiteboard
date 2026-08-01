@@ -66,6 +66,81 @@ function getRangeSegments(range, options = {}) {
 }
 
 /**
+ * 计算点到线段的最短距离
+ * @description 投影参数 clamp 到线段范围内，零长线段退化为点到点距离。
+ * @param {{x: number, y: number}} point - 待测点
+ * @param {{x: number, y: number}} start - 线段起点
+ * @param {{x: number, y: number}} end - 线段终点
+ * @returns {number} 最短距离
+ */
+function pointToSegmentDistance(point, start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+
+  if (lengthSquared === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y);
+  }
+
+  const rawT =
+    ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared;
+  const t = Math.max(0, Math.min(1, rawT));
+
+  return Math.hypot(
+    point.x - (start.x + t * dx),
+    point.y - (start.y + t * dy),
+  );
+}
+
+/**
+ * 计算两条线段之间的最短距离
+ * @description 两线段相交时距离为零，否则取四组端点到对侧线段距离的最小值。
+ * @param {{x: number, y: number}} firstStart - 第一条线段起点
+ * @param {{x: number, y: number}} firstEnd - 第一条线段终点
+ * @param {{x: number, y: number}} secondStart - 第二条线段起点
+ * @param {{x: number, y: number}} secondEnd - 第二条线段终点
+ * @returns {number} 最短距离
+ */
+function segmentSegmentDistance(firstStart, firstEnd, secondStart, secondEnd) {
+  if (segmentsIntersect(firstStart, firstEnd, secondStart, secondEnd)) {
+    return 0;
+  }
+
+  return Math.min(
+    pointToSegmentDistance(firstStart, secondStart, secondEnd),
+    pointToSegmentDistance(firstEnd, secondStart, secondEnd),
+    pointToSegmentDistance(secondStart, firstStart, firstEnd),
+    pointToSegmentDistance(secondEnd, firstStart, firstEnd),
+  );
+}
+
+/**
+ * 计算点到折线的最短距离
+ * @description 取折线各段距离的最小值；单点折线退化为点到点距离，空点列返回 Infinity。
+ * @param {{x: number, y: number}} point - 待测点
+ * @param {Array<{x: number, y: number}>} points - 折线点列
+ * @returns {number} 最短距离
+ */
+function pointToPolylineDistance(point, points) {
+  if (!Array.isArray(points) || points.length === 0) {
+    return Infinity;
+  }
+
+  if (points.length === 1) {
+    return Math.hypot(point.x - points[0].x, point.y - points[0].y);
+  }
+
+  let minDistance = Infinity;
+  for (let i = 1; i < points.length; i++) {
+    const distance = pointToSegmentDistance(point, points[i - 1], points[i]);
+    if (distance < minDistance) {
+      minDistance = distance;
+    }
+  }
+  return minDistance;
+}
+
+/**
  * 判断两线段是否相交
  * @description 相交定义包含正常穿越、端点接触与共线重叠。
  * @param {{x: number, y: number}} firstStart - 第一条线段起点
@@ -213,6 +288,9 @@ export {
   RANGE_EPSILON,
   crossProduct,
   pointOnSegment,
+  pointToSegmentDistance,
+  segmentSegmentDistance,
+  pointToPolylineDistance,
   getRangeSegments,
   segmentsIntersect,
   anyPointContained,

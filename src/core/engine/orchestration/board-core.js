@@ -10,6 +10,7 @@
 import { BasicObject } from "../objects/basic-obj.js";
 import { deserialize } from "../objects/object-deserializer.js";
 import { EventBus } from "../utils/event-bus.js";
+import { IncrementalIdPool } from "../utils/incremental-id-pool.js";
 import { Logger } from "../../../utils/log/logger.js";
 import { logBus } from "../../../utils/log/log-bus.js";
 import { UndoTree } from "../hit/undo-tree-core.js";
@@ -49,16 +50,16 @@ import { createDefaultPersistenceAdapter } from "../../bridges/persistence-adapt
  * @typedef {Object} PersistenceAdapter
  * @property {(chunkId: number) => Promise<{ tierGraph: any[], objectCoverIndex: any[] }>} loadChunkMetadata
  * @property {(chunkId: number, metadata: { tierGraph: any[], objectCoverIndex: any[] }) => Promise<boolean>} saveChunkMetadata
- * @property {(objectIds: number[]) => Promise<object[]>} loadObjects
+ * @property {(objectIds: string[]) => Promise<object[]>} loadObjects
  * @property {(objects: object[]) => Promise<boolean>} saveObjects
- * @property {(objectId: number) => Promise<boolean>} deleteObject
+ * @property {(objectId: string) => Promise<boolean>} deleteObject
  */
 
 /**
  * 白板核心类
  * @description
  * BoardCore 是白板在 Worker 中的纯数据/逻辑实现。
- * - 承载对象注册表（objectLoaded）、区块加载状态（chunkLoaded）、CounterPool、UndoTree、AOM
+ * - 承载对象注册表（objectLoaded）、区块加载状态（chunkLoaded）、IncrementalIdPool、UndoTree、AOM
  * - 通过注入式 persistenceAdapter 完成文件读写，不直接依赖 file-operate-bridge-renderer
  * - 通过注入式 renderHooks 消除 AOM 对 viewport/renderer 的直接依赖
  * - 不持有 DevicesDAG、signalsEventBus、DOM 引用
@@ -86,7 +87,7 @@ class BoardCore {
 
   /**
    * 白板级对象实例注册表
-   * @type {Map<number, BoardObjectLoadedState>}
+   * @type {Map<string, BoardObjectLoadedState>}
    */
   objectLoaded;
 
@@ -134,6 +135,13 @@ class BoardCore {
    * @type {AomRenderHooks}
    */
   aomRenderHooks;
+
+  /**
+   * Core 侧对象 id 分配器表
+   * @description 键为来源标识，值为该来源的 Core id 分配器；首次使用时 lazy 创建。
+   * @type {Map<string, IncrementalIdPool>}
+   */
+  #idAllocatorTable = new Map();
 
   /**
    * 日志 Logger
@@ -184,6 +192,24 @@ class BoardCore {
    */
   memoryMode() {
     return !isValidBoardRootPath(this.rootPath);
+  }
+
+  /**
+   * 申请 Core 侧对象 id
+   * @description
+   * 供 Core 内部创建对象（如数据擦除分裂）时使用。
+   * 每个来源标识对应独立的分配器，首次使用时 lazy 创建，
+   * 生成的 id 形如 `"{source}/core/{n}"`（空来源为 `"core/{n}"`）。
+   * @param {string} [source=""] - 来源标识
+   * @returns {string} 携带来源命名空间的字符串 id
+   */
+  allocateObjectId(source = "") {
+    let allocator = this.#idAllocatorTable.get(source);
+    if (!allocator) {
+      allocator = new IncrementalIdPool(source ? `${source}/core` : "core");
+      this.#idAllocatorTable.set(source, allocator);
+    }
+    return allocator.allocate();
   }
 
   /**
@@ -277,7 +303,7 @@ class BoardCore {
 
   /**
    * 获取对象加载状态条目
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {BoardObjectLoadedState | undefined}
    */
   getObjectEntry(objectId) {
@@ -286,7 +312,7 @@ class BoardCore {
 
   /**
    * 获取对象实例
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {BasicObject | undefined}
    */
   getObjectById(objectId) {
@@ -295,7 +321,7 @@ class BoardCore {
 
   /**
    * 获取对象当前完整加载计数
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {number}
    */
   getObjectLoadCount(objectId) {
@@ -330,14 +356,14 @@ class BoardCore {
   /**
    * 对象覆盖区块索引（对象 id → 覆盖的区块 id 集合）
    * 全 BoardCore 唯一的权威副本，不再按 ChunkObjectManager 重复存储
-   * @type {Map<number, Set<number>>}
+   * @type {Map<string, Set<number>>}
    * @private
    */
   #objectCoverChunks = new Map();
 
   /**
    * 写入对象覆盖区块索引
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @param {Iterable<number>} chunkIds - 覆盖的区块 id 集合
    * @returns {void}
    */
@@ -347,7 +373,7 @@ class BoardCore {
 
   /**
    * 读取对象覆盖区块集合
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {Set<number>|undefined}
    */
   getObjectCoverChunks(objectId) {
@@ -356,7 +382,7 @@ class BoardCore {
 
   /**
    * 删除对象覆盖区块索引
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {void}
    */
   unsetObjectCoverChunks(objectId) {
@@ -494,7 +520,7 @@ class BoardCore {
 
       if (
         entry.loadedCount <= 0 &&
-        !this.activeObjectManager?.activeObjectIndex?.has?.(objectId)
+        !this.activeObjectManager?.isActive?.(objectId)
       ) {
         this.objectLoaded.delete(objectId);
       }
@@ -751,7 +777,7 @@ class BoardCore {
 
   /**
    * 确保对象实例已加载到白板级注册表
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @param {Iterable<number>} candidateChunkIds - 候选区块 id
    * @returns {Promise<BasicObject | undefined>}
    * @private
@@ -776,7 +802,7 @@ class BoardCore {
   /**
    * 同步区块内单个对象的 loadedCount 与实例状态
    * @param {Chunk} chunk - 区块实例
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {Promise<void>}
    * @private
    */
@@ -797,7 +823,7 @@ class BoardCore {
 
     if (
       entry.loadedCount <= 0 &&
-      !this.activeObjectManager?.activeObjectIndex?.has?.(objectId)
+      !this.activeObjectManager?.isActive?.(objectId)
     ) {
       this.objectLoaded.delete(objectId);
     }

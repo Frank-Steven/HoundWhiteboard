@@ -131,7 +131,7 @@ function installMockDocument() {
       const canvas = createNoopCanvas();
       canvas.className = "";
       canvas.style = {};
-      canvas.appendChild = () => {};
+      canvas.appendChild = () => { };
       return canvas;
     }
 

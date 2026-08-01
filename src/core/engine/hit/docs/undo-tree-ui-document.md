@@ -1,14 +1,10 @@
-# 时间回溯树文档
+# 时间回溯树 UI 文档
 
-本文档描述 Undo Tree 的设计目标与术语。
+本文档描述 Undo Tree 的前端逻辑的设计目标与术语。
 
 > [!WARNING]
 >
-> 当前 `src/engine/hit/undo-tree-core.js` 仍主要是骨架实现：保留了 `UndoTree`、`MolecularNode`、`AttemptNode`、`TreeBlock`、`AttemptBlock` 等基础类型，但本文中的大部分树操作、分块存储、VIP 逻辑与协作语义尚未落地。阅读时应将本文视为**设计文档**，而不是当前完整实现说明。
-
-## 时间回溯树概述
-
-时间回溯树 (aka. Undo Tree, hit)，是用来保存历史记录的树状结构。也传统的用栈等纯属结构保存的历史记录不同，Undo Tree 支持回溯到之前已被撤消过的分支。
+> 当前 `src/core/engine/hit/undo-tree-core.js` 仍主要是骨架实现：保留了 `UndoTree`、`MolecularNode`、`AttemptNode`、`TreeBlock`、`AttemptBlock` 等基础类型，但本文中的大部分树操作、分块存储、VIP 逻辑与协作语义尚未落地。阅读时应将本文视为**设计文档**，而不是当前完整实现说明。
 
 ## 术语定义
 
@@ -18,7 +14,7 @@
 
 ### 当前点 (current point, curr)
 
-当前点白板当前状态下的最后执行的那一个分子操作在树上的节点。
+当前点是白板当前状态下的最后执行的那一个分子操作在树上的节点。当前点在内核层对应所有用户共享的 HEAD 指针；更改 HEAD（撤销、重做、移动至此）是分子操作，记录于操作日志并同步（见[操作文档](operation-document.md)）。
 
 ### 后继点 (next point, next)
 
@@ -26,11 +22,15 @@
 
 ### 焦点链 (focus chain)
 
-焦点链是从根节点开始，一直沿后继走的链。
+焦点链是从根节点开始，一直沿后继走的路径。
 
 ### 矮树 (short tree)
 
 矮树是指树高小于等于 5 的树。
+
+### 长单链 (long unbranched chain)
+
+长单链是指一条经过节点数大于等于 5 且每个节点的度数均小于等于 2 的路径。
 
 ### 尝试 (attempt)
 
@@ -108,23 +108,23 @@
 
 这棵树的叶子节点要么是整棵树的叶子节点，要么是一个可收节点。
 
-### 尝试块 (attempt blcok)
+### 尝试块 (attempt block)
 
 尝试块内有一棵树或是一片森林。
 
 每棵树的根节点在 Undo Tree 中的父节点都是同一个可收的节点。这些节点都是该节点的第一类子节点。
 
-每棵树在叶子节点在 Undo Tree 中也是叶子节点。
+每棵树的叶子节点在 Undo Tree 中也是叶子节点。
 
 ## 操作存储结构
 
 在 [`.hwb` 文件](../../../docs/file-structure.md)里，其根目录下的 [`history/` 文件夹](../../../docs/file-structure.md#history)用以专门存放与时间回溯树有关的文件。
 
-其中，[`trash/` 文件夹](#)用来存放不在当前状态上，但在仍能通过 hit 将其找回的对象，即曾经存在并未被遗忘的对象。
+其中，[`trash/` 文件夹](../../../docs/file-structure.md#history)用来存放不在当前状态上、但仍能通过 hit 找回的对象，即曾经存在并未被遗忘的对象。对象只有在树上能被找到才可找回，树上找不到的对象永远无法找回。
 
-[`edition/` 文件夹](#)用来存放各个文件的修改历史。
+[`edition/` 文件夹](../../../docs/file-structure.md#history)用来存放各个文件的修改历史。
 
-[`hit/` 文件夹](#)用来存放时间回溯树的树块和尝试块。
+[`hit/` 文件夹](../../../docs/file-structure.md#history)用来存放时间回溯树的树块和尝试块。
 
 除了 history/ 文件夹外，时间回溯树还会读取 [`objects/` 文件夹](../../../docs/file-structure.md#objects)。该文件夹存放了当前状态直接或间接 (如在容器里等) 在白板上的对象。
 
@@ -150,16 +150,20 @@
 
 #### 节点注释
 
-#### 删除分支
-
 #### 移动至此
 
 ## hit 与协作
 
-每一个人都有一棵自己的树，同时场上还有一棵公共树。
+kernel 内有且仅有一棵 hit，所有用户的操作都记录在这棵树上。每个节点记录 author（来源标识），全部节点可溯源。
 
-对每一个节点，都会记录其 author，如果 author 不是自己，就不能编辑该节点，只能移动至此。
+本文档描述的当前点、焦点链、尝试、关键点、显示与交互规范均为前端逻辑：每个用户在前端各自浏览与导航这棵树；会更改 HEAD 的操作（撤销、重做、移动至此）作为分子操作进入内核并同步。树的协作语义（操作级 CRDT、收敛与撤销规则）由内核层定义，见[时间回溯树内核文档](undo-tree-kernel-document.md)。
 
 ## hit 与 ham
 
 暂不考虑。
+
+## 相关文档
+
+- [时间回溯树内核文档](undo-tree-kernel-document.md)
+- [操作文档](operation-document.md)
+- [时间回溯树内核情景推演](undo-tree-kernel-example.md)

@@ -41,7 +41,7 @@ function createBoardDeviceContext(objectId, { viewport } = {}) {
 describe("StrokeCreatorTool", () => {
   test("StrokeCreatorTool 应消费 position/end 信号并累计点列", () => {
     const tool = new StrokeCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(100);
+    const { deviceContext } = createBoardDeviceContext("100");
 
     expect(
       tool.process(
@@ -76,7 +76,7 @@ describe("StrokeCreatorTool", () => {
       ),
     ).toBeUndefined();
 
-    expect(tool._entry.id).toBe(100);
+    expect(tool._entry.id).toBe("100");
     expect(tool._entry.position.serialize()).toEqual({ x: 1, y: 2 });
     expect(tool._entry.data.points).toEqual([
       { x: 0, y: 0 },
@@ -87,7 +87,7 @@ describe("StrokeCreatorTool", () => {
 
   test("连续重复位置不应产生重复路径点", () => {
     const tool = new StrokeCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(200);
+    const { deviceContext } = createBoardDeviceContext("200");
 
     tool.process(
       {
@@ -124,7 +124,7 @@ describe("StrokeCreatorTool", () => {
 
   test("单 end 信号应能被正确处理", () => {
     const tool = new StrokeCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(101);
+    const { deviceContext } = createBoardDeviceContext("101");
 
     tool.process(
       {
@@ -142,7 +142,7 @@ describe("StrokeCreatorTool", () => {
       deviceContext,
     );
 
-    expect(tool._entry.id).toBe(101);
+    expect(tool._entry.id).toBe("101");
     expect(tool._entry.position.serialize()).toEqual({ x: 5, y: 6 });
     expect(tool._entry.data.points).toEqual([{ x: 0, y: 0 }]);
   });
@@ -151,7 +151,7 @@ describe("StrokeCreatorTool", () => {
     const tool = new StrokeCreatorTool({
       property: { color: "#ff0000", width: 4 },
     });
-    const { deviceContext } = createBoardDeviceContext(102);
+    const { deviceContext } = createBoardDeviceContext("102");
 
     tool.process(
       {
@@ -166,7 +166,7 @@ describe("StrokeCreatorTool", () => {
 
   test("cancel 信号应重置正在创建的对象并撤销 transient 对象", () => {
     const tool = new StrokeCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(1);
+    const { deviceContext } = createBoardDeviceContext("1");
     const board = deviceContext.services.board;
     const boardApi = deviceContext.services.boardApi;
     const discardSpy = jest.spyOn(boardApi, "discardActiveObjects");
@@ -187,14 +187,14 @@ describe("StrokeCreatorTool", () => {
       { services: { board, boardApi } },
     );
 
-    expect(discardSpy).toHaveBeenCalledWith([1]);
+    expect(discardSpy).toHaveBeenCalledWith(["1"]);
     expect(tool._entry).toBeNull();
     expect(board.getObjectById).not.toHaveBeenCalled();
   });
 
   test("首次创建对象时应写回本地草稿并调用 createObject", () => {
     const tool = new StrokeCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(9);
+    const { deviceContext } = createBoardDeviceContext("9");
     const boardApi = deviceContext.services.boardApi;
 
     tool.process(
@@ -208,7 +208,7 @@ describe("StrokeCreatorTool", () => {
     expect(boardApi.createObject).toHaveBeenCalledWith(
       "StrokeObject",
       expect.objectContaining({
-        id: 9,
+        id: "9",
         position: new Vector(1, 2),
       }),
     );
@@ -217,7 +217,7 @@ describe("StrokeCreatorTool", () => {
 
   test("显式提供 boardApi 时应通过 appendListItem 累计路径点并在 end 后提交", () => {
     const tool = new StrokeCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(20);
+    const { deviceContext } = createBoardDeviceContext("20");
     const boardApi = deviceContext.services.boardApi;
     const createSpy = jest.spyOn(boardApi, "createObject");
     const appendSpy = jest.spyOn(boardApi, "appendListItem");
@@ -253,12 +253,12 @@ describe("StrokeCreatorTool", () => {
     expect(createSpy).toHaveBeenCalledWith(
       "StrokeObject",
       expect.objectContaining({
-        id: 20,
+        id: "20",
         position: new Vector(1, 2),
       }),
     );
     expect(appendSpy).toHaveBeenCalled();
-    expect(commitSpy).toHaveBeenCalledWith([20]);
+    expect(commitSpy).toHaveBeenCalledWith(["20"]);
     expect(tool._entry.data.points).toEqual([
       { x: 0, y: 0 },
       { x: 1, y: 1 },
@@ -269,7 +269,7 @@ describe("StrokeCreatorTool", () => {
   test("RPC 风格 boardApi 下应维护本地草稿路径点并提交", () => {
     const tool = new StrokeCreatorTool();
     const board = {
-      allocateObjectId: jest.fn(() => 701),
+      allocateObjectId: jest.fn(() => "701"),
     };
     const boardApi = {
       createObject: jest.fn(),
@@ -309,12 +309,12 @@ describe("StrokeCreatorTool", () => {
     expect(boardApi.createObject).toHaveBeenCalledWith(
       "StrokeObject",
       expect.objectContaining({
-        id: 701,
+        id: "701",
         position: new Vector(1, 2),
       }),
     );
     expect(boardApi.appendListItem).toHaveBeenCalled();
-    expect(boardApi.commitObjects).toHaveBeenCalledWith([701]);
+    expect(boardApi.commitObjects).toHaveBeenCalledWith(["701"]);
     expect(tool._entry.data.points).toEqual([
       { x: 0, y: 0 },
       { x: 1, y: 1 },
@@ -331,7 +331,7 @@ describe("StrokeCreatorTool", () => {
       },
       requestViewportUiRender: jest.fn(),
     };
-    const { deviceContext } = createBoardDeviceContext(30, { viewport });
+    const { deviceContext } = createBoardDeviceContext("30", { viewport });
 
     tool.process(
       {
@@ -360,7 +360,7 @@ describe("StrokeCreatorTool", () => {
 
   test("创建完成后应通过 commitObjects 提交笔画对象", () => {
     const tool = new StrokeCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(21);
+    const { deviceContext } = createBoardDeviceContext("21");
     const boardApi = deviceContext.services.boardApi;
 
     tool.process(
@@ -379,12 +379,12 @@ describe("StrokeCreatorTool", () => {
       deviceContext,
     );
 
-    expect(boardApi.commitObjects).toHaveBeenCalledWith([21]);
+    expect(boardApi.commitObjects).toHaveBeenCalledWith(["21"]);
   });
 
   test("取消创建后不应提交对象", () => {
     const tool = new StrokeCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(22);
+    const { deviceContext } = createBoardDeviceContext("22");
     const boardApi = deviceContext.services.boardApi;
 
     tool.process(
@@ -404,18 +404,18 @@ describe("StrokeCreatorTool", () => {
     );
 
     expect(boardApi.commitObjects).not.toHaveBeenCalled();
-    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith([22]);
+    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith(["22"]);
   });
 
   test("连续两次创建应生成两个不同笔画对象", () => {
     const tool = new StrokeCreatorTool();
-    const { deviceContext } = createBoardDeviceContext(31);
+    const { deviceContext } = createBoardDeviceContext("31");
     const board = deviceContext.services.board;
     const boardApi = deviceContext.services.boardApi;
     board.allocateObjectId = jest
       .fn()
-      .mockReturnValueOnce(31)
-      .mockReturnValueOnce(32);
+      .mockReturnValueOnce("31")
+      .mockReturnValueOnce("32");
     const commitSpy = jest.spyOn(boardApi, "commitObjects");
 
     tool.process(
@@ -455,10 +455,10 @@ describe("StrokeCreatorTool", () => {
     );
 
     expect(firstObject).not.toBe(secondObject);
-    expect(firstObject.id).toBe(31);
-    expect(secondObject.id).toBe(32);
-    expect(commitSpy).toHaveBeenNthCalledWith(1, [31]);
-    expect(commitSpy).toHaveBeenNthCalledWith(2, [32]);
+    expect(firstObject.id).toBe("31");
+    expect(secondObject.id).toBe("32");
+    expect(commitSpy).toHaveBeenNthCalledWith(1, ["31"]);
+    expect(commitSpy).toHaveBeenNthCalledWith(2, ["32"]);
   });
 
   describe("端到端集成（通过 Board 输入链路）", () => {
@@ -542,7 +542,7 @@ describe("StrokeCreatorTool", () => {
             }),
           }),
         ]);
-        expect(tool._entry.id).toBe(1);
+        expect(tool._entry.id).toBe("1");
         expect(tool._entry.position.serialize()).toEqual({ x: 105, y: 60 });
         expect(tool._entry.data.points).toEqual([
           { x: 0, y: 0 },

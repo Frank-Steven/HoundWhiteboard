@@ -6,7 +6,14 @@
  */
 
 import { Matrix, Vector } from "../../utils/math.js";
-import { PathRange, PolygonRange, RectangleRange } from "../../range/index.js";
+import {
+  PathRange,
+  PolygonRange,
+  RectangleRange,
+  pointToPolylineDistance,
+  pointToSegmentDistance,
+  segmentSegmentDistance,
+} from "../../range/index.js";
 import { calcConvexHull, insertPoints } from "../../utils/math-algorithm.js";
 import { BasicObject } from "../basic-obj.js";
 
@@ -98,6 +105,103 @@ class StrokeObject extends BasicObject {
     this.rich.convexHullRange = new PolygonRange(
       calcConvexHull(this.rich.localPathRange.points),
     );
+  }
+
+  /**
+   * 按橡皮轨迹擦除笔画点段
+   * @description
+   * 逐线段判定笔画是否与轨迹相交，阈值 = 橡皮半径 + 笔画世界宽度的一半
+   * （宽度随 transform 缩放，按 sqrt(|det|) 折算到世界坐标）。
+   * 被擦线段移除后，极大连续未擦线段链聚合为剩余点段返回；
+   * 返回值为 data.points 的局部坐标切片，可直接写回。
+   * @override
+   * @param {Array<{x: number, y: number}>} trailPoints - 橡皮轨迹点列（世界坐标）
+   * @param {number} radius - 橡皮半径（世界单位）
+   * @returns {Array<Array<{x: number, y: number}>>|null} null 表示未命中；空数组表示整笔擦没；否则为剩余点段
+   */
+  eraseData(trailPoints, radius) {
+    const localPoints = Array.isArray(this.data.points)
+      ? this.data.points
+      : [];
+    const pointCount = localPoints.length;
+
+    if (
+      pointCount === 0 ||
+      !Array.isArray(trailPoints) ||
+      trailPoints.length === 0
+    ) {
+      return null;
+    }
+
+    const scale = Math.sqrt(Math.abs(this.transform.det()));
+    const threshold = radius + (this.property.width * scale) / 2;
+
+    // 逐点变换到世界坐标；禁用插点平滑以保持与 data.points 的索引对应
+    const worldPoints = localPoints.map((point) => {
+      const transformed = Vector.mulMatrix(this.transform, point);
+      return new Vector(
+        this.position.x + transformed.x,
+        this.position.y + transformed.y,
+      );
+    });
+
+    if (pointCount === 1) {
+      return pointToPolylineDistance(worldPoints[0], trailPoints) <= threshold
+        ? []
+        : null;
+    }
+
+    const isSegmentErased = (start, end) => {
+      if (trailPoints.length === 1) {
+        return (
+          pointToSegmentDistance(trailPoints[0], start, end) <= threshold
+        );
+      }
+      for (let i = 1; i < trailPoints.length; i++) {
+        if (
+          segmentSegmentDistance(
+            start,
+            end,
+            trailPoints[i - 1],
+            trailPoints[i],
+          ) <= threshold
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const segmentCount = pointCount - 1;
+    const erasedSegments = new Array(segmentCount).fill(false);
+    let hasErased = false;
+    for (let i = 0; i < segmentCount; i++) {
+      if (isSegmentErased(worldPoints[i], worldPoints[i + 1])) {
+        erasedSegments[i] = true;
+        hasErased = true;
+      }
+    }
+
+    if (!hasErased) {
+      return null;
+    }
+
+    // 孤立点（相邻线段全被擦）不属于任何链，自然被丢弃
+    const runs = [];
+    let runStart = -1;
+    for (let i = 0; i < segmentCount; i++) {
+      if (!erasedSegments[i]) {
+        if (runStart === -1) runStart = i;
+      } else if (runStart !== -1) {
+        runs.push(localPoints.slice(runStart, i + 1));
+        runStart = -1;
+      }
+    }
+    if (runStart !== -1) {
+      runs.push(localPoints.slice(runStart, segmentCount + 1));
+    }
+
+    return runs;
   }
 
   getRange() {

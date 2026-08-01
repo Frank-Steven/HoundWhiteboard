@@ -106,7 +106,7 @@ class PolygonCreatorTool extends MultiGestureObjectCreatorTool {
 
   /**
    * @param {Vector} position - 对象位置
-   * @param {number} id - 对象 id
+   * @param {string} id - 对象 id
    */
   create(position, id) {
     this._entry = {

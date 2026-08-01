@@ -9,6 +9,7 @@
 - 将 UI 侧操作翻译为 RPC 请求
 - 高频写入方法的微任务级批处理合并
 - RPC 响应路由与超时管理
+- 批处理条目失败回执的分发（`onBatchError`）
 
 契约（`@typedef BoardApi`）定义在 [board-api-types.js](../../engine/types/board-api-types.js)，约束所有实现的统一签名。
 
@@ -23,8 +24,9 @@ sequenceDiagram
     Worker->>Worker: CoreWorkerRuntime (服务端)
 
     UI->>Worker: postMessage ({ type: "rpc", msgId, method, params })
-    UI->>Worker: postMessage ({ type: "rpc-batch", items })
+    UI->>Worker: postMessage ({ type: "rpc-batch", batchId, items })
     Worker-->>UI: postMessage ({ type: "rpc-response", msgId, result })
+    Worker-->>UI: postMessage ({ type: "rpc-batch-error", batchId, errors }) （仅批处理条目失败时）
     Worker-->>UI: postMessage ({ type: "ready" })
 ```
 
@@ -37,12 +39,13 @@ sequenceDiagram
 
 ### 消息类型
 
-| type           | 方向        | 说明                                  |
-| -------------- | ----------- | ------------------------------------- |
-| `rpc`          | UI → Worker | 带 msgId 的单次远程调用，必有响应     |
-| `rpc-batch`    | UI → Worker | 批量 fire-and-forget 消息，无独立响应 |
-| `rpc-response` | Worker → UI | RPC 调用结果，包含 result 或 error    |
-| `ready`        | Worker → UI | Worker 初始化完成通知                 |
+| type              | 方向        | 说明                                               |
+| ----------------- | ----------- | -------------------------------------------------- |
+| `rpc`             | UI → Worker | 带 msgId 的单次远程调用，必有响应                  |
+| `rpc-batch`       | UI → Worker | 批量 fire-and-forget 消息，携带递增 batchId        |
+| `rpc-response`    | Worker → UI | RPC 调用结果，包含 result 或 error                 |
+| `rpc-batch-error` | Worker → UI | 批处理失败条目回执，仅在有条目失败时回传           |
+| `ready`           | Worker → UI | Worker 初始化完成通知                              |
 
 ## API 面
 
@@ -75,12 +78,19 @@ sequenceDiagram
 | 方法                                          | 说明                                                                      |
 | --------------------------------------------- | ------------------------------------------------------------------------- |
 | `modifyObject(objectId, patch)`               | 修改单个对象的位置 / 变换 / 属性 / 数据。同帧多次调用自动合并为单次批处理 |
-| `modifyObjects(patches)`                      | 批量修改多个对象，不经过批处理缓冲                                        |
+| `modifyObjects(patches)`                      | 批量修改多个对象，不经过批处理缓冲，为确认式语义                          |
 | `appendListItem(objectId, key, items)`        | 向列表属性追加元素。同帧合并                                              |
 | `replaceListItem(objectId, key, index, item)` | 替换列表属性指定索引元素。同帧覆盖                                        |
 | `removeListItem(objectId, key, index)`        | 删除列表属性指定索引元素                                                  |
 
 所有高频写入方法同帧内合并为单条 `rpc-batch` 消息发送，减少 Worker 侧消息处理开销。
+
+### 批处理控制
+
+| 方法                   | 说明                                                                 |
+| ---------------------- | -------------------------------------------------------------------- |
+| `flush()`              | 强制 flush 当前批处理缓冲。resolve 时机为消息已写入传输层，不代表 Core 已应用 |
+| `onBatchError(handler)` | 订阅批处理条目失败回执，返回取消订阅函数                             |
 
 ### AOM 控制
 
@@ -116,10 +126,15 @@ sequenceDiagram
 
 1. 调用时，参数存入 `#batchBuffer`（map key 为 `method:objectId:key:index`）
 2. 同 key 的后续调用自动合并（`modifyObject` 的 patch 逐字段合入，`appendListItem` 的 items 合并为数组）
-3. 在下一个微任务中执行 `#flushBatchNow`，将所有缓冲条目打包为单条 `rpc-batch` 消息发送
+3. 在下一个微任务中执行 `#flushBatchNow`，将所有缓冲条目打包为单条 `rpc-batch` 消息发送（携带递增 batchId）
 4. 发送前若有非批处理方法调用（如 `createObject`），会自动触发 `#flushBatchNow` 确保时序正确
 
-批处理条目为 fire-and-forget，无独立 RPC 响应。
+### 写路径的两层语义
+
+- **fire-and-forget 批写**（`modifyObject` / `appendListItem` / `replaceListItem` / `removeListItem`）：入队即 resolve，不代表 Core 已应用。Worker 侧单条目失败不影响其余条目执行，失败条目以 `rpc-batch-error` 回传，经 `onBatchError` 订阅者接收；`Board.enableWorkerMode` 默认挂 WARN 级日志订阅
+- **确认式写**（`createObject` / `modifyObjects` / `deleteObjects` / `commitObjects` / `eraseData` 等）：走完整 RPC 往返，resolve 即 Core 已处理，返回值与错误可信
+
+选择规约：逐帧高频写（拖动、绘制过程）用批写方法；需要对账或依赖写结果的场景用确认式方法。
 
 ## hitTest 的区块加载行为
 

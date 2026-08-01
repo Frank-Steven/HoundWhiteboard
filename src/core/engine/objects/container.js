@@ -41,7 +41,7 @@ class Container extends BasicObject {
 
   /**
    * 创建一个新的容器对象
-   * @param {number} id - 对象 id
+   * @param {string} id - 对象 id
    * @param {Vector} position - 容器的位置
    * @param {Record<string, any>} [property={}] - 对象属性
    * @param {Record<string, any>} [data={}] - 对象类型专属数据

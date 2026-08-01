@@ -60,7 +60,7 @@ class ChunkObjectManager {
 
   /**
    * 通过 Board 间接获取对象实例
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {BasicObject | undefined}
    */
   getObject(objectId) {
@@ -70,7 +70,7 @@ class ChunkObjectManager {
   /**
    * 设置对象覆盖区块集合
    * @description 委托到 BoardCore 的唯一覆盖索引。
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @param {Iterable<number>} chunkIds - 覆盖区块 id 集合
    */
   setObjectCoverChunks(objectId, chunkIds) {
@@ -86,7 +86,7 @@ class ChunkObjectManager {
 
   /**
    * 删除对象的覆盖区块索引
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    */
   unsetObjectCoverChunks(objectId) {
     this.board?.unsetObjectCoverChunks?.(objectId);
@@ -95,7 +95,7 @@ class ChunkObjectManager {
   /**
    * 获取对象覆盖区块集合
    * @description 委托到 BoardCore 的唯一覆盖索引。
-   * @param {number} objectId - 对象 id
+   * @param {string} objectId - 对象 id
    * @returns {Set<number>}
    */
   getObjectCoverChunks(objectId) {
