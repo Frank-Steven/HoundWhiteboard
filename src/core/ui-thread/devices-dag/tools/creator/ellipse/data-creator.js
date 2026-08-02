@@ -5,9 +5,9 @@
  * @author Zhou Chenyu
  */
 
-import { DEFAULT_ELLIPSE_PROPERTY } from "../../../../../engine/objects/graph/ellipse.js";
+import { DEFAULT_ELLIPSE_PROPERTY } from "../../../../../../kernel/objects/graph/ellipse.js";
 import { SingleGestureObjectCreatorTool } from "../object-creator.js";
-import { Vector } from "../../../../../engine/utils/math.js";
+import { Vector } from "../../../../../../kernel/utils/math.js";
 
 /**
  * 椭圆数据创建工具类
@@ -25,7 +25,7 @@ import { Vector } from "../../../../../engine/utils/math.js";
 class EllipseDataCreatorTool extends SingleGestureObjectCreatorTool {
   /**
    * 当前正在创建椭圆对象的本地状态
-   * @type {import("../../../../../engine/types/types.js").LightweightObjectEntry & { data: { radiusX: number, radiusY: number } } | null}
+   * @type {import("../../../../../../kernel/types/types.js").LightweightObjectEntry & { data: { radiusX: number, radiusY: number } } | null}
    */
   _entry;
 

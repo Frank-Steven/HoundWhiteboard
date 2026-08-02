@@ -9,26 +9,26 @@
  * 两点手势补丁
  * @description 形状与 `boardApi.modifyObject(objectId, patch)` 的补丁契约一致。
  * @typedef {Object} GesturePatch
- * @property {import("../../../../../engine/utils/math.js").Vector|import("../../../../../engine/types/types.js").Point2D} [position] - 对象世界坐标位置
+ * @property {import("../../../../../../kernel/utils/math.js").Vector|import("../../../../../../kernel/types/types.js").Point2D} [position] - 对象世界坐标位置
  * @property {Record<string, any>} [data] - 类型专属几何数据补丁
- * @property {import("../../../../../engine/types/types.js").TransformMatrix2D} [transform] - 对象变换矩阵补丁
+ * @property {import("../../../../../../kernel/types/types.js").TransformMatrix2D} [transform] - 对象变换矩阵补丁
  */
 
 /**
  * 两点手势解释函数
  * @description 将锚点与当前点映射为对象补丁，必须为纯函数。
- * @typedef {(anchor: import("../../../../../engine/utils/math.js").Vector, current: import("../../../../../engine/utils/math.js").Vector) => GesturePatch} TwoPointInterpret
+ * @typedef {(anchor: import("../../../../../../kernel/utils/math.js").Vector, current: import("../../../../../../kernel/utils/math.js").Vector) => GesturePatch} TwoPointInterpret
  */
 
 /**
  * 两点手势 overlay 收集函数
- * @typedef {(anchor: import("../../../../../engine/utils/math.js").Vector, current: import("../../../../../engine/utils/math.js").Vector) => import("../../../../components/renderer/ui-overlay-factory.js").UiOverlayEntry[]} TwoPointCollectOverlay
+ * @typedef {(anchor: import("../../../../../../kernel/utils/math.js").Vector, current: import("../../../../../../kernel/utils/math.js").Vector) => import("../../../../components/renderer/ui-overlay-factory.js").UiOverlayEntry[]} TwoPointCollectOverlay
  */
 
 /**
  * 两点手势兜底补丁解析函数
  * @description 在手势完成时调用，返回 null 表示无需兜底。
- * @typedef {(params: { anchor: import("../../../../../engine/utils/math.js").Vector, current: import("../../../../../engine/utils/math.js").Vector, count: number, zoom: number }) => GesturePatch|null} TwoPointResolveFallbackPatch
+ * @typedef {(params: { anchor: import("../../../../../../kernel/utils/math.js").Vector, current: import("../../../../../../kernel/utils/math.js").Vector, count: number, zoom: number }) => GesturePatch|null} TwoPointResolveFallbackPatch
  */
 
 /**
@@ -47,14 +47,14 @@
 class TwoPointGestureProcessor {
   /**
    * 锚点（手势开始时的世界坐标）
-   * @type {import("../../../../../engine/utils/math.js").Vector|null}
+   * @type {import("../../../../../../kernel/utils/math.js").Vector|null}
    * @private
    */
   _anchor;
 
   /**
    * 当前点（最近一次手势位置的世界坐标）
-   * @type {import("../../../../../engine/utils/math.js").Vector|null}
+   * @type {import("../../../../../../kernel/utils/math.js").Vector|null}
    * @private
    */
   _current;

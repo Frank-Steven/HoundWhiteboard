@@ -8,7 +8,7 @@ import {
   interpretCircleDiameter,
   createCircleDiameterProcessor,
 } from "../diameter-processor.js";
-import { Vector } from "../../../../../../engine/utils/math.js";
+import { Vector } from "../../../../../../../kernel/utils/math.js";
 
 function createBoardDeviceContext(objectId, { viewport } = {}) {
   const board = {

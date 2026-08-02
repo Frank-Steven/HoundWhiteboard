@@ -1,8 +1,8 @@
 import { jest } from "@jest/globals";
 import { ObjectChooserTool } from "../object-chooser.js";
 import { RectangleObjectChooserTool } from "../rectangle-object-chooser.js";
-import { RectangleRange } from "../../../../../engine/range/index.js";
-import { Vector } from "../../../../../engine/utils/math.js";
+import { RectangleRange } from "../../../../../../kernel/range/index.js";
+import { Vector } from "../../../../../../kernel/utils/math.js";
 import { createStateAccess } from "../../../../../test-support/state-fixtures.js";
 
 describe("ObjectChooserTool", () => {

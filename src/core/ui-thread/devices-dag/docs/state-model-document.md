@@ -126,7 +126,7 @@ node.state.phase / activeChild         ← 只读投影，仅供观察与调试
 | 生命周期 | Board 存续期间                             |
 | 读写规则 | 多写者 LWW；订阅同步通知                   |
 
-语义约束（详见 [shared-state-store 文档](../../../engine/utils/docs/shared-state-store-document.md)）：
+语义约束（详见 [shared-state-store 文档](../../../../kernel/utils/docs/shared-state-store-document.md)）：
 
 - **多写者 LWW**：任何写者可 `set` 任意键，不做访问控制，最后写入获胜
 - **同步通知与回声容忍**：`set` 后同步通知该键订阅者；订阅者会收到自己写入的回声
@@ -177,4 +177,4 @@ first tool 创建对象
 - [设备图](./devices-dag-document.md)
 - [handler 上下文（ctx）用法](./handler-context-document.md)
 - [wrapper（复合设备）](../tools/wrapper/docs/wrapper-document.md)
-- [shared-state-store](../../../engine/utils/docs/shared-state-store-document.md)
+- [shared-state-store](../../../../kernel/utils/docs/shared-state-store-document.md)

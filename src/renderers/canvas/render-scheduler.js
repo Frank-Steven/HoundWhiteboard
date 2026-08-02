@@ -5,8 +5,8 @@
  * @author Zhou Chenyu
  */
 
-import { RectangleRange } from "../../core/engine/range/rectangle.js";
-import { intersectsRanges } from "../../core/engine/range/geometry.js";
+import { RectangleRange } from "../../kernel/range/rectangle.js";
+import { intersectsRanges } from "../../kernel/range/geometry.js";
 
 const DIRTY_RECT_NEAR_GAP = 8;
 const DIRTY_RECT_DIAGONAL_GAP = 4;

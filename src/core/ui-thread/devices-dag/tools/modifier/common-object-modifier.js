@@ -9,7 +9,7 @@
  */
 
 import { GestureBasedObjectModifierTool } from "./object-modifier.js";
-import { BasicObject } from "../../../../engine/objects/basic-obj.js";
+import { BasicObject } from "../../../../../kernel/objects/basic-obj.js";
 
 /**
  * 通用对象修改工具类

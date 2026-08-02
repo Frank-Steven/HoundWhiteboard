@@ -4,10 +4,10 @@
 
 import { jest } from "@jest/globals";
 
-import { BoardCore } from "../../../core/engine/orchestration/board-core.js";
+import { BoardCore } from "../../../kernel/document/board-core.js";
 import { ViewportCore } from "../viewport-core.js";
-import { RectangleRange } from "../../../core/engine/range/index.js";
-import { Vector } from "../../../core/engine/utils/math.js";
+import { RectangleRange } from "../../../kernel/range/index.js";
+import { Vector } from "../../../kernel/utils/math.js";
 import {
   createNoopCanvasContext2D,
   createNoopImageBitmap,

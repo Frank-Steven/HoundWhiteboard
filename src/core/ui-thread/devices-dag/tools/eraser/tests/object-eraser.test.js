@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import { Vector } from "../../../../../engine/utils/math.js";
+import { Vector } from "../../../../../../kernel/utils/math.js";
 import { ObjectEraserTool } from "../object-eraser.js";
 
 class TestEraserTool extends ObjectEraserTool {

@@ -6,7 +6,7 @@
  * @author Zhou Chenyu
  */
 
-import { Vector } from "../../../engine/utils/math.js";
+import { Vector } from "../../../../kernel/utils/math.js";
 import { createPrefixNodeHandler } from "./handler.js";
 
 /**

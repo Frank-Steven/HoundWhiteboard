@@ -1,9 +1,9 @@
 import { jest } from "@jest/globals";
 import { UiRenderer } from "../ui-renderer.js";
-import { BasicObject } from "../../../../engine/objects/basic-obj.js";
-import { RectangleRange } from "../../../../engine/range/index.js";
+import { BasicObject } from "../../../../../kernel/objects/basic-obj.js";
+import { RectangleRange } from "../../../../../kernel/range/index.js";
 import { createNoopCanvasContext2D } from "../../../../test-support/noop-canvas.js";
-import { Vector } from "../../../../engine/utils/math.js";
+import { Vector } from "../../../../../kernel/utils/math.js";
 import { createCompatSelectionEntriesForSummaries } from "../ui-overlay-factory.js";
 
 class TestOverlayObject extends BasicObject {

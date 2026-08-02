@@ -5,7 +5,7 @@
  * @author Zhou Chenyu
  */
 
-import { RectangleRange } from "../../core/engine/range/rectangle.js";
+import { RectangleRange } from "../../kernel/range/rectangle.js";
 
 /**
  * 规整缩放因子

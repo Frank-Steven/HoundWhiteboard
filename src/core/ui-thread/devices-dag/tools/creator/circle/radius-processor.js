@@ -5,7 +5,7 @@
  * @author Zhou Chenyu
  */
 
-import { Vector } from "../../../../../engine/utils/math.js";
+import { Vector } from "../../../../../../kernel/utils/math.js";
 import { TwoPointGestureProcessor } from "../gesture/two-point-processor.js";
 
 const DEFAULT_FIXED_RADIUS_SCREEN = 16;

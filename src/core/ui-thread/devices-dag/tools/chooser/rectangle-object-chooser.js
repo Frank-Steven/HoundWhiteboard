@@ -5,8 +5,8 @@
  * @author Zhou Chenyu
  */
 
-import { RectangleRange } from "../../../../engine/range/index.js";
-import { Vector } from "../../../../engine/utils/math.js";
+import { RectangleRange } from "../../../../../kernel/range/index.js";
+import { Vector } from "../../../../../kernel/utils/math.js";
 import { ObjectChooserTool } from "./object-chooser.js";
 
 const RECTANGLE_SELECTION_OVERLAY_STROKE_STYLE = "#33a1ff";

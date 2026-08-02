@@ -272,4 +272,4 @@ AOM 内部关键结构包括：
 - [core-runtime-boundaries.md](./core-runtime-boundaries.md)
 - [file-structure.md](./file-structure.md)
 - [board-document.md](../ui-thread/components/orchestration/docs/board-document.md)
-- [active-object-manager-document.md](../engine/orchestration/docs/active-object-manager-document.md)
+- [active-object-manager-document.md](../../kernel/document/docs/active-object-manager-document.md)

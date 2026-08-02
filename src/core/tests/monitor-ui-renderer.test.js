@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
-import { RectangleRange } from "../engine/range/index.js";
-import { Vector } from "../engine/utils/math.js";
+import { RectangleRange } from "../../kernel/range/index.js";
+import { Vector } from "../../kernel/utils/math.js";
 import { createWorkerBoardContext } from "../test-support/worker-mode-fixtures.js";
 
 describe("Viewport/ui renderer", () => {

@@ -7,13 +7,13 @@
  * @author Zhou Chenyu
  */
 
-import { IncrementalIdPool } from "../../../engine/utils/incremental-id-pool.js";
-import { EventBus } from "../../../engine/utils/event-bus.js";
-import { SharedStateStore } from "../../../engine/utils/shared-state-store.js";
+import { IncrementalIdPool } from "../../../../kernel/utils/incremental-id-pool.js";
+import { EventBus } from "../../../../kernel/utils/event-bus.js";
+import { SharedStateStore } from "../../../../kernel/utils/shared-state-store.js";
 import { DevicesDAG } from "../../devices-dag/index.js";
 import { BoardApiRpc } from "../../../bridges/board-api-rpc.js";
 import { Viewport } from "./viewport.js";
-import { joinPath } from "../../../engine/utils/path.js";
+import { joinPath } from "../../../../kernel/utils/path.js";
 import { Logger } from "../../../../utils/log/logger.js";
 import { logBus } from "../../../../utils/log/log-bus.js";
 

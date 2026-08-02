@@ -2,7 +2,7 @@
 
 ## 概述
 
-`BoardApiRpc` 是 [BoardApi 契约](../../engine/types/board-api-types.js) 的 RPC 运输实现。UI 侧通过它暴露异步方法，经过 JSON-RPC 风格的消息协议与 Worker 侧的 `BoardCore` 交互。
+`BoardApiRpc` 是 [BoardApi 契约](../../../kernel/types/board-api-types.js) 的 RPC 运输实现。UI 侧通过它暴露异步方法，经过 JSON-RPC 风格的消息协议与 Worker 侧的 `BoardCore` 交互。
 
 `BoardApiRpc` 不承载业务逻辑，只负责：
 
@@ -11,7 +11,7 @@
 - RPC 响应路由与超时管理
 - 批处理条目失败回执的分发（`onBatchError`）
 
-契约（`@typedef BoardApi`）定义在 [board-api-types.js](../../engine/types/board-api-types.js)，约束所有实现的统一签名。
+契约（`@typedef BoardApi`）定义在 [board-api-types.js](../../../kernel/types/board-api-types.js)，约束所有实现的统一签名。
 
 ## 架构
 
@@ -49,7 +49,7 @@ sequenceDiagram
 
 ## API 面
 
-所有方法返回 `Promise`。参数格式见 [board-api-types.js](../../engine/types/board-api-types.js)。
+所有方法返回 `Promise`。参数格式见 [board-api-types.js](../../../kernel/types/board-api-types.js)。
 
 ### 板面生命周期
 
@@ -171,7 +171,7 @@ sequenceDiagram
 
 ## 相关文档
 
-- [board-core-document.md](../../engine/orchestration/docs/board-core-document.md)
-- [active-object-manager-document.md](../../engine/orchestration/docs/active-object-manager-document.md)
+- [board-core-document.md](../../../kernel/document/docs/board-core-document.md)
+- [active-object-manager-document.md](../../../kernel/document/docs/active-object-manager-document.md)
 - [core-modules.md](../../docs/core-modules.md)
-- [board-api-types.js](../../engine/types/board-api-types.js)
+- [board-api-types.js](../../../kernel/types/board-api-types.js)

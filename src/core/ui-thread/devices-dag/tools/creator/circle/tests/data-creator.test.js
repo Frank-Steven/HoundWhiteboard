@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import { CircleDataCreatorTool } from "../data-creator.js";
 import { createCircleRadiusProcessor } from "../radius-processor.js";
-import { Vector } from "../../../../../../engine/utils/math.js";
+import { Vector } from "../../../../../../../kernel/utils/math.js";
 
 function createTool(options = {}) {
   return new CircleDataCreatorTool({

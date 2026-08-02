@@ -5,8 +5,8 @@
  * @author Zhou Chenyu
  */
 
-import { DEFAULT_POLYGON_PROPERTY } from "../../../../engine/objects/graph/polygon.js";
-import { Vector } from "../../../../engine/utils/math.js";
+import { DEFAULT_POLYGON_PROPERTY } from "../../../../../kernel/objects/graph/polygon.js";
+import { Vector } from "../../../../../kernel/utils/math.js";
 import { MultiGestureObjectCreatorTool } from "./object-creator.js";
 
 /**
@@ -82,7 +82,7 @@ class PolygonCreatorTool extends MultiGestureObjectCreatorTool {
 
   /**
    * 当前正在创建多边形对象的本地状态
-   * @type {import("../../../../engine/types/types.js").LightweightObjectEntry & { data: { points: Array<{x:number, y:number}> } } | null}
+   * @type {import("../../../../../kernel/types/types.js").LightweightObjectEntry & { data: { points: Array<{x:number, y:number}> } } | null}
    */
   _entry;
 

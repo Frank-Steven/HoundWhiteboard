@@ -10,7 +10,7 @@ import { SIGNAL_TYPES } from "../dag-core/signal-types.js";
 /**
  * switchTool 入参
  * @typedef {Object} SwitchToolOptions
- * @property {import("../../../engine/utils/shared-state-store.js").SharedStateStore|null|undefined} sharedState - 共享状态 store（必传键；值为 null/undefined 时跳过写 store）
+ * @property {import("../../../../kernel/utils/shared-state-store.js").SharedStateStore|null|undefined} sharedState - 共享状态 store（必传键；值为 null/undefined 时跳过写 store）
  * @property {string} stateKey - 写入共享状态 store 的键
  * @property {string} toolName - 目标工具名
  * @property {string[]} [allowedTools] - 允许的工具名列表；非空数组时 toolName 必须在其中，空数组或缺省视为不校验

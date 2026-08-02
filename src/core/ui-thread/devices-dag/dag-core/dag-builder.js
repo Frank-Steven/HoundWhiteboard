@@ -18,7 +18,7 @@
  */
 
 import { isPlainObject } from "./dag-utils.js";
-import { joinPath, normalizePath } from "../../../engine/utils/path.js";
+import { joinPath, normalizePath } from "../../../../kernel/utils/path.js";
 
 /**
  * 子图节点构建器

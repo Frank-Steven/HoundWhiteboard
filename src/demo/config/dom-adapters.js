@@ -5,7 +5,7 @@
  * @author Zhou Chenyu
  */
 
-import { Vector } from "../../core/engine/utils/math.js";
+import { Vector } from "../../kernel/utils/math.js";
 import { switchTool } from "../../core/ui-thread/devices-dag/tools/switch-tool.js";
 import {
   DEMO_BUTTON_GROUP_STATE_KEY,

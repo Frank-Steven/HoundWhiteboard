@@ -9,9 +9,9 @@ import { GestureTool, unifyActionResult } from "../gesture-tool.js";
 import {
   RectangleRange,
   intersectsRanges,
-} from "../../../../engine/range/index.js";
-import { Range } from "../../../../engine/range/range.js";
-import { Vector } from "../../../../engine/utils/math.js";
+} from "../../../../../kernel/range/index.js";
+import { Range } from "../../../../../kernel/range/range.js";
+import { Vector } from "../../../../../kernel/utils/math.js";
 import { createCompatSelectionEntriesForSummaries } from "../../../components/renderer/ui-overlay-factory.js";
 
 /**
@@ -29,14 +29,14 @@ class ObjectChooserTool extends GestureTool {
    * @description
    * 工具逻辑（replaceSelection / discardAction / umount / process）只允许读本字段；
    * `node.state.objects` 仅是本字段同步发布的只读投影，禁止读回当真相源用。
-   * @type {Array<import("../../../../engine/types/types.js").ObjectSummary>}
+   * @type {Array<import("../../../../../kernel/types/types.js").ObjectSummary>}
    * @private
    */
   _selectedObjects = [];
 
   /**
    * overlay 渲染用——当前选中的对象摘要
-   * @type {import("../../../../engine/types/types.js").ObjectSummary[]}
+   * @type {import("../../../../../kernel/types/types.js").ObjectSummary[]}
    * @protected
    */
   _overlaySelectedObjects = [];
@@ -52,8 +52,8 @@ class ObjectChooserTool extends GestureTool {
   /**
    * 将选择条目回填为真实对象实例（若可解析）
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
-   * @param {import("../../../../engine/types/types.js").ObjectSummary} objectEntry - 对象摘要
-   * @returns {import("../../../../engine/types/types.js").ObjectSummary}
+   * @param {import("../../../../../kernel/types/types.js").ObjectSummary} objectEntry - 对象摘要
+   * @returns {import("../../../../../kernel/types/types.js").ObjectSummary}
    * @protected
    */
   resolveSelectedObjectReference(context = {}, objectEntry) {
@@ -63,8 +63,8 @@ class ObjectChooserTool extends GestureTool {
   /**
    * 批量回填选择条目为真实对象实例（若可解析）
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
-   * @param {Iterable<import("../../../../engine/types/types.js").ObjectSummary>|import("../../../../engine/types/types.js").ObjectSummary} objects - 对象摘要或摘要集合
-   * @returns {Array<import("../../../../engine/types/types.js").ObjectSummary>}
+   * @param {Iterable<import("../../../../../kernel/types/types.js").ObjectSummary>|import("../../../../../kernel/types/types.js").ObjectSummary} objects - 对象摘要或摘要集合
+   * @returns {Array<import("../../../../../kernel/types/types.js").ObjectSummary>}
    * @protected
    */
   resolveSelectedObjectReferences(context = {}, objects) {
@@ -78,7 +78,7 @@ class ObjectChooserTool extends GestureTool {
   /**
    * 解析对象主判定范围在世界空间中的范围
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
-   * @param {import("../../../../engine/types/types.js").ObjectSummary} objectEntry - 候选对象摘要
+   * @param {import("../../../../../kernel/types/types.js").ObjectSummary} objectEntry - 候选对象摘要
    * @returns {Range | undefined}
    */
   resolveObjectSelectionWorldRange(context = {}, objectEntry) {
@@ -109,7 +109,7 @@ class ObjectChooserTool extends GestureTool {
   /**
    * 判断对象主判定范围是否与给定选择范围相交
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
-   * @param {import("../../../../engine/types/types.js").ObjectSummary} objectEntry - 候选对象摘要
+   * @param {import("../../../../../kernel/types/types.js").ObjectSummary} objectEntry - 候选对象摘要
    * @param {Range} selectionWorldRange - 选择范围
    * @returns {boolean}
    */
@@ -157,7 +157,7 @@ class ObjectChooserTool extends GestureTool {
    * 选择完成后的通知钩子
    * @description
    * 每次成功选择对象后触发，handoff 可通过 on('afterChoose', ...) 订阅。
-   * @param {Array<import("../../../../engine/types/types.js").ObjectSummary>} objects - 被选中的对象摘要
+   * @param {Array<import("../../../../../kernel/types/types.js").ObjectSummary>} objects - 被选中的对象摘要
    * @protected
    */
   afterChoose(objects) {
@@ -177,7 +177,7 @@ class ObjectChooserTool extends GestureTool {
   /**
    * 确认选择后的扩展钩子
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
-   * @param {Array<import("../../../../engine/types/types.js").ObjectSummary>} objects - 已确认的对象摘要
+   * @param {Array<import("../../../../../kernel/types/types.js").ObjectSummary>} objects - 已确认的对象摘要
    * @returns {void}
    * @protected
    */
@@ -191,7 +191,7 @@ class ObjectChooserTool extends GestureTool {
    * 与 creator 的 completeCreatedObject、modifier 的 applyModifiedObjects
    * 构成统一的完成确认语义入口。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
-   * @param {Array<import("../../../../engine/types/types.js").ObjectSummary>} objects - 待确认的对象摘要
+   * @param {Array<import("../../../../../kernel/types/types.js").ObjectSummary>} objects - 待确认的对象摘要
    * @returns {boolean}
    */
   confirmSelection(context, objects) {
@@ -269,7 +269,7 @@ class ObjectChooserTool extends GestureTool {
    * 自定义 end 语义
    * @description end 期间需要保留当前选择区域供 submitSelection 使用，不能走基类的预清理逻辑。
    * @param {Object} interaction - 当前交互上下文
-   * @returns {Array<import("../../../../engine/types/types.js").ObjectSummary>|Promise<Array<import("../../../../engine/types/types.js").ObjectSummary>>|undefined}
+   * @returns {Array<import("../../../../../kernel/types/types.js").ObjectSummary>|Promise<Array<import("../../../../../kernel/types/types.js").ObjectSummary>>|undefined}
    * @protected
    */
   _onEnd(interaction) {
@@ -302,7 +302,7 @@ class ObjectChooserTool extends GestureTool {
    * 选择动作允许异步提交，因此此处覆写 completeAction，用 unifyActionResult 统一同步/异步路径。
    * 仅在 confirmSelection 成功时发送 `action:complete`。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
-   * @returns {Array<import("../../../../engine/types/types.js").ObjectSummary>|Promise<Array<import("../../../../engine/types/types.js").ObjectSummary>>}
+   * @returns {Array<import("../../../../../kernel/types/types.js").ObjectSummary>|Promise<Array<import("../../../../../kernel/types/types.js").ObjectSummary>>}
    */
   completeAction(context) {
     return unifyActionResult(this.submitSelection(context), (objects) =>
@@ -313,8 +313,8 @@ class ObjectChooserTool extends GestureTool {
   /**
    * 将选中对象写入上下文并按需触发生命周期钩子
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
-   * @param {import("../../../../engine/types/types.js").ObjectSummary[]} objects - 选中对象
-   * @returns {Array<import("../../../../engine/types/types.js").ObjectSummary>}
+   * @param {import("../../../../../kernel/types/types.js").ObjectSummary[]} objects - 选中对象
+   * @returns {Array<import("../../../../../kernel/types/types.js").ObjectSummary>}
    * @private
    */
   _applySelection(context, objects) {
@@ -366,8 +366,8 @@ class ObjectChooserTool extends GestureTool {
    * @description
    * 丢弃旧选择、激活新对象，更新 `_selectedObjects` 真相源并同步发布 objects 投影。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
-   * @param {import("../../../../engine/types/types.js").ObjectSummary[]} [nextObjects=[]] - 新选择结果
-   * @returns {import("../../../../engine/types/types.js").ObjectSummary[]}
+   * @param {import("../../../../../kernel/types/types.js").ObjectSummary[]} [nextObjects=[]] - 新选择结果
+   * @returns {import("../../../../../kernel/types/types.js").ObjectSummary[]}
    */
   replaceSelection(context = {}, nextObjects = []) {
     const previousObjects = this._selectedObjects.filter(Boolean);
@@ -406,7 +406,7 @@ class ObjectChooserTool extends GestureTool {
    * 默认实现使用 getSelectionRegion 获取区域，走 boardApi.hitTest + queryObjects。
    * 子类可直接覆写此方法以提供自定义选择逻辑。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
-   * @returns {import("../../../../engine/types/types.js").ObjectSummary[]|Promise<import("../../../../engine/types/types.js").ObjectSummary[]>}
+   * @returns {import("../../../../../kernel/types/types.js").ObjectSummary[]|Promise<import("../../../../../kernel/types/types.js").ObjectSummary[]>}
    */
   submitSelection(context) {
     const region = this.getSelectionRegion(context);

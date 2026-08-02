@@ -159,4 +159,4 @@ wrapper 是信号驱动的，信号载荷即权威——它不读共享状态。
 - [对象选择工具](../../chooser/docs/object-chooser-document.md)
 - [对象修改工具](../../modifier/docs/object-modifier-document.md)
 - [修饰节点](../../../prefixes/docs/prefix-document.md)
-- [shared-state-store](../../../../../engine/utils/docs/shared-state-store-document.md)
+- [shared-state-store](../../../../../../kernel/utils/docs/shared-state-store-document.md)

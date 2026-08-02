@@ -2,7 +2,7 @@ import { jest } from "@jest/globals";
 import { CircleDataCreatorTool } from "../circle/data-creator.js";
 import { createCircleRadiusProcessor } from "../circle/radius-processor.js";
 import { SingleGestureObjectCreatorTool } from "../object-creator.js";
-import { Vector } from "../../../../../engine/utils/math.js";
+import { Vector } from "../../../../../../kernel/utils/math.js";
 function createBoardDeviceContext(objectId, { viewport } = {}) {
   const board = {
     allocateObjectId: jest.fn(() => objectId),

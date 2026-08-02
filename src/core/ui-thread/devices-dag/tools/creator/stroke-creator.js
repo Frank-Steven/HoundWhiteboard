@@ -5,9 +5,9 @@
  * @author Zhou Chenyu
  */
 
-import { DEFAULT_STROKE_PROPERTY } from "../../../../engine/objects/stroke/stroke.js";
+import { DEFAULT_STROKE_PROPERTY } from "../../../../../kernel/objects/stroke/stroke.js";
 import { SingleGestureObjectCreatorTool } from "./object-creator.js";
-import { Vector } from "../../../../engine/utils/math.js";
+import { Vector } from "../../../../../kernel/utils/math.js";
 
 /**
  * 笔画创建工具类
@@ -23,7 +23,7 @@ import { Vector } from "../../../../engine/utils/math.js";
 class StrokeCreatorTool extends SingleGestureObjectCreatorTool {
   /**
    * 当前正在创建笔画对象的本地状态
-   * @type {import("../../../../engine/types/types.js").LightweightObjectEntry & { data: { points: Array<{x:number, y:number}> } } | null}
+   * @type {import("../../../../../kernel/types/types.js").LightweightObjectEntry & { data: { points: Array<{x:number, y:number}> } } | null}
    */
   _entry;
 

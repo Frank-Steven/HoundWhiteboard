@@ -10,15 +10,15 @@
  */
 
 import { createDefaultPersistenceAdapter } from "../bridges/persistence-adapter.js";
-import { createDefaultAomRenderHooks } from "./orchestration/aom-render-hooks.js";
-import { BoardCore } from "./orchestration/board-core.js";
+import { createDefaultAomRenderHooks } from "../../kernel/document/aom-render-hooks.js";
+import { BoardCore } from "../../kernel/document/board-core.js";
 import { ViewportCore } from "../../renderers/canvas/viewport-core.js";
 import { Logger } from "../../utils/log/logger.js";
 import { logBus } from "../../utils/log/log-bus.js";
 import { createConsolePrinter } from "../../utils/log/console-printer.js";
 import { handleDebugQuery } from "./debug-helper.js";
-import { BoardApi } from "./api/board-api.js";
-import { BOARD_API_ROUTES } from "./api/board-api-routes.js";
+import { BoardApi } from "../../kernel/api/board-api.js";
+import { BOARD_API_ROUTES } from "../../kernel/api/board-api-routes.js";
 
 /**
  * 判断值是否可作为 Worker 消息宿主
@@ -464,7 +464,7 @@ class CoreWorkerRuntime {
 
   /**
    * 创建绑定到 ViewportCore 集合的 AOM 渲染钩子
-   * @returns {import("./orchestration/aom-render-hooks.js").AomRenderHooks}
+   * @returns {import("../../kernel/document/aom-render-hooks.js").AomRenderHooks}
    */
   #createViewportRenderHooks() {
     return {
@@ -472,7 +472,7 @@ class CoreWorkerRuntime {
        * 刷新所有 ViewportCore 的活动层
        * @description
        * 仅失效显式传入的对象。未传对象时刷新全部活动 drawable。
-       * @param {import("./objects/basic-obj.js").BasicObject[]} objectInstances - 受影响对象
+       * @param {import("../../kernel/objects/basic-obj.js").BasicObject[]} objectInstances - 受影响对象
        */
       requestActiveRender: (objectInstances = []) => {
         if (this.#viewportCores.size === 0) return;
@@ -495,7 +495,7 @@ class CoreWorkerRuntime {
 
       /**
        * 刷新所有 ViewportCore 的静态层
-       * @param {import("./chunk/chunk.js").Chunk[]} chunks - 需要刷新的区块
+       * @param {import("../../kernel/chunk/chunk.js").Chunk[]} chunks - 需要刷新的区块
        */
       requestStaticRender: (chunks = []) => {
         if (this.#viewportCores.size === 0) return;
@@ -513,9 +513,9 @@ class CoreWorkerRuntime {
 
       /**
        * 按对象范围刷新 ViewportCore 的静态层
-       * @param {import("./objects/basic-obj.js").BasicObject[]} objectInstances - 受影响对象
-       * @param {import("./chunk/chunk.js").Chunk[]} fallbackChunks - 回退区块
-       * @param {Map<string, import("./range/index.js").RectangleRange>} previousWorldRects - 旧世界范围快照
+       * @param {import("../../kernel/objects/basic-obj.js").BasicObject[]} objectInstances - 受影响对象
+       * @param {import("../../kernel/chunk/chunk.js").Chunk[]} fallbackChunks - 回退区块
+       * @param {Map<string, import("../../kernel/range/index.js").RectangleRange>} previousWorldRects - 旧世界范围快照
        */
       requestStaticRenderForObjects: (
         objectInstances = [],
@@ -548,7 +548,7 @@ class CoreWorkerRuntime {
 
       /**
        * 刷新所有 ViewportCore 当前视口
-       * @param {import("./objects/basic-obj.js").BasicObject[]} _objectInstances - 受影响对象
+       * @param {import("../../kernel/objects/basic-obj.js").BasicObject[]} _objectInstances - 受影响对象
        */
       flushViewportForObjects: (_objectInstances = []) => {
         if (this.#viewportCores.size === 0) return;

@@ -1,0 +1,272 @@
+/**
+ * @file 笔画对象定义
+ * @description 定义白板笔画对象的几何表示与渲染支持。
+ * @module kernel/objects/stroke/stroke
+ * @author Zhou Chenyu
+ */
+
+import { Matrix, Vector } from "../../utils/math.js";
+import {
+  PathRange,
+  PolygonRange,
+  RectangleRange,
+  pointToPolylineDistance,
+  pointToSegmentDistance,
+  segmentSegmentDistance,
+} from "../../range/index.js";
+import { calcConvexHull, insertPoints } from "../../utils/math-algorithm.js";
+import { BasicObject } from "../basic-obj.js";
+
+const DEFAULT_STROKE_PROPERTY = Object.freeze({
+  /**
+   * 笔画颜色
+   */
+  color: "#000000",
+
+  /**
+   * 笔画宽度
+   */
+  width: 1,
+
+  /**
+   * 线段连接处的样式
+   */
+  lineJoin: "round",
+
+  /**
+   * 线段端点的样式
+   */
+  lineCap: "round",
+});
+
+/**
+ * 笔画类
+ * @class
+ * @todo 现在的这个笔画类的结构是不支持更换笔刷的。要想有这个功能，必须重构。
+ * @author Zhou Chenyu
+ */
+class StrokeObject extends BasicObject {
+  constructor(id, position, property = {}, data = {}) {
+    super(id, position, property, data);
+    this.property = { ...DEFAULT_STROKE_PROPERTY, ...this.property };
+    this.rich.localPathRange = new PathRange([]);
+    this.rich.worldPathRange = new PathRange([]);
+    this.rich.convexHullRange = new PolygonRange([]);
+    this._onDataChange(Object.keys(data));
+  }
+
+  isDirected() {
+    return false;
+  }
+
+  isErasable() {
+    return true;
+  }
+
+  calculateRichDatas() {
+    if (this.rich.localPathRange.points.length === 0) {
+      this.rich.worldPathRange = new PathRange([]);
+      this.rich.convexHullRange = new PolygonRange([]);
+      this.rich.boundingBox = new RectangleRange(0, 0, 0, 0);
+      return;
+    }
+
+    let transformedPoints = this.rich.localPathRange.points.map((p) =>
+      Vector.mulMatrix(this.transform, p),
+    );
+    // 将其平滑（插点或删点）
+    let scale = Math.sqrt(this.transform.det());
+    if (scale > 1) {
+      transformedPoints = insertPoints(transformedPoints, Math.round(scale));
+    } else if (scale < 1) {
+      // [todo] 删点
+    }
+    this.rich.worldPathRange = new PathRange(transformedPoints);
+    this.calculateConvexHull();
+    this.rich.boundingBox = RectangleRange.from(
+      this.rich.convexHullRange.transform(this.transform),
+    );
+  }
+
+  _onDataChange(keys) {
+    if (keys.includes("points") && Array.isArray(this.data.points)) {
+      const vecs = this.data.points.map((p) => new Vector(p.x, p.y));
+      this.rich.localPathRange = new PathRange(vecs);
+      this.calculateRichDatas();
+    }
+  }
+
+  setTransform(trans) {
+    this.transform = trans;
+    this.calculateRichDatas();
+  }
+
+  calculateConvexHull() {
+    this.rich.convexHullRange = new PolygonRange(
+      calcConvexHull(this.rich.localPathRange.points),
+    );
+  }
+
+  /**
+   * 按橡皮轨迹擦除笔画点段
+   * @description
+   * 逐线段判定笔画是否与轨迹相交，阈值 = 橡皮半径 + 笔画世界宽度的一半
+   * （宽度随 transform 缩放，按 sqrt(|det|) 折算到世界坐标）。
+   * 被擦线段移除后，极大连续未擦线段链聚合为剩余点段返回；
+   * 返回值为 data.points 的局部坐标切片，可直接写回。
+   * @override
+   * @param {Array<{x: number, y: number}>} trailPoints - 橡皮轨迹点列（世界坐标）
+   * @param {number} radius - 橡皮半径（世界单位）
+   * @returns {Array<Array<{x: number, y: number}>>|null} null 表示未命中；空数组表示整笔擦没；否则为剩余点段
+   */
+  eraseData(trailPoints, radius) {
+    const localPoints = Array.isArray(this.data.points)
+      ? this.data.points
+      : [];
+    const pointCount = localPoints.length;
+
+    if (
+      pointCount === 0 ||
+      !Array.isArray(trailPoints) ||
+      trailPoints.length === 0
+    ) {
+      return null;
+    }
+
+    const scale = Math.sqrt(Math.abs(this.transform.det()));
+    const threshold = radius + (this.property.width * scale) / 2;
+
+    // 逐点变换到世界坐标；禁用插点平滑以保持与 data.points 的索引对应
+    const worldPoints = localPoints.map((point) => {
+      const transformed = Vector.mulMatrix(this.transform, point);
+      return new Vector(
+        this.position.x + transformed.x,
+        this.position.y + transformed.y,
+      );
+    });
+
+    if (pointCount === 1) {
+      return pointToPolylineDistance(worldPoints[0], trailPoints) <= threshold
+        ? []
+        : null;
+    }
+
+    const isSegmentErased = (start, end) => {
+      if (trailPoints.length === 1) {
+        return (
+          pointToSegmentDistance(trailPoints[0], start, end) <= threshold
+        );
+      }
+      for (let i = 1; i < trailPoints.length; i++) {
+        if (
+          segmentSegmentDistance(
+            start,
+            end,
+            trailPoints[i - 1],
+            trailPoints[i],
+          ) <= threshold
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const segmentCount = pointCount - 1;
+    const erasedSegments = new Array(segmentCount).fill(false);
+    let hasErased = false;
+    for (let i = 0; i < segmentCount; i++) {
+      if (isSegmentErased(worldPoints[i], worldPoints[i + 1])) {
+        erasedSegments[i] = true;
+        hasErased = true;
+      }
+    }
+
+    if (!hasErased) {
+      return null;
+    }
+
+    // 孤立点（相邻线段全被擦）不属于任何链，自然被丢弃
+    const runs = [];
+    let runStart = -1;
+    for (let i = 0; i < segmentCount; i++) {
+      if (!erasedSegments[i]) {
+        if (runStart === -1) runStart = i;
+      } else if (runStart !== -1) {
+        runs.push(localPoints.slice(runStart, i + 1));
+        runStart = -1;
+      }
+    }
+    if (runStart !== -1) {
+      runs.push(localPoints.slice(runStart, segmentCount + 1));
+    }
+
+    return runs;
+  }
+
+  getRange() {
+    return this.rich.worldPathRange;
+  }
+
+  render(ctx) {
+    if (
+      !this.rich.localPathRange ||
+      this.rich.localPathRange.points.length === 0
+    ) {
+      return;
+    }
+
+    const strokeWidth = this.property.width;
+    if (!(Number.isFinite(strokeWidth) && strokeWidth > 0)) {
+      return;
+    }
+
+    const transformedPoints = this.rich.worldPathRange.points;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, this.position.x, this.position.y);
+    ctx.strokeStyle = this.property.color;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.lineWidth = strokeWidth;
+    ctx.lineJoin = this.property.lineJoin ?? DEFAULT_STROKE_PROPERTY.lineJoin;
+    ctx.lineCap = this.property.lineCap ?? DEFAULT_STROKE_PROPERTY.lineCap;
+    ctx.beginPath();
+    ctx.moveTo(transformedPoints[0].x, transformedPoints[0].y);
+    if (transformedPoints.length === 1) {
+      ctx.arc(0, 0, strokeWidth / 2, 0, Math.PI * 2);
+      ctx.fillStyle = this.property.color;
+      ctx.fill();
+    } else {
+      for (let i = 1; i < transformedPoints.length; i++) {
+        ctx.lineTo(transformedPoints[i].x, transformedPoints[i].y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  serialize() {
+    return {
+      ...super.serialize(),
+      type: "StrokeObject",
+      data: { ...this.data },
+    };
+  }
+
+  static parse(serialized) {
+    if (serialized.type !== "StrokeObject") {
+      throw new TypeError("Invalid type for StrokeObject parsing");
+    }
+
+    const obj = new StrokeObject(
+      serialized.id,
+      Vector.parse(serialized.position),
+      { ...DEFAULT_STROKE_PROPERTY, ...(serialized.property ?? {}) },
+      serialized.data ?? {},
+    );
+
+    obj.setTransform(Matrix.parse(serialized.transform));
+    return obj;
+  }
+}
+
+export { DEFAULT_STROKE_PROPERTY, StrokeObject };

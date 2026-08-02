@@ -7,8 +7,8 @@
  * @author Zhou Chenyu
  */
 
-import { RectangleRange } from "../../../engine/range/index.js";
-import { Vector } from "../../../engine/utils/math.js";
+import { RectangleRange } from "../../../../kernel/range/index.js";
+import { Vector } from "../../../../kernel/utils/math.js";
 import { UiRenderer } from "../renderer/ui-renderer.js";
 import { InputScope } from "./input-scope.js";
 

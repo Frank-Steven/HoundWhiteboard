@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
-import { Vector } from "../../../../../engine/utils/math.js";
-import { RectangleRange } from "../../../../../engine/range/rectangle.js";
+import { Vector } from "../../../../../../kernel/utils/math.js";
+import { RectangleRange } from "../../../../../../kernel/range/rectangle.js";
 import { CommonObjectModifierTool } from "../common-object-modifier.js";
 import { DragGestureProcessor } from "../gesture/drag-processor.js";
 import { SIGNAL_TYPES } from "../../../dag-core/signal-types.js";

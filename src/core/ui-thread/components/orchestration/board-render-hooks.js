@@ -7,7 +7,7 @@
  * @author Zhou Chenyu
  */
 
-import { RectangleRange, intersectsRanges } from "../../../engine/range/index.js";
+import { RectangleRange, intersectsRanges } from "../../../../kernel/range/index.js";
 
 /**
  * 解析 viewports 引用
@@ -28,7 +28,7 @@ function _resolveViewports(viewportsOrFn) {
  * `viewports` 参数支持传入直接的 Map 引用或返回 Map 的惰性函数（适合 Board 构造时 viewports 尚未就绪的场景）。
  *
  * @param {Map<string, import("./viewport.js").Viewport> | (() => Map<string, import("./viewport.js").Viewport>)} viewportsOrFn - 视口 Map 或惰性获取函数
- * @returns {import("../../../engine/orchestration/aom-render-hooks.js").AomRenderHooks
+ * @returns {import("../../../../kernel/document/aom-render-hooks.js").AomRenderHooks
  */
 function createBoardRenderHooks(viewportsOrFn) {
   /**
@@ -40,7 +40,7 @@ function createBoardRenderHooks(viewportsOrFn) {
   return {
     /**
      * 刷新所有 viewport 的活动层
-     * @param {import("../../../engine/objects/basic-obj.js").BasicObject[]} objectInstances - 受影响对象
+     * @param {import("../../../../kernel/objects/basic-obj.js").BasicObject[]} objectInstances - 受影响对象
      */
     requestActiveRender(objectInstances = []) {
       const viewports = getViewports();
@@ -85,7 +85,7 @@ function createBoardRenderHooks(viewportsOrFn) {
 
     /**
      * 按对象范围刷新 viewport 的静态层
-     * @param {import("../../../engine/objects/basic-obj.js").BasicObject[]} objectInstances - 受影响对象
+     * @param {import("../../../../kernel/objects/basic-obj.js").BasicObject[]} objectInstances - 受影响对象
      * @param {Object[]} fallbackChunks - 回退区块
      * @param {Map<string, RectangleRange>} previousWorldRects - 旧世界范围快照
      */
@@ -124,7 +124,7 @@ function createBoardRenderHooks(viewportsOrFn) {
 
     /**
      * 刷新能看到指定对象集合的那些 viewport 的视口
-     * @param {import("../../../engine/objects/basic-obj.js").BasicObject[]} objectInstances - 对象实例
+     * @param {import("../../../../kernel/objects/basic-obj.js").BasicObject[]} objectInstances - 对象实例
      */
     flushViewportForObjects(objectInstances = []) {
       const viewports = getViewports();

@@ -7,7 +7,7 @@
 import { jest } from "@jest/globals";
 import { DevicesDAG } from "../../index.js";
 import { createButtonGroupDevice } from "../button-group-device.js";
-import { SharedStateStore } from "../../../../engine/utils/shared-state-store.js";
+import { SharedStateStore } from "../../../../../kernel/utils/shared-state-store.js";
 
 const TOOL_SWITCH = "tool-switch";
 const ACTIVE_TOOL = "activeTool";

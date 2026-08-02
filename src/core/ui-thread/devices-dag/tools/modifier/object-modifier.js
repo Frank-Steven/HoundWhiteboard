@@ -8,18 +8,18 @@
 import { GestureTool } from "../gesture-tool.js";
 import { SignalPacket } from "../../dag-core/signal.js";
 import { SIGNAL_TYPES } from "../../dag-core/signal-types.js";
-import { BasicObject } from "../../../../engine/objects/basic-obj.js";
-import { RectangleRange } from "../../../../engine/range/index.js";
-import { Vector } from "../../../../engine/utils/math.js";
+import { BasicObject } from "../../../../../kernel/objects/basic-obj.js";
+import { RectangleRange } from "../../../../../kernel/range/index.js";
+import { Vector } from "../../../../../kernel/utils/math.js";
 import { createCompatSelectionEntriesForSummaries } from "../../../components/renderer/ui-overlay-factory.js";
 
 /**
  * 修改手势补丁
  * @description 形状与 `boardApi.modifyObject(objectId, patch)` 的补丁契约一致。
  * @typedef {Object} ModifyGesturePatch
- * @property {import("../../../../engine/utils/math.js").Vector|import("../../../../engine/types/types.js").Point2D} [position] - 对象世界坐标位置
+ * @property {import("../../../../../kernel/utils/math.js").Vector|import("../../../../../kernel/types/types.js").Point2D} [position] - 对象世界坐标位置
  * @property {Record<string, any>} [data] - 类型专属几何数据补丁
- * @property {import("../../../../engine/types/types.js").TransformMatrix2D} [transform] - 对象变换矩阵补丁
+ * @property {import("../../../../../kernel/types/types.js").TransformMatrix2D} [transform] - 对象变换矩阵补丁
  */
 
 /**
@@ -30,7 +30,7 @@ import { createCompatSelectionEntriesForSummaries } from "../../../components/re
  * @property {Array<{type: string, context?: *}>} signals - 信号列表
  * @property {Vector|null} position - 世界坐标位置
  * @property {Vector|null} displacement - 相对位移
- * @property {import("../../../../engine/types/types.js").LightweightObjectEntry[]} objects - 当前活动的修改对象
+ * @property {import("../../../../../kernel/types/types.js").LightweightObjectEntry[]} objects - 当前活动的修改对象
  * @property {boolean} hasEndSignal - 是否包含结束信号
  * @property {boolean} hasCancelSignal - 是否包含取消信号
  * @property {boolean} hasSuccessSignal - 是否包含提交信号
@@ -47,7 +47,7 @@ import { createCompatSelectionEntriesForSummaries } from "../../../components/re
 class ObjectModifierTool extends GestureTool {
   /**
    * overlay 渲染用——当前编辑中的对象集合
-   * @type {import("../../../../engine/types/types.js").LightweightObjectEntry[]}
+   * @type {import("../../../../../kernel/types/types.js").LightweightObjectEntry[]}
    * @protected
    */
   _overlayModifiedObjects = [];
@@ -110,7 +110,7 @@ class ObjectModifierTool extends GestureTool {
 
   /**
    * 解析对象条目的当前位置
-   * @param {import("../../../../engine/types/types.js").LightweightObjectEntry} objectEntry - 对象实例或兼容条目
+   * @param {import("../../../../../kernel/types/types.js").LightweightObjectEntry} objectEntry - 对象实例或兼容条目
    * @returns {Vector|null} 当前位置
    * @protected
    */
@@ -120,8 +120,8 @@ class ObjectModifierTool extends GestureTool {
 
   /**
    * 解析对象条目的局部判定范围
-   * @param {import("../../../../engine/types/types.js").LightweightObjectEntry} objectEntry - 对象实例或兼容条目
-   * @returns {import("../../../../engine/range/range.js").Range|null} 局部 range
+   * @param {import("../../../../../kernel/types/types.js").LightweightObjectEntry} objectEntry - 对象实例或兼容条目
+   * @returns {import("../../../../../kernel/range/range.js").Range|null} 局部 range
    * @protected
    */
   resolveModifiedObjectRange(objectEntry) {
@@ -136,7 +136,7 @@ class ObjectModifierTool extends GestureTool {
 
   /**
    * 解析对象条目的世界矩形
-   * @param {import("../../../../engine/types/types.js").LightweightObjectEntry} objectEntry - 对象实例或兼容条目
+   * @param {import("../../../../../kernel/types/types.js").LightweightObjectEntry} objectEntry - 对象实例或兼容条目
    * @returns {RectangleRange|null} 世界矩形
    * @protected
    */
@@ -174,7 +174,7 @@ class ObjectModifierTool extends GestureTool {
    * position 经 Vector.parse 规整；有 boardApi 且 objectId 有效时一次性
    * `boardApi.modifyObject(objectId, patch)` 提交整份补丁；
    * 本地条目同步更新（position → 新 Vector、data → Object.assign 合并、transform → 浅拷贝）。
-   * @param {import("../../../../engine/types/types.js").LightweightObjectEntry} objectEntry - 当前对象条目
+   * @param {import("../../../../../kernel/types/types.js").LightweightObjectEntry} objectEntry - 当前对象条目
    * @param {ModifyGesturePatch} patch - 手势补丁
    * @param {Object} [interaction={}] - 当前交互上下文（经 interaction.context 取 boardApi）
    * @returns {void}
@@ -219,7 +219,7 @@ class ObjectModifierTool extends GestureTool {
    * 通过 RPC 写入对象绝对位置
    * @description 保留的兼容入口，委托 `applyGesturePatch(obj, { position }, ...)` 实现。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
-   * @param {import("../../../../engine/types/types.js").LightweightObjectEntry} objectEntry - 当前对象条目
+   * @param {import("../../../../../kernel/types/types.js").LightweightObjectEntry} objectEntry - 当前对象条目
    * @param {{ x: number, y: number }} position - 新位置
    * @returns {void}
    * @protected
@@ -615,7 +615,7 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
    * 从信号包中提取修改交互上下文
    * @param {SignalPacket} signalPacket - 输入信号包
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
-   * @param {import("../../../../engine/types/types.js").LightweightObjectEntry[]} objects - 当前活动的修改对象
+   * @param {import("../../../../../kernel/types/types.js").LightweightObjectEntry[]} objects - 当前活动的修改对象
    * @returns {ModifyGestureInteraction} 交互上下文
    * @protected
    */
@@ -699,7 +699,7 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
    * 确保下一轮新对象的 handoff 中 begin 能重新记录。
    * @param {ModifyGestureInteraction} interaction - 当前交互上下文
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
-   * @param {import("../../../../engine/types/types.js").LightweightObjectEntry[]} objects - 活动对象
+   * @param {import("../../../../../kernel/types/types.js").LightweightObjectEntry[]} objects - 活动对象
    * @private
    */
   _handleSuccess(interaction, context, objects) {
@@ -732,7 +732,7 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
    * 3. 两者可在同一帧并存：position 先算，displacement 再叠，锚点跟随位移
    * @param {ModifyGestureInteraction} interaction - 当前交互上下文
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
-   * @param {import("../../../../engine/types/types.js").LightweightObjectEntry[]} objects - 活动对象
+   * @param {import("../../../../../kernel/types/types.js").LightweightObjectEntry[]} objects - 活动对象
    * @private
    */
   _handleSpatialUpdate(interaction, context, objects) {

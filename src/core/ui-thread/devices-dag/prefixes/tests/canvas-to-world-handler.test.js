@@ -7,7 +7,7 @@
 
 import { DevicesDAG, createSubDAG } from "../../index.js";
 import { createCanvasToWorldPrefixHandler } from "../index.js";
-import { Vector } from "../../../../engine/utils/math.js";
+import { Vector } from "../../../../../kernel/utils/math.js";
 
 describe("createCanvasToWorldPrefixHandler", () => {
   /**

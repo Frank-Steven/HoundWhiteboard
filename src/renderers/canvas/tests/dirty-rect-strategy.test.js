@@ -9,8 +9,8 @@ import {
   createZoomScaledThresholdStrategy,
   screenRectToWorldRect,
 } from "../dirty-rect-strategy.js";
-import { Chunk } from "../../../core/engine/chunk/chunk.js";
-import { RectangleRange } from "../../../core/engine/range/rectangle.js";
+import { Chunk } from "../../../kernel/chunk/chunk.js";
+import { RectangleRange } from "../../../kernel/range/rectangle.js";
 
 describe("dirty rect strategy", () => {
   test("base 预设策略应返回 zoom-aware 阈值", () => {

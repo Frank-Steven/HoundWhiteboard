@@ -5,7 +5,7 @@
  */
 
 import { DragGestureProcessor } from "../drag-processor.js";
-import { Vector } from "../../../../../../engine/utils/math.js";
+import { Vector } from "../../../../../../../kernel/utils/math.js";
 
 /**
  * 构造模拟宿主 modifier（仅实现 processor 依赖的三个方法）

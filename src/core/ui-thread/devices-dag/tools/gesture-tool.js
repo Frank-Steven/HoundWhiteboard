@@ -7,7 +7,7 @@
 
 import { SignalPacket } from "../dag-core/signal.js";
 import { SIGNAL_TYPES } from "../dag-core/signal-types.js";
-import { Vector } from "../../../engine/utils/math.js";
+import { Vector } from "../../../../kernel/utils/math.js";
 import { Tool } from "./tool.js";
 import { unifyActionResult } from "./gesture-signal-types.js";
 

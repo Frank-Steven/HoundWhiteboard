@@ -5,9 +5,9 @@
  * @author Zhou Chenyu
  */
 
-import { ChunkObjectManager } from "../../core/engine/chunk/chunk-object-manager.js";
-import { intersectsRanges } from "../../core/engine/range/geometry.js";
-import { RectangleRange } from "../../core/engine/range/rectangle.js";
+import { ChunkObjectManager } from "../../kernel/chunk/chunk-object-manager.js";
+import { intersectsRanges } from "../../kernel/range/geometry.js";
+import { RectangleRange } from "../../kernel/range/rectangle.js";
 import {
   createBaseDirtyRectThresholdStrategy,
   createDirtyRectPolicyResolver,

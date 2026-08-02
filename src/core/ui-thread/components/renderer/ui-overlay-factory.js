@@ -5,7 +5,7 @@
  * @author Zhou Chenyu
  */
 
-import { RectangleRange } from "../../../engine/range/index.js";
+import { RectangleRange } from "../../../../kernel/range/index.js";
 
 /**
  * 兼容选中框的最小留白（屏幕像素）

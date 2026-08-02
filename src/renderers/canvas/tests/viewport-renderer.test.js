@@ -4,13 +4,13 @@
 
 import { jest } from "@jest/globals";
 import { ViewportRenderer } from "../viewport-renderer.js";
-import { DirectedGraph } from "../../../core/engine/utils/directed-graph.js";
-import { Vector, Matrix } from "../../../core/engine/utils/math.js";
-import { BasicObject } from "../../../core/engine/objects/basic-obj.js";
-import { CircleObject } from "../../../core/engine/objects/graph/circle.js";
-import { RectangleRange } from "../../../core/engine/range/rectangle.js";
-import { PathRange } from "../../../core/engine/range/path.js";
-import { Layer } from "../../../core/engine/orchestration/active-object-manager.js";
+import { DirectedGraph } from "../../../kernel/utils/directed-graph.js";
+import { Vector, Matrix } from "../../../kernel/utils/math.js";
+import { BasicObject } from "../../../kernel/objects/basic-obj.js";
+import { CircleObject } from "../../../kernel/objects/graph/circle.js";
+import { RectangleRange } from "../../../kernel/range/rectangle.js";
+import { PathRange } from "../../../kernel/range/path.js";
+import { Layer } from "../../../kernel/document/active-object-manager.js";
 import { installNoopOffscreenCanvas } from "../../../core/test-support/noop-canvas.js";
 
 /**

@@ -241,5 +241,5 @@ wrapper 不修改 modifier 的 node state。
 - [object-creator-document.md](../../creator/docs/object-creator-document.md)
 - [object-chooser-document.md](../../chooser/docs/object-chooser-document.md)
 - [wrapper-document.md](../../wrapper/docs/wrapper-document.md)
-- [active-object-manager-document.md](../../../../../engine/orchestration/docs/active-object-manager-document.md)
+- [active-object-manager-document.md](../../../../../../kernel/document/docs/active-object-manager-document.md)
 - [core-runtime-boundaries.md](../../../../../docs/core-runtime-boundaries.md)

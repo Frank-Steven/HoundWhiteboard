@@ -8,7 +8,7 @@
 import {
   RectangleRange,
   intersectsRanges,
-} from "../../../engine/range/index.js";
+} from "../../../../kernel/range/index.js";
 import { expandRectForClear } from "../../../../renderers/canvas/renderer.js";
 import { Viewport } from "../orchestration/viewport.js";
 import { Logger } from "../../../../utils/log/logger.js";

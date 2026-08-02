@@ -55,7 +55,7 @@ class DragGestureProcessor {
   /**
    * 解析对象在位置缓存中的键
    * @param {import("../object-modifier.js").ObjectModifierTool} modifier - 宿主对象修改工具
-   * @param {import("../../../../../engine/types/types.js").LightweightObjectEntry} obj - 对象条目
+   * @param {import("../../../../../../kernel/types/types.js").LightweightObjectEntry} obj - 对象条目
    * @returns {number|object} 数字 id 或对象引用
    * @private
    */
@@ -66,7 +66,7 @@ class DragGestureProcessor {
   /**
    * 读取对象当前位置并规整为 plain 坐标
    * @param {import("../object-modifier.js").ObjectModifierTool} modifier - 宿主对象修改工具
-   * @param {import("../../../../../engine/types/types.js").LightweightObjectEntry} obj - 对象条目
+   * @param {import("../../../../../../kernel/types/types.js").LightweightObjectEntry} obj - 对象条目
    * @returns {{ x: number, y: number }} 世界坐标
    * @private
    */
@@ -78,7 +78,7 @@ class DragGestureProcessor {
   /**
    * 记录各对象的初始位置（仅首次记录，永不覆盖）
    * @param {import("../object-modifier.js").ObjectModifierTool} modifier - 宿主对象修改工具
-   * @param {import("../../../../../engine/types/types.js").LightweightObjectEntry[]} objects - 活动对象集合
+   * @param {import("../../../../../../kernel/types/types.js").LightweightObjectEntry[]} objects - 活动对象集合
    * @private
    */
   _recordInitialPositions(modifier, objects) {

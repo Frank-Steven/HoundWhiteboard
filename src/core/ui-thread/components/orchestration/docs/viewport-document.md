@@ -1,6 +1,6 @@
 # Viewport 文档
 
-本文档提供 `Viewport`（UI 侧视口 facade）的概述。Worker 侧 `ViewportCore` 参见 [viewport-core-document.md](../../../../engine/orchestration/docs/viewport-core-document.md)。
+本文档提供 `Viewport`（UI 侧视口 facade）的概述。Worker 侧 `ViewportCore` 参见 [viewport-core-document.md](../../../../../kernel/document/docs/viewport-core-document.md)。
 
 ## 概述
 
@@ -70,7 +70,7 @@ base/live 的合成像素内容来自 Worker（`liveBitmap` 已合成两层）�
 
 ## 相关文档
 
-- [viewport-core-document.md](../../../../engine/orchestration/docs/viewport-core-document.md)
+- [viewport-core-document.md](../../../../../kernel/document/docs/viewport-core-document.md)
 - [input-scope-document.md](./input-scope-document.md)
 - [board-document.md](./board-document.md)
 - [ui-renderer-document.md](../../renderer/docs/ui-renderer-document.md)

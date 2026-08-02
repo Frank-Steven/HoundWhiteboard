@@ -3,7 +3,7 @@ import {
   interpretEllipseBounding,
   createEllipseBoundingProcessor,
 } from "../bounding-processor.js";
-import { Vector } from "../../../../../../engine/utils/math.js";
+import { Vector } from "../../../../../../../kernel/utils/math.js";
 
 describe("interpretEllipseBounding 纯函数", () => {
   test("位置为矩形中心，双轴半径为宽高一半", () => {

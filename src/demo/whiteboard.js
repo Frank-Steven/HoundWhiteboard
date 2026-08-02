@@ -5,7 +5,7 @@
  * @author Zhou Chenyu
  */
 
-import { Vector } from "../core/engine/utils/math.js";
+import { Vector } from "../kernel/utils/math.js";
 import { Board } from "../core/ui-thread/components/orchestration/board.js";
 import { createConsolePrinter, logBus } from "../utils/log/index.js";
 import {

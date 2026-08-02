@@ -12,10 +12,10 @@ import {
   expandRectForClear,
   normalizeDirtyRectsForScreenUpdate,
 } from "./renderer.js";
-import { BasicObject } from "../../core/engine/objects/basic-obj.js";
-import { RectangleRange } from "../../core/engine/range/rectangle.js";
-import { DirectedGraph } from "../../core/engine/utils/directed-graph.js";
-import { ActiveObjectManager } from "../../core/engine/orchestration/active-object-manager.js";
+import { BasicObject } from "../../kernel/objects/basic-obj.js";
+import { RectangleRange } from "../../kernel/range/rectangle.js";
+import { DirectedGraph } from "../../kernel/utils/directed-graph.js";
+import { ActiveObjectManager } from "../../kernel/document/active-object-manager.js";
 import { collectActiveDrawables as _collectActiveDrawables } from "./aom-collect-utils.js";
 import { RenderScheduler, createRectangleDirtyRectMerger } from "./render-scheduler.js";
 import {

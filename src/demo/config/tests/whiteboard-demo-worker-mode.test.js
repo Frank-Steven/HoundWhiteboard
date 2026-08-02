@@ -9,7 +9,7 @@ import {
   createNoopCanvas,
   installNoopOffscreenCanvas,
 } from "../../../core/test-support/noop-canvas.js";
-import { Vector } from "../../../core/engine/utils/math.js";
+import { Vector } from "../../../kernel/utils/math.js";
 import {
   configureWhiteboardDemo,
   DEMO_PRIMARY_STROKE_COLOR,

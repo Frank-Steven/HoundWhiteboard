@@ -1,4 +1,4 @@
-import { SharedStateStore } from "../../../../engine/utils/shared-state-store.js";
+import { SharedStateStore } from "../../../../../kernel/utils/shared-state-store.js";
 import { switchTool } from "../switch-tool.js";
 
 describe("switchTool", () => {

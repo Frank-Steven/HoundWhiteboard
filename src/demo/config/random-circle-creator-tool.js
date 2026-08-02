@@ -11,7 +11,7 @@ import { SignalPacket } from "../../core/ui-thread/devices-dag/dag-core/signal.j
 import { CircleDataCreatorTool } from "../../core/ui-thread/devices-dag/tools/creator/circle/data-creator.js";
 import { createCircleRadiusProcessor } from "../../core/ui-thread/devices-dag/tools/creator/circle/radius-processor.js";
 import { SIGNAL_TYPES } from "../../core/ui-thread/devices-dag/dag-core/signal-types.js";
-import { Vector } from "../../core/engine/utils/math.js";
+import { Vector } from "../../kernel/utils/math.js";
 import { isPlainObject } from "../../core/ui-thread/devices-dag/prefixes/utils.js";
 
 /**

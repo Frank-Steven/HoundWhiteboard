@@ -61,7 +61,7 @@ board.signalsEventBus.emit("input", {
 - 订阅者禁止在回调内同步 dispatch 进设备图
 - 写 store 不等于触发图内行为——以工具切换为例，完整切换 = `set` store + 发 `tool-switch` 信号
 
-DAG 内经 `services.sharedState` 注入，图外代码持 `Board` 引用直接访问。详见 [shared-state-store 文档](../engine/utils/docs/shared-state-store-document.md)。
+DAG 内经 `services.sharedState` 注入，图外代码持 `Board` 引用直接访问。详见 [shared-state-store 文档](../../kernel/utils/docs/shared-state-store-document.md)。
 
 ## BoardApiRpc
 

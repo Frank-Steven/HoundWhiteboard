@@ -222,7 +222,7 @@ describe("Viewport (constructor unit)", () => {
 });
 
 import { createSubDAG } from "../../../devices-dag/index.js";
-import { Vector } from "../../../../engine/utils/math.js";
+import { Vector } from "../../../../../kernel/utils/math.js";
 import { createPrefixNodeHandler } from "../../../devices-dag/prefixes/index.js";
 import { createWorkerBoardContext } from "../../../../test-support/worker-mode-fixtures.js";
 

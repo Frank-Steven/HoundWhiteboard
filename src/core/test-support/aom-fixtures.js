@@ -7,12 +7,12 @@
  */
 
 import { createDefaultPersistenceAdapter } from "../bridges/persistence-adapter.js";
-import { BoardCore } from "../engine/orchestration/board-core.js";
-import { createDefaultAomRenderHooks } from "../engine/orchestration/aom-render-hooks.js";
-import { Chunk } from "../engine/chunk/chunk.js";
-import { CHUNK_LOAD_STRATEGIES } from "../engine/chunk/chunk-loader.js";
-import { BasicObject } from "../engine/objects/basic-obj.js";
-import { Vector } from "../engine/utils/math.js";
+import { BoardCore } from "../../kernel/document/board-core.js";
+import { createDefaultAomRenderHooks } from "../../kernel/document/aom-render-hooks.js";
+import { Chunk } from "../../kernel/chunk/chunk.js";
+import { CHUNK_LOAD_STRATEGIES } from "../../kernel/chunk/chunk-loader.js";
+import { BasicObject } from "../../kernel/objects/basic-obj.js";
+import { Vector } from "../../kernel/utils/math.js";
 
 /**
  * 按 ID 创建已加载的区块
@@ -77,8 +77,8 @@ function ensureBoardCoreChunkLoaded(boardCore, chunkId, options = {}) {
  *   rootPath?: string,
  *   chunkIds?: Iterable<number>,
  *   chunkStrategy?: "temp" | "full",
- *   aomRenderHooks?: import("../engine/orchestration/board-core.js").AomRenderHooks,
- *   persistenceAdapter?: import("../engine/orchestration/board-core.js").PersistenceAdapter,
+ *   aomRenderHooks?: import("../../kernel/document/board-core.js").AomRenderHooks,
+ *   persistenceAdapter?: import("../../kernel/document/board-core.js").PersistenceAdapter,
  * }} [options={}] - BoardCore 初始化选项
  * @returns {{
  *   boardCore: BoardCore,

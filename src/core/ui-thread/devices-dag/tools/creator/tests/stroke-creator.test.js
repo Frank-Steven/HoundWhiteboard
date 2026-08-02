@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 import { StrokeCreatorTool } from "../stroke-creator.js";
-import { Vector } from "../../../../../engine/utils/math.js";
+import { Vector } from "../../../../../../kernel/utils/math.js";
 import { createMouseDevice } from "../../../devices/mouse-device.js";
 import {
   createWorkerBoardContext,

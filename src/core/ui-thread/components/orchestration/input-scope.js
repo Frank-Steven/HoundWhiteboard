@@ -8,7 +8,7 @@
  * @author Zhou Chenyu
  */
 
-import { joinPath } from "../../../engine/utils/path.js";
+import { joinPath } from "../../../../kernel/utils/path.js";
 
 /**
  * 输入接线作用域

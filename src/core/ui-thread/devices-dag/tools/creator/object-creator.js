@@ -5,7 +5,7 @@
  * @author Zhou Chenyu
  */
 
-import { Vector } from "../../../../engine/utils/math.js";
+import { Vector } from "../../../../../kernel/utils/math.js";
 import { SignalPacket } from "../../dag-core/signal.js";
 import { SIGNAL_TYPES } from "../../dag-core/signal-types.js";
 import { GestureTool } from "../gesture-tool.js";
@@ -43,7 +43,7 @@ class ObjectCreatorTool extends GestureTool {
    * 纯数据对象，遵循 LightweightObjectEntry 协议，不再持有 BasicObject 实例。
    * 手势期几何读写均通过此对象完成，Worker 侧同步通过 RPC fire-and-forget 平行维护。
    * 子类的 `create()` 实现应设置 `type` 字段与其 `getCreatedObjectType()` 返回值一致。
-   * @type {import("../../../../engine/types/types.js").LightweightObjectEntry | null}
+   * @type {import("../../../../../kernel/types/types.js").LightweightObjectEntry | null}
    */
   _entry;
 

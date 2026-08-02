@@ -11,8 +11,8 @@ import { StrokeCreatorTool } from "../../creator/stroke-creator.js";
 import { RectangleObjectChooserTool } from "../../chooser/rectangle-object-chooser.js";
 import { CommonObjectModifierTool } from "../../modifier/common-object-modifier.js";
 import { DragGestureProcessor } from "../../modifier/gesture/drag-processor.js";
-import { Vector } from "../../../../../engine/utils/math.js";
-import { RectangleRange } from "../../../../../engine/range/rectangle.js";
+import { Vector } from "../../../../../../kernel/utils/math.js";
+import { RectangleRange } from "../../../../../../kernel/range/rectangle.js";
 import {
   createMockCreator,
   createMockModifier,

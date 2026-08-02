@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import { EllipseDataCreatorTool } from "../data-creator.js";
 import { createEllipseBoundingProcessor } from "../bounding-processor.js";
-import { Vector } from "../../../../../../engine/utils/math.js";
+import { Vector } from "../../../../../../../kernel/utils/math.js";
 
 function createTool(options = {}) {
   return new EllipseDataCreatorTool({

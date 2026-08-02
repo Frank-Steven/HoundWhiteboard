@@ -261,5 +261,5 @@ viewport.mountSubDAG("/presentation", createKeyboardDevice());
 
 - [设备图](../../docs/devices-dag-document.md)
 - [键盘设备](./keyboard-device-document.md)
-- [shared-state-store](../../../../engine/utils/docs/shared-state-store-document.md)
+- [shared-state-store](../../../../../kernel/utils/docs/shared-state-store-document.md)
 - [输入流](../../../../docs/core-input-flow.md)

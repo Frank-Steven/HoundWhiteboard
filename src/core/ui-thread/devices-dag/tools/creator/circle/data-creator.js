@@ -5,9 +5,9 @@
  * @author Zhou Chenyu
  */
 
-import { DEFAULT_CIRCLE_PROPERTY } from "../../../../../engine/objects/graph/circle.js";
+import { DEFAULT_CIRCLE_PROPERTY } from "../../../../../../kernel/objects/graph/circle.js";
 import { SingleGestureObjectCreatorTool } from "../object-creator.js";
-import { Vector } from "../../../../../engine/utils/math.js";
+import { Vector } from "../../../../../../kernel/utils/math.js";
 
 /**
  * 圆形数据创建工具类
@@ -26,7 +26,7 @@ import { Vector } from "../../../../../engine/utils/math.js";
 class CircleDataCreatorTool extends SingleGestureObjectCreatorTool {
   /**
    * 当前正在创建圆对象的本地状态
-   * @type {import("../../../../../engine/types/types.js").LightweightObjectEntry & { data: { radius: number } } | null}
+   * @type {import("../../../../../../kernel/types/types.js").LightweightObjectEntry & { data: { radius: number } } | null}
    */
   _entry;
 

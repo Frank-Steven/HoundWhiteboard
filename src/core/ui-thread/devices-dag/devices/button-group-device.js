@@ -70,7 +70,7 @@ function createButtonGroupDevice(options = {}) {
   /**
    * 从上下文解析 sharedState 并缓存引用
    * @param {import("../dag-type.js").DevicesDAGHandlerContext} ctx - 设备图处理器上下文
-   * @returns {import("../../../engine/utils/shared-state-store.js").SharedStateStore|null}
+   * @returns {import("../../../../kernel/utils/shared-state-store.js").SharedStateStore|null}
    */
   const resolveSharedState = (ctx) => {
     const sharedState = ctx?.services?.sharedState;

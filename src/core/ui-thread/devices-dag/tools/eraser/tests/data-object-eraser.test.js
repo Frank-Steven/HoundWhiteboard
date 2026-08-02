@@ -1,9 +1,9 @@
 import { jest } from "@jest/globals";
 import { DataObjectEraserTool } from "../data-object-eraser.js";
-import { Vector } from "../../../../../engine/utils/math.js";
-import { BoardApi } from "../../../../../engine/api/board-api.js";
-import { BoardCore } from "../../../../../engine/orchestration/board-core.js";
-import { createDefaultAomRenderHooks } from "../../../../../engine/orchestration/aom-render-hooks.js";
+import { Vector } from "../../../../../../kernel/utils/math.js";
+import { BoardApi } from "../../../../../../kernel/api/board-api.js";
+import { BoardCore } from "../../../../../../kernel/document/board-core.js";
+import { createDefaultAomRenderHooks } from "../../../../../../kernel/document/aom-render-hooks.js";
 import { createDefaultPersistenceAdapter } from "../../../../../bridges/persistence-adapter.js";
 import { flushMicrotasks } from "../../../../../test-support/worker-mode-fixtures.js";
 

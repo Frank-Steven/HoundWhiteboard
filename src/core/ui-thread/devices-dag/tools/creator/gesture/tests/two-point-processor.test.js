@@ -1,6 +1,6 @@
 import { jest } from "@jest/globals";
 import { TwoPointGestureProcessor } from "../two-point-processor.js";
-import { Vector } from "../../../../../../engine/utils/math.js";
+import { Vector } from "../../../../../../../kernel/utils/math.js";
 
 function createMockCreator() {
   return {

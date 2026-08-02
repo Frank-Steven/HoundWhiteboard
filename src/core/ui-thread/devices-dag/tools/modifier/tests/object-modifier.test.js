@@ -1,7 +1,7 @@
 import { jest } from "@jest/globals";
 import { ObjectModifierTool } from "../object-modifier.js";
-import { RectangleRange } from "../../../../../engine/range/index.js";
-import { Vector } from "../../../../../engine/utils/math.js";
+import { RectangleRange } from "../../../../../../kernel/range/index.js";
+import { Vector } from "../../../../../../kernel/utils/math.js";
 
 describe("ObjectModifierTool", () => {
   test("withGeometryMutation 应按快照再失效的顺序包装一次几何修改", () => {

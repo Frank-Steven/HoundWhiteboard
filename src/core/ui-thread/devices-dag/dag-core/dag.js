@@ -22,9 +22,9 @@ import {
   joinPath,
   normalizePath,
   resolvePath,
-} from "../../../engine/utils/path.js";
+} from "../../../../kernel/utils/path.js";
 import { SignalPacket } from "./signal.js";
-import { CounterPool } from "../../../engine/utils/counter-pool.js";
+import { CounterPool } from "../../../../kernel/utils/counter-pool.js";
 import { isPlainObject, isSubDAGDefinition } from "./dag-utils.js";
 import {
   wouldCreateCycle,

@@ -18,7 +18,7 @@ import {
   applyNodeDefinitionToNode,
 } from "./dag-utils.js";
 import { SignalPacket } from "./signal.js";
-import { normalizePath, joinPath } from "../../../engine/utils/path.js";
+import { normalizePath, joinPath } from "../../../../kernel/utils/path.js";
 import { Logger } from "../../../../utils/log/logger.js";
 import { logBus } from "../../../../utils/log/log-bus.js";
 
