@@ -25,14 +25,14 @@ description: Write and unify JSDoc, inline comments, and file headers following 
 /**
  * @file ...
  * @description ...
- * @module core/...
+ * @module kernel/...
  * @author ...
  */
 ```
 
 - `@file` — 简短的文件名或职责描述
 - `@description` — 一句话说明文件职责，必须打句号
-- `@module` — 路径格式为 `core/{path/to/module}`，与源码路径对应
+- `@module` — 路径格式为 `{kernel|canvas|host|ui}/{path/to/module}`，与源码路径对应（各包根目录即前缀）
 - `@author` — 作者名。不确定时执行 `git config user.name`
 
 ### 测试文件
@@ -62,7 +62,7 @@ description: Write and unify JSDoc, inline comments, and file headers following 
 /**
  * @file 白板组件
  * @description Board 类是白板在面向对象设计中的抽象核心。
- * @module core/ui/components/orchestration/board
+ * @module ui/components/orchestration/board
  * @author ...
  */
 ```
@@ -75,7 +75,7 @@ description: Write and unify JSDoc, inline comments, and file headers following 
  * @description
  * 提供 BoardApi 接口的同线程实现，直接调用 BoardCore 的同步/异步方法。
  * P2 阶段保持同步封装，P3 切为 RPC 实现后保持相同方法签名。
- * @module core/bridges/board-api
+ * @module kernel/api/board-api
  * @author Zhou Chenyu
  */
 ```

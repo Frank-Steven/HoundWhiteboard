@@ -54,21 +54,22 @@ Scope 指明变更影响的主要模块/目录。从项目结构和 commit 历�
 
 | Scope         | 对应目录                             |
 | ------------- | ------------------------------------ |
-| `core`        | `src/core/`（通用核心层）            |
+| `kernel`      | `src/kernel/`（内核层）              |
+| `render`      | `src/renderers/`（渲染插件）         |
+| `host`        | `src/host/`（组合根与通道）          |
 | `worker-mode` | Worker 模式相关（worker/proxy 切换） |
-| `core-worker` | `src/core-worker.js`                 |
-| `board-api`   | `src/core/bridges/`                  |
-| `creator`     | `src/core/tools/creator/`            |
-| `chooser`     | `src/core/tools/chooser/`            |
-| `modifier`    | `src/core/tools/modifier/`           |
+| `core-worker` | `src/host/core-worker.js`            |
+| `board-api`   | `src/host/bridges/`                  |
+| `creator`     | `src/ui/devices-dag/tools/creator/`  |
+| `chooser`     | `src/ui/devices-dag/tools/chooser/`  |
+| `modifier`    | `src/ui/devices-dag/tools/modifier/` |
 | `tool`        | 工具整体或跨工具                     |
-| `dag`         | `src/core/ui/devices-dag/`           |
-| `ui-renderer` | `src/core/ui/components/renderer/`   |
-| `object`      | `src/core/shared/objects/`           |
+| `dag`         | `src/ui/devices-dag/`                |
+| `ui-renderer` | `src/ui/components/renderer/`        |
+| `object`      | `src/kernel/objects/`                |
 | `demo`        | `src/demo/config/`                   |
 | `test`        | 测试修改（不限目录）                 |
 | `docs`        | 文档修改                             |
-| `render`      | 渲染相关                             |
 | `benchmarks`  | `benchmarks/`                        |
 
 ## 编写准则

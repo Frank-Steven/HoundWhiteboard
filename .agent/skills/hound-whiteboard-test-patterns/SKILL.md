@@ -25,29 +25,26 @@ description: Hound Whiteboard 项目的测试模式、目录结构和编写规�
 测试文件与源码保持同级 `tests/` 目录：
 
 ```
-src/core/
-├── components/tests/
-│   └── board-input-flow.test.js   ← 只测 Board 输入路由基础设施（Mock 工具）
-├── tools/
-│   ├── creator/tests/
-│   │   ├── stroke-creator.test.js  ← StrokeCreatorTool 所有测试
-│   │   └── polygon-creator.test.js
-│   ├── creator/circle/tests/
-│   │   ├── data-creator.test.js    ← CircleDataCreatorTool 生命周期
-│   │   └── processors.test.js      ← 三种圆手势 interpret + 端到端
-│   ├── creator/gesture/tests/
-│   │   └── two-point-processor.test.js
-│   ├── modifier/tests/
-│   │   └── common-object-modifier.test.js
-│   ├── chooser/tests/
-│   │   ├── obj-chooser.test.js
-│   │   └── rectangle-object-chooser.test.js
-│   └── wrapper/tests/
-│       ├── wrapper-tool.test.js      ← WrapperTool 基座
-│       ├── handoff-wrapper.test.js   ← handoff 机制 + 真实工具集成
-│       └── switcher-wrapper.test.js  ← tool-switcher 路由
-└── prefixs/tests/
-    └── prefix-node.test.js          ← prefix 基础设施
+src/
+├── tests/                            ← 跨包冒烟 / 集成测试（board-input-flow 等，Mock 工具）
+└── ui/devices-dag/tools/
+    ├── creator/tests/
+    │   ├── stroke-creator.test.js    ← StrokeCreatorTool 所有测试
+    │   └── polygon-creator.test.js
+    ├── creator/circle/tests/
+    │   ├── data-creator.test.js      ← CircleDataCreatorTool 生命周期
+    │   └── processors.test.js        ← 三种圆手势 interpret + 端到端
+    ├── creator/gesture/tests/
+    │   └── two-point-processor.test.js
+    ├── modifier/tests/
+    │   └── common-object-modifier.test.js
+    ├── chooser/tests/
+    │   ├── object-chooser.test.js
+    │   └── rectangle-object-chooser.test.js
+    └── wrapper/tests/
+        ├── wrapper-tool.test.js      ← WrapperTool 基座
+        ├── handoff-wrapper.test.js   ← handoff 机制 + 真实工具集成
+        └── switcher-wrapper.test.js  ← tool-switcher 路由
 ```
 
 **规则**：

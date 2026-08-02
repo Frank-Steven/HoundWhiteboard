@@ -4,14 +4,29 @@
 
 ## 架构概述
 
-本项目专注于白板核心引擎与 Tauri 桌面端：
+本项目专注于白板内核与 Tauri 桌面端：
 
-- **Core Worker** — 对象管理、区块系统、层叠图、渲染调度，运行在 Web Worker 中
+- **Kernel** — 对象模型、几何、区块、BoardCore 静态图、AOM 动态图、操作日志（hit）与 BoardApi 契约；零 canvas/DOM，可运行于 Worker、UI 线程或 Node 环境
+- **Renderer 插件** — canvas 渲染器贴附内核同宿运行：脏区渲染、位图合成、对象绘制策略注册表；渲染过程不过桥，RPC 只过操作与帧
+- **Host** — 组合根与通道：Core Worker 宿主与 bridges，决定内核与渲染器进程内直连（standalone）还是 RPC 绑定（Worker）
 - **Devices DAG** — 输入设备路由图，将鼠标/键盘/触摸等输入信号路由到对应的工具处理器
-- **Viewport Renderer** — 脏区渲染、位图合成、Overlay UI 渲染
 - **Tool System** — 创建、选择、修改、擦除等交互工具
 
 UI Kit 另由 [HoundTek/hound-react-ui-kit](https://github.com/HoundTek/hound-react-ui-kit) 独立开发，使用 Cell DSL 构建 UI，为后续 React UI 迁移做准备。
+
+## 项目结构
+
+```
+src/
+├── kernel/        # 内核包（零 canvas/DOM：对象、几何、区块、BoardCore、AOM、hit、BoardApi）
+├── renderers/     # 渲染插件（canvas 渲染器、绘制策略注册表）
+├── host/          # 组合根与通道（core-worker、bridges/RPC）
+├── ui/            # UI front（Board、Viewport、DevicesDAG、Tools、overlay）
+├── docs/          # 架构文档
+├── demo/          # 白板 HTML/CSS/JS 入口
+├── utils/         # 应用级工具（filesys、log、safe-io）
+└── src-tauri/     # Rust 后端（Cargo workspace）
+```
 
 ## 准备工作
 
