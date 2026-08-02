@@ -85,57 +85,6 @@ class PolygonObject extends GraphObject {
     return this.rich.worldPolygonRange;
   }
 
-  render(ctx) {
-    if (
-      !this.rich.localPolygonRange ||
-      this.rich.localPolygonRange.points.length === 0
-    ) {
-      return;
-    }
-
-    const strokeWidth = this.property.strokeWidth;
-    const shouldFill = Boolean(this.property.fillColor);
-    const shouldStroke =
-      Boolean(this.property.strokeColor) &&
-      Number.isFinite(strokeWidth) &&
-      strokeWidth > 0;
-
-    if (!shouldFill && !shouldStroke) {
-      return;
-    }
-
-    const points = this.rich.localPolygonRange.points;
-    ctx.save();
-    ctx.setTransform(
-      this.transform.a,
-      this.transform.b,
-      this.transform.c,
-      this.transform.d,
-      this.position.x,
-      this.position.y,
-    );
-    ctx.globalCompositeOperation = "source-over";
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-      ctx.lineTo(points[i].x, points[i].y);
-    }
-    ctx.closePath();
-
-    if (shouldFill) {
-      ctx.fillStyle = this.property.fillColor;
-      ctx.fill();
-    }
-
-    if (shouldStroke) {
-      ctx.strokeStyle = this.property.strokeColor;
-      ctx.lineWidth = strokeWidth;
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  }
-
   serialize() {
     return {
       ...super.serialize(),

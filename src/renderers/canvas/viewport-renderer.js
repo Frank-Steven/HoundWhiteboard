@@ -17,6 +17,10 @@ import { RectangleRange } from "../../kernel/range/rectangle.js";
 import { DirectedGraph } from "../../kernel/utils/directed-graph.js";
 import { ActiveObjectManager } from "../../kernel/document/active-object-manager.js";
 import { collectActiveDrawables as _collectActiveDrawables } from "./aom-collect-utils.js";
+import {
+  drawObject,
+  OBJECT_DRAW_STRATEGIES,
+} from "./object-draw-strategies.js";
 import { RenderScheduler, createRectangleDirtyRectMerger } from "./render-scheduler.js";
 import {
   createBaseDirtyRectThresholdStrategy,
@@ -688,8 +692,8 @@ class ViewportRenderer extends Renderer {
     this.#clearCache();
 
     for (const entry of drawableEntries) {
-      if (typeof entry.object.render !== "function") continue;
-      entry.object.render(viewportContext);
+      if (!OBJECT_DRAW_STRATEGIES.has(entry.object.constructor)) continue;
+      drawObject(viewportContext, entry.object);
     }
 
     this.#cacheDirty = false;
@@ -815,7 +819,7 @@ class ViewportRenderer extends Renderer {
 
     // 按脏区裁剪绘制 AOM 对象：不相交则跳过，相交则裁剪到对应脏区
     for (const entry of drawableEntries) {
-      if (typeof entry.object.render !== "function") continue;
+      if (!OBJECT_DRAW_STRATEGIES.has(entry.object.constructor)) continue;
       if (
         hasExplicitDirtyRects &&
         !this.intersectsDirtyRects(entry, normalizedDirtyRects)

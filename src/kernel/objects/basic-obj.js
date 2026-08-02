@@ -252,16 +252,6 @@ class BasicObject {
   }
 
   /**
-   * 渲染对象到画布上下文
-   * @abstract
-   * @param {CanvasRenderingContext2D} ctx - 画布上下文
-   * @description 子类必须实现此方法以支持对象的渲染
-   */
-  render(ctx) {
-    throw new Error("Method not implemented.");
-  }
-
-  /**
    * 将此对象序列化以持久化对象
    * @abstract
    * @returns {Object} 序列化后的对象

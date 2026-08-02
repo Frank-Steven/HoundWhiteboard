@@ -10,6 +10,10 @@ import { intersectsRanges, RectangleRange } from "../../kernel/range/index.js";
 import { PathRange } from "../../kernel/range/path.js";
 import { createRectangleDirtyRectMerger } from "./render-scheduler.js";
 import { CanvasHost } from "./canvas-lifecycle.js";
+import {
+  drawObject,
+  OBJECT_DRAW_STRATEGIES,
+} from "./object-draw-strategies.js";
 
 const PATH_RASTERIZATION_SCREEN_PADDING = 1;
 
@@ -307,7 +311,7 @@ class Renderer extends CanvasHost {
     dirtyRects,
   ) {
     if (!Array.isArray(dirtyRects) || dirtyRects.length === 0) {
-      objectInstance.render(viewportContext);
+      drawObject(viewportContext, objectInstance);
       return;
     }
 
@@ -316,7 +320,7 @@ class Renderer extends CanvasHost {
       .filter(Boolean);
 
     if (clipRects.length === 0) {
-      objectInstance.render(viewportContext);
+      drawObject(viewportContext, objectInstance);
       return;
     }
 
@@ -328,7 +332,7 @@ class Renderer extends CanvasHost {
     }
 
     ctx.clip();
-    objectInstance.render(viewportContext);
+    drawObject(viewportContext, objectInstance);
     ctx.restore();
   }
 
@@ -413,7 +417,7 @@ class Renderer extends CanvasHost {
       if (hasExplicitDirtyRects) {
         if (!this.intersectsDirtyRects(entry, effectiveDirtyRects)) continue;
       }
-      if (typeof entry.object.render !== "function") continue;
+      if (!OBJECT_DRAW_STRATEGIES.has(entry.object.constructor)) continue;
 
       const entryDirtyRects = hasExplicitDirtyRects
         ? this.getEntryDirtyRects(entry, effectiveDirtyRects)

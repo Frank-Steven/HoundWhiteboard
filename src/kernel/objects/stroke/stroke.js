@@ -208,42 +208,6 @@ class StrokeObject extends BasicObject {
     return this.rich.worldPathRange;
   }
 
-  render(ctx) {
-    if (
-      !this.rich.localPathRange ||
-      this.rich.localPathRange.points.length === 0
-    ) {
-      return;
-    }
-
-    const strokeWidth = this.property.width;
-    if (!(Number.isFinite(strokeWidth) && strokeWidth > 0)) {
-      return;
-    }
-
-    const transformedPoints = this.rich.worldPathRange.points;
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, this.position.x, this.position.y);
-    ctx.strokeStyle = this.property.color;
-    ctx.globalCompositeOperation = "source-over";
-    ctx.lineWidth = strokeWidth;
-    ctx.lineJoin = this.property.lineJoin ?? DEFAULT_STROKE_PROPERTY.lineJoin;
-    ctx.lineCap = this.property.lineCap ?? DEFAULT_STROKE_PROPERTY.lineCap;
-    ctx.beginPath();
-    ctx.moveTo(transformedPoints[0].x, transformedPoints[0].y);
-    if (transformedPoints.length === 1) {
-      ctx.arc(0, 0, strokeWidth / 2, 0, Math.PI * 2);
-      ctx.fillStyle = this.property.color;
-      ctx.fill();
-    } else {
-      for (let i = 1; i < transformedPoints.length; i++) {
-        ctx.lineTo(transformedPoints[i].x, transformedPoints[i].y);
-      }
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
   serialize() {
     return {
       ...super.serialize(),

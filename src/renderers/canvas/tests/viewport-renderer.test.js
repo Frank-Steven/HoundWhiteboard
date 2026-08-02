@@ -12,6 +12,7 @@ import { RectangleRange } from "../../../kernel/range/rectangle.js";
 import { PathRange } from "../../../kernel/range/path.js";
 import { Layer } from "../../../kernel/document/active-object-manager.js";
 import { installNoopOffscreenCanvas } from "../../../core/test-support/noop-canvas.js";
+import { OBJECT_DRAW_STRATEGIES } from "../object-draw-strategies.js";
 
 /**
  * 假矩形对象
@@ -27,18 +28,6 @@ class FakeRectObject extends BasicObject {
     super(id, position);
     this.renderCalls = renderCalls;
     this.rich.boundingBox = new RectangleRange(0, 0, 10, 10);
-  }
-
-  /**
-   * 渲染对象
-   * @param {CanvasRenderingContext2D & { __label?: string }} ctx - 画布上下文
-   */
-  render(ctx) {
-    this.renderCalls.push([this.id, ctx.__label ?? "unknown"]);
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, this.position.x, this.position.y);
-    ctx.fillRect?.(0, 0, 10, 10);
-    ctx.restore();
   }
 }
 
@@ -62,12 +51,17 @@ class FakePathObject extends BasicObject {
   getRange() {
     return new PathRange([new Vector(0, 0), new Vector(10, 0)]);
   }
-
-  /**
-   * 渲染对象
-   */
-  render() { }
 }
+
+// 为测试假对象注册绘制策略（验证插件机制：新对象类型经注册接入渲染管线）
+OBJECT_DRAW_STRATEGIES.set(FakeRectObject, (ctx, object) => {
+  object.renderCalls.push([object.id, ctx.__label ?? "unknown"]);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, object.position.x, object.position.y);
+  ctx.fillRect?.(0, 0, 10, 10);
+  ctx.restore();
+});
+OBJECT_DRAW_STRATEGIES.set(FakePathObject, () => {});
 
 /**
  * 创建记录型上下文

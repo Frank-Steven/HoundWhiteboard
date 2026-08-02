@@ -72,49 +72,6 @@ class CircleObject extends GraphObject {
     ).transform(this.transform);
   }
 
-  render(ctx) {
-    if (this.data.radius <= 0) {
-      return;
-    }
-
-    const strokeWidth = this.property.strokeWidth;
-    const shouldFill = Boolean(this.property.fillColor);
-    const shouldStroke =
-      Boolean(this.property.strokeColor) &&
-      Number.isFinite(strokeWidth) &&
-      strokeWidth > 0;
-
-    if (!shouldFill && !shouldStroke) {
-      return;
-    }
-
-    ctx.save();
-    ctx.setTransform(
-      this.transform.a,
-      this.transform.b,
-      this.transform.c,
-      this.transform.d,
-      this.position.x,
-      this.position.y,
-    );
-    ctx.globalCompositeOperation = "source-over";
-    ctx.beginPath();
-    ctx.arc(0, 0, this.data.radius, 0, Math.PI * 2);
-
-    if (shouldFill) {
-      ctx.fillStyle = this.property.fillColor;
-      ctx.fill();
-    }
-
-    if (shouldStroke) {
-      ctx.strokeStyle = this.property.strokeColor;
-      ctx.lineWidth = strokeWidth;
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  }
-
   serialize() {
     return {
       ...super.serialize(),
