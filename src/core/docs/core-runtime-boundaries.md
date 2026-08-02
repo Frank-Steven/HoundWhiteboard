@@ -1,11 +1,11 @@
 # Core 运行边界（engine / ui-thread / bridges）
 
-本文档整理 `src/core/engine/` + `src/core/ui-thread/` + `src/core/bridges/` 当前各模块的运行边界。
+本文档整理 `src/core/engine/` + `src/core/ui-thread/` + `src/host/bridges/` 当前各模块的运行边界。
 
 这里的"运行边界"指的是：
 
 - **UI**：浏览器主线程，可直接接触 DOM、DevicesDAG、宿主输入
-- **Worker**：`src/core/engine/core-worker.js` 启动的 Core Worker 线程
+- **Worker**：`src/host/core-worker.js` 启动的 Core Worker 线程
 - **Engine**：可在 UI、Worker、Node 测试环境中复用的纯逻辑
 - **Host**：Tauri / preload / 主进程等宿主桥接层，不属于 Core 运行时本身，但与之交互
 

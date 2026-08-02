@@ -7,7 +7,7 @@
 
 import { DirectedGraph } from "../utils/directed-graph.js";
 import { BasicObject } from "../objects/basic-obj.js";
-import { boardFileOperateBridge } from "../../core/bridges/file-operate-bridge-renderer.js";
+import { boardFileOperateBridge } from "../../host/bridges/file-operate-bridge-renderer.js";
 import {
   intersectsRanges,
   RectangleRange,

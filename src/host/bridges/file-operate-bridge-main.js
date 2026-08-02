@@ -1,7 +1,7 @@
 /**
  * @file Core 文件操作主桥接
  * @description 处理白板根目录与文件系统相关的核心 IPC 交互。
- * @module core/bridges/file-operate-bridge-main
+ * @module host/bridges/file-operate-bridge-main
  * @author Zhou Chenyu
  */
 

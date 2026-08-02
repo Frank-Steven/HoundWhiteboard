@@ -6,7 +6,7 @@
  */
 
 import { Board } from "../ui-thread/components/orchestration/board.js";
-import { createCoreWorkerRuntime } from "../engine/core-worker.js";
+import { createCoreWorkerRuntime } from "../../host/core-worker.js";
 import { createNoopCanvas, installNoopOffscreenCanvas } from "./noop-canvas.js";
 
 /**
@@ -214,7 +214,7 @@ async function flushMicrotasks(_count = 6) {
  * @returns {Promise<{
  *   board: Board,
  *   viewport: import("../ui-thread/components/orchestration/viewport.js").Viewport | null,
- *   runtime: import("../engine/core-worker.js").CoreWorkerRuntime,
+ *   runtime: import("../../host/core-worker.js").CoreWorkerRuntime,
  *   uiEndpoint: LoopbackMessageEndpoint,
  *   workerHost: LoopbackMessageEndpoint,
  *   rootElement: Object,

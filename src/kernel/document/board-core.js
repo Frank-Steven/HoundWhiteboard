@@ -22,7 +22,7 @@ import {
   ChunkLoader,
 } from "../chunk/chunk-loader.js";
 import { Chunk } from "../chunk/chunk.js";
-import { createDefaultPersistenceAdapter } from "../../core/bridges/persistence-adapter.js";
+import { createDefaultPersistenceAdapter } from "../../host/bridges/persistence-adapter.js";
 
 /**
  * @typedef {Object} BoardChunkLoadedState

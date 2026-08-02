@@ -25,6 +25,7 @@ const ROOTS = [
   { dir: path.join(ROOT, "src", "core"), prefix: "core/" },
   { dir: path.join(ROOT, "src", "renderers"), prefix: "" },
   { dir: path.join(ROOT, "src", "kernel"), prefix: "kernel/" },
+  { dir: path.join(ROOT, "src", "host"), prefix: "host/" },
 ];
 
 /**

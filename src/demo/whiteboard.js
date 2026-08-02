@@ -42,7 +42,7 @@ async function bootstrapWhiteboard() {
   }
 
   const worker = new Worker(
-    new URL("../core/engine/core-worker.js", import.meta.url),
+    new URL("../host/core-worker.js", import.meta.url),
     { type: "module" },
   );
 

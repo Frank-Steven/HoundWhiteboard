@@ -1,6 +1,6 @@
 # Core 模块详解
 
-本文档按 `src/core/engine/` + `src/core/ui-thread/` + `src/core/bridges/` 当前目录结构总结各模块职责与协作关系。
+本文档按 `src/core/engine/` + `src/core/ui-thread/` + `src/host/bridges/` 当前目录结构总结各模块职责与协作关系。
 
 更细的线程边界见 [core-runtime-boundaries.md](./core-runtime-boundaries.md)。
 

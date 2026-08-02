@@ -12,7 +12,7 @@ import { BoardCore } from "../../document/board-core.js";
 import { Chunk } from "../chunk.js";
 import { CHUNK_LOAD_EVENTS, CHUNK_LOAD_STRATEGIES } from "../chunk-loader.js";
 import { createDefaultAomRenderHooks } from "../../document/aom-render-hooks.js";
-import { createDefaultPersistenceAdapter } from "../../../core/bridges/persistence-adapter.js";
+import { createDefaultPersistenceAdapter } from "../../../host/bridges/persistence-adapter.js";
 
 describe("Multiple ChunkLoader", () => {
   let boardCore;

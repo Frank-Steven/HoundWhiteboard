@@ -5,9 +5,9 @@ import path from "path";
 
 import { DirectedGraph } from "../../utils/directed-graph.js";
 import { Vector } from "../../utils/math.js";
-import { handleCoreFileOperateRequest } from "../../../core/bridges/file-operate-bridge-main.js";
-import { CORE_FILE_OPERATE_ACTIONS } from "../../../core/bridges/file-operate-bridge-common.js";
-import { boardFileOperateBridge } from "../../../core/bridges/file-operate-bridge-renderer.js";
+import { handleCoreFileOperateRequest } from "../../../host/bridges/file-operate-bridge-main.js";
+import { CORE_FILE_OPERATE_ACTIONS } from "../../../host/bridges/file-operate-bridge-common.js";
+import { boardFileOperateBridge } from "../../../host/bridges/file-operate-bridge-renderer.js";
 import { ChunkObjectManager } from "../chunk-object-manager.js";
 import { StrokeObject } from "../../objects/stroke/stroke.js";
 

@@ -2,7 +2,7 @@
  * @jest-environment node
  */
 
-import { createCoreWorkerRuntime } from "../engine/core-worker.js";
+import { createCoreWorkerRuntime } from "../../host/core-worker.js";
 import { installNoopOffscreenCanvas } from "../test-support/noop-canvas.js";
 
 /**

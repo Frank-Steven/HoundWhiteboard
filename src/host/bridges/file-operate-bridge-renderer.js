@@ -1,7 +1,7 @@
 /**
  * @file Core 文件操作渲染器桥接
  * @description 提供渲染进程调用 Core 文件操作的接口（待 Tauri IO 桥实现后接入）。
- * @module core/bridges/file-operate-bridge-renderer
+ * @module host/bridges/file-operate-bridge-renderer
  * @author Zhou Chenyu
  */
 

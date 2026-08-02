@@ -4,7 +4,7 @@
 
 import { Board } from "../../../core/ui-thread/components/orchestration/board.js";
 import { Viewport } from "../../../core/ui-thread/components/orchestration/viewport.js";
-import { createCoreWorkerRuntime } from "../../../core/engine/core-worker.js";
+import { createCoreWorkerRuntime } from "../../../host/core-worker.js";
 import {
   createNoopCanvas,
   installNoopOffscreenCanvas,

@@ -1,7 +1,7 @@
 /**
  * @file 持久化适配器接口
  * @description 定义 BoardCore 与文件系统之间的注入式适配层，消除 BoardCore 对 file-operate-bridge-renderer 的直接依赖。
- * @module core/bridges/persistence-adapter
+ * @module host/bridges/persistence-adapter
  * @author Zhou Chenyu
  */
 

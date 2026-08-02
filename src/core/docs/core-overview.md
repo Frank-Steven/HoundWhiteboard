@@ -1,6 +1,6 @@
 # HoundWhiteboard Core 总览
 
-本文档提供 `src/core/engine/` + `src/core/ui-thread/` + `src/core/bridges/` 当前实现的总览，重点说明 UI 线程、Worker 线程与 engine 核心层如何协作。
+本文档提供 `src/core/engine/` + `src/core/ui-thread/` + `src/host/bridges/` 当前实现的总览，重点说明 UI 线程、Worker 线程与 engine 核心层如何协作。
 
 更细的路径级边界见 [core-runtime-boundaries.md](./core-runtime-boundaries.md)。
 
@@ -9,11 +9,11 @@
 当前 Core 可以按职责分为四层：
 
 1. **宿主层**：Tauri / 模板页面 / DOM 事件绑定 / 文件桥接宿主
-2. **UI 线程层**：`src/core/ui-thread/**` 与 `src/core/bridges/board-api-rpc.js`
+2. **UI 线程层**：`src/core/ui-thread/**` 与 `src/host/bridges/board-api-rpc.js`
 3. **Engine 核心层**：`src/core/engine/**`
 4. **Engine 核心层**：`src/core/engine/**`
 
-其中 `src/core/engine/` + `src/core/ui-thread/` + `src/core/bridges/` 主要覆盖后 3 层。
+其中 `src/core/engine/` + `src/core/ui-thread/` + `src/host/bridges/` 主要覆盖后 3 层。
 
 ### UI 线程层
 
@@ -29,7 +29,7 @@ UI 线程负责：
 
 Worker 层负责真正的数据与渲染权威：
 
-- `CoreWorkerRuntime`：`src/core/engine/core-worker.js` 中的消息入口与 RPC 调度器
+- `CoreWorkerRuntime`：`src/host/core-worker.js` 中的消息入口与 RPC 调度器
 - `BoardCore`：对象、区块、AOM、UndoTree、持久化协调
 - `ViewportCore`：Worker 视口状态、区块缓冲、`ViewportRenderer` 渲染输出
 - `ActiveObjectManager`：交互态对象与动态层关系

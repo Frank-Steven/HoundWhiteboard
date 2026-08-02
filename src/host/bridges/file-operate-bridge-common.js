@@ -1,7 +1,7 @@
 /**
  * @file Core 文件操作桥接通道定义
  * @description 定义 Core 文件操作 IPC 通道与动作枚举。
- * @module core/bridges/file-operate-bridge-common
+ * @module host/bridges/file-operate-bridge-common
  * @author Zhou Chenyu
  */
 

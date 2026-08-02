@@ -11,7 +11,7 @@ import { IncrementalIdPool } from "../../../../kernel/utils/incremental-id-pool.
 import { EventBus } from "../../../../kernel/utils/event-bus.js";
 import { SharedStateStore } from "../../../../kernel/utils/shared-state-store.js";
 import { DevicesDAG } from "../../devices-dag/index.js";
-import { BoardApiRpc } from "../../../bridges/board-api-rpc.js";
+import { BoardApiRpc } from "../../../../host/bridges/board-api-rpc.js";
 import { Viewport } from "./viewport.js";
 import { joinPath } from "../../../../kernel/utils/path.js";
 import { Logger } from "../../../../utils/log/logger.js";

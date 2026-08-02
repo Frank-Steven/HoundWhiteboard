@@ -8,9 +8,9 @@ import {
 import { StrokeObject } from "../../objects/stroke/stroke.js";
 import { Vector } from "../../utils/math.js";
 import { ChunkObjectManager } from "../../chunk/chunk-object-manager.js";
-import { boardFileOperateBridge } from "../../../core/bridges/file-operate-bridge-renderer.js";
+import { boardFileOperateBridge } from "../../../host/bridges/file-operate-bridge-renderer.js";
 import { createDefaultAomRenderHooks } from "../aom-render-hooks.js";
-import { createDefaultPersistenceAdapter } from "../../../core/bridges/persistence-adapter.js";
+import { createDefaultPersistenceAdapter } from "../../../host/bridges/persistence-adapter.js";
 
 describe("Board chunk grid", () => {
   test("Chunk 的回字形 id 与二维坐标应可双向转换", () => {
