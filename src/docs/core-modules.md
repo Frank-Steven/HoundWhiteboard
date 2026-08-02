@@ -1,6 +1,6 @@
 # Core 模块详解
 
-本文档按 `src/core/engine/` + `src/ui/` + `src/host/bridges/` 当前目录结构总结各模块职责与协作关系。
+本文档按 `src/kernel/` + `src/ui/` + `src/host/bridges/` 当前目录结构总结各模块职责与协作关系。
 
 更细的线程边界见 [core-runtime-boundaries.md](./core-runtime-boundaries.md)。
 
@@ -8,18 +8,19 @@
 
 | 目录            | 主要职责                         | 说明                                                                |
 | --------------- | -------------------------------- | ------------------------------------------------------------------- |
-| `engine/`       | 核心领域层                       | 对象模型、range、渲染基类、BoardCore、ViewportCore、chunk、AOM      |
-| `ui-thread/`    | UI 线程运行时                    | Board、Viewport、DevicesDAG、UiRenderer                             |
-| `bridges/`      | UI / Worker / 宿主之间的桥接协议 | 包含 RPC、持久化接口、文件 I/O bridge                               |
+| `kernel/`       | 内核层（零 canvas/DOM）          | 对象模型、range、BoardCore、chunk、AOM、hit、api                    |
+| `renderers/`    | 渲染插件                         | canvas 渲染器、绘制策略注册表                                       |
+| `host/`         | 组合根与通道                     | core-worker、bridges（RPC、持久化接口、文件 I/O bridge）            |
+| `ui/`           | UI 线程运行时                    | Board、Viewport、DevicesDAG、UiRenderer                             |
 | `test-support/` | 测试支撑                         | canvas mock、worker-mode fixture、AOM fixture                       |
 | `tests/`        | 跨模块冒烟测试                   | Board 输入流、Worker smoke、共享模块 smoke                          |
 | `docs/`         | 架构总览文档                     | 当前这组顶层说明文档                                                |
 
-## `ui-thread/`
+## `ui/`
 
-`ui-thread/` 承载主线程侧的输入、视口和 overlay。
+`ui/` 承载主线程侧的输入、视口和 overlay。
 
-### `ui-thread/components/orchestration/`
+### `ui/components/orchestration/`
 
 | 文件                    | 职责                                                                                            |
 | ----------------------- | ----------------------------------------------------------------------------------------------- |
@@ -27,12 +28,12 @@
 | `viewport.js`           | UI 侧视口 facade，负责 DOM canvas、坐标换算、Worker 同步与 workflow 挂载代理                    |
 | `board-render-hooks.js` | UI 侧 render hook 工厂，适用于本地/非 Worker 场景的渲染桥接辅助                                 |
 
-### `ui-thread/components/renderer/`
+### `ui/components/renderer/`
 
 - `ui-renderer.js`：UI overlay 渲染器
 - `ui-overlay-factory.js`：UI overlay 条目工厂
 
-### `ui-thread/devices-dag/`
+### `ui/devices-dag/`
 
 这是当前输入系统的主体目录，全部运行在 UI 线程。
 
@@ -77,11 +78,11 @@
 - `modifier/`：修改工具
 - `wrapper/`：复合工具（顺序 / 互斥组合，如 handoff、tool-switcher）
 
-## `engine/`
+## `host/`
 
-`engine/` 是 Core 的核心领域层，可在 Worker、CLI、TUI 等任何运行时中使用。
+`host/` 是组合根与通道层：core-worker 宿主与 bridges 桥接。
 
-### `engine/core-worker.js`
+### `host/core-worker.js`
 
 - Worker 入口
 - `CoreWorkerRuntime` 消息宿主封装
@@ -89,16 +90,19 @@
 - `viewport-change` / `request-render-flush` 处理
 - `render-frame` 回传
 
-### `engine/orchestration/`
+## `kernel/`
+
+`kernel/` 是内核领域层，零 canvas/DOM，可在 Worker、CLI、TUI 等任何运行时中使用。
+
+### `kernel/document/`
 
 | 文件                       | 职责                                                         |
 | -------------------------- | ------------------------------------------------------------ |
 | `board-core.js`            | Worker 侧白板权威状态，对象、区块、AOM、UndoTree、持久化协调 |
-| `viewport-core.js`         | Worker 侧视口状态、区块缓冲、渲染帧输出                      |
 | `active-object-manager.js` | 动态图与活动对象生命周期                                     |
-| `aom-render-hooks.js`      | Worker 侧 render hook 协议与默认空实现                       |
+| `aom-render-hooks.js`      | 渲染 hook 协议（kernel 调渲染的注入缝）与默认空实现          |
 
-### `engine/chunk/`
+### `kernel/chunk/`
 
 - `chunk.js`：区块实体
 - `chunk-loader.js`：区块加载器与加载事件
@@ -106,7 +110,9 @@
 
 ### `renderers/canvas/`
 
+- `viewport-core.js`：Worker 侧视口状态、区块缓冲、渲染帧输出
 - `renderer.js`：`BaseRenderer` 基类
+- `object-draw-strategies.js`：对象类型到 Canvas2D 绘制策略的注册表
 - `canvas-lifecycle.js`：Canvas 生命周期管理
 - `render-scheduler.js`：渲染调度器
 - `dirty-rect-strategy.js` / `dirty-rect-strategy-shared.js`：脏区策略
@@ -115,31 +121,31 @@
 
 `ViewportRenderer` 建立在 `renderers/canvas/` 的 `BaseRenderer` 基类之上，在单类内管理静态缓存与输出合成。
 
-### `engine/hit/`
+### `kernel/hit/`
 
 - `undo-tree-core.js`：UndoTree 骨架
 - `operation.js`：操作结构定义
 
 当前撤销/重做入口仍属 `[todo]`。
 
-### `engine/objects/`
+### `kernel/objects/`
 
 - `basic-obj.js`：基础对象模型
 - `stroke/`、`one-dim/`、`two-dim/`、`graph/`、`container.js`
 - `object-deserializer.js`
 
-### `engine/range/`
+### `kernel/range/`
 
 - `range.js`、`rectangle.js`、`ellipse.js`、`polygon.js`、`path.js`、`rope.js`
 - `bounds.js`、`geometry.js`、`intersections.js`、`conversion.js`、`segment-math.js`
 
-### `engine/types/`
+### `kernel/types/`
 
 - `types.js`（含 `ViewportLike` 等共享 typedef）
 - `board-api-types.js`
 - `message-types.js`
 
-### `engine/utils/`
+### `kernel/utils/`
 
 - `math.js`、`math3d.js`、`math-algorithm.js`
 - `directed-graph.js`、`path.js`、`chain.js`

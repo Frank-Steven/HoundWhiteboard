@@ -1,6 +1,6 @@
 # Core 数据模型与术语统一
 
-本文档整理 `src/core/engine/` + `src/ui/` + `src/core/bridges/` 当前实现中的核心数据模型，并明确 UI 线程、Worker 与 Engine 核心层之间的权威边界。
+本文档整理 `src/kernel/` + `src/ui/` + `src/host/bridges/` 当前实现中的核心数据模型，并明确 UI 线程、Worker 与 Kernel 层之间的权威边界。
 
 ## 数据权威划分
 
@@ -32,11 +32,11 @@ Worker 线程持有真正的 Core 数据权威：
 
 UI 与 Worker 共用：
 
-- `engine/objects/`
-- `engine/range/`
+- `kernel/objects/`
+- `kernel/range/`
 - `renderers/canvas/`
-- `engine/types/`
-- `engine/utils/`
+- `kernel/types/`
+- `kernel/utils/`
 
 ## 白板级模型
 
@@ -122,7 +122,7 @@ Map<chunkId, {
 
 ### 真实对象实例
 
-真实对象实例定义在 `engine/objects/`，基类是 `BasicObject`，再派生出笔画、容器、一维/二维图形等对象类型。
+真实对象实例定义在 `kernel/objects/`，基类是 `BasicObject`，再派生出笔画、容器、一维/二维图形等对象类型。
 
 统一字段主要包括：
 
@@ -135,7 +135,7 @@ Map<chunkId, {
 
 ### 轻量对象条目（`LightweightObjectEntry`）
 
-`LightweightObjectEntry` 定义在 `src/core/engine/types/types.js`。
+`LightweightObjectEntry` 定义在 `src/kernel/types/types.js`。
 
 它是 UI 工具链里传递对象信息的统一纯数据协议：
 
@@ -162,7 +162,7 @@ Map<chunkId, {
 
 ### `ObjectSummary`
 
-跨线程查询返回的对象摘要同样定义在 `engine/types/types.js`，通常包含：
+跨线程查询返回的对象摘要同样定义在 `kernel/types/types.js`，通常包含：
 
 - `id`
 - `type`

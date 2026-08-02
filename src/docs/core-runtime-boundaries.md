@@ -1,43 +1,43 @@
-# Core 运行边界（engine / ui-thread / bridges）
+# 运行边界（kernel / ui / renderers / host）
 
-本文档整理 `src/core/engine/` + `src/ui/` + `src/host/bridges/` 当前各模块的运行边界。
+本文档整理 `src/kernel/` + `src/ui/` + `src/host/bridges/` 当前各模块的运行边界。
 
 这里的"运行边界"指的是：
 
 - **UI**：浏览器主线程，可直接接触 DOM、DevicesDAG、宿主输入
 - **Worker**：`src/host/core-worker.js` 启动的 Core Worker 线程
-- **Engine**：可在 UI、Worker、Node 测试环境中复用的纯逻辑
+- **Kernel**：可在 UI、Worker、Node 测试环境中复用的纯逻辑
 - **Host**：Tauri / preload / 主进程等宿主桥接层，不属于 Core 运行时本身，但与之交互
 
 ## 总览
 
 | 目录 / 文件                                                | 运行边界 | 说明                                                            |
 | ---------------------------------------------------------- | -------- | --------------------------------------------------------------- |
-| `bridges/board-api-rpc.js`                                 | UI       | UI 侧 RPC 客户端，封装 `rpc` / `rpc-batch` / `rpc-response`     |
-| `bridges/persistence-adapter.js`                           | Engine   | 持久化适配器协议与工厂，本身不依赖线程宿主                      |
-| `bridges/file-operate-bridge-renderer.js`                  | UI       | 渲染线程侧文件桥调用入口                                        |
-| `bridges/file-operate-bridge-main.js`                      | Host     | 宿主/主线程的真实文件系统实现                                   |
-| `ui-thread/components/orchestration/board.js`              | UI       | UI 白板 facade、唯一 `DevicesDAG`、viewport 管理、Worker 初始化 |
-| `ui-thread/components/orchestration/viewport.js`           | UI       | DOM canvas、overlay、Worker 同步、workflow 挂载代理             |
-| `ui-thread/components/orchestration/board-render-hooks.js` | UI       | 本地渲染路径用的 render hook 辅助                               |
-| `ui-thread/components/renderer/ui-renderer.js`             | UI       | UI overlay 渲染                                                 |
-| `ui-thread/devices-dag/**`                                 | UI       | 设备图、设备子图、prefix、tool 全部在 UI 线程                   |
-| `engine/core-worker.js`                                    | Worker   | Worker 入口与 `CoreWorkerRuntime`                               |
-| `engine/orchestration/board-core.js`                       | Worker   | 对象、区块、AOM、UndoTree、持久化协调                           |
+| `host/bridges/board-api-rpc.js`                                 | UI       | UI 侧 RPC 客户端，封装 `rpc` / `rpc-batch` / `rpc-response`     |
+| `host/bridges/persistence-adapter.js`                           | Kernel   | 持久化适配器协议与工厂，本身不依赖线程宿主                      |
+| `host/bridges/file-operate-bridge-renderer.js`                  | UI       | 渲染线程侧文件桥调用入口                                        |
+| `host/bridges/file-operate-bridge-main.js`                      | Host     | 宿主/主线程的真实文件系统实现                                   |
+| `ui/components/orchestration/board.js`              | UI       | UI 白板 facade、唯一 `DevicesDAG`、viewport 管理、Worker 初始化 |
+| `ui/components/orchestration/viewport.js`           | UI       | DOM canvas、overlay、Worker 同步、workflow 挂载代理             |
+| `ui/components/orchestration/board-render-hooks.js` | UI       | 本地渲染路径用的 render hook 辅助                               |
+| `ui/components/renderer/ui-renderer.js`             | UI       | UI overlay 渲染                                                 |
+| `ui/devices-dag/**`                                 | UI       | 设备图、设备子图、prefix、tool 全部在 UI 线程                   |
+| `host/core-worker.js`                                    | Worker   | Worker 入口与 `CoreWorkerRuntime`                               |
+| `kernel/document/board-core.js`                       | Worker   | 对象、区块、AOM、UndoTree、持久化协调                           |
 | `renderers/canvas/viewport-core.js`                    | Worker   | Worker 视口状态、区块缓冲、渲染帧输出                           |
-| `engine/orchestration/active-object-manager.js`            | Worker   | 动态图与交互态对象生命周期                                      |
-| `engine/orchestration/aom-render-hooks.js`                 | Worker   | Worker 侧使用的 render hook 协议与默认实现                      |
-| `engine/chunk/**`                                          | Worker   | 区块、加载器、静态图、覆盖区块索引                              |
+| `kernel/document/active-object-manager.js`            | Worker   | 动态图与交互态对象生命周期                                      |
+| `kernel/document/aom-render-hooks.js`                 | Worker   | Worker 侧使用的 render hook 协议与默认实现                      |
+| `kernel/chunk/**`                                          | Worker   | 区块、加载器、静态图、覆盖区块索引                              |
 | `renderers/canvas/**` （Worker 端）                         | Worker   | Worker 侧 base/live 渲染器                                      |
-| `engine/hit/**`                                            | Worker   | UndoTree 与操作结构                                             |
-| `engine/objects/**`                                        | Engine   | 对象模型与反序列化                                              |
-| `engine/range/**`                                          | Engine   | 几何范围与碰撞判断                                              |
-| `renderers/canvas/**` （基类）                              | Engine   | 渲染器基类、调度器、共享脏区策略                                |
-| `engine/types/**`                                          | Engine   | 跨线程共享 typedef 与协议                                       |
-| `engine/utils/**`                                          | Engine   | 数学、图结构、事件总线、路径、计数池                            |
+| `kernel/hit/**`                                            | Worker   | UndoTree 与操作结构                                             |
+| `kernel/objects/**`                                        | Kernel   | 对象模型与反序列化                                              |
+| `kernel/range/**`                                          | Kernel   | 几何范围与碰撞判断                                              |
+| `renderers/canvas/**` （基类）                              | Kernel   | 渲染器基类、调度器、共享脏区策略                                |
+| `kernel/types/**`                                          | Kernel   | 跨线程共享 typedef 与协议                                       |
+| `kernel/utils/**`                                          | Kernel   | 数学、图结构、事件总线、路径、计数池                            |
 | `test-support/**`                                          | Any      | 测试 mock 与 fixture                                            |
 
-## `ui-thread/`
+## `ui/`（UI 线程）
 
 UI 线程承担两类职责：
 
@@ -51,7 +51,7 @@ UI 线程承担两类职责：
 
 UI 线程不会成为对象与区块的真实权威，只保留交互态镜像与轻量条目。
 
-## `engine/`（Worker 侧）
+## `kernel/`（Worker 侧）
 
 Worker 是当前 Core 数据与渲染的权威侧：
 
@@ -62,9 +62,9 @@ Worker 是当前 Core 数据与渲染的权威侧：
 
 Worker 不解析 DOM 事件，也不持有 DevicesDAG。
 
-## `engine/`（纯逻辑层）
+## `kernel/`（纯逻辑层）
 
-`engine/` 也是稳定的纯逻辑复用层：
+`kernel/` 是稳定的纯逻辑复用层：
 
 - 不依赖 DOM
 - 不要求 WorkerGlobalScope
@@ -74,7 +74,7 @@ Worker 不解析 DOM 事件，也不持有 DevicesDAG。
 
 - 共享的渲染基类位于 `renderers/canvas/`（`BaseRenderer`、`RenderScheduler`）
 - Worker 专用渲染器也位于 `renderers/canvas/`（`ViewportRenderer`）
-- 对象与 range 在 `engine/objects/` 和 `engine/range/` 下
+- 对象与 range 在 `kernel/objects/` 和 `kernel/range/` 下
 
 ## 当前数据权威关系
 
@@ -132,7 +132,7 @@ Worker 不解析 DOM 事件，也不持有 DevicesDAG。
 
 当前模板页的默认流程是：
 
-1. UI 线程创建 `Worker(new URL("../engine/core-worker.js", import.meta.url))`
+1. UI 线程创建 `Worker(new URL("../host/core-worker.js", import.meta.url))`
 2. `Board.enableWorkerMode(worker)` 初始化 `BoardApiRpc` 与 Worker 侧 `BoardCore`
 3. `Board.createViewport(...)` 创建 UI 侧 `Viewport`
 4. `BoardApiRpc.createViewport(...)` 创建 Worker 侧 `ViewportCore`

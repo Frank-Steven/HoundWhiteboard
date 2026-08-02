@@ -1,6 +1,6 @@
 # HoundWhiteboard Core 总览
 
-本文档提供 `src/core/engine/` + `src/ui/` + `src/host/bridges/` 当前实现的总览，重点说明 UI 线程、Worker 线程与 engine 核心层如何协作。
+本文档提供 `src/kernel/` + `src/ui/` + `src/host/bridges/` 当前实现的总览，重点说明 UI 线程、Worker 线程与 engine 核心层如何协作。
 
 更细的路径级边界见 [core-runtime-boundaries.md](./core-runtime-boundaries.md)。
 
@@ -9,11 +9,11 @@
 当前 Core 可以按职责分为四层：
 
 1. **宿主层**：Tauri / 模板页面 / DOM 事件绑定 / 文件桥接宿主
-2. **UI 线程层**：`src/ui/**` 与 `src/host/bridges/board-api-rpc.js`
-3. **Engine 核心层**：`src/core/engine/**`
-4. **Engine 核心层**：`src/core/engine/**`
+2. **UI 线程层**：`src/ui/**`
+3. **Worker 层**：`src/host/**` + `src/renderers/**`
+4. **Kernel 层**：`src/kernel/**`
 
-其中 `src/core/engine/` + `src/ui/` + `src/host/bridges/` 主要覆盖后 3 层。
+其中 `src/kernel/` + `src/ui/` + `src/host/bridges/` 主要覆盖后 3 层。
 
 ### UI 线程层
 
@@ -25,7 +25,7 @@ UI 线程负责：
 - `UiRenderer`：UI overlay 渲染
 - `BoardApiRpc`：把 UI 侧读写请求转成 Worker RPC
 
-### Engine 核心层
+### Worker 层
 
 Worker 层负责真正的数据与渲染权威：
 
@@ -33,24 +33,24 @@ Worker 层负责真正的数据与渲染权威：
 - `BoardCore`：对象、区块、AOM、UndoTree、持久化协调
 - `ViewportCore`：Worker 视口状态、区块缓冲、`ViewportRenderer` 渲染输出
 - `ActiveObjectManager`：交互态对象与动态层关系
-- `engine/chunk/`：区块、加载器、区块对象管理
+- `kernel/chunk/`：区块、加载器、区块对象管理
 - `renderers/canvas/`：`ViewportRenderer` 与 Worker 侧脏区绘制
 
-### Engine 核心层
+### Kernel 层
 
-Engine 不依赖 DOM，也不依赖 Worker 宿主：
+Kernel 不依赖 DOM，也不依赖 Worker 宿主：
 
-- `engine/objects/`：对象模型、反序列化
-- `engine/range/`：几何范围与相交判断
+- `kernel/objects/`：对象模型、反序列化
+- `kernel/range/`：几何范围与相交判断
 - `renderers/canvas/`：渲染器基类、调度器
-- `engine/types/`：跨线程共享类型定义
-- `engine/utils/`：数学、图结构、事件总线、路径工具、计数池
+- `kernel/types/`：跨线程共享类型定义
+- `kernel/utils/`：数学、图结构、事件总线、路径工具、计数池
 
 ## 当前主链路
 
 ### 白板初始化
 
-1. 宿主创建 `Worker(new URL("../engine/core-worker.js", import.meta.url))`
+1. 宿主创建 `Worker(new URL("../host/core-worker.js", import.meta.url))`
 2. UI 线程创建 `Board`
 3. `Board.enableWorkerMode(worker)` 创建 `BoardApiRpc`
 4. `BoardApiRpc.createBoard(...)` 在 Worker 中创建 `BoardCore`
@@ -97,7 +97,7 @@ Engine 不依赖 DOM，也不依赖 Worker 宿主：
 - 视口区块缓冲与位图渲染
 - UndoTree 运行时骨架
 
-### Engine 核心层职责
+### Kernel 层职责
 
 - 对象、范围、渲染器基类的纯逻辑复用
 - Worker / UI / Node 测试之间共享的数据结构与算法
@@ -118,7 +118,7 @@ Engine 不依赖 DOM，也不依赖 Worker 宿主：
 - **SignalPacket**：输入系统里的标准信号包，形如 `{ to, signals }`
 - **静态图**：区块内稳定层叠关系，保存在 `ChunkObjectManager.staticGraph`
 - **动态图 / AOM**：交互态对象与临时层关系，由 `ActiveObjectManager` 维护
-- **LightweightObjectEntry**：UI 工具链里传递的轻量对象协议，定义于 `engine/types/types.js`
+- **LightweightObjectEntry**：UI 工具链里传递的轻量对象协议，定义于 `kernel/types/types.js`
 - **render hook**：AOM / BoardCore 通知视口重绘的注入式桥
 
 ## 相关文档
