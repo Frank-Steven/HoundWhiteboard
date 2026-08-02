@@ -6,6 +6,7 @@
  * 与 RPC 客户端（bridges/board-api-rpc.js）共享同一契约签名。
  * @module kernel/api/board-api
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { deserialize } from "../objects/object-deserializer.js";

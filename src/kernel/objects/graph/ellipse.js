@@ -3,6 +3,7 @@
  * @description 定义白板椭圆对象的几何、绘制与转换逻辑。
  * @module kernel/objects/graph/ellipse
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { GraphObject } from "./graph.js";

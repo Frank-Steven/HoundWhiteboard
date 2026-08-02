@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { Vector, Matrix } from "../math.js";
 
 describe("Vector Class", () => {

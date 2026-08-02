@@ -3,6 +3,7 @@
  * @description 提供范围几何判定中共享的纯函数原语，供 geometry 与 intersections 复用。
  * @module kernel/range/segment-math
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

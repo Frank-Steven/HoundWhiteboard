@@ -5,6 +5,7 @@
  * 每一区块对应一个区块类实例。
  * @module kernel/chunk/chunk
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { BasicObject } from "../objects/basic-obj.js";

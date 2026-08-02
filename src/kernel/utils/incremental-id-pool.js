@@ -3,6 +3,7 @@
  * @description 提供带来源命名空间的递增 id 分配。
  * @module kernel/utils/incremental-id-pool
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { CounterPool } from "./counter-pool.js";

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { Vector } from "../../utils/math.js";
 import { EllipseRange } from "../ellipse.js";
 import { intersectsRanges } from "../geometry.js";

@@ -3,6 +3,7 @@
  * @description 提供多边形范围的表示、点包含与包围盒计算功能。
  * @module kernel/range/polygon
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { Matrix, Vector } from "../utils/math.js";

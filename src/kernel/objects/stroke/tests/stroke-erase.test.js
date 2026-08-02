@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { Matrix, Vector } from "../../../utils/math.js";
 import { StrokeObject } from "../stroke.js";
 

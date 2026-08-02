@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { PolygonObject } from "../polygon.js";
 import { Vector, Matrix } from "../../../utils/math.js";
 

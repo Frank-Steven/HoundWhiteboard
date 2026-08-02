@@ -3,6 +3,7 @@
  * @description 定义 Core Worker 迁移阶段的共享消息协议 JSDoc typedef。
  * @module kernel/types/message-types
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

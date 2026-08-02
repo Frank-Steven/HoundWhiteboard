@@ -3,6 +3,7 @@
  * @description 定义白板对象的基础属性、变换和边界接口。
  * @module kernel/objects/basic-obj
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { Matrix, Vector } from "../utils/math.js";

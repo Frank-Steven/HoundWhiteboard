@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { jest } from "@jest/globals";
 import { ActiveObjectManager } from "../../active-object-manager.js";
 import { BasicObject } from "../../../objects/basic-obj.js";

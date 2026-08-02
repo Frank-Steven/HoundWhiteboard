@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { deserialize } from "../object-deserializer.js";
 import { PolygonObject } from "../graph/polygon.js";
 import { EllipseObject } from "../graph/ellipse.js";

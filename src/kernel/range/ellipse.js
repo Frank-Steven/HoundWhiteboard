@@ -3,6 +3,7 @@
  * @description 提供椭圆范围的表示、变换与近似几何运算功能。
  * @module kernel/range/ellipse
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { Matrix, Vector } from "../utils/math.js";

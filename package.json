@@ -54,7 +54,8 @@
     "bench:render": "node benchmarks/worker-render.bench.js",
     "check:docs": "node scripts/ci/check-doc-links.mjs",
     "check:modules": "node scripts/ci/check-module-paths.mjs",
-    "ci-check": "yarn check:docs && yarn check:modules",
+    "check:license": "node scripts/ci/check-kernel-license.mjs",
+    "ci-check": "yarn check:docs && yarn check:modules && yarn check:license",
     "prepare": "husky"
   },
   "author": "Frank Steven",

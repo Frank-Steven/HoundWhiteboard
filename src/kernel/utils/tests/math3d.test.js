@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { Vector3D, Matrix3D } from "../math3d.js";
 
 describe("Vector3D Class", () => {

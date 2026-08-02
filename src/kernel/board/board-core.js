@@ -5,6 +5,7 @@
  * 不依赖 DevicesDAG、DOM、signalsEventBus。
  * @module kernel/board/board-core
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { BasicObject } from "../objects/basic-obj.js";

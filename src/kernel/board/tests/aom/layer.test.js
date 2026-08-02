@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { DirectedGraph } from "../../../utils/directed-graph.js";
 import { ActiveObjectManager, Layer } from "../../active-object-manager.js";
 

@@ -3,6 +3,7 @@
  * @description 提供面向区块实例持有与索引的基础能力。
  * @module kernel/chunk/chunk-loader
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { Chunk } from "./chunk.js";

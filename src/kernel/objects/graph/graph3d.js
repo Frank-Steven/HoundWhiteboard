@@ -5,6 +5,7 @@
  * 表示白板上的多边形对象类。
  * @module kernel/objects/graph/graph3d
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { GraphObject } from "./graph.js";

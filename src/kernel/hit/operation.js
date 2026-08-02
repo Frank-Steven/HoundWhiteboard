@@ -10,6 +10,7 @@
  * - 修改区块版本
  * @module kernel/hit/operation
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

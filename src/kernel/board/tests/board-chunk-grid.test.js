@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { jest } from "@jest/globals";
 import { BoardCore } from "../board-core.js";
 import { Chunk } from "../../chunk/chunk.js";

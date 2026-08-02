@@ -3,6 +3,7 @@
  * @description 定义图形对象的基础抽象与通用行为。
  * @module kernel/objects/graph/graph
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { BasicObject } from "../basic-obj.js";

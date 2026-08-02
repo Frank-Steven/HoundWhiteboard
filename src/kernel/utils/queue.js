@@ -3,6 +3,7 @@
  * @description 提供循环数组实现的队列结构。
  * @module kernel/utils/queue
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

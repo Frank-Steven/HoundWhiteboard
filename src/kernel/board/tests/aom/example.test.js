@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { CircleObject } from "../../../objects/graph/circle.js";
 import { DirectedGraph } from "../../../utils/directed-graph.js";
 import { Vector } from "../../../utils/math.js";

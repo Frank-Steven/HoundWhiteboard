@@ -6,6 +6,7 @@
  * - 2x2 矩阵 Matrix
  * @module kernel/utils/math
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

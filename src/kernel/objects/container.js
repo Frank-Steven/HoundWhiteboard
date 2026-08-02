@@ -3,6 +3,7 @@
  * @description 定义将对象零维化并管理其容器关系的基础实现。
  * @module kernel/objects/container
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { BasicObject } from "./basic-obj.js";

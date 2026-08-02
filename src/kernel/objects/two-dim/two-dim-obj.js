@@ -3,6 +3,7 @@
  * @description 定义二维白板对象的公共行为与容器关系。
  * @module kernel/objects/two-dim/two-dim-obj
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { Container } from "../container.js";

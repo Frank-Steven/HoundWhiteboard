@@ -156,4 +156,5 @@ CI 流水线定义见 `.github/workflows/ci.yml`，提交到 `master` 后自动�
 
 ## 许可
 
-GNU General Public License v3.0
+- 项目整体遵循 **GPL-3.0-only**（见 [LICENSE](LICENSE)）
+- `src/kernel/`（未来的 npm 包）以 **MIT** 发布（见 [src/kernel/LICENSE](src/kernel/LICENSE)）；对 kernel 的贡献默认按 MIT 接收

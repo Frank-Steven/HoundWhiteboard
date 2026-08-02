@@ -3,6 +3,7 @@
  * @description 提供范围包围盒获取与相交判断的辅助函数。
  * @module kernel/range/bounds
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { computeBounds } from "./conversion.js";

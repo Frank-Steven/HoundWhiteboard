@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { Vector } from "../math.js";
 import { calcConvexHull, ropeNailIntersect } from "../math-algorithm.js";
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { jest } from "@jest/globals";
 import { BoardApi } from "../board-api.js";
 import { BoardCore } from "../../board/board-core.js";

@@ -3,6 +3,7 @@
  * @description 导出范围子模块的公共接口。
  * @module kernel/range/index
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 export { Range } from "./range.js";

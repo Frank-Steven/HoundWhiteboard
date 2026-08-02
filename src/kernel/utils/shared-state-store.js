@@ -3,6 +3,7 @@
  * @description 提供跨信道会话状态的多写者键值存储与同步订阅通知。
  * @module kernel/utils/shared-state-store
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { Logger } from "../../utils/log/logger.js";

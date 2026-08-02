@@ -3,6 +3,7 @@
  * @description 定义 BoardApi 的共享 JSDoc typedef，约束同线程实现与 RPC 实现的统一签名。
  * @module kernel/types/board-api-types
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

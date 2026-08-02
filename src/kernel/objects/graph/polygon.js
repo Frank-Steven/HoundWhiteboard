@@ -3,6 +3,7 @@
  * @description 定义白板多边形对象的几何、绘制与转换逻辑。
  * @module kernel/objects/graph/polygon
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { GraphObject } from "./graph.js";

@@ -3,6 +3,7 @@
  * @description 提供不同类型范围之间的相交检测与交点计算。
  * @module kernel/range/intersections
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { boundsIntersect, getRangeBounds, rangesMayOverlap } from "./bounds.js";

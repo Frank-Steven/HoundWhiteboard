@@ -6,6 +6,7 @@
  * - 3x3 矩阵 Matrix3D
  * @module kernel/utils/math3d
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

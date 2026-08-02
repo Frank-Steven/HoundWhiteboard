@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { jest } from "@jest/globals";
 import { ChunkLoader, CHUNK_LOAD_EVENTS } from "../chunk-loader.js";
 import { Chunk } from "../chunk.js";

@@ -3,6 +3,7 @@
  * @description 提供路径范围的表示、采样与射线相交等功能。
  * @module kernel/range/path
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { Matrix, Vector } from "../utils/math.js";

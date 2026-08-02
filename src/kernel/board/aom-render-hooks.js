@@ -3,6 +3,7 @@
  * @description 定义 AOM 与渲染器之间的注入式 hook 接口，消除 ActiveObjectManager 对 viewport/renderer 的直接依赖。
  * @module kernel/board/aom-render-hooks
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

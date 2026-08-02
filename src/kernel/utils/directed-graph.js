@@ -3,6 +3,7 @@
  * @description 提供基于邻接表的有向图数据结构与遍历操作。
  * @module kernel/utils/directed-graph
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

@@ -3,6 +3,7 @@
  * @description 提供基于点列的绳子范围表示与变换功能。
  * @module kernel/range/rope
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { Matrix, Vector } from "../utils/math.js";

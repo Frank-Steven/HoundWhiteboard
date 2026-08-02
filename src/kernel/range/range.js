@@ -3,6 +3,7 @@
  * @description 定义范围抽象基类及子类需实现的通用接口。
  * @module kernel/range/range
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

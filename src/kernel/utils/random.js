@@ -3,6 +3,7 @@
  * @description 提供浏览器环境下的随机整数和随机数工具函数。
  * @module kernel/utils/random
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

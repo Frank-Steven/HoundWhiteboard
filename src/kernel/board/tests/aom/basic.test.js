@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { jest } from "@jest/globals";
 import { RandomNumberPool } from "../../../utils/random.js";
 import { ActiveObjectManager } from "../../active-object-manager.js";

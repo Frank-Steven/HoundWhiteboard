@@ -2,6 +2,7 @@
  * @file 多 ChunkLoader 协作测试
  * @description 验证多个 ChunkLoader 通过 Board 事件总线并发加载/卸载同一区块时的引用计数与生命周期管理。
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { jest } from "@jest/globals";

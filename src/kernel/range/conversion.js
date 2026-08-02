@@ -3,6 +3,7 @@
  * @description 提供范围对象与点集之间的转换与近似处理函数。
  * @module kernel/range/conversion
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { Vector } from "../utils/math.js";

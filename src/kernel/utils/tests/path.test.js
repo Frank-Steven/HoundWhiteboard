@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { joinPath, normalizePath, resolvePath } from "../path.js";
 
 describe("path utils", () => {

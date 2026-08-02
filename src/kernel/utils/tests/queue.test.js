@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { Queue } from "../queue.js";
 
 describe("Queue", () => {

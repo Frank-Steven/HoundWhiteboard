@@ -3,6 +3,7 @@
  * @description 提供路径片段规整和拼接等基础路径处理函数。
  * @module kernel/utils/path
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

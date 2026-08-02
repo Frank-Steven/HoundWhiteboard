@@ -3,6 +3,7 @@
  * @description 提供白板对象序列化数据的反序列化实现。
  * @module kernel/objects/object-deserializer
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { BasicObject } from "./basic-obj.js";

@@ -3,6 +3,7 @@
  * @description 区块静态对象管理器负责维护区块对象层级关系和覆盖索引。
  * @module kernel/chunk/chunk-object-manager
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { DirectedGraph } from "../utils/directed-graph.js";

@@ -3,6 +3,7 @@
  * @description 提供简单链表结构及相关节点操作。
  * @module kernel/utils/chain
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

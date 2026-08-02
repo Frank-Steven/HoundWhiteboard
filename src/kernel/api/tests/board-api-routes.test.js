@@ -1,6 +1,7 @@
 /**
  * @file Board API RPC 路由表测试
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { jest } from "@jest/globals";

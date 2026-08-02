@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { Deque } from "../deque.js";
 
 describe("Deque", () => {

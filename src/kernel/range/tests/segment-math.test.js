@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { Vector } from "../../utils/math.js";
 import {
   pointToPolylineDistance,

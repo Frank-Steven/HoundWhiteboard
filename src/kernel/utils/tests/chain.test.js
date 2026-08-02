@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { Chain, Node } from "../chain.js";
 
 describe("Node", () => {

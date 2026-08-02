@@ -3,6 +3,7 @@
  * @description 提供范围间交集、包含和段交点计算等核心几何运算。
  * @module kernel/range/geometry
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { ropeNailIntersect } from "../utils/math-algorithm.js";

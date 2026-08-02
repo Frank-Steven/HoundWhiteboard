@@ -3,6 +3,7 @@
  * @description 提供点集凸包等常用数学算法。
  * @module kernel/utils/math-algorithm
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { Vector } from "./math.js";

@@ -5,6 +5,7 @@
  * 供 CoreWorkerRuntime 动态分发，与 BoardApi 公共方法的对应关系由 tests/board-api-routes.test.js 双向校验。
  * @module kernel/api/board-api-routes
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

@@ -3,6 +3,7 @@
  * @description 提供可复用的计数器分配与回收机制。
  * @module kernel/utils/counter-pool
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

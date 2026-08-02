@@ -3,6 +3,7 @@
  * @description 提供同步事件订阅、取消订阅和单次订阅能力。
  * @module kernel/utils/event-bus
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

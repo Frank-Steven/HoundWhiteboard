@@ -3,6 +3,7 @@
  * @description 定义白板笔画对象的几何表示与渲染支持。
  * @module kernel/objects/stroke/stroke
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { Matrix, Vector } from "../../utils/math.js";

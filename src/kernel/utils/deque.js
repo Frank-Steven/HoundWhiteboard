@@ -3,6 +3,7 @@
  * @description 提供基于循环数组的双端队列实现。
  * @module kernel/utils/deque
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 /**

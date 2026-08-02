@@ -3,6 +3,7 @@
  * @description 提供矩形范围的表示、变换与包围盒计算功能。
  * @module kernel/range/rectangle
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { Matrix, Vector } from "../utils/math.js";

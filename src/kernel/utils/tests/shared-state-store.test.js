@@ -1,6 +1,7 @@
 /**
  * @file SharedStateStore 测试
  * @author Zhou Chenyu
+ * SPDX-License-Identifier: MIT
  */
 
 import { jest } from "@jest/globals";

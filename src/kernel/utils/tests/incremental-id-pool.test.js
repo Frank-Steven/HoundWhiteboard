@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 import { IncrementalIdPool } from "../incremental-id-pool.js";
 
 describe("IncrementalIdPool", () => {
