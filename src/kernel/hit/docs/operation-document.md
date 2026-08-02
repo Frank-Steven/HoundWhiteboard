@@ -98,7 +98,7 @@ HEAD 指向当前状态对应的节点。按「所有用户一致」原则：网
 
 多个分子操作按序合成一个超分子操作，作为整体成为撤销与协作的粒度单位。
 
-例：一次 FD 擦除手势 = 修改对象（回写首段）+ 增加对象（分裂段，可有多个）+ 删除对象（整笔擦没）的顺序组合（见[对象擦除工具文档](../../../ui-thread/devices-dag/tools/eraser/docs/object-eraser-document.md)）。选择对象更多作为超分子操作中的分子出现。
+例：一次 FD 擦除手势 = 修改对象（回写首段）+ 增加对象（分裂段，可有多个）+ 删除对象（整笔擦没）的顺序组合（见[对象擦除工具文档](../../../ui/devices-dag/tools/eraser/docs/object-eraser-document.md)）。选择对象更多作为超分子操作中的分子出现。
 
 ## 撤销与重做
 
@@ -123,4 +123,4 @@ HEAD 指向当前状态对应的节点。按「所有用户一致」原则：网
 
 - [时间回溯树 UI 文档](undo-tree-ui-document.md)
 - [时间回溯树内核文档](undo-tree-kernel-document.md)
-- [对象擦除工具文档](../../../ui-thread/devices-dag/tools/eraser/docs/object-eraser-document.md)
+- [对象擦除工具文档](../../../ui/devices-dag/tools/eraser/docs/object-eraser-document.md)

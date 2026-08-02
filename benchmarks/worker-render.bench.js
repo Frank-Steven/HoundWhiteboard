@@ -7,7 +7,7 @@
 import { BoardCore } from "../src/kernel/document/board-core.js";
 import { ViewportCore } from "../src/renderers/canvas/viewport-core.js";
 import { deserialize } from "../src/kernel/objects/object-deserializer.js";
-import { installNoopOffscreenCanvas } from "../src/core/test-support/noop-canvas.js";
+import { installNoopOffscreenCanvas } from "../src/test-support/noop-canvas.js";
 import { printHeader, printFooter, benchmarkSync } from "./helpers.js";
 
 function main() {

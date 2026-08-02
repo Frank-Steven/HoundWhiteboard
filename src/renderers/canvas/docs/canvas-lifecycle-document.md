@@ -51,5 +51,5 @@ _initScheduler(mergeDirtyRects, flushHandler);
 ## 相关文档
 
 - [viewport-renderer-document.md](./viewport-renderer-document.md)
-- [ui-renderer-document.md](../../../core/ui-thread/components/renderer/docs/ui-renderer-document.md)
+- [ui-renderer-document.md](../../../ui/components/renderer/docs/ui-renderer-document.md)
 - [render-scheduler-document.md](./render-scheduler-document.md)

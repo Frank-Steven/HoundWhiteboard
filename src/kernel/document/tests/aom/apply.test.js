@@ -3,7 +3,7 @@ import {
   createBoardCoreAomFixture,
   createChunk,
   createCoverChunkStorage,
-} from "../../../../core/test-support/aom-fixtures.js";
+} from "../../../../test-support/aom-fixtures.js";
 import { DirectedGraph } from "../../../utils/directed-graph.js";
 import { Vector } from "../../../utils/math.js";
 import { ActiveObjectManager } from "../../active-object-manager.js";

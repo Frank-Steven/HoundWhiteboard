@@ -116,5 +116,5 @@
 ## 相关文档
 
 - [board-core-document.md](../../document/docs/board-core-document.md)
-- [viewport-core-document.md](../../document/docs/viewport-core-document.md)
+- [viewport-core-document.md](../../../renderers/canvas/docs/viewport-core-document.md)
 - [chunk-document.md](./chunk-document.md)

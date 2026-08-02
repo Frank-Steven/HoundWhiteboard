@@ -173,5 +173,5 @@ sequenceDiagram
 
 - [board-core-document.md](../../../kernel/document/docs/board-core-document.md)
 - [active-object-manager-document.md](../../../kernel/document/docs/active-object-manager-document.md)
-- [core-modules.md](../../docs/core-modules.md)
+- [core-modules.md](../../../docs/core-modules.md)
 - [board-api-types.js](../../../kernel/types/board-api-types.js)

@@ -35,14 +35,23 @@ yarn bench:io:direct            # I/O 直连基准
 
 ```
 src/
-├── core/                    # 核心层
-│   ├── engine/              # 核心领域层（对象、几何、区块、编排、渲染基类）
-│   ├── ui-thread/           # UI 线程（Board / Viewport / DevicesDAG / Tools）
-│   ├── bridges/             # IPC 通信（多线程模式）
-│   ├── test-support/        # 测试 mock 支撑
-│   ├── tests/               # 冒烟测试
-│   └── docs/                # 架构文档
+├── kernel/                  # 内核包（零 canvas/DOM：文档 + 操作 + 持久化）
+│   ├── objects/             # 对象模型（BasicObject、Stroke、graph/）
+│   ├── range/               # 几何
+│   ├── chunk/               # 区块（空间分区）
+│   ├── document/            # 文档状态（BoardCore 静态图 / AOM / render-hooks 缝）
+│   ├── hit/                 # 操作日志与时间回溯树
+│   ├── api/                 # BoardApi 契约面
+│   ├── utils/               # 内核工具（id 池、图、数学）
+│   └── types/               # 类型定义
+├── renderers/
+│   └── canvas/              # canvas 渲染插件（viewport-renderer、绘制策略注册表）
+├── host/                    # 组合根 + 通道（core-worker、debug-helper、bridges/）
+├── ui/                      # UI front（Board / Viewport / DevicesDAG / Tools / overlay）
 ├── utils/                   # 应用级工具（filesys, log, safe-io）
+├── docs/                    # 架构文档
+├── test-support/            # 测试 mock 支撑
+├── tests/                   # 跨包冒烟 / 集成测试
 ├── demo/                    # 白板 HTML/CSS/JS 入口
 ├── src-tauri/               # Rust 后端（Cargo workspace）
 ├── benchmarks/              # 性能基准
@@ -69,7 +78,7 @@ src/
 /**
  * @file 简短描述，不加句号
  * @description 一句话职责说明，以句号结尾。
- * @module engine/{path/to/module}
+ * @module {kernel|canvas|host|ui}/{path/to/module}
  * @author {git config user.name}
  */
 ```

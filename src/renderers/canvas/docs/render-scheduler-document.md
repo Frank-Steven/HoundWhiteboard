@@ -177,5 +177,5 @@
 
 ## 相关文档
 
-- [viewport-document.md](../../../core/ui-thread/components/orchestration/docs/viewport-document.md)
+- [viewport-document.md](../../../ui/components/orchestration/docs/viewport-document.md)
 - [viewport-renderer-document.md](./viewport-renderer-document.md)

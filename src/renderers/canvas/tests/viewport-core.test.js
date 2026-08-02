@@ -12,7 +12,7 @@ import {
   createNoopCanvasContext2D,
   createNoopImageBitmap,
   installNoopOffscreenCanvas,
-} from "../../../core/test-support/noop-canvas.js";
+} from "../../../test-support/noop-canvas.js";
 
 describe("ViewportCore", () => {
   /**

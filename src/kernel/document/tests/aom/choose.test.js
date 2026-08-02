@@ -8,7 +8,7 @@ import {
   createObjectInChunk,
   setObjectCoverage,
   verticalChunkConnect,
-} from "../../../../core/test-support/aom-fixtures.js";
+} from "../../../../test-support/aom-fixtures.js";
 
 import { DirectedGraph } from "../../../utils/directed-graph.js";
 import { Vector } from "../../../utils/math.js";

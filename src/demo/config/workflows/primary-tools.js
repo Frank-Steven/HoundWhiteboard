@@ -5,18 +5,18 @@
  * @author Zhou Chenyu
  */
 
-import { createButtonGroupDevice } from "../../../core/ui-thread/devices-dag/devices/button-group-device.js";
-import { HandoffWrapperTool } from "../../../core/ui-thread/devices-dag/tools/wrapper/handoff-wrapper.js";
-import { ToolSwitcherWrapper } from "../../../core/ui-thread/devices-dag/tools/wrapper/switcher-wrapper.js";
-import { CircleDataCreatorTool } from "../../../core/ui-thread/devices-dag/tools/creator/circle/data-creator.js";
-import { createCircleRadiusProcessor } from "../../../core/ui-thread/devices-dag/tools/creator/circle/radius-processor.js";
-import { createCircleDiameterProcessor } from "../../../core/ui-thread/devices-dag/tools/creator/circle/diameter-processor.js";
-import { EllipseDataCreatorTool } from "../../../core/ui-thread/devices-dag/tools/creator/ellipse/data-creator.js";
-import { createEllipseBoundingProcessor } from "../../../core/ui-thread/devices-dag/tools/creator/ellipse/bounding-processor.js";
-import { RectangleObjectChooserTool } from "../../../core/ui-thread/devices-dag/tools/chooser/rectangle-object-chooser.js";
-import { DataObjectEraserTool } from "../../../core/ui-thread/devices-dag/tools/eraser/data-object-eraser.js";
-import { CommonObjectModifierTool } from "../../../core/ui-thread/devices-dag/tools/modifier/common-object-modifier.js";
-import { DragGestureProcessor } from "../../../core/ui-thread/devices-dag/tools/modifier/gesture/drag-processor.js";
+import { createButtonGroupDevice } from "../../../ui/devices-dag/devices/button-group-device.js";
+import { HandoffWrapperTool } from "../../../ui/devices-dag/tools/wrapper/handoff-wrapper.js";
+import { ToolSwitcherWrapper } from "../../../ui/devices-dag/tools/wrapper/switcher-wrapper.js";
+import { CircleDataCreatorTool } from "../../../ui/devices-dag/tools/creator/circle/data-creator.js";
+import { createCircleRadiusProcessor } from "../../../ui/devices-dag/tools/creator/circle/radius-processor.js";
+import { createCircleDiameterProcessor } from "../../../ui/devices-dag/tools/creator/circle/diameter-processor.js";
+import { EllipseDataCreatorTool } from "../../../ui/devices-dag/tools/creator/ellipse/data-creator.js";
+import { createEllipseBoundingProcessor } from "../../../ui/devices-dag/tools/creator/ellipse/bounding-processor.js";
+import { RectangleObjectChooserTool } from "../../../ui/devices-dag/tools/chooser/rectangle-object-chooser.js";
+import { DataObjectEraserTool } from "../../../ui/devices-dag/tools/eraser/data-object-eraser.js";
+import { CommonObjectModifierTool } from "../../../ui/devices-dag/tools/modifier/common-object-modifier.js";
+import { DragGestureProcessor } from "../../../ui/devices-dag/tools/modifier/gesture/drag-processor.js";
 import {
   DEMO_BUTTON_GROUP_STATE_KEY,
   DEMO_CIRCLE_STROKE_COLOR,
@@ -29,8 +29,8 @@ import {
 /**
  * 将笔画工具直接挂载到鼠标左键
  * @description 不经过 tool-switcher，mouse/primary → primary-stroke 直连，用于测试等无需工具切换的场景。
- * @param {import("../../../core/ui-thread/components/orchestration/viewport.js").Viewport} viewport - 视口实例
- * @param {import("../../../core/ui-thread/devices-dag/tools/creator/stroke-creator.js").StrokeCreatorTool} primaryStrokeTool - 笔画工具实例
+ * @param {import("../../../ui/components/orchestration/viewport.js").Viewport} viewport - 视口实例
+ * @param {import("../../../ui/devices-dag/tools/creator/stroke-creator.js").StrokeCreatorTool} primaryStrokeTool - 笔画工具实例
  * @returns {void}
  */
 function mountPrimaryStrokeTool(viewport, primaryStrokeTool) {
@@ -50,11 +50,11 @@ function mountPrimaryStrokeTool(viewport, primaryStrokeTool) {
  * 同时挂载按钮组设备并建立 toolbar/button-group → tool-switcher 的双输入汇聚。
  * 按钮组设备通过 sharedState 发布当前激活工具，DOM 高亮由工具栏适配器订阅同步。
  * 本函数只做 DAG 装配，不读取 DOM；工具列表由调用方传入。
- * @param {import("../../../core/ui-thread/components/orchestration/viewport.js").Viewport} viewport - 视口实例
+ * @param {import("../../../ui/components/orchestration/viewport.js").Viewport} viewport - 视口实例
  * @param {Object} options - 配置项
  * @param {Array<{ name: string }>} options.tools - 工具列表
  * @param {string} options.defaultTool - 默认激活工具名
- * @param {import("../../../core/ui-thread/devices-dag/tools/creator/stroke-creator.js").StrokeCreatorTool} options.primaryStrokeTool - 笔画工具实例
+ * @param {import("../../../ui/devices-dag/tools/creator/stroke-creator.js").StrokeCreatorTool} options.primaryStrokeTool - 笔画工具实例
  * @returns {void}
  */
 function mountToolSwitcher(viewport, options) {

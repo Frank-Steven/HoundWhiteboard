@@ -48,4 +48,4 @@
 
 - [utils-document.md](./utils-document.md)
 - [event-bus-document.md](./event-bus-document.md)
-- [状态模型](../../../ui-thread/devices-dag/docs/state-model-document.md)
+- [状态模型](../../../ui/devices-dag/docs/state-model-document.md)

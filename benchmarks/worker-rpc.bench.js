@@ -6,7 +6,7 @@
 
 import { createCoreWorkerRuntime } from "../src/core-worker.js";
 import { BoardApiRpc } from "../src/core/bridges/board-api.js";
-import { installNoopOffscreenCanvas } from "../src/core/test-support/noop-canvas.js";
+import { installNoopOffscreenCanvas } from "../src/test-support/noop-canvas.js";
 import { printHeader, printFooter, benchmarkAsync } from "./helpers.js";
 
 class LoopbackEndpoint {

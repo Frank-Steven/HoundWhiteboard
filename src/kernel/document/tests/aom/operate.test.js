@@ -2,7 +2,7 @@ import {
   createChunk,
   createCoverChunkStorage,
   createMockBoard,
-} from "../../../../core/test-support/aom-fixtures.js";
+} from "../../../../test-support/aom-fixtures.js";
 import { DirectedGraph } from "../../../utils/directed-graph.js";
 import { ChunkObjectManager } from "../../../chunk/chunk-object-manager.js";
 import { StrokeObject } from "../../../objects/stroke/stroke.js";

@@ -125,4 +125,4 @@ chunks/{chunkId}.json
 
 - [chunk-document.md](./chunk-document.md)
 - [board-core-document.md](../../document/docs/board-core-document.md)
-- [file-operate-document.md](../../../bridges/docs/file-operate-document.md)
+- [file-operate-document.md](../../../host/bridges/docs/file-operate-document.md)

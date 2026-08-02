@@ -5,13 +5,13 @@
  * @author Zhou Chenyu
  */
 
-import { createMouseDevice } from "../../core/ui-thread/devices-dag/devices/mouse-device.js";
-import { createTouchscreenDevice } from "../../core/ui-thread/devices-dag/devices/touchscreen-device.js";
-import { createKeyboardDevice } from "../../core/ui-thread/devices-dag/devices/keyboard-device.js";
-import { StrokeCreatorTool } from "../../core/ui-thread/devices-dag/tools/creator/stroke-creator.js";
-import { DevicesDAGNode } from "../../core/ui-thread/devices-dag/dag-core/dag-node-edge.js";
-import { createSubDAG } from "../../core/ui-thread/devices-dag/index.js";
-import { MultiToolWrapper } from "../../core/ui-thread/devices-dag/tools/wrapper/multi-tool-wrapper.js";
+import { createMouseDevice } from "../../ui/devices-dag/devices/mouse-device.js";
+import { createTouchscreenDevice } from "../../ui/devices-dag/devices/touchscreen-device.js";
+import { createKeyboardDevice } from "../../ui/devices-dag/devices/keyboard-device.js";
+import { StrokeCreatorTool } from "../../ui/devices-dag/tools/creator/stroke-creator.js";
+import { DevicesDAGNode } from "../../ui/devices-dag/dag-core/dag-node-edge.js";
+import { createSubDAG } from "../../ui/devices-dag/index.js";
+import { MultiToolWrapper } from "../../ui/devices-dag/tools/wrapper/multi-tool-wrapper.js";
 import { DEMO_DEVICE_PATHS, DEMO_STROKE_WIDTH, DEMO_WORKFLOW_NAMES } from "./constants.js";
 
 /**
@@ -19,7 +19,7 @@ import { DEMO_DEVICE_PATHS, DEMO_STROKE_WIDTH, DEMO_WORKFLOW_NAMES } from "./con
  * @description
  * 为视口挂载 mouse/keyboard/touchscreen 三个设备子图，并为 touchscreen/contacts 挂载
  * 多指并发笔画包装器，使每指独立创建一条笔画。
- * @param {import("../../core/ui-thread/components/orchestration/viewport.js").Viewport} viewport - 视口实例
+ * @param {import("../../ui/components/orchestration/viewport.js").Viewport} viewport - 视口实例
  * @returns {void}
  */
 function mountDemoDevices(viewport) {

@@ -2,7 +2,7 @@
 
 /**
  * @file 文档链接检查
- * @description 扫描 src/core 下所有 .md 文件，验证相对链接目标是否存在。
+ * @description 扫描 src 下所有 .md 文件，验证相对链接目标是否存在。
  * @module scripts/ci/check-doc-links
  */
 
@@ -12,7 +12,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.HOUND_BUILD_ROOT || path.resolve(__dirname, "../..");
-const CORE_DIR = path.join(ROOT, "src", "core");
+const SRC_DIR = path.join(ROOT, "src");
 
 let total = 0;
 let missing = 0;
@@ -55,7 +55,7 @@ function extractLinks(content) {
   return links;
 }
 
-const mdFiles = collectMdFiles(CORE_DIR);
+const mdFiles = collectMdFiles(SRC_DIR);
 
 for (const file of mdFiles) {
   const content = fs.readFileSync(file, "utf-8");

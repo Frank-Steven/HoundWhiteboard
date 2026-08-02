@@ -23,7 +23,7 @@
 - `src/utils/` 负责文件系统、块存储、渲染进程 I/O 桥接与安全访问。
 - `src/core/utils/` 负责 Core 运行时通用容器、数学工具和逻辑路径。
 
-若你要查看队列、双端队列、图结构、矩阵和逻辑路径，请转到 [../core/utils/docs/utils-document.md](../core/utils/docs/utils-document.md)。
+若你要查看队列、双端队列、图结构、矩阵和逻辑路径，请转到 [../kernel/utils/docs/utils-document.md](../kernel/utils/docs/utils-document.md)。
 
 ## 使用建议
 

@@ -80,6 +80,6 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "setupFilesAfterEnv": ["<rootDir>/src/core/test-support/jest-setup.js"]
+    "setupFilesAfterEnv": ["<rootDir>/src/test-support/jest-setup.js"]
   }
 }

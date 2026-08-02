@@ -1,7 +1,7 @@
 import { CircleObject } from "../../../objects/graph/circle.js";
 import { DirectedGraph } from "../../../utils/directed-graph.js";
 import { Vector } from "../../../utils/math.js";
-import { createBoardCoreAomFixture } from "../../../../core/test-support/aom-fixtures.js";
+import { createBoardCoreAomFixture } from "../../../../test-support/aom-fixtures.js";
 
 const ID = Object.freeze({
   A: 1,

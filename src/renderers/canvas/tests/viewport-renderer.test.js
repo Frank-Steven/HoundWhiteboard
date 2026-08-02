@@ -11,7 +11,7 @@ import { CircleObject } from "../../../kernel/objects/graph/circle.js";
 import { RectangleRange } from "../../../kernel/range/rectangle.js";
 import { PathRange } from "../../../kernel/range/path.js";
 import { Layer } from "../../../kernel/document/active-object-manager.js";
-import { installNoopOffscreenCanvas } from "../../../core/test-support/noop-canvas.js";
+import { installNoopOffscreenCanvas } from "../../../test-support/noop-canvas.js";
 import { OBJECT_DRAW_STRATEGIES } from "../object-draw-strategies.js";
 
 /**
