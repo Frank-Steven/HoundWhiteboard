@@ -5,8 +5,8 @@
  * @author Zhou Chenyu
  */
 
-import { StrokeCreatorTool } from "../../core/ui-thread/devices-dag/tools/creator/stroke-creator.js";
-import { RectangleObjectChooserTool } from "../../core/ui-thread/devices-dag/tools/chooser/rectangle-object-chooser.js";
+import { StrokeCreatorTool } from "../../ui/devices-dag/tools/creator/stroke-creator.js";
+import { RectangleObjectChooserTool } from "../../ui/devices-dag/tools/chooser/rectangle-object-chooser.js";
 import { DebuggerTool } from "./debugger-tool.js";
 import { ViewportTool } from "./viewport-tool.js";
 import { mountDemoDevices } from "./devices.js";
@@ -60,15 +60,15 @@ export {
  * 视口控制、调试等 workflow。本函数不挂载 mouse/primary 上的左键工具——由调用方通过
  * {@link mountPrimaryStrokeTool} 或 {@link mountToolSwitcher} 显式选择左键路由。
  *
- * @param {import("../../core/ui-thread/components/orchestration/board.js").Board} board - 白板实例
- * @param {import("../../core/ui-thread/components/orchestration/viewport.js").Viewport} viewport - 视口实例
+ * @param {import("../../ui/components/orchestration/board.js").Board} board - 白板实例
+ * @param {import("../../ui/components/orchestration/viewport.js").Viewport} viewport - 视口实例
  * @param {Object} [options={}] - 可选覆盖配置
  * @param {ViewportTool} [options.viewportTool] - 自定义视口工具实例
  * @param {DebuggerTool} [options.debugTool] - 自定义调试工具实例
  * @returns {{
  *   viewportTool: ViewportTool,
- *   primaryStrokeTool: import("../../core/ui-thread/devices-dag/tools/creator/stroke-creator.js").StrokeCreatorTool,
- *   secondarySelectionTool: import("../../core/ui-thread/devices-dag/tools/chooser/rectangle-object-chooser.js").RectangleObjectChooserTool,
+ *   primaryStrokeTool: import("../../ui/devices-dag/tools/creator/stroke-creator.js").StrokeCreatorTool,
+ *   secondarySelectionTool: import("../../ui/devices-dag/tools/chooser/rectangle-object-chooser.js").RectangleObjectChooserTool,
  *   debugTool: DebuggerTool,
  * }}
  */

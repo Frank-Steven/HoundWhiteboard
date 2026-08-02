@@ -25,13 +25,14 @@ description: Write module documentation, technical overviews, and API docs follo
 
 ## `@module` 路径
 
-JSDoc 中的 `@module` 路径与源码路径对应，前缀为 `core/`：
+JSDoc 中的 `@module` 路径与源码路径对应，各包根目录即前缀：
 
-| 源文件路径                                   | `@module`                             |
-| -------------------------------------------- | ------------------------------------- |
-| `src/core/ui/components/orchestration/board.js` | `core/ui/components/orchestration/board` |
-| `src/core/ui/devices-dag/dag.js`                | `core/ui/devices-dag/dag`                |
-| `src/core/ui/tools/creator/stroke-creator.js`   | `core/ui/tools/creator/stroke-creator`   |
+| 源文件路径                                  | `@module`                           |
+| ------------------------------------------- | ----------------------------------- |
+| `src/kernel/board/board-core.js`            | `kernel/board/board-core`           |
+| `src/renderers/canvas/viewport-renderer.js` | `canvas/viewport-renderer`          |
+| `src/host/bridges/board-api-rpc.js`         | `host/bridges/board-api-rpc`        |
+| `src/ui/components/orchestration/board.js`  | `ui/components/orchestration/board` |
 
 ## 文档文风
 

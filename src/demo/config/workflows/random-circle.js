@@ -5,7 +5,7 @@
  * @author Zhou Chenyu
  */
 
-import { createEdgePrefix } from "../../../core/ui-thread/devices-dag/prefixes/index.js";
+import { createEdgePrefix } from "../../../ui/devices-dag/prefixes/index.js";
 import { createRandomCircleSubDAG } from "../random-circle-creator-tool.js";
 import { buildKeyboardTriggerForwardNodeConfig } from "../prefix-builders.js";
 import { DEMO_WORKFLOW_NAMES, RANDOM_CIRCLE_KEY } from "../constants.js";
@@ -13,7 +13,7 @@ import { DEMO_WORKFLOW_NAMES, RANDOM_CIRCLE_KEY } from "../constants.js";
 /**
  * 挂载随机圆 workflow
  * @description Space 键的 trigger 信号经转发 prefix 进入随机圆子图，由子图内部生成随机参数并创建圆对象。
- * @param {import("../../../core/ui-thread/components/orchestration/viewport.js").Viewport} viewport - 视口实例
+ * @param {import("../../../ui/components/orchestration/viewport.js").Viewport} viewport - 视口实例
  * @returns {void}
  */
 function mountRandomCircle(viewport) {

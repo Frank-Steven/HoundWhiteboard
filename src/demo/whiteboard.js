@@ -5,8 +5,8 @@
  * @author Zhou Chenyu
  */
 
-import { Vector } from "../core/engine/utils/math.js";
-import { Board } from "../core/ui-thread/components/orchestration/board.js";
+import { Vector } from "../kernel/utils/math.js";
+import { Board } from "../ui/components/orchestration/board.js";
 import { createConsolePrinter, logBus } from "../utils/log/index.js";
 import {
   configureWhiteboardDemo,
@@ -42,7 +42,7 @@ async function bootstrapWhiteboard() {
   }
 
   const worker = new Worker(
-    new URL("../core/engine/core-worker.js", import.meta.url),
+    new URL("../host/core-worker.js", import.meta.url),
     { type: "module" },
   );
 

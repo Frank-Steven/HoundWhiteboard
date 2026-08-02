@@ -5,14 +5,14 @@
  * @author Zhou Chenyu
  */
 
-import { createSubDAG } from "../../core/ui-thread/devices-dag/index.js";
-import { createPrefixNodeHandler } from "../../core/ui-thread/devices-dag/prefixes/index.js";
-import { SignalPacket } from "../../core/ui-thread/devices-dag/dag-core/signal.js";
-import { CircleDataCreatorTool } from "../../core/ui-thread/devices-dag/tools/creator/circle/data-creator.js";
-import { createCircleRadiusProcessor } from "../../core/ui-thread/devices-dag/tools/creator/circle/radius-processor.js";
-import { SIGNAL_TYPES } from "../../core/ui-thread/devices-dag/dag-core/signal-types.js";
-import { Vector } from "../../core/engine/utils/math.js";
-import { isPlainObject } from "../../core/ui-thread/devices-dag/prefixes/utils.js";
+import { createSubDAG } from "../../ui/devices-dag/index.js";
+import { createPrefixNodeHandler } from "../../ui/devices-dag/prefixes/index.js";
+import { SignalPacket } from "../../ui/devices-dag/dag-core/signal.js";
+import { CircleDataCreatorTool } from "../../ui/devices-dag/tools/creator/circle/data-creator.js";
+import { createCircleRadiusProcessor } from "../../ui/devices-dag/tools/creator/circle/radius-processor.js";
+import { SIGNAL_TYPES } from "../../ui/devices-dag/dag-core/signal-types.js";
+import { Vector } from "../../kernel/utils/math.js";
+import { isPlainObject } from "../../ui/devices-dag/prefixes/utils.js";
 
 /**
  * 随机圆 prefix 工作流信号类型
@@ -37,7 +37,7 @@ const RANDOM_CIRCLE_PREFIX_SIGNAL_TYPES = Object.freeze({
  *   maxRadius?: number,
  *   property?: Record<string, any>,
  * }} [options={}] - 随机圆工作流配置
- * @returns {import("../../core/ui-thread/devices-dag/dag-type.js").SubDAGDefinition} 可直接传入 inputScope.mountWorkflow(name, subDAG) 的结构化子树定义
+ * @returns {import("../../ui/devices-dag/dag-type.js").SubDAGDefinition} 可直接传入 inputScope.mountWorkflow(name, subDAG) 的结构化子树定义
  * @see CircleDataCreatorTool
  * @example
  * const subDAG = createRandomCircleSubDAG({
