@@ -111,8 +111,8 @@ chunks/{chunkId}.json
 ## 与其它组件的关系
 
 - 被 [chunk-document.md](./chunk-document.md) 持有
-- 与 [board-core-document.md](../../document/docs/board-core-document.md) 一起维护对象与区块关系
-- 会被 [active-object-manager-document.md](../../document/docs/active-object-manager-document.md) 的跨区块逻辑间接依赖
+- 与 [board-core-document.md](../../board/docs/board-core-document.md) 一起维护对象与区块关系
+- 会被 [active-object-manager-document.md](../../board/docs/active-object-manager-document.md) 的跨区块逻辑间接依赖
 - 底层图结构依赖 `src/engine/utils/directed-graph.js`
 
 ## 当前实现状态
@@ -124,5 +124,5 @@ chunks/{chunkId}.json
 ## 相关文档
 
 - [chunk-document.md](./chunk-document.md)
-- [board-core-document.md](../../document/docs/board-core-document.md)
+- [board-core-document.md](../../board/docs/board-core-document.md)
 - [file-operate-document.md](../../../host/bridges/docs/file-operate-document.md)

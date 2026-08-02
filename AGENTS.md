@@ -39,7 +39,7 @@ src/
 │   ├── objects/             # 对象模型（BasicObject、Stroke、graph/）
 │   ├── range/               # 几何
 │   ├── chunk/               # 区块（空间分区）
-│   ├── document/            # 文档状态（BoardCore 静态图 / AOM / render-hooks 缝）
+│   ├── board/               # Board 权威状态（BoardCore 静态图 / AOM / render-hooks 缝）
 │   ├── hit/                 # 操作日志与时间回溯树
 │   ├── api/                 # BoardApi 契约面
 │   ├── utils/               # 内核工具（id 池、图、数学）

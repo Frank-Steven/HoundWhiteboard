@@ -19,7 +19,7 @@ import { ChunkObjectManager } from "./chunk-object-manager.js";
 class Chunk {
   /**
    * 所属白板核心
-   * @type {import("../document/board-core.js").BoardCore | undefined}
+   * @type {import("../board/board-core.js").BoardCore | undefined}
    */
   board;
 

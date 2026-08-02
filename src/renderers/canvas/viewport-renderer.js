@@ -15,7 +15,7 @@ import {
 import { BasicObject } from "../../kernel/objects/basic-obj.js";
 import { RectangleRange } from "../../kernel/range/rectangle.js";
 import { DirectedGraph } from "../../kernel/utils/directed-graph.js";
-import { ActiveObjectManager } from "../../kernel/document/active-object-manager.js";
+import { ActiveObjectManager } from "../../kernel/board/active-object-manager.js";
 import { collectActiveDrawables as _collectActiveDrawables } from "./aom-collect-utils.js";
 import {
   drawObject,

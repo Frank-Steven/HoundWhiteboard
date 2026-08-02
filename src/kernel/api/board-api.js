@@ -23,7 +23,7 @@ const ERASE_COARSE_MARGIN = 64;
 
 /**
  * 判断对象是否已进入 Worker 侧的区块静态图
- * @param {import("../document/board-core.js").BoardCore} boardCore - BoardCore 实例
+ * @param {import("../board/board-core.js").BoardCore} boardCore - BoardCore 实例
  * @param {string} objectId - 对象 id
  * @returns {boolean}
  */
@@ -61,7 +61,7 @@ function getObjectWorldRect(obj) {
 class BoardApi {
   /**
    * BoardCore 实例
-   * @type {import("../document/board-core.js").BoardCore}
+   * @type {import("../board/board-core.js").BoardCore}
    */
   #boardCore;
 
@@ -78,7 +78,7 @@ class BoardApi {
   #eraseDataQueue = Promise.resolve();
 
   /**
-   * @param {import("../document/board-core.js").BoardCore} boardCore - BoardCore 实例
+   * @param {import("../board/board-core.js").BoardCore} boardCore - BoardCore 实例
    */
   constructor(boardCore) {
     this.#boardCore = boardCore;
@@ -535,7 +535,7 @@ class BoardApi {
    * @description
    * 若查询范围覆盖未加载或仅临时加载的区块，会先 FullLoad 使对象实例就绪，
    * 执行命中检测后销毁 loader 释放引用。
-   * @param {import("../document/board-core.js").BoardCore} boardCore - BoardCore 实例
+   * @param {import("../board/board-core.js").BoardCore} boardCore - BoardCore 实例
    * @param {RectangleRange} queryRange - 查询范围
    * @returns {Promise<string[]>} 命中的对象 id 列表
    * @private
@@ -592,7 +592,7 @@ class BoardApi {
 
   /**
    * 在当前已加载对象中执行命中检测
-   * @param {import("../document/board-core.js").BoardCore} boardCore - BoardCore 实例
+   * @param {import("../board/board-core.js").BoardCore} boardCore - BoardCore 实例
    * @param {RectangleRange} queryRange - 查询范围
    * @param {Set<number>} [chunkIds] - 查询范围覆盖的区块 id 集合，用于粗筛
    * @returns {string[]}

@@ -13,7 +13,7 @@ import { Chunk } from "../../kernel/chunk/chunk.js";
 import { CHUNK_LOAD_STRATEGIES, ChunkLoader } from "../../kernel/chunk/chunk-loader.js";
 import { ChunkObjectManager } from "../../kernel/chunk/chunk-object-manager.js";
 import { ViewportRenderer } from "./viewport-renderer.js";
-import { BoardCore } from "../../kernel/document/board-core.js";
+import { BoardCore } from "../../kernel/board/board-core.js";
 
 /**
  * Worker 侧视口核心

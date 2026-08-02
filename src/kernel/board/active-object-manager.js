@@ -1,7 +1,7 @@
 /**
  * @file 全局活动对象管理器
  * @description 管理活动对象的层级、筛选与运行时状态。
- * @module kernel/document/active-object-manager
+ * @module kernel/board/active-object-manager
  * @author Zhou Chenyu
  */
 

@@ -30,7 +30,7 @@ class ChunkObjectManager {
 
   /**
    * 所属白板核心
-   * @type {import("../document/board-core.js").BoardCore | undefined}
+   * @type {import("../board/board-core.js").BoardCore | undefined}
    */
   board;
 
@@ -42,7 +42,7 @@ class ChunkObjectManager {
 
   /**
    * @param {number} chunkId - 区块 id
-   * @param {import("../document/board-core.js").BoardCore} [board] - Worker 端白板实例
+   * @param {import("../board/board-core.js").BoardCore} [board] - Worker 端白板实例
    */
   constructor(chunkId, board) {
     this.id = chunkId;
@@ -52,7 +52,7 @@ class ChunkObjectManager {
 
   /**
    * 绑定白板实例
-   * @param {import("../document/board-core.js").BoardCore} board - Worker 端白板实例
+   * @param {import("../board/board-core.js").BoardCore} board - Worker 端白板实例
    */
   setBoard(board) {
     this.board = board;

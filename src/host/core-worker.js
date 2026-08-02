@@ -10,8 +10,8 @@
  */
 
 import { createDefaultPersistenceAdapter } from "./bridges/persistence-adapter.js";
-import { createDefaultAomRenderHooks } from "../kernel/document/aom-render-hooks.js";
-import { BoardCore } from "../kernel/document/board-core.js";
+import { createDefaultAomRenderHooks } from "../kernel/board/aom-render-hooks.js";
+import { BoardCore } from "../kernel/board/board-core.js";
 import { ViewportCore } from "../renderers/canvas/viewport-core.js";
 import { Logger } from "../utils/log/logger.js";
 import { logBus } from "../utils/log/log-bus.js";
@@ -464,7 +464,7 @@ class CoreWorkerRuntime {
 
   /**
    * 创建绑定到 ViewportCore 集合的 AOM 渲染钩子
-   * @returns {import("../kernel/document/aom-render-hooks.js").AomRenderHooks}
+   * @returns {import("../kernel/board/aom-render-hooks.js").AomRenderHooks}
    */
   #createViewportRenderHooks() {
     return {

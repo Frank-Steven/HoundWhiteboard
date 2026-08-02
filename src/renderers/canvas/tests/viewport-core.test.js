@@ -4,7 +4,7 @@
 
 import { jest } from "@jest/globals";
 
-import { BoardCore } from "../../../kernel/document/board-core.js";
+import { BoardCore } from "../../../kernel/board/board-core.js";
 import { ViewportCore } from "../viewport-core.js";
 import { RectangleRange } from "../../../kernel/range/index.js";
 import { Vector } from "../../../kernel/utils/math.js";

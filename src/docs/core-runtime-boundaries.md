@@ -23,10 +23,10 @@
 | `ui/components/renderer/ui-renderer.js`             | UI       | UI overlay 渲染                                                 |
 | `ui/devices-dag/**`                                 | UI       | 设备图、设备子图、prefix、tool 全部在 UI 线程                   |
 | `host/core-worker.js`                                    | Worker   | Worker 入口与 `CoreWorkerRuntime`                               |
-| `kernel/document/board-core.js`                       | Worker   | 对象、区块、AOM、UndoTree、持久化协调                           |
+| `kernel/board/board-core.js`                       | Worker   | 对象、区块、AOM、UndoTree、持久化协调                           |
 | `renderers/canvas/viewport-core.js`                    | Worker   | Worker 视口状态、区块缓冲、渲染帧输出                           |
-| `kernel/document/active-object-manager.js`            | Worker   | 动态图与交互态对象生命周期                                      |
-| `kernel/document/aom-render-hooks.js`                 | Worker   | Worker 侧使用的 render hook 协议与默认实现                      |
+| `kernel/board/active-object-manager.js`            | Worker   | 动态图与交互态对象生命周期                                      |
+| `kernel/board/aom-render-hooks.js`                 | Worker   | Worker 侧使用的 render hook 协议与默认实现                      |
 | `kernel/chunk/**`                                          | Worker   | 区块、加载器、静态图、覆盖区块索引                              |
 | `renderers/canvas/**` （Worker 端）                         | Worker   | Worker 侧 base/live 渲染器                                      |
 | `kernel/hit/**`                                            | Worker   | UndoTree 与操作结构                                             |

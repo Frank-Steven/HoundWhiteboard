@@ -2,7 +2,7 @@
 
 本文档提供 `Board`（UI 侧白板 facade）的概述。
 
-Worker 侧真实白板核心参见 [board-core-document.md](../../../../kernel/document/docs/board-core-document.md)。
+Worker 侧真实白板核心参见 [board-core-document.md](../../../../kernel/board/docs/board-core-document.md)。
 
 ## 概述
 

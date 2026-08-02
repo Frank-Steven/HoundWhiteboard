@@ -129,4 +129,4 @@
 
 - [chunk-object-manager-document.md](./chunk-object-manager-document.md)
 - [chunk-loader-document.md](./chunk-loader-document.md)
-- [board-core-document.md](../../document/docs/board-core-document.md)
+- [board-core-document.md](../../board/docs/board-core-document.md)

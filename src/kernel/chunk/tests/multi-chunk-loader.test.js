@@ -8,10 +8,10 @@ import { jest } from "@jest/globals";
 import os from "os";
 import path from "path";
 
-import { BoardCore } from "../../document/board-core.js";
+import { BoardCore } from "../../board/board-core.js";
 import { Chunk } from "../chunk.js";
 import { CHUNK_LOAD_EVENTS, CHUNK_LOAD_STRATEGIES } from "../chunk-loader.js";
-import { createDefaultAomRenderHooks } from "../../document/aom-render-hooks.js";
+import { createDefaultAomRenderHooks } from "../../board/aom-render-hooks.js";
 import { createDefaultPersistenceAdapter } from "../../../host/bridges/persistence-adapter.js";
 
 describe("Multiple ChunkLoader", () => {
