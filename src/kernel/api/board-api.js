@@ -180,18 +180,34 @@ class BoardApi {
   }
 
   /**
-   * 修改单个对象的几何/样式属性
+   * 断言对象为活动对象
+   * @description 非活动对象不允许更改：想更改一个对象，它必须先经选择进入动态图。
    * @param {string} objectId - 对象 id
-   * @param {import("../types/board-api-types.js").ObjectPatch} patch - 修改 patch
-   * @returns {void}
+   * @returns {import("../objects/basic-obj.js").BasicObject} 对象实例
+   * @private
    */
-  modifyObject(objectId, patch) {
+  #requireActiveObject(objectId) {
     const boardCore = this.#boardCore;
     const obj = boardCore.getObjectById(objectId);
     if (!obj) {
       throw new Error(`Object ${objectId} not found.`);
     }
+    if (!boardCore.activeObjectManager?.isActive?.(objectId)) {
+      throw new Error(`对象 ${objectId} 不是活动对象：更改前须先选择（进入动态图）`);
+    }
+    return obj;
+  }
 
+  /**
+   * 把 patch 应用到对象实例
+   * @description 内核复合操作通道：不做活动对象准入，供擦除回写等切割效果的原子表达使用。
+   * @param {import("../objects/basic-obj.js").BasicObject} obj - 对象实例
+   * @param {import("../types/board-api-types.js").ObjectPatch} patch - 修改 patch
+   * @returns {void}
+   * @private
+   */
+  #applyObjectPatch(obj, patch) {
+    const boardCore = this.#boardCore;
     if (patch.position != null) {
       obj.position = new Vector(patch.position.x, patch.position.y);
     }
@@ -205,43 +221,31 @@ class BoardApi {
     if (patch.data != null) {
       obj.setData(patch.data);
     }
-
     boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
   }
 
   /**
+   * 修改单个对象的几何/样式属性
+   * @description 仅活动对象可更改：对象须先经选择进入动态图。
+   * @param {string} objectId - 对象 id
+   * @param {import("../types/board-api-types.js").ObjectPatch} patch - 修改 patch
+   * @returns {void}
+   */
+  modifyObject(objectId, patch) {
+    this.#applyObjectPatch(this.#requireActiveObject(objectId), patch);
+  }
+
+  /**
    * 批量修改多个对象
+   * @description 仅活动对象可更改：对象须先经选择进入动态图。
    * @param {import("../types/board-api-types.js").ObjectPatchEntry[]} patches - 批量 patch
    * @returns {void}
    */
   modifyObjects(patches) {
-    const boardCore = this.#boardCore;
     const items = Array.isArray(patches) ? patches : [];
-    const modifiedObjects = [];
-
     for (const { objectId, patch } of items) {
       if (objectId == null || !patch) continue;
-      const obj = boardCore.getObjectById(objectId);
-      if (!obj) continue;
-
-      if (patch.position != null) {
-        obj.position = new Vector(patch.position.x, patch.position.y);
-      }
-      if (patch.transform != null) {
-        const { a, b, c, d } = patch.transform;
-        obj.setTransform(new Matrix(a, b, c, d));
-      }
-      if (patch.property != null) {
-        obj.setProperty(patch.property);
-      }
-      if (patch.data != null) {
-        obj.setData(patch.data);
-      }
-      modifiedObjects.push(obj);
-    }
-
-    if (modifiedObjects.length > 0) {
-      boardCore.aomRenderHooks?.requestActiveRender?.(modifiedObjects);
+      this.#applyObjectPatch(this.#requireActiveObject(objectId), patch);
     }
   }
 
@@ -253,12 +257,9 @@ class BoardApi {
    * @returns {void}
    */
   appendListItem(objectId, key, items) {
-    const boardCore = this.#boardCore;
-    const obj = boardCore.getObjectById(objectId);
-    if (obj) {
-      obj.appendListItem(key, ...(items ?? []));
-      boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
-    }
+    const obj = this.#requireActiveObject(objectId);
+    obj.appendListItem(key, ...(items ?? []));
+    this.#boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
   }
 
   /**
@@ -270,12 +271,9 @@ class BoardApi {
    * @returns {void}
    */
   replaceListItem(objectId, key, index, item) {
-    const boardCore = this.#boardCore;
-    const obj = boardCore.getObjectById(objectId);
-    if (obj) {
-      obj.replaceListItem(key, index, item);
-      boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
-    }
+    const obj = this.#requireActiveObject(objectId);
+    obj.replaceListItem(key, index, item);
+    this.#boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
   }
 
   /**
@@ -286,12 +284,9 @@ class BoardApi {
    * @returns {void}
    */
   removeListItem(objectId, key, index) {
-    const boardCore = this.#boardCore;
-    const obj = boardCore.getObjectById(objectId);
-    if (obj) {
-      obj.removeListItem(key, index);
-      boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
-    }
+    const obj = this.#requireActiveObject(objectId);
+    obj.removeListItem(key, index);
+    this.#boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
   }
 
   /**
@@ -438,7 +433,8 @@ class BoardApi {
       }
 
       const beforeErase = obj.serialize();
-      this.modifyObject(objectId, { data: { points: runs[0] } });
+      // 内核复合操作通道：擦除回写是切割效果的原子表达，非用户更改，不经活动对象准入
+      this.#applyObjectPatch(obj, { data: { points: runs[0] } });
       const erasedChunkId = this.#resolveObjectChunkId(objectId);
       boardCore.hitCommitter.commitModify({
         chunkId: erasedChunkId,
@@ -506,11 +502,23 @@ class BoardApi {
     const wasStatic = new Map(
       objects.map((obj) => [obj.id, hasStaticBoardObject(boardCore, obj.id)]),
     );
-    await boardCore.activeObjectManager.apply(new Set(objects));
+    const committable = objects.filter((obj) => {
+      if (!wasStatic.get(obj.id)) return true;
+      if (this.#chooseSnapshots.has(obj.id)) return true;
+      if (boardCore.activeObjectManager.has(obj.id)) {
+        throw new Error(`对象 ${obj.id} 缺选择前快照`);
+      }
+      // 已提交过的对象（不在选择中的静态对象）重复提交是幂等空操作
+      return false;
+    });
+    if (committable.length === 0) {
+      return objects.map((obj) => obj.id);
+    }
+    await boardCore.activeObjectManager.apply(new Set(committable));
 
     const committer = boardCore.hitCommitter;
     const supra = options.supra ?? committer.beginSupra();
-    for (const obj of objects) {
+    for (const obj of committable) {
       const chunkId = this.#resolveObjectChunkId(obj.id);
       const after = obj.serialize();
       const layerStackSnapshot = this.#captureLayerStackSnapshot(chunkId);
@@ -550,10 +558,11 @@ class BoardApi {
   /**
    * 将对象加入 AOM 动态图
    * @description 静态对象进入 AOM 即选择对象分子操作：捕获选择前快照（修改分子的前快照）并提交记录。
+   * 返回的 Promise 在 pickup 完成（对象成为活动对象）后兑现。
    * @param {string[]} objectIds - 对象 id 列表
-   * @returns {void}
+   * @returns {Promise<void>}
    */
-  addActiveObjects(objectIds) {
+  async addActiveObjects(objectIds) {
     const boardCore = this.#boardCore;
     const ids = Array.isArray(objectIds) ? objectIds : [];
     const objects = ids
@@ -575,7 +584,7 @@ class BoardApi {
         supra,
       });
     }
-    boardCore.activeObjectManager.choose(new Set(objects));
+    await boardCore.activeObjectManager.choose(new Set(objects));
   }
 
   /**
@@ -600,14 +609,15 @@ class BoardApi {
     const committer = boardCore.hitCommitter;
     const supra = committer.beginSupra();
     for (const obj of objects) {
-      if (hasStaticBoardObject(boardCore, obj.id)) {
+      // 放弃更改仅在对象确经选择时产生取消选择分子
+      if (this.#chooseSnapshots.has(obj.id)) {
         committer.commitUnchoose({
           chunkId: this.#resolveObjectChunkId(obj.id),
           objectId: obj.id,
           supra,
         });
+        this.#chooseSnapshots.delete(obj.id);
       }
-      this.#chooseSnapshots.delete(obj.id);
     }
 
     for (const objectId of transientObjectIds) {

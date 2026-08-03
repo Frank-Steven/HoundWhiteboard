@@ -42,6 +42,48 @@ async function createStaticStroke(api, id, points = horizontalPoints()) {
  */
 const recordTypes = (boardCore) => boardCore.operationLog.toArray().map((r) => r.type);
 
+describe("活动对象准入", () => {
+  test("静态对象不可更改", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+
+    expect(() => api.modifyObject("s1", { position: { x: 1, y: 1 } })).toThrow(
+      "对象 s1 不是活动对象：更改前须先选择（进入动态图）",
+    );
+    expect(() => api.modifyObjects([{ objectId: "s1", patch: { position: { x: 1, y: 1 } } }])).toThrow(
+      "不是活动对象",
+    );
+    expect(() => api.appendListItem("s1", "points", [{ x: 50, y: 100 }])).toThrow(
+      "不是活动对象",
+    );
+    expect(() => api.replaceListItem("s1", "points", 0, { x: 0, y: 0 })).toThrow(
+      "不是活动对象",
+    );
+    expect(() => api.removeListItem("s1", "points", 0)).toThrow("不是活动对象");
+  });
+
+  test("选择后可更改，提交后恢复不可更改", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+
+    await api.addActiveObjects(["s1"]);
+    expect(() => api.modifyObject("s1", { position: { x: 5, y: 5 } })).not.toThrow();
+    await api.commitObjects(["s1"]);
+    expect(() => api.modifyObject("s1", { position: { x: 9, y: 9 } })).toThrow(
+      "不是活动对象",
+    );
+  });
+
+  test("不存在的对象报 not found", () => {
+    const api = new BoardApi(createBoardCore());
+    expect(() => api.modifyObject("nope", { position: { x: 0, y: 0 } })).toThrow(
+      "Object nope not found.",
+    );
+  });
+});
+
 describe("hit commit 边界", () => {
   test("对象创建在 commit 时凝聚为一个增加对象分子", async () => {
     const boardCore = createBoardCore();
@@ -68,7 +110,7 @@ describe("hit commit 边界", () => {
     const api = new BoardApi(boardCore);
     await createStaticStroke(api, "s1");
 
-    api.addActiveObjects(["s1"]);
+    await api.addActiveObjects(["s1"]);
     api.modifyObject("s1", { position: { x: 50, y: 50 } });
     await api.commitObjects(["s1"]);
 
@@ -89,7 +131,7 @@ describe("hit commit 边界", () => {
     const api = new BoardApi(boardCore);
     await createStaticStroke(api, "s1");
 
-    api.addActiveObjects(["s1"]);
+    await api.addActiveObjects(["s1"]);
     api.discardActiveObjects(["s1"]);
 
     expect(recordTypes(boardCore)).toEqual(["add-object", "choose-object", "unchoose-object"]);
@@ -100,9 +142,9 @@ describe("hit commit 边界", () => {
     const api = new BoardApi(boardCore);
     await createStaticStroke(api, "s1");
 
-    api.addActiveObjects(["s1"]);
+    await api.addActiveObjects(["s1"]);
     api.modifyObject("s1", { position: { x: 10, y: 10 } });
-    api.addActiveObjects(["s1"]);
+    await api.addActiveObjects(["s1"]);
     await api.commitObjects(["s1"]);
 
     expect(recordTypes(boardCore)).toEqual([
@@ -120,7 +162,7 @@ describe("hit commit 边界", () => {
     const api = new BoardApi(boardCore);
     await createStaticStroke(api, "s1");
 
-    api.addActiveObjects(["s1"]);
+    await api.addActiveObjects(["s1"]);
     await api.commitObjects(["s1"]);
 
     expect(recordTypes(boardCore)).toEqual(["add-object", "choose-object", "unchoose-object"]);
@@ -137,6 +179,34 @@ describe("hit commit 边界", () => {
     const [, del] = boardCore.operationLog.toArray();
     expect(del.payload.objectId).toBe("s1");
     expect(del.payload.chunkId).not.toBe("");
+  });
+
+  test("重复提交同一对象是幂等空操作", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+
+    const committed = await api.commitObjects(["s1"]);
+    expect(committed).toEqual(["s1"]);
+    expect(recordTypes(boardCore)).toEqual(["add-object"]);
+  });
+
+  test("选择提交后再次重复提交是幂等空操作", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+    await api.addActiveObjects(["s1"]);
+    api.modifyObject("s1", { position: { x: 10, y: 10 } });
+    await api.commitObjects(["s1"]);
+
+    const committed = await api.commitObjects(["s1"]);
+    expect(committed).toEqual(["s1"]);
+    expect(recordTypes(boardCore)).toEqual([
+      "add-object",
+      "choose-object",
+      "modify-object",
+      "unchoose-object",
+    ]);
   });
 
   test("一笔擦短：修改分子携切割前后快照，且各记录同属一个超分子", async () => {
