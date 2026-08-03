@@ -13,6 +13,7 @@ import {
 	createChooseObjectOperation,
 	createUnchooseObjectOperation,
 	createUndoOperation,
+	createRedoOperation,
 } from "./operation.js";
 
 /**
@@ -182,6 +183,16 @@ class HitCommitter {
 			...effect,
 			previousHeadId: this.#tree.head.shareId,
 		});
+	}
+
+	/**
+	 * 提交重做分子操作
+	 * @description 重做的移动目标由最近一次生效撤销的记录派生，自身不携带目标；
+	 * 是否生效由树侧按条件应用判定（新工作洗掉则不移动，记录仍在日志）。
+	 * @returns {import("./operation.js").OperationRecord} 重做操作记录
+	 */
+	commitRedo() {
+		return this.#emit(createRedoOperation, {});
 	}
 
 	/**

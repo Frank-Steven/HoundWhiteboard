@@ -1032,21 +1032,15 @@ class BoardApi {
     const targetId = tree.head.shareId;
     const chain = tree.getActiveChain();
     const targetIndex = chain.findIndex((node) => node.shareId === targetId);
-    const log = boardCore.operationLog;
-    // 节点的成员记录：独立分子为单件，超分子为全组
-    const recordsOf = (node) => {
-      const record = log.get(node.shareId);
-      return record.supraOpId === null ? [record] : log.getSupraMembers(record.supraOpId);
-    };
     for (let i = chain.length - 1; i >= targetIndex; i--) {
-      const records = recordsOf(chain[i]);
+      const records = this.#recordsOfNode(chain[i]);
       for (let j = records.length - 1; j >= 0; j--) {
         this.#revertOpEffect(records[j]);
       }
     }
     boardCore.hitCommitter.commitUndo({ targetNodeId: targetId });
     for (const node of tree.getActiveChain().slice(targetIndex)) {
-      for (const record of recordsOf(node)) {
+      for (const record of this.#recordsOfNode(node)) {
         this.#applyOpEffect(record);
       }
     }
@@ -1222,12 +1216,52 @@ class BoardApi {
   }
 
   /**
+   * 取节点的成员记录
+   * @param {import("../hit/undo-tree-core.js").MolecularNode} node - 树节点
+   * @returns {import("../hit/operation.js").OperationRecord[]} 成员记录数组（独立分子为单件，超分子为全组）
+   * @private
+   */
+  #recordsOfNode(node) {
+    const log = this.#boardCore.operationLog;
+    const record = log.get(node.shareId);
+    return record.supraOpId === null ? [record] : log.getSupraMembers(record.supraOpId);
+  }
+
+  /**
    * 执行重做
-   * @returns {void}
-   * @throws {Error} 尚未实现
+   * @description 把 HEAD 移到最近一次生效撤销记录的原 HEAD 位置（条件应用由树侧判定）；
+   * 生效后按分叉点先逆放旧链尾段、再正向重放新链尾段。
+   * @returns {{ redone: boolean, targetNodeId: ?string }} 重做结果
    */
   redo() {
-    throw new Error("Redo not implemented yet.");
+    const boardCore = this.#boardCore;
+    const tree = boardCore.undoTree;
+    const beforeChain = tree.getActiveChain();
+    boardCore.hitCommitter.commitRedo();
+    const afterChain = tree.getActiveChain();
+    let diverge = 0;
+    while (
+      diverge < beforeChain.length &&
+      diverge < afterChain.length &&
+      beforeChain[diverge].shareId === afterChain[diverge].shareId
+    ) {
+      diverge++;
+    }
+    if (diverge === beforeChain.length && diverge === afterChain.length) {
+      return { redone: false, targetNodeId: null };
+    }
+    for (let i = beforeChain.length - 1; i >= diverge; i--) {
+      const records = this.#recordsOfNode(beforeChain[i]);
+      for (let j = records.length - 1; j >= 0; j--) {
+        this.#revertOpEffect(records[j]);
+      }
+    }
+    for (let i = diverge; i < afterChain.length; i++) {
+      for (const record of this.#recordsOfNode(afterChain[i])) {
+        this.#applyOpEffect(record);
+      }
+    }
+    return { redone: true, targetNodeId: afterChain.at(-1)?.shareId ?? null };
   }
 }
 

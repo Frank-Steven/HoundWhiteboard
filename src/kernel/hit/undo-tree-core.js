@@ -93,6 +93,12 @@ class UndoTree {
 	#activeByShareId = new Map();
 
 	/**
+	 * 重做栈（由日志派生：生效撤销压入，新工作清空，重做弹出）
+	 * @type {Array<{ targetId: string, previousHeadId: string }>}
+	 */
+	#redoStack = [];
+
+	/**
 	 * 构造时间回溯树
 	 * @param {import("./operation-log.js").OperationLog} log - 数据池（操作日志）
 	 */
@@ -183,8 +189,11 @@ class UndoTree {
 		if (record.type === OPERATION_TYPES.UNDO) {
 			return this.#applyUndo(record);
 		}
+		if (record.type === OPERATION_TYPES.REDO) {
+			return this.#applyRedo(record);
+		}
 		if (getOperationEffectKind(record.type) !== OPERATION_EFFECT_KINDS.APPEND_NODE) {
-			throw new Error(`树级操作的应用随重做落地补全：${record.type}`);
+			throw new Error(`树级操作的应用随更改 HEAD 落地补全：${record.type}`);
 		}
 		if (record.supraOpId !== null) {
 			throw new Error(`超分子成员不产生独立节点，经 applySupraNode 应用：${record.id}`);
@@ -230,6 +239,10 @@ class UndoTree {
 		if (target === null) {
 			return null;
 		}
+		this.#redoStack.push({
+			targetId: record.payload.targetNodeId,
+			previousHeadId: record.payload.previousHeadId,
+		});
 		if (target === this.#head) {
 			this.#head = target.parent;
 			this.#rebuildActiveIndex();
@@ -293,6 +306,8 @@ class UndoTree {
 		const node = new MolecularNode(shareId, this.#head);
 		this.#insertChildSorted(this.#head, node);
 		this.#head = node;
+		// 推进 HEAD 的新工作洗掉可重做的撤销
+		this.#redoStack = [];
 		this.#rebuildActiveIndex();
 		return node;
 	}
@@ -321,6 +336,83 @@ class UndoTree {
 		this.#shiftDepth(successor, delta);
 		this.#rebuildActiveIndex();
 		return node;
+	}
+
+	/**
+	 * 应用重做操作记录
+	 * @description 重做是纯 HEAD 移动：把 HEAD 移到最近一次生效撤销记录的原 HEAD 位置。
+	 * 条件应用——仅当评估时 HEAD 恰为操作起点（parentId）才移动；新工作已洗掉可重做的
+	 * 撤销时不生效。被吸收的撤销不产生重做目标。重做本身不产生节点。
+	 * @param {import("./operation.js").OperationRecord} record - 重做操作记录
+	 * @returns {null}
+	 * @private
+	 */
+	#applyRedo(record) {
+		const pending = this.#redoStack.at(-1) ?? null;
+		if (pending === null) {
+			return null;
+		}
+		this.#redoStack.pop();
+		if (this.#head.shareId !== record.parentId) {
+			return null;
+		}
+		const target = this.#resolveRedoTarget(pending);
+		if (target === null) {
+			return null;
+		}
+		this.#head = target;
+		this.#rebuildActiveIndex();
+		return null;
+	}
+
+	/**
+	 * 解析重做的目标节点
+	 * @description previousHeadId 有多个节点副本时，取祖先链含撤销目标节点的（原分支）。
+	 * @param {{ targetId: string, previousHeadId: string }} pending - 待重做的撤销
+	 * @returns {?MolecularNode} 目标节点；无法解析时为 null
+	 * @private
+	 */
+	#resolveRedoTarget(pending) {
+		const candidates = [];
+		this.#collectNodes(this.#root, pending.previousHeadId, candidates);
+		if (candidates.length === 1) {
+			return candidates[0];
+		}
+		return (
+			candidates.find((node) => this.#hasAncestorWithShareId(node, pending.targetId)) ?? null
+		);
+	}
+
+	/**
+	 * 收集携带某操作的全部节点（含各分支副本）
+	 * @param {MolecularNode} node - 当前节点
+	 * @param {string} shareId - 数据池共享 id
+	 * @param {MolecularNode[]} out - 收集结果
+	 * @private
+	 */
+	#collectNodes(node, shareId, out) {
+		if (node.shareId === shareId) {
+			out.push(node);
+		}
+		for (const child of node.children) {
+			this.#collectNodes(child, shareId, out);
+		}
+	}
+
+	/**
+	 * 判断节点的祖先链上是否存在携带某操作的节点
+	 * @param {MolecularNode} node - 当前节点
+	 * @param {string} shareId - 数据池共享 id
+	 * @returns {boolean} 是否存在
+	 * @private
+	 */
+	#hasAncestorWithShareId(node, shareId) {
+		for (let current = node.parent; current !== null; current = current.parent) {
+			if (current.shareId === shareId) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

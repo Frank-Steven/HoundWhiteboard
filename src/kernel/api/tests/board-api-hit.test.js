@@ -399,3 +399,59 @@ describe("撤销", () => {
     expect(boardCore.getObjectById("s1")).toBeUndefined();
   });
 });
+
+describe("重做", () => {
+  test("创建撤销后重做：对象与数据恢复", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+    api.undo();
+    expect(boardCore.getObjectById("s1")).toBeUndefined();
+
+    expect(api.redo().redone).toBe(true);
+    expect(boardCore.getObjectById("s1")?.data.points).toHaveLength(5);
+  });
+
+  test("撤销后的新操作使重做无效", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+    api.undo();
+    await createStaticStroke(api, "s2", [{ x: 300, y: 300 }, { x: 320, y: 300 }]);
+
+    expect(api.redo().redone).toBe(false);
+    expect(boardCore.getObjectById("s1")).toBeUndefined();
+    expect(boardCore.getObjectById("s2")).toBeDefined();
+  });
+
+  test("擦除撤销后重做：整组效果重新应用", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+    await api.eraseData({
+      points: [
+        new Vector(15, 95),
+        new Vector(15, 105),
+        new Vector(25, 105),
+        new Vector(25, 95),
+      ],
+      radius: 1,
+      source: "test",
+    });
+    const splitId = "test/core/1";
+    api.undo();
+    expect(boardCore.getObjectById(splitId)).toBeUndefined();
+
+    expect(api.redo().redone).toBe(true);
+    expect(boardCore.getObjectById(splitId)).toBeDefined();
+    expect(boardCore.getObjectById("s1").data.points).toHaveLength(2);
+    expect(boardCore.getObjectById(splitId).data.points).toHaveLength(2);
+  });
+
+  test("无可重做时返回 redone false", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+    expect(api.redo()).toEqual({ redone: false, targetNodeId: null });
+  });
+});
