@@ -22,14 +22,14 @@
  * @type {Readonly<Object<string, OperationType>>}
  */
 const OPERATION_TYPES = Object.freeze({
-	ADD_OBJECT: "add-object",
-	MODIFY_OBJECT: "modify-object",
-	DELETE_OBJECT: "delete-object",
-	CHOOSE_OBJECT: "choose-object",
-	UNCHOOSE_OBJECT: "unchoose-object",
-	MOVE_HEAD: "move-head",
-	UNDO: "undo",
-	REDO: "redo",
+  ADD_OBJECT: "add-object",
+  MODIFY_OBJECT: "modify-object",
+  DELETE_OBJECT: "delete-object",
+  CHOOSE_OBJECT: "choose-object",
+  UNCHOOSE_OBJECT: "unchoose-object",
+  MOVE_HEAD: "move-head",
+  UNDO: "undo",
+  REDO: "redo",
 });
 
 /**
@@ -38,9 +38,9 @@ const OPERATION_TYPES = Object.freeze({
  * @type {Readonly<Object<string, OperationEffectKind>>}
  */
 const OPERATION_EFFECT_KINDS = Object.freeze({
-	APPEND_NODE: "append-node",
-	MOVE_HEAD: "move-head",
-	REATTACH: "reattach",
+  APPEND_NODE: "append-node",
+  MOVE_HEAD: "move-head",
+  REATTACH: "reattach",
 });
 
 /**
@@ -48,11 +48,11 @@ const OPERATION_EFFECT_KINDS = Object.freeze({
  * @type {Readonly<OperationType[]>}
  */
 const WHITEBOARD_OPERATION_TYPES = Object.freeze([
-	OPERATION_TYPES.ADD_OBJECT,
-	OPERATION_TYPES.MODIFY_OBJECT,
-	OPERATION_TYPES.DELETE_OBJECT,
-	OPERATION_TYPES.CHOOSE_OBJECT,
-	OPERATION_TYPES.UNCHOOSE_OBJECT,
+  OPERATION_TYPES.ADD_OBJECT,
+  OPERATION_TYPES.MODIFY_OBJECT,
+  OPERATION_TYPES.DELETE_OBJECT,
+  OPERATION_TYPES.CHOOSE_OBJECT,
+  OPERATION_TYPES.UNCHOOSE_OBJECT,
 ]);
 
 /**
@@ -60,9 +60,9 @@ const WHITEBOARD_OPERATION_TYPES = Object.freeze([
  * @type {Readonly<OperationType[]>}
  */
 const TREE_OPERATION_TYPES = Object.freeze([
-	OPERATION_TYPES.MOVE_HEAD,
-	OPERATION_TYPES.UNDO,
-	OPERATION_TYPES.REDO,
+  OPERATION_TYPES.MOVE_HEAD,
+  OPERATION_TYPES.UNDO,
+  OPERATION_TYPES.REDO,
 ]);
 
 /**
@@ -70,14 +70,14 @@ const TREE_OPERATION_TYPES = Object.freeze([
  * @type {Readonly<Object<OperationType, OperationEffectKind>>}
  */
 const EFFECT_KIND_OF_TYPE = Object.freeze({
-	[OPERATION_TYPES.ADD_OBJECT]: OPERATION_EFFECT_KINDS.APPEND_NODE,
-	[OPERATION_TYPES.MODIFY_OBJECT]: OPERATION_EFFECT_KINDS.APPEND_NODE,
-	[OPERATION_TYPES.DELETE_OBJECT]: OPERATION_EFFECT_KINDS.APPEND_NODE,
-	[OPERATION_TYPES.CHOOSE_OBJECT]: OPERATION_EFFECT_KINDS.APPEND_NODE,
-	[OPERATION_TYPES.UNCHOOSE_OBJECT]: OPERATION_EFFECT_KINDS.APPEND_NODE,
-	[OPERATION_TYPES.MOVE_HEAD]: OPERATION_EFFECT_KINDS.MOVE_HEAD,
-	[OPERATION_TYPES.UNDO]: OPERATION_EFFECT_KINDS.REATTACH,
-	[OPERATION_TYPES.REDO]: OPERATION_EFFECT_KINDS.MOVE_HEAD,
+  [OPERATION_TYPES.ADD_OBJECT]: OPERATION_EFFECT_KINDS.APPEND_NODE,
+  [OPERATION_TYPES.MODIFY_OBJECT]: OPERATION_EFFECT_KINDS.APPEND_NODE,
+  [OPERATION_TYPES.DELETE_OBJECT]: OPERATION_EFFECT_KINDS.APPEND_NODE,
+  [OPERATION_TYPES.CHOOSE_OBJECT]: OPERATION_EFFECT_KINDS.APPEND_NODE,
+  [OPERATION_TYPES.UNCHOOSE_OBJECT]: OPERATION_EFFECT_KINDS.APPEND_NODE,
+  [OPERATION_TYPES.MOVE_HEAD]: OPERATION_EFFECT_KINDS.MOVE_HEAD,
+  [OPERATION_TYPES.UNDO]: OPERATION_EFFECT_KINDS.REATTACH,
+  [OPERATION_TYPES.REDO]: OPERATION_EFFECT_KINDS.MOVE_HEAD,
 });
 
 /**
@@ -99,7 +99,7 @@ const EFFECT_KIND_OF_TYPE = Object.freeze({
  * @returns {?OperationEffectKind} 作用类别；未知类型返回 null
  */
 function getOperationEffectKind(type) {
-	return EFFECT_KIND_OF_TYPE[type] ?? null;
+  return EFFECT_KIND_OF_TYPE[type] ?? null;
 }
 
 /**
@@ -109,7 +109,7 @@ function getOperationEffectKind(type) {
  * @returns {string} 操作 id，形如 `"{source}/op-{n}"`
  */
 function makeOperationId(source, n) {
-	return `${source}/op-${n}`;
+  return `${source}/op-${n}`;
 }
 
 /**
@@ -118,14 +118,14 @@ function makeOperationId(source, n) {
  * @returns {?{ source: string, n: number }} 解析结果；id 形如 `"{source}/op-{n}"` 以外时返回 null
  */
 function parseOperationId(id) {
-	if (typeof id !== "string") {
-		return null;
-	}
-	const match = /^(.+)\/op-(\d+)$/.exec(id);
-	if (match === null) {
-		return null;
-	}
-	return { source: match[1], n: Number(match[2]) };
+  if (typeof id !== "string") {
+    return null;
+  }
+  const match = /^(.+)\/op-(\d+)$/.exec(id);
+  if (match === null) {
+    return null;
+  }
+  return { source: match[1], n: Number(match[2]) };
 }
 
 /**
@@ -135,13 +135,27 @@ function parseOperationId(id) {
  * @returns {number} a 排在 b 前为负，相等为 0，a 排在 b 后为正
  */
 function compareTimeMarks(a, b) {
-	if (a.time !== b.time) {
-		return a.time - b.time;
-	}
-	if (a.source === b.source) {
-		return 0;
-	}
-	return a.source < b.source ? -1 : 1;
+  if (a.time !== b.time) {
+    return a.time - b.time;
+  }
+  if (a.source === b.source) {
+    return 0;
+  }
+  return a.source < b.source ? -1 : 1;
+}
+
+/**
+ * 比较两条记录的全序（时间标记时钟环，同刻同 author 按操作序号决胜）
+ * @param {OperationRecord} a - 记录 a
+ * @param {OperationRecord} b - 记录 b
+ * @returns {number} a 排在 b 前为负，相等为 0，a 排在 b 后为正
+ */
+function compareRecords(a, b) {
+  const byTime = compareTimeMarks(a, b);
+  if (byTime !== 0) {
+    return byTime;
+  }
+  return parseOperationId(a.id).n - parseOperationId(b.id).n;
 }
 
 /**
@@ -159,16 +173,16 @@ function compareTimeMarks(a, b) {
  * @private
  */
 function _buildRecord(fields, payload) {
-	return {
-		id: fields.id,
-		type: fields.type,
-		source: fields.source,
-		time: fields.time,
-		parentId: fields.parentId ?? null,
-		supraOpId: fields.supraOpId ?? null,
-		properties: fields.properties ?? [],
-		payload,
-	};
+  return {
+    id: fields.id,
+    type: fields.type,
+    source: fields.source,
+    time: fields.time,
+    parentId: fields.parentId ?? null,
+    supraOpId: fields.supraOpId ?? null,
+    properties: fields.properties ?? [],
+    payload,
+  };
 }
 
 /**
@@ -181,12 +195,12 @@ function _buildRecord(fields, payload) {
  * @returns {OperationRecord} 增加对象操作记录
  */
 function createAddObjectOperation(fields) {
-	return _buildRecord({ ...fields, type: OPERATION_TYPES.ADD_OBJECT }, {
-		chunkId: fields.chunkId,
-		objectId: fields.objectId,
-		data: fields.data,
-		layerStackSnapshot: fields.layerStackSnapshot,
-	});
+  return _buildRecord({ ...fields, type: OPERATION_TYPES.ADD_OBJECT }, {
+    chunkId: fields.chunkId,
+    objectId: fields.objectId,
+    data: fields.data,
+    layerStackSnapshot: fields.layerStackSnapshot,
+  });
 }
 
 /**
@@ -200,13 +214,13 @@ function createAddObjectOperation(fields) {
  * @returns {OperationRecord} 修改对象操作记录
  */
 function createModifyObjectOperation(fields) {
-	return _buildRecord({ ...fields, type: OPERATION_TYPES.MODIFY_OBJECT }, {
-		chunkId: fields.chunkId,
-		objectId: fields.objectId,
-		before: fields.before,
-		after: fields.after,
-		layerStackSnapshot: fields.layerStackSnapshot,
-	});
+  return _buildRecord({ ...fields, type: OPERATION_TYPES.MODIFY_OBJECT }, {
+    chunkId: fields.chunkId,
+    objectId: fields.objectId,
+    before: fields.before,
+    after: fields.after,
+    layerStackSnapshot: fields.layerStackSnapshot,
+  });
 }
 
 /**
@@ -218,10 +232,10 @@ function createModifyObjectOperation(fields) {
  * @returns {OperationRecord} 删除对象操作记录
  */
 function createDeleteObjectOperation(fields) {
-	return _buildRecord({ ...fields, type: OPERATION_TYPES.DELETE_OBJECT }, {
-		chunkId: fields.chunkId,
-		objectId: fields.objectId,
-	});
+  return _buildRecord({ ...fields, type: OPERATION_TYPES.DELETE_OBJECT }, {
+    chunkId: fields.chunkId,
+    objectId: fields.objectId,
+  });
 }
 
 /**
@@ -232,10 +246,10 @@ function createDeleteObjectOperation(fields) {
  * @returns {OperationRecord} 选择对象操作记录
  */
 function createChooseObjectOperation(fields) {
-	return _buildRecord({ ...fields, type: OPERATION_TYPES.CHOOSE_OBJECT }, {
-		chunkId: fields.chunkId,
-		objectId: fields.objectId,
-	});
+  return _buildRecord({ ...fields, type: OPERATION_TYPES.CHOOSE_OBJECT }, {
+    chunkId: fields.chunkId,
+    objectId: fields.objectId,
+  });
 }
 
 /**
@@ -246,10 +260,10 @@ function createChooseObjectOperation(fields) {
  * @returns {OperationRecord} 取消选择操作记录
  */
 function createUnchooseObjectOperation(fields) {
-	return _buildRecord({ ...fields, type: OPERATION_TYPES.UNCHOOSE_OBJECT }, {
-		chunkId: fields.chunkId,
-		objectId: fields.objectId,
-	});
+  return _buildRecord({ ...fields, type: OPERATION_TYPES.UNCHOOSE_OBJECT }, {
+    chunkId: fields.chunkId,
+    objectId: fields.objectId,
+  });
 }
 
 /**
@@ -259,9 +273,9 @@ function createUnchooseObjectOperation(fields) {
  * @returns {OperationRecord} 更改 HEAD 指针操作记录
  */
 function createMoveHeadOperation(fields) {
-	return _buildRecord({ ...fields, type: OPERATION_TYPES.MOVE_HEAD }, {
-		targetNodeId: fields.targetNodeId,
-	});
+  return _buildRecord({ ...fields, type: OPERATION_TYPES.MOVE_HEAD }, {
+    targetNodeId: fields.targetNodeId,
+  });
 }
 
 /**
@@ -272,10 +286,10 @@ function createMoveHeadOperation(fields) {
  * @returns {OperationRecord} 撤销操作记录
  */
 function createUndoOperation(fields) {
-	return _buildRecord({ ...fields, type: OPERATION_TYPES.UNDO }, {
-		targetNodeId: fields.targetNodeId,
-		previousHeadId: fields.previousHeadId,
-	});
+  return _buildRecord({ ...fields, type: OPERATION_TYPES.UNDO }, {
+    targetNodeId: fields.targetNodeId,
+    previousHeadId: fields.previousHeadId,
+  });
 }
 
 /**
@@ -285,7 +299,7 @@ function createUndoOperation(fields) {
  * @returns {OperationRecord} 重做操作记录
  */
 function createRedoOperation(fields) {
-	return _buildRecord({ ...fields, type: OPERATION_TYPES.REDO }, {});
+  return _buildRecord({ ...fields, type: OPERATION_TYPES.REDO }, {});
 }
 
 /**
@@ -294,46 +308,46 @@ function createRedoOperation(fields) {
  * @returns {string[]} 错误列表；空数组表示记录合法
  */
 function validateOperation(record) {
-	const errors = [];
-	if (record === null || typeof record !== "object") {
-		return ["记录必须是对象"];
-	}
-	const idParts = parseOperationId(record.id);
-	if (idParts === null) {
-		errors.push(`id 形如 "{source}/op-{n}"：${String(record.id)}`);
-	}
-	if (typeof record.source !== "string" || record.source.length === 0) {
-		errors.push("source 必须是非空字符串");
-	} else if (idParts !== null && idParts.source !== record.source) {
-		errors.push(`id 的 source 段（${idParts.source}）与 source（${record.source}）不一致`);
-	}
-	if (!Object.values(OPERATION_TYPES).includes(record.type)) {
-		errors.push(`未知操作类型：${String(record.type)}`);
-	}
-	if (typeof record.time !== "number" || !Number.isFinite(record.time)) {
-		errors.push("time 必须是有限数值");
-	}
-	if (record.parentId !== null && parseOperationId(record.parentId) === null) {
-		errors.push(`parentId 非法：${String(record.parentId)}`);
-	}
-	if (record.supraOpId !== null && parseOperationId(record.supraOpId) === null) {
-		errors.push(`supraOpId 非法：${String(record.supraOpId)}`);
-	}
-	if (
-		record.supraOpId !== null &&
-		getOperationEffectKind(record.type) !== OPERATION_EFFECT_KINDS.APPEND_NODE
-	) {
-		errors.push("仅增加节点类操作可属于超分子操作");
-	}
-	if (!Array.isArray(record.properties) || record.properties.some((p) => typeof p !== "string")) {
-		errors.push("properties 必须是字符串数组");
-	}
-	if (record.payload === null || typeof record.payload !== "object") {
-		errors.push("payload 必须是对象");
-		return errors;
-	}
-	_validatePayload(record, errors);
-	return errors;
+  const errors = [];
+  if (record === null || typeof record !== "object") {
+    return ["记录必须是对象"];
+  }
+  const idParts = parseOperationId(record.id);
+  if (idParts === null) {
+    errors.push(`id 形如 "{source}/op-{n}"：${String(record.id)}`);
+  }
+  if (typeof record.source !== "string" || record.source.length === 0) {
+    errors.push("source 必须是非空字符串");
+  } else if (idParts !== null && idParts.source !== record.source) {
+    errors.push(`id 的 source 段（${idParts.source}）与 source（${record.source}）不一致`);
+  }
+  if (!Object.values(OPERATION_TYPES).includes(record.type)) {
+    errors.push(`未知操作类型：${String(record.type)}`);
+  }
+  if (typeof record.time !== "number" || !Number.isFinite(record.time)) {
+    errors.push("time 必须是有限数值");
+  }
+  if (record.parentId !== null && parseOperationId(record.parentId) === null) {
+    errors.push(`parentId 非法：${String(record.parentId)}`);
+  }
+  if (record.supraOpId !== null && parseOperationId(record.supraOpId) === null) {
+    errors.push(`supraOpId 非法：${String(record.supraOpId)}`);
+  }
+  if (
+    record.supraOpId !== null &&
+    getOperationEffectKind(record.type) !== OPERATION_EFFECT_KINDS.APPEND_NODE
+  ) {
+    errors.push("仅增加节点类操作可属于超分子操作");
+  }
+  if (!Array.isArray(record.properties) || record.properties.some((p) => typeof p !== "string")) {
+    errors.push("properties 必须是字符串数组");
+  }
+  if (record.payload === null || typeof record.payload !== "object") {
+    errors.push("payload 必须是对象");
+    return errors;
+  }
+  _validatePayload(record, errors);
+  return errors;
 }
 
 /**
@@ -343,62 +357,62 @@ function validateOperation(record) {
  * @private
  */
 function _validatePayload(record, errors) {
-	const { type, payload } = record;
-	/**
-	 * 校验字符串字段
-	 * @param {string} key - 字段名
-	 * @returns {void}
-	 */
-	const requireString = (key) => {
-		if (typeof payload[key] !== "string" || payload[key].length === 0) {
-			errors.push(`${type} 载荷的 ${key} 必须是非空字符串`);
-		}
-	};
-	/**
-	 * 校验节点 id 字段
-	 * @param {string} key - 字段名
-	 * @returns {void}
-	 */
-	const requireNodeId = (key) => {
-		if (parseOperationId(payload[key]) === null) {
-			errors.push(`${type} 载荷的 ${key} 非法：${String(payload[key])}`);
-		}
-	};
-	switch (type) {
-		case OPERATION_TYPES.ADD_OBJECT:
-			requireString("chunkId");
-			requireString("objectId");
-			if (payload.data === undefined) {
-				errors.push("add-object 载荷缺 data");
-			}
-			_validateLayerStackSnapshot(payload, errors);
-			break;
-		case OPERATION_TYPES.MODIFY_OBJECT:
-			requireString("chunkId");
-			requireString("objectId");
-			if (payload.before === undefined || payload.after === undefined) {
-				errors.push("modify-object 载荷缺 before/after 快照");
-			}
-			_validateLayerStackSnapshot(payload, errors);
-			break;
-		case OPERATION_TYPES.DELETE_OBJECT:
-		case OPERATION_TYPES.CHOOSE_OBJECT:
-		case OPERATION_TYPES.UNCHOOSE_OBJECT:
-			requireString("chunkId");
-			requireString("objectId");
-			break;
-		case OPERATION_TYPES.MOVE_HEAD:
-			requireNodeId("targetNodeId");
-			break;
-		case OPERATION_TYPES.UNDO:
-			requireNodeId("targetNodeId");
-			requireNodeId("previousHeadId");
-			break;
-		case OPERATION_TYPES.REDO:
-			break;
-		default:
-			break;
-	}
+  const { type, payload } = record;
+  /**
+   * 校验字符串字段
+   * @param {string} key - 字段名
+   * @returns {void}
+   */
+  const requireString = (key) => {
+    if (typeof payload[key] !== "string" || payload[key].length === 0) {
+      errors.push(`${type} 载荷的 ${key} 必须是非空字符串`);
+    }
+  };
+  /**
+   * 校验节点 id 字段
+   * @param {string} key - 字段名
+   * @returns {void}
+   */
+  const requireNodeId = (key) => {
+    if (parseOperationId(payload[key]) === null) {
+      errors.push(`${type} 载荷的 ${key} 非法：${String(payload[key])}`);
+    }
+  };
+  switch (type) {
+    case OPERATION_TYPES.ADD_OBJECT:
+      requireString("chunkId");
+      requireString("objectId");
+      if (payload.data === undefined) {
+        errors.push("add-object 载荷缺 data");
+      }
+      _validateLayerStackSnapshot(payload, errors);
+      break;
+    case OPERATION_TYPES.MODIFY_OBJECT:
+      requireString("chunkId");
+      requireString("objectId");
+      if (payload.before === undefined || payload.after === undefined) {
+        errors.push("modify-object 载荷缺 before/after 快照");
+      }
+      _validateLayerStackSnapshot(payload, errors);
+      break;
+    case OPERATION_TYPES.DELETE_OBJECT:
+    case OPERATION_TYPES.CHOOSE_OBJECT:
+    case OPERATION_TYPES.UNCHOOSE_OBJECT:
+      requireString("chunkId");
+      requireString("objectId");
+      break;
+    case OPERATION_TYPES.MOVE_HEAD:
+      requireNodeId("targetNodeId");
+      break;
+    case OPERATION_TYPES.UNDO:
+      requireNodeId("targetNodeId");
+      requireNodeId("previousHeadId");
+      break;
+    case OPERATION_TYPES.REDO:
+      break;
+    default:
+      break;
+  }
 }
 
 /**
@@ -408,27 +422,28 @@ function _validatePayload(record, errors) {
  * @private
  */
 function _validateLayerStackSnapshot(payload, errors) {
-	if (!Array.isArray(payload.layerStackSnapshot) || payload.layerStackSnapshot.some((id) => typeof id !== "string")) {
-		errors.push("layerStackSnapshot 必须是字符串数组");
-	}
+  if (!Array.isArray(payload.layerStackSnapshot) || payload.layerStackSnapshot.some((id) => typeof id !== "string")) {
+    errors.push("layerStackSnapshot 必须是字符串数组");
+  }
 }
 
 export {
-	OPERATION_TYPES,
-	OPERATION_EFFECT_KINDS,
-	WHITEBOARD_OPERATION_TYPES,
-	TREE_OPERATION_TYPES,
-	getOperationEffectKind,
-	makeOperationId,
-	parseOperationId,
-	compareTimeMarks,
-	createAddObjectOperation,
-	createModifyObjectOperation,
-	createDeleteObjectOperation,
-	createChooseObjectOperation,
-	createUnchooseObjectOperation,
-	createMoveHeadOperation,
-	createUndoOperation,
-	createRedoOperation,
-	validateOperation,
+  OPERATION_TYPES,
+  OPERATION_EFFECT_KINDS,
+  WHITEBOARD_OPERATION_TYPES,
+  TREE_OPERATION_TYPES,
+  getOperationEffectKind,
+  makeOperationId,
+  parseOperationId,
+  compareTimeMarks,
+  compareRecords,
+  createAddObjectOperation,
+  createModifyObjectOperation,
+  createDeleteObjectOperation,
+  createChooseObjectOperation,
+  createUnchooseObjectOperation,
+  createMoveHeadOperation,
+  createUndoOperation,
+  createRedoOperation,
+  validateOperation,
 };

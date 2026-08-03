@@ -10,7 +10,12 @@
  */
 
 import { deserialize } from "../objects/object-deserializer.js";
-import { OPERATION_TYPES } from "../hit/operation.js";
+import {
+  OPERATION_TYPES,
+  OPERATION_EFFECT_KINDS,
+  getOperationEffectKind,
+  compareRecords,
+} from "../hit/operation.js";
 import { Matrix, Vector } from "../utils/math.js";
 import { intersectsRanges, RectangleRange } from "../range/index.js";
 import { ChunkObjectManager } from "../chunk/chunk-object-manager.js";
@@ -1019,8 +1024,7 @@ class BoardApi {
   /**
    * 执行撤销
    * @description
-   * 缺省以活动链末端为目标：先逆序回退目标至 HEAD 的白板效果，记录撤销并应用树
-   * （退化/分叉改挂/被吸收在应用时确定），再按新活动链自分叉点正向重放分支效果。
+   * 缺省以活动链末端为目标：记录撤销并应用树（退化/分叉改挂/被吸收在应用时确定），再经链过渡对齐白板效果。
    * @returns {{ undone: boolean, targetNodeId: ?string }} 撤销结果
    */
   undo() {
@@ -1030,21 +1034,40 @@ class BoardApi {
       return { undone: false, targetNodeId: null };
     }
     const targetId = tree.head.shareId;
-    const chain = tree.getActiveChain();
-    const targetIndex = chain.findIndex((node) => node.shareId === targetId);
-    for (let i = chain.length - 1; i >= targetIndex; i--) {
-      const records = this.#recordsOfNode(chain[i]);
+    const beforeChain = tree.getActiveChain();
+    boardCore.hitCommitter.commitUndo({ targetNodeId: targetId });
+    this.#transitionEffects(beforeChain, tree.getActiveChain());
+    return { undone: true, targetNodeId: targetId };
+  }
+
+  /**
+   * 活动链状态过渡：分叉点逆放旧链尾段、正放新链尾段
+   * @param {import("../hit/undo-tree-core.js").MolecularNode[]} beforeChain - 过渡前活动链
+   * @param {import("../hit/undo-tree-core.js").MolecularNode[]} afterChain - 过渡后活动链
+   * @returns {boolean} 活动链是否发生变化
+   * @private
+   */
+  #transitionEffects(beforeChain, afterChain) {
+    let diverge = 0;
+    while (
+      diverge < beforeChain.length &&
+      diverge < afterChain.length &&
+      beforeChain[diverge].shareId === afterChain[diverge].shareId
+    ) {
+      diverge++;
+    }
+    for (let i = beforeChain.length - 1; i >= diverge; i--) {
+      const records = this.#recordsOfNode(beforeChain[i]);
       for (let j = records.length - 1; j >= 0; j--) {
         this.#revertOpEffect(records[j]);
       }
     }
-    boardCore.hitCommitter.commitUndo({ targetNodeId: targetId });
-    for (const node of tree.getActiveChain().slice(targetIndex)) {
-      for (const record of this.#recordsOfNode(node)) {
+    for (let i = diverge; i < afterChain.length; i++) {
+      for (const record of this.#recordsOfNode(afterChain[i])) {
         this.#applyOpEffect(record);
       }
     }
-    return { undone: true, targetNodeId: targetId };
+    return diverge !== beforeChain.length || diverge !== afterChain.length;
   }
 
   /**
@@ -1234,34 +1257,80 @@ class BoardApi {
    * @returns {{ redone: boolean, targetNodeId: ?string }} 重做结果
    */
   redo() {
-    const boardCore = this.#boardCore;
-    const tree = boardCore.undoTree;
+    const tree = this.#boardCore.undoTree;
     const beforeChain = tree.getActiveChain();
-    boardCore.hitCommitter.commitRedo();
+    this.#boardCore.hitCommitter.commitRedo();
     const afterChain = tree.getActiveChain();
-    let diverge = 0;
-    while (
-      diverge < beforeChain.length &&
-      diverge < afterChain.length &&
-      beforeChain[diverge].shareId === afterChain[diverge].shareId
-    ) {
-      diverge++;
-    }
-    if (diverge === beforeChain.length && diverge === afterChain.length) {
-      return { redone: false, targetNodeId: null };
-    }
-    for (let i = beforeChain.length - 1; i >= diverge; i--) {
-      const records = this.#recordsOfNode(beforeChain[i]);
-      for (let j = records.length - 1; j >= 0; j--) {
-        this.#revertOpEffect(records[j]);
+    const changed = this.#transitionEffects(beforeChain, afterChain);
+    return { redone: changed, targetNodeId: changed ? (afterChain.at(-1)?.shareId ?? null) : null };
+  }
+
+  /**
+   * 应用远端到达的分子操作记录
+   * @description 同步插件的入口：记录入日志后按「插入与重放的边界」分流——纯插入/纯应用走增量；
+   * 旧操作落在上下文敏感操作之前时全量重建（f(日志) 兜底），再经链过渡对齐白板效果。
+   * 同批的超分子成员聚合为一组应用。
+   * @param {import("../hit/operation.js").OperationRecord[]} records - 分子操作记录
+   * @returns {{ applied: number }} 应用条数
+   */
+  applyRemoteOperations(records) {
+    const boardCore = this.#boardCore;
+    const log = boardCore.operationLog;
+    const tree = boardCore.undoTree;
+    const list = Array.isArray(records) ? records : [];
+    const groups = [];
+    const bySupra = new Map();
+    for (const record of list) {
+      if (record.supraOpId === null) {
+        groups.push([record]);
+      } else {
+        let group = bySupra.get(record.supraOpId);
+        if (group === undefined) {
+          group = [];
+          bySupra.set(record.supraOpId, group);
+          groups.push(group);
+        }
+        group.push(record);
       }
     }
-    for (let i = diverge; i < afterChain.length; i++) {
-      for (const record of this.#recordsOfNode(afterChain[i])) {
-        this.#applyOpEffect(record);
+    for (const group of groups) {
+      for (const record of group) {
+        const errors = log.append(record);
+        if (errors.length > 0) {
+          throw new Error(errors.join("；"));
+        }
       }
+      const beforeChain = tree.getActiveChain();
+      if (this.#needsReplay(group[group.length - 1])) {
+        tree.rebuild();
+      } else if (group[0].supraOpId === null) {
+        tree.applyRecord(group[0]);
+      } else {
+        tree.applySupraNode(group);
+      }
+      this.#transitionEffects(beforeChain, tree.getActiveChain());
     }
-    return { redone: true, targetNodeId: afterChain.at(-1)?.shareId ?? null };
+    return { applied: list.length };
+  }
+
+  /**
+   * 判定到达记录是否需要全量重建（「插入与重放的边界」判定表）
+   * @description 增加节点类与撤销在插入点之后只有增加节点类时纯插入/纯应用；
+   * 重做与更改 HEAD 在插入点之后有任何已应用操作时一律重建。
+   * @param {import("../hit/operation.js").OperationRecord} record - 到达记录（超分子取末分子）
+   * @returns {boolean} 是否需要全量重建
+   * @private
+   */
+  #needsReplay(record) {
+    const sorted = this.#boardCore.operationLog.toSortedArray();
+    const index = sorted.findIndex((r) => compareRecords(r, record) > 0);
+    const after = index === -1 ? [] : sorted.slice(index);
+    if (record.type === OPERATION_TYPES.REDO || record.type === OPERATION_TYPES.MOVE_HEAD) {
+      return after.length > 0;
+    }
+    return after.some(
+      (r) => getOperationEffectKind(r.type) !== OPERATION_EFFECT_KINDS.APPEND_NODE,
+    );
   }
 }
 

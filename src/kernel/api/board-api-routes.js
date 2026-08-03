@@ -151,7 +151,7 @@ const BOARD_API_ROUTES = {
    */
   undo: {
     invoke: (api) => api.undo(),
-    flush: "none",
+    flush: "sync",
   },
 
   /**
@@ -159,7 +159,15 @@ const BOARD_API_ROUTES = {
    */
   redo: {
     invoke: (api) => api.redo(),
-    flush: "none",
+    flush: "sync",
+  },
+
+  /**
+   * 应用远端到达的分子操作记录
+   */
+  applyRemoteOperations: {
+    invoke: (api, p) => api.applyRemoteOperations(p.records),
+    flush: "sync",
   },
 };
 
