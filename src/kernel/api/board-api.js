@@ -348,6 +348,147 @@ class BoardApi {
   }
 
   /**
+   * 捕获对象的层级关系快照
+   * @description 覆盖各区块静态状态图的出边集与入边集，以及 AOM 层归属（层静态图或层动态集合）。
+   * @param {string} objectId - 对象 id
+   * @returns {Object} 层级关系快照
+   * @private
+   */
+  #captureZRelations(objectId) {
+    const boardCore = this.#boardCore;
+    const chunks = [];
+    for (const { chunk } of boardCore.chunkLoaded.values()) {
+      const graph = chunk?.objectManager?.staticGraph;
+      if (!graph?.hasNode?.(objectId)) continue;
+      chunks.push({
+        chunk,
+        graph,
+        out: new Set(graph.neighbors(objectId)),
+        in: new Set(graph.predecessors(objectId)),
+      });
+    }
+    let layerMembership = null;
+    const layer = boardCore.activeObjectManager?.onLayer?.get(objectId);
+    if (layer?.activeObjects?.has(objectId)) {
+      layerMembership = { layer, kind: "active" };
+    } else if (layer?.inactiveGraph?.hasNode?.(objectId)) {
+      layerMembership = {
+        layer,
+        kind: "inactive",
+        out: new Set(layer.inactiveGraph.neighbors(objectId)),
+        in: new Set(layer.inactiveGraph.predecessors(objectId)),
+      };
+    }
+    return { chunks, layerMembership };
+  }
+
+  /**
+   * 擦除分裂后重建层级关系
+   * @description 按橡皮文档「分裂段的层级关系重建」执行：静态状态图对快照邻居集增量 re-hit-test
+   * （分裂段继承有效边、原对象删失交边），层归属由 #inheritLayerMembership 继承。
+   * @param {string} originId - 被擦除对象 id（首段回写后与原对象同一 id）
+   * @param {string[]} splitIds - 分裂段 id 列表
+   * @param {Object} zSnapshot - #captureZRelations 的层级关系快照
+   * @returns {Set<Object>} 发生边变更的区块集合
+   * @private
+   */
+  #rebuildZRelationsAfterSplit(originId, splitIds, zSnapshot) {
+    const boardCore = this.#boardCore;
+    const correctedChunks = new Set();
+    // 世界包围矩形
+    const rectOf = (id) => getObjectWorldRect(boardCore.getObjectById(id));
+    for (const { chunk, graph, out, in: incoming } of zSnapshot.chunks) {
+      let dirty = false;
+      // apply 为分裂段默认写入的「置顶」边先清空
+      for (const splitId of splitIds) {
+        if (graph.hasNode(splitId)) {
+          graph.deleteAllEdgesOfNode(splitId);
+          dirty = true;
+        }
+      }
+      for (const neighborId of new Set([...out, ...incoming])) {
+        if (!graph.hasNode(neighborId)) continue;
+        const neighborRect = rectOf(neighborId);
+        if (!neighborRect) continue;
+        // 原对象（首段回写）失交删边
+        if (graph.hasNode(originId)) {
+          const originRect = rectOf(originId);
+          if (originRect && !intersectsRanges(originRect, neighborRect)) {
+            if (graph.hasEdge(originId, neighborId)) {
+              graph.deleteEdge(originId, neighborId);
+              dirty = true;
+            }
+            if (graph.hasEdge(neighborId, originId)) {
+              graph.deleteEdge(neighborId, originId);
+              dirty = true;
+            }
+          }
+        }
+        // 分裂段按相交继承原边方向
+        for (const splitId of splitIds) {
+          if (!graph.hasNode(splitId)) continue;
+          const splitRect = rectOf(splitId);
+          if (!splitRect || !intersectsRanges(splitRect, neighborRect)) continue;
+          if (out.has(neighborId) && !graph.hasEdge(splitId, neighborId)) {
+            graph.addEdge(splitId, neighborId);
+            dirty = true;
+          }
+          if (incoming.has(neighborId) && !graph.hasEdge(neighborId, splitId)) {
+            graph.addEdge(neighborId, splitId);
+            dirty = true;
+          }
+        }
+      }
+      if (dirty) {
+        correctedChunks.add(chunk);
+      }
+    }
+    this.#inheritLayerMembership(splitIds, zSnapshot.layerMembership);
+    return correctedChunks;
+  }
+
+  /**
+   * 分裂段继承原对象的层归属
+   * @description 层静态图整体复制出边与入边（层位继承），层动态集合直接加入；
+   * 分裂段先离开出生时注册的顶层。
+   * @param {string[]} splitIds - 分裂段 id 列表
+   * @param {?Object} layerMembership - #captureZRelations 捕获的层归属
+   * @returns {void}
+   * @private
+   */
+  #inheritLayerMembership(splitIds, layerMembership) {
+    if (!layerMembership || splitIds.length === 0) return;
+    const aom = this.#boardCore.activeObjectManager;
+    const { layer, kind } = layerMembership;
+    for (const splitId of splitIds) {
+      aom.removeObjectFromLayer(splitId);
+      if (kind === "inactive") {
+        aom.unregisterTrackedActiveObject(splitId);
+        const graph = layer.inactiveGraph;
+        if (!graph.hasNode(splitId)) {
+          graph.addNode(splitId);
+        }
+        for (const neighborId of layerMembership.out) {
+          if (graph.hasNode(neighborId) && !graph.hasEdge(splitId, neighborId)) {
+            graph.addEdge(splitId, neighborId);
+          }
+        }
+        for (const neighborId of layerMembership.in) {
+          if (graph.hasNode(neighborId) && !graph.hasEdge(neighborId, splitId)) {
+            graph.addEdge(neighborId, splitId);
+          }
+        }
+      } else {
+        layer.activeObjects.add(splitId);
+      }
+      aom.onLayer.set(splitId, layer);
+    }
+    aom.requestActiveRender(
+      splitIds.map((id) => this.#boardCore.getObjectById(id)).filter(Boolean),
+    );
+  }
+
+  /**
    * 按橡皮轨迹擦除命中对象的数据
    * @description
    * 数据擦除的 Core 侧统一入口。调用进入串行队列依次执行，返回的 Promise
@@ -407,6 +548,7 @@ class BoardApi {
 
     const modifiedStaticObjects = [];
     const previousWorldRects = new Map();
+    const splitRebuilds = [];
     for (const objectId of candidateIds) {
       const obj = boardCore.getObjectById(objectId);
       if (!obj) continue;
@@ -424,6 +566,8 @@ class BoardApi {
         result.deleted.push(objectId);
         continue;
       }
+
+      const zSnapshot = this.#captureZRelations(objectId);
 
       // 切割前快照旧世界范围：输出层按脏区增量更新，
       // 被擦区域与回缩残端的旧像素要靠旧范围失效才能清理
@@ -450,6 +594,7 @@ class BoardApi {
 
       if (runs.length > 1) {
         const serialized = obj.serialize();
+        const splitIds = [];
         for (let i = 1; i < runs.length; i++) {
           const newObjectId = boardCore.allocateObjectId(source);
           this.createObject(serialized.type, {
@@ -459,8 +604,12 @@ class BoardApi {
             property: serialized.property,
             data: { ...serialized.data, points: runs[i] },
           });
+          splitIds.push(newObjectId);
           result.created.push(newObjectId);
         }
+        splitRebuilds.push({ originId: objectId, splitIds, zSnapshot });
+      } else {
+        splitRebuilds.push({ originId: objectId, splitIds: [], zSnapshot });
       }
     }
 
@@ -469,6 +618,16 @@ class BoardApi {
     }
     if (result.created.length > 0) {
       await this.commitObjects(result.created, { supra });
+    }
+
+    const correctedChunks = new Set();
+    for (const { originId, splitIds, zSnapshot } of splitRebuilds) {
+      for (const chunk of this.#rebuildZRelationsAfterSplit(originId, splitIds, zSnapshot)) {
+        correctedChunks.add(chunk);
+      }
+    }
+    if (correctedChunks.size > 0) {
+      boardCore.aomRenderHooks?.requestStaticRender?.([...correctedChunks]);
     }
     if (modifiedStaticObjects.length > 0) {
       boardCore.aomRenderHooks?.requestStaticRenderForObjects?.(

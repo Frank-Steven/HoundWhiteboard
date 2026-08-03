@@ -369,3 +369,126 @@ describe("BoardApi.eraseData", () => {
     expect(previousRect.top + previousRect.height).toBeGreaterThanOrEqual(100);
   });
 });
+
+describe("分裂段的层级关系重建", () => {
+  const staticGraphsOf = (boardCore) =>
+    [...boardCore.chunkLoaded.values()]
+      .map(({ chunk }) => chunk?.objectManager?.staticGraph)
+      .filter(Boolean);
+
+  /**
+   * 任一已加载区块的静态状态图上存在该边
+   * @param {BoardCore} boardCore - 白板核心
+   * @param {string} from - 边的起点（在下者）
+   * @param {string} to - 边的终点（在上者）
+   * @returns {boolean} 是否存在
+   */
+  const hasStaticEdge = (boardCore, from, to) =>
+    staticGraphsOf(boardCore).some((graph) => graph.hasEdge(from, to));
+
+  /**
+   * 创建并提交静态笔画
+   * @param {BoardApi} api - BoardApi 实例
+   * @param {string} id - 对象 id
+   * @param {Array<{x: number, y: number}>} points - 采样点
+   * @returns {Promise<void>}
+   */
+  const createStatic = async (api, id, points) => {
+    api.createObject("StrokeObject", {
+      id,
+      position: { x: 0, y: 0 },
+      property: { width: 2 },
+      data: { points },
+    });
+    await api.commitObjects([id]);
+  };
+
+  test("分裂段继承原对象层位，原对象失交删边", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    // s1 在下（y=100 横向），s2 在上（x=35 纵向，与 s1 相交）
+    await createStatic(api, "s1", [0, 10, 20, 30, 40].map((x) => ({ x, y: 100 })));
+    await createStatic(api, "s2", [{ x: 35, y: 90 }, { x: 35, y: 110 }]);
+    expect(hasStaticEdge(boardCore, "s1", "s2")).toBe(true);
+
+    const result = await api.eraseData({
+      points: [
+        { x: 15, y: 95 },
+        { x: 15, y: 105 },
+        { x: 25, y: 105 },
+        { x: 25, y: 95 },
+      ],
+      radius: 1,
+      source: "test",
+    });
+    expect(result.created).toHaveLength(1);
+    const split = result.created[0];
+
+    // 分裂段继承 s1 的层位：在 s2 之下
+    expect(hasStaticEdge(boardCore, split, "s2")).toBe(true);
+    expect(hasStaticEdge(boardCore, "s2", split)).toBe(false);
+    // s1 残段（x≤10 一带）与 s2（x=35）失交，陈旧边被清理
+    expect(hasStaticEdge(boardCore, "s1", "s2")).toBe(false);
+  });
+
+  test("无分裂的擦短同样清理失交边", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStatic(api, "s1", [0, 10, 20, 30, 40].map((x) => ({ x, y: 100 })));
+    await createStatic(api, "s2", [{ x: 35, y: 90 }, { x: 35, y: 110 }]);
+    expect(hasStaticEdge(boardCore, "s1", "s2")).toBe(true);
+
+    // 只擦掉右端（x≥28 一段），s1 缩短但不分裂
+    const result = await api.eraseData({
+      points: [
+        { x: 28, y: 95 },
+        { x: 28, y: 105 },
+        { x: 42, y: 105 },
+        { x: 42, y: 95 },
+      ],
+      radius: 1,
+      source: "test",
+    });
+    expect(result.created).toHaveLength(0);
+    expect(result.modified).toEqual(["s1"]);
+    expect(hasStaticEdge(boardCore, "s1", "s2")).toBe(false);
+  });
+
+  test("非活动层成员被分裂时，分裂段继承层静态图归属", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    // s1 在下，s2 在上；选择 s1 会把 s2 一并纳入其层的 inactiveGraph
+    await createStatic(api, "s1", [0, 10, 20, 30, 40].map((x) => ({ x, y: 100 })));
+    await createStatic(api, "s2", [
+      { x: 20, y: 90 },
+      { x: 20, y: 95 },
+      { x: 20, y: 100 },
+      { x: 20, y: 105 },
+      { x: 20, y: 110 },
+    ]);
+    await api.addActiveObjects(["s1"]);
+    const aom = boardCore.activeObjectManager;
+    const layer = aom.onLayer.get("s2");
+    expect(layer).toBeDefined();
+    expect(layer.inactiveGraph.hasNode("s2")).toBe(true);
+
+    // s2 是非活动层成员（不是活动对象），可擦除
+    const result = await api.eraseData({
+      points: [
+        { x: 15, y: 98 },
+        { x: 25, y: 98 },
+        { x: 25, y: 102 },
+        { x: 15, y: 102 },
+      ],
+      radius: 1,
+      source: "test",
+    });
+    expect(result.created).toHaveLength(1);
+    const split = result.created[0];
+
+    // 分裂段继承 s2 的层归属：进入同一层的 inactiveGraph，不占活动索引
+    expect(layer.inactiveGraph.hasNode(split)).toBe(true);
+    expect(aom.isActive(split)).toBe(false);
+    expect(aom.onLayer.get(split)).toBe(layer);
+  });
+});
