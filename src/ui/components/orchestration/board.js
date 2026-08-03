@@ -2,7 +2,7 @@
  * @file UI 侧白板 facade
  * @description
  * Board 是白板在 UI 线程的宿主 facade，负责持有 DevicesDAG、signalsEventBus、viewports 等 UI 运行时。
- * Core 数据职责（对象、区块、AOM、UndoTree）全部在 Worker 侧，UI 侧通过 BoardApiRpc 与之通信。
+ * Core 数据职责（对象、区块、AOM）全部在 Worker 侧，UI 侧通过 BoardApiRpc 与之通信。
  * @module ui/components/orchestration/board
  * @author Zhou Chenyu
  */

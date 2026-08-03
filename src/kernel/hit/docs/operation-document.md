@@ -4,7 +4,7 @@
 
 > [!WARNING]
 >
-> 当前 `src/core/engine/hit/operation.js` 仍只有 `AtomOperation` 与 `MolecularOperation` 的骨架定义。本文列出的操作模型应理解为**目标模型**，并非当前已完整实现的运行时能力。
+> `src/kernel/hit/operation.js` 已落地分子操作记录结构；撤销、重做与超分子的运行时语义随 hit 内核逐步落地，本文的语义描述应理解为**目标模型**。
 
 ## 操作层级
 

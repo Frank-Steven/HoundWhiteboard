@@ -1,7 +1,7 @@
 /**
  * @file 白板核心
  * @description
- * BoardCore 是白板在 Worker 中的纯数据实现，承载对象注册、区块加载、AOM、UndoTree、持久化协调等职责。
+ * BoardCore 是白板在 Worker 中的纯数据实现，承载对象注册、区块加载、AOM、持久化协调等职责。
  * 不依赖 DevicesDAG、DOM、signalsEventBus。
  * @module kernel/board/board-core
  * @author Zhou Chenyu
@@ -14,7 +14,6 @@ import { EventBus } from "../utils/event-bus.js";
 import { IncrementalIdPool } from "../utils/incremental-id-pool.js";
 import { Logger } from "../../utils/log/logger.js";
 import { logBus } from "../../utils/log/log-bus.js";
-import { UndoTree } from "../hit/undo-tree-core.js";
 import { ActiveObjectManager } from "./active-object-manager.js";
 import { createDefaultAomRenderHooks } from "./aom-render-hooks.js";
 import {
@@ -60,7 +59,7 @@ import { createDefaultPersistenceAdapter } from "../../host/bridges/persistence-
  * 白板核心类
  * @description
  * BoardCore 是白板在 Worker 中的纯数据/逻辑实现。
- * - 承载对象注册表（objectLoaded）、区块加载状态（chunkLoaded）、IncrementalIdPool、UndoTree、AOM
+ * - 承载对象注册表（objectLoaded）、区块加载状态（chunkLoaded）、IncrementalIdPool、AOM
  * - 通过注入式 persistenceAdapter 完成文件读写，不直接依赖 file-operate-bridge-renderer
  * - 通过注入式 renderHooks 消除 AOM 对 viewport/renderer 的直接依赖
  * - 不持有 DevicesDAG、signalsEventBus、DOM 引用
@@ -68,12 +67,6 @@ import { createDefaultPersistenceAdapter } from "../../host/bridges/persistence-
  * @author Zhou Chenyu
  */
 class BoardCore {
-  /**
-   * 时间回溯树
-   * @type {UndoTree}
-   */
-  undoTree;
-
   /**
    * 活动对象管理器
    * @type {ActiveObjectManager}
@@ -164,7 +157,6 @@ class BoardCore {
     this.width = options.width ?? 0;
     this.height = options.height ?? 0;
     this.rootPath = options.rootPath;
-    this.undoTree = new UndoTree();
     this.chunkLoaded = new Map();
     this.objectLoaded = new Map();
     this.chunkLoadEventBus = new EventBus();
