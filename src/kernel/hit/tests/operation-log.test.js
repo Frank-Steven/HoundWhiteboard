@@ -83,16 +83,26 @@ describe("追加", () => {
 describe("全序视图", () => {
 	test("按时间标记（时钟环）排序，同毫秒按 author 字典序", () => {
 		const log = new OperationLog();
-		log.append(makeRecord("alice", 1, 100));
-		log.append(makeRecord("alice", 2, 75));
 		log.append(makeRecord("bob", 1, 50));
+		log.append(makeRecord("alice", 1, 75));
 		log.append(makeRecord("bob", 2, 75));
+		log.append(makeRecord("alice", 2, 100));
 		expect(log.toSortedArray().map((r) => r.id)).toEqual([
 			"bob/op-1",
-			"alice/op-2",
-			"bob/op-2",
 			"alice/op-1",
+			"bob/op-2",
+			"alice/op-2",
 		]);
+	});
+
+	test("时间标记回拨被拒绝，日志保持不变；等时不算回拨", () => {
+		const log = new OperationLog();
+		log.append(makeRecord("alice", 1, 100));
+		expect(log.append(makeRecord("alice", 2, 50))).toEqual([
+			"时间标记回拨：alice 的已追加记录最晚为 100，实际 50",
+		]);
+		expect(log.size).toBe(1);
+		expect(log.append(makeRecord("alice", 2, 100))).toEqual([]);
 	});
 
 	test("追加序不被排序影响", () => {

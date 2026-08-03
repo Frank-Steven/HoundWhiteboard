@@ -41,6 +41,12 @@ class OperationLog {
 	#nextSeq = new Map();
 
 	/**
+	 * 各 source 已追加记录的最大时间标记
+	 * @type {Map<string, number>}
+	 */
+	#lastTime = new Map();
+
+	/**
 	 * 记录条数
 	 * @type {number}
 	 */
@@ -59,7 +65,8 @@ class OperationLog {
 
 	/**
 	 * 追加一条记录
-	 * @description 记录须通过 validateOperation 校验，且 id 序号恰为该 source 的下一个序号；追加失败时日志保持不变。
+	 * @description 记录须通过 validateOperation 校验，id 序号恰为该 source 的下一个序号，且时间标记不早于该
+	 * source 的已追加记录（同 source 时间单调，从日志层消除时钟回拨）；追加失败时日志保持不变。
 	 * @param {import("./operation.js").OperationRecord} record - 分子操作记录
 	 * @returns {string[]} 错误列表；空数组表示追加成功
 	 */
@@ -73,9 +80,14 @@ class OperationLog {
 		if (actual !== expected) {
 			return [`id 序号不连续：期望 ${makeOperationId(record.source, expected)}，实际 ${record.id}`];
 		}
+		const lastTime = this.#lastTime.get(record.source);
+		if (lastTime !== undefined && record.time < lastTime) {
+			return [`时间标记回拨：${record.source} 的已追加记录最晚为 ${lastTime}，实际 ${record.time}`];
+		}
 		this.#records.push(record);
 		this.#byId.set(record.id, record);
 		this.#nextSeq.set(record.source, expected + 1);
+		this.#lastTime.set(record.source, record.time);
 		return [];
 	}
 

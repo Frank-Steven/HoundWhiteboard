@@ -1,0 +1,188 @@
+// SPDX-License-Identifier: MIT
+import { OperationLog } from "../operation-log.js";
+import { MolecularNode, UndoTree } from "../undo-tree-core.js";
+import {
+	createAddObjectOperation,
+	createUndoOperation,
+	makeOperationId,
+} from "../operation.js";
+
+/**
+ * 构造一条合法的增加对象记录
+ * @param {string} source - 发起者标识
+ * @param {number} n - 操作序号
+ * @param {number} time - 毫秒时间标记
+ * @returns {import("../operation.js").OperationRecord} 分子操作记录
+ */
+const makeAdd = (source, n, time) =>
+	createAddObjectOperation({
+		id: makeOperationId(source, n),
+		source,
+		time,
+		chunkId: "chunk-1",
+		objectId: `obj-${source}-${n}`,
+		data: { type: "stroke" },
+		layerStackSnapshot: [`obj-${source}-${n}`],
+	});
+
+/**
+ * 构造日志与树，并逐条应用记录
+ * @param {...import("../operation.js").OperationRecord} records - 分子操作记录
+ * @returns {{ log: OperationLog, tree: UndoTree }} 日志与树
+ */
+const applyAll = (...records) => {
+	const log = new OperationLog();
+	const tree = new UndoTree(log);
+	for (const record of records) {
+		log.append(record);
+		tree.applyRecord(record);
+	}
+	return { log, tree };
+};
+
+/**
+ * 活动链的操作 id 序列
+ * @param {UndoTree} tree - 树
+ * @returns {string[]} 操作 id 序列
+ */
+const chainIds = (tree) => tree.getActiveChain().map((node) => node.shareId);
+
+describe("构造", () => {
+	test("虚拟根与初始 HEAD", () => {
+		const tree = new UndoTree(new OperationLog());
+		expect(tree.root.shareId).toBeNull();
+		expect(tree.root.depth).toBe(0);
+		expect(tree.root.parent).toBeNull();
+		expect(tree.head).toBe(tree.root);
+		expect(tree.getActiveChain()).toEqual([]);
+	});
+});
+
+describe("追加生长", () => {
+	test("commit 在 HEAD 之后追加并推进 HEAD", () => {
+		const { tree } = applyAll(makeAdd("alice", 1, 100), makeAdd("alice", 2, 200), makeAdd("alice", 3, 300));
+		expect(chainIds(tree)).toEqual(["alice/op-1", "alice/op-2", "alice/op-3"]);
+		expect(tree.head.shareId).toBe("alice/op-3");
+		const [n1, n2, n3] = tree.getActiveChain();
+		expect([n1.depth, n2.depth, n3.depth]).toEqual([1, 2, 3]);
+		expect(n1.parent).toBe(tree.root);
+		expect(n2.parent).toBe(n1);
+		expect(n3.parent).toBe(n2);
+		expect(tree.getChildrenOf(n1)).toEqual([n2]);
+	});
+
+	test("活动链查询", () => {
+		const { tree } = applyAll(makeAdd("alice", 1, 100), makeAdd("alice", 2, 200));
+		expect(tree.getActiveNode("alice/op-1")).toBe(tree.getActiveChain()[0]);
+		expect(tree.getActiveNode("alice/op-9")).toBeNull();
+		expect(tree.isOnActiveChain("alice/op-2")).toBe(true);
+		expect(tree.isOnActiveChain("alice/op-9")).toBe(false);
+	});
+});
+
+describe("延迟到达的时间插入", () => {
+	test("插入活动链对应位置，后继改挂且 HEAD 不变", () => {
+		const { tree } = applyAll(makeAdd("alice", 1, 100), makeAdd("alice", 2, 300), makeAdd("bob", 1, 200));
+		expect(chainIds(tree)).toEqual(["alice/op-1", "bob/op-1", "alice/op-2"]);
+		expect(tree.head.shareId).toBe("alice/op-2");
+		const [n1, inserted, n2] = tree.getActiveChain();
+		expect(inserted.parent).toBe(n1);
+		expect(n2.parent).toBe(inserted);
+		expect(tree.getChildrenOf(n1)).toEqual([inserted]);
+		expect(tree.getChildrenOf(inserted)).toEqual([n2]);
+		expect([n1.depth, inserted.depth, n2.depth]).toEqual([1, 2, 3]);
+	});
+
+	test("晚于 HEAD 的记录追加而非插入", () => {
+		const { tree } = applyAll(makeAdd("alice", 1, 100), makeAdd("bob", 1, 400));
+		expect(chainIds(tree)).toEqual(["alice/op-1", "bob/op-1"]);
+		expect(tree.head.shareId).toBe("bob/op-1");
+	});
+
+	test("同毫秒按 author 字典序落位", () => {
+		const { tree } = applyAll(makeAdd("bob", 1, 100), makeAdd("alice", 1, 100));
+		expect(chainIds(tree)).toEqual(["alice/op-1", "bob/op-1"]);
+	});
+
+	test("同毫秒同 author 的重建按操作序号决胜", () => {
+		const log = new OperationLog();
+		for (const record of [makeAdd("alice", 1, 100), makeAdd("alice", 2, 100), makeAdd("alice", 3, 100)]) {
+			log.append(record);
+		}
+		const tree = UndoTree.rebuildFromLog(log);
+		expect(chainIds(tree)).toEqual(["alice/op-1", "alice/op-2", "alice/op-3"]);
+	});
+});
+
+describe("HEAD 移动原语", () => {
+	test("回退到链中间，下游离开活动链", () => {
+		const { tree } = applyAll(makeAdd("alice", 1, 100), makeAdd("alice", 2, 200), makeAdd("alice", 3, 300));
+		expect(tree.moveHeadTo("alice/op-1")).toBe(true);
+		expect(tree.head.shareId).toBe("alice/op-1");
+		expect(chainIds(tree)).toEqual(["alice/op-1"]);
+		expect(tree.isOnActiveChain("alice/op-3")).toBe(false);
+	});
+
+	test("移至不存在的节点返回 false，HEAD 不变", () => {
+		const { tree } = applyAll(makeAdd("alice", 1, 100));
+		expect(tree.moveHeadTo("alice/op-9")).toBe(false);
+		expect(tree.head.shareId).toBe("alice/op-1");
+	});
+
+	test("回退后可再推进，活动链恢复", () => {
+		const { tree } = applyAll(makeAdd("alice", 1, 100), makeAdd("alice", 2, 200));
+		tree.moveHeadTo("alice/op-1");
+		expect(tree.moveHeadTo("alice/op-2")).toBe(true);
+		expect(chainIds(tree)).toEqual(["alice/op-1", "alice/op-2"]);
+	});
+
+	test("回退后新操作在 HEAD 所指位置追加，长成新分支", () => {
+		const { log, tree } = applyAll(makeAdd("alice", 1, 100), makeAdd("alice", 2, 200));
+		tree.moveHeadTo("alice/op-1");
+		const record = makeAdd("bob", 1, 300);
+		log.append(record);
+		tree.applyRecord(record);
+		expect(chainIds(tree)).toEqual(["alice/op-1", "bob/op-1"]);
+		const n1 = tree.getActiveNode("alice/op-1");
+		expect(tree.getChildrenOf(n1).map((node) => node.shareId)).toEqual(["alice/op-2", "bob/op-1"]);
+		expect(tree.findNode("alice/op-2")).not.toBeNull();
+	});
+});
+
+describe("准入与分派", () => {
+	test("记录未入数据池时抛出", () => {
+		const tree = new UndoTree(new OperationLog());
+		expect(() => tree.applyRecord(makeAdd("alice", 1, 100))).toThrow("记录未入数据池：alice/op-1");
+	});
+
+	test("树级操作暂不支持", () => {
+		const log = new OperationLog();
+		const tree = new UndoTree(log);
+		const undo = createUndoOperation({
+			id: "alice/op-1",
+			source: "alice",
+			time: 100,
+			targetNodeId: "alice/op-0",
+			previousHeadId: "alice/op-0",
+		});
+		log.append(undo);
+		expect(() => tree.applyRecord(undo)).toThrow("树级操作的应用随撤销与重做落地补全：undo");
+	});
+});
+
+describe("派生重建", () => {
+	test("乱序日志重建与顺序应用同构", () => {
+		const records = [makeAdd("alice", 1, 100), makeAdd("alice", 2, 300), makeAdd("bob", 1, 200)];
+		const { tree: sequential } = applyAll(...records);
+		const log = new OperationLog();
+		for (const record of [records[0], records[2], records[1]]) {
+			log.append(record);
+		}
+		const rebuilt = UndoTree.rebuildFromLog(log);
+		expect(chainIds(rebuilt)).toEqual(chainIds(sequential));
+		expect(rebuilt.getActiveChain().map((node) => node.depth)).toEqual(
+			sequential.getActiveChain().map((node) => node.depth),
+		);
+		expect(rebuilt.head.shareId).toBe(sequential.head.shareId);
+	});
+});

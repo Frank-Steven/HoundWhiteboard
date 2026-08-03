@@ -805,3 +805,42 @@ describe("DirectedGraph Errors", () => {
     expect(error.to).toBe(2);
   });
 });
+
+describe("topoSort", () => {
+  test("链式图按边序输出", () => {
+    const graph = new DirectedGraph();
+    for (const node of [1, 2, 3]) graph.addNode(node);
+    graph.addEdge(1, 2);
+    graph.addEdge(2, 3);
+    expect(graph.topoSort()).toEqual([1, 2, 3]);
+  });
+
+  test("菱形依赖满足全部边约束", () => {
+    const graph = new DirectedGraph();
+    for (const node of [1, 2, 3, 4]) graph.addNode(node);
+    graph.addEdge(1, 2);
+    graph.addEdge(1, 3);
+    graph.addEdge(2, 4);
+    graph.addEdge(3, 4);
+    const order = graph.topoSort();
+    expect(order).toHaveLength(4);
+    expect(order.indexOf(1)).toBeLessThan(order.indexOf(2));
+    expect(order.indexOf(1)).toBeLessThan(order.indexOf(3));
+    expect(order.indexOf(2)).toBeLessThan(order.indexOf(4));
+    expect(order.indexOf(3)).toBeLessThan(order.indexOf(4));
+  });
+
+  test("不连通图的全部节点都输出，零入度节点按加入先后稳序", () => {
+    const graph = new DirectedGraph();
+    graph.addNode("b");
+    graph.addNode("a");
+    graph.addNode("c");
+    graph.addNode("d");
+    graph.addEdge("c", "d");
+    expect(graph.topoSort()).toEqual(["b", "a", "c", "d"]);
+  });
+
+  test("空图输出空数组", () => {
+    expect(new DirectedGraph().topoSort()).toEqual([]);
+  });
+});

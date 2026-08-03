@@ -529,6 +529,33 @@ class DirectedGraph {
   }
 
   /**
+   * 拓扑排序
+   * @description 以 Kahn 算法给出一种确定性的拓扑序：对每条边 u -> v，u 排在 v 之前；
+   * 同时可选的多个节点按加入图的先后稳序输出。
+   * @returns {Array<T>} 拓扑序节点数组
+   */
+  topoSort() {
+    const inDegree = new Map();
+    for (const node of this.adjList.keys()) {
+      inDegree.set(node, this.adjListR.get(node)?.size ?? 0);
+    }
+    const queue = this.getNodes().filter((node) => inDegree.get(node) === 0);
+    const result = [];
+    for (let head = 0; head < queue.length; head++) {
+      const node = queue[head];
+      result.push(node);
+      for (const neighbor of this.adjList.get(node) ?? []) {
+        const degree = inDegree.get(neighbor) - 1;
+        inDegree.set(neighbor, degree);
+        if (degree === 0) {
+          queue.push(neighbor);
+        }
+      }
+    }
+    return result;
+  }
+
+  /**
    * 清空图
    * @returns {DirectedGraph<T>} 返回自身以方便链式调用
    */

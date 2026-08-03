@@ -14,6 +14,7 @@ import { Matrix, Vector } from "../utils/math.js";
 import { intersectsRanges, RectangleRange } from "../range/index.js";
 import { ChunkObjectManager } from "../chunk/chunk-object-manager.js";
 import { CHUNK_LOAD_EVENTS } from "../chunk/chunk-loader.js";
+import { Chunk } from "../chunk/chunk.js";
 
 /**
  * 数据擦除粗筛的范围余量（世界单位）
@@ -79,10 +80,69 @@ class BoardApi {
   #eraseDataQueue = Promise.resolve();
 
   /**
+   * 选择前快照表
+   * @description 对象 id -> 选择时刻的 serialize() 快照，作修改对象分子的前快照；对象提交或放弃时移除。
+   * @type {Map<string, Object>}
+   * @private
+   */
+  #chooseSnapshots = new Map();
+
+  /**
    * @param {import("../board/board-core.js").BoardCore} boardCore - BoardCore 实例
    */
   constructor(boardCore) {
     this.#boardCore = boardCore;
+  }
+
+  /**
+   * 解析对象所在区块 id
+   * @description 先扫描已加载区块的静态状态图，未命中时按对象位置与画布尺寸推算；区块 id 统一规范为字符串。
+   * @param {string} objectId - 对象 id
+   * @returns {string} 区块 id；无法解析时为空串
+   * @private
+   */
+  #resolveObjectChunkId(objectId) {
+    const boardCore = this.#boardCore;
+    for (const { chunk } of boardCore.chunkLoaded.values()) {
+      if (chunk?.objectManager?.staticGraph?.hasNode?.(objectId)) {
+        return String(chunk.id);
+      }
+    }
+    const obj = boardCore.getObjectById(objectId);
+    if (obj?.position && boardCore.width > 0 && boardCore.height > 0) {
+      const chunkId = Chunk.worldToChunkId(obj.position, boardCore.width, boardCore.height);
+      return chunkId == null ? "" : String(chunkId);
+    }
+    return "";
+  }
+
+  /**
+   * 捕获区块的层栈快照（静态状态图的拓扑序，即完整 z-order）
+   * @description 已加载区块的 id 未必是字符串，按字符串化后的 id 匹配。
+   * @param {string} chunkId - 区块 id（字符串）
+   * @returns {string[]} 层栈快照；区块未加载时为空数组
+   * @private
+   */
+  #captureLayerStackSnapshot(chunkId) {
+    for (const { chunk } of this.#boardCore.chunkLoaded.values()) {
+      if (String(chunk?.id) === chunkId) {
+        return chunk?.objectManager?.staticGraph?.topoSort?.() ?? [];
+      }
+    }
+    return [];
+  }
+
+  /**
+   * 比较前后快照的顶层差异键
+   * @param {Object} before - 修改前快照
+   * @param {Object} after - 修改后快照
+   * @returns {string[]} 涉及属性的集合
+   * @private
+   */
+  #diffProperties(before, after) {
+    return ["position", "transform", "property", "data"].filter(
+      (key) => JSON.stringify(before?.[key]) !== JSON.stringify(after?.[key]),
+    );
   }
 
   /**
@@ -236,15 +296,21 @@ class BoardApi {
 
   /**
    * 永久删除对象集合
+   * @description 删除静态对象即删除对象分子操作；同一次删除的记录关联为同一超分子。
    * @param {string[]} objectIds - 要删除的对象 id 列表
+   * @param {Object} [options] - 删除选项
+   * @param {?{ id: ?string }} [options.supra] - 超分子句柄（复合操作内部调用时传入）
    * @returns {void}
    */
-  deleteObjects(objectIds) {
+  deleteObjects(objectIds, options = {}) {
     const boardCore = this.#boardCore;
     const ids = Array.isArray(objectIds) ? objectIds : [];
     const aom = boardCore.activeObjectManager;
     const activeToDiscard = [];
     const affectedChunks = new Set();
+    const chunkIds = new Map(
+      ids.map((objectId) => [objectId, this.#resolveObjectChunkId(objectId)]),
+    );
 
     for (const objectId of ids) {
       const obj = boardCore.getObjectById(objectId);
@@ -262,10 +328,20 @@ class BoardApi {
       }
 
       boardCore.objectLoaded.delete(objectId);
+      this.#chooseSnapshots.delete(objectId);
     }
 
     if (activeToDiscard.length > 0) {
       aom.discard(new Set(activeToDiscard));
+    }
+
+    const committer = boardCore.hitCommitter;
+    const supra = options.supra ?? committer.beginSupra();
+    for (const objectId of ids) {
+      const chunkId = chunkIds.get(objectId);
+      if (chunkId) {
+        committer.commitDelete({ chunkId, objectId, supra });
+      }
     }
 
     if (
@@ -315,6 +391,9 @@ class BoardApi {
       return result;
     }
 
+    // 一次 FD 擦除 = 修改对象（回写首段）+ 增加对象（分裂段）+ 删除对象（整笔擦没）的有序组合
+    const supra = boardCore.hitCommitter.beginSupra();
+
     const xs = points.map((p) => p.x);
     const ys = points.map((p) => p.y);
     const margin = radius + ERASE_COARSE_MARGIN;
@@ -358,7 +437,18 @@ class BoardApi {
         previousWorldRects.set(objectId, previousWorldRect);
       }
 
+      const beforeErase = obj.serialize();
       this.modifyObject(objectId, { data: { points: runs[0] } });
+      const erasedChunkId = this.#resolveObjectChunkId(objectId);
+      boardCore.hitCommitter.commitModify({
+        chunkId: erasedChunkId,
+        objectId,
+        properties: ["data"],
+        before: beforeErase,
+        after: obj.serialize(),
+        layerStackSnapshot: this.#captureLayerStackSnapshot(erasedChunkId),
+        supra,
+      });
       result.modified.push(objectId);
       modifiedStaticObjects.push(obj);
 
@@ -379,10 +469,10 @@ class BoardApi {
     }
 
     if (result.deleted.length > 0) {
-      this.deleteObjects(result.deleted);
+      this.deleteObjects(result.deleted, { supra });
     }
     if (result.created.length > 0) {
-      this.commitObjects(result.created);
+      await this.commitObjects(result.created, { supra });
     }
     if (modifiedStaticObjects.length > 0) {
       boardCore.aomRenderHooks?.requestStaticRenderForObjects?.(
@@ -397,23 +487,69 @@ class BoardApi {
 
   /**
    * 将 AOM 动态图中的对象写回静态图
+   * @description commit 边界：首次进入静态图的对象凝聚为增加对象分子，被选择过的静态对象凝聚为
+   * 修改对象分子（前快照取自选择时刻）并配对取消选择分子；同一次提交的记录关联为同一超分子。
    * @param {string[]} objectIds - 要提交的对象 id 列表
-   * @returns {string[]} 实际提交的对象 id（缺失的 id 被跳过，供调用方对账）
+   * @param {Object} [options] - 提交选项
+   * @param {?{ id: ?string }} [options.supra] - 超分子句柄（复合操作内部调用时传入）
+   * @returns {Promise<string[]>} 实际提交的对象 id（缺失的 id 被跳过，供调用方对账）
    */
-  commitObjects(objectIds) {
+  async commitObjects(objectIds, options = {}) {
     const boardCore = this.#boardCore;
     const ids = Array.isArray(objectIds) ? objectIds : [];
     const objects = ids
       .map((id) => boardCore.getObjectById(id))
       .filter(Boolean);
-    if (objects.length > 0) {
-      boardCore.activeObjectManager.apply(new Set(objects));
+    if (objects.length === 0) {
+      return [];
+    }
+    const wasStatic = new Map(
+      objects.map((obj) => [obj.id, hasStaticBoardObject(boardCore, obj.id)]),
+    );
+    await boardCore.activeObjectManager.apply(new Set(objects));
+
+    const committer = boardCore.hitCommitter;
+    const supra = options.supra ?? committer.beginSupra();
+    for (const obj of objects) {
+      const chunkId = this.#resolveObjectChunkId(obj.id);
+      const after = obj.serialize();
+      const layerStackSnapshot = this.#captureLayerStackSnapshot(chunkId);
+      if (wasStatic.get(obj.id)) {
+        const before = this.#chooseSnapshots.get(obj.id);
+        if (before === undefined) {
+          throw new Error(`对象 ${obj.id} 缺选择前快照`);
+        }
+        const properties = this.#diffProperties(before, after);
+        // 无实际差异时不产生修改分子；层位调整（置顶/置底等）不经 serialize 差异表达，落地时需另行保证不被跳过
+        if (properties.length > 0) {
+          committer.commitModify({
+            chunkId,
+            objectId: obj.id,
+            properties,
+            before,
+            after,
+            layerStackSnapshot,
+            supra,
+          });
+        }
+        committer.commitUnchoose({ chunkId, objectId: obj.id, supra });
+        this.#chooseSnapshots.delete(obj.id);
+      } else {
+        committer.commitAdd({
+          chunkId,
+          objectId: obj.id,
+          data: after,
+          layerStackSnapshot,
+          supra,
+        });
+      }
     }
     return objects.map((obj) => obj.id);
   }
 
   /**
    * 将对象加入 AOM 动态图
+   * @description 静态对象进入 AOM 即选择对象分子操作：捕获选择前快照（修改分子的前快照）并提交记录。
    * @param {string[]} objectIds - 对象 id 列表
    * @returns {void}
    */
@@ -423,13 +559,28 @@ class BoardApi {
     const objects = ids
       .map((id) => boardCore.getObjectById(id))
       .filter(Boolean);
-    if (objects.length > 0) {
-      boardCore.activeObjectManager.choose(new Set(objects));
+    if (objects.length === 0) {
+      return;
     }
+    const committer = boardCore.hitCommitter;
+    const supra = committer.beginSupra();
+    for (const obj of objects) {
+      if (!hasStaticBoardObject(boardCore, obj.id)) continue;
+      // 已在选择中的对象不重复记录，前快照保留首次选择时刻的状态
+      if (this.#chooseSnapshots.has(obj.id)) continue;
+      this.#chooseSnapshots.set(obj.id, obj.serialize());
+      committer.commitChoose({
+        chunkId: this.#resolveObjectChunkId(obj.id),
+        objectId: obj.id,
+        supra,
+      });
+    }
+    boardCore.activeObjectManager.choose(new Set(objects));
   }
 
   /**
    * 将对象从 AOM 动态图移除
+   * @description 静态对象被放弃更改即取消选择分子操作；生于 AOM 的暂存对象不产生记录。
    * @param {string[]} objectIds - 对象 id 列表
    * @returns {void}
    */
@@ -445,6 +596,19 @@ class BoardApi {
     );
 
     boardCore.activeObjectManager.discard(new Set(objects));
+
+    const committer = boardCore.hitCommitter;
+    const supra = committer.beginSupra();
+    for (const obj of objects) {
+      if (hasStaticBoardObject(boardCore, obj.id)) {
+        committer.commitUnchoose({
+          chunkId: this.#resolveObjectChunkId(obj.id),
+          objectId: obj.id,
+          supra,
+        });
+      }
+      this.#chooseSnapshots.delete(obj.id);
+    }
 
     for (const objectId of transientObjectIds) {
       boardCore.objectLoaded.delete(objectId);

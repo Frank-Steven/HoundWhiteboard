@@ -16,6 +16,9 @@ import { Logger } from "../../utils/log/logger.js";
 import { logBus } from "../../utils/log/log-bus.js";
 import { ActiveObjectManager } from "./active-object-manager.js";
 import { createDefaultAomRenderHooks } from "./aom-render-hooks.js";
+import { OperationLog } from "../hit/operation-log.js";
+import { UndoTree } from "../hit/undo-tree-core.js";
+import { HitCommitter } from "../hit/hit-committer.js";
 import {
   CHUNK_LOAD_EVENTS,
   CHUNK_LOAD_STRATEGIES,
@@ -131,6 +134,24 @@ class BoardCore {
   aomRenderHooks;
 
   /**
+   * 操作日志（hit 数据池）
+   * @type {OperationLog}
+   */
+  operationLog;
+
+  /**
+   * 时间回溯树
+   * @type {UndoTree}
+   */
+  undoTree;
+
+  /**
+   * hit 提交器（分子操作的 commit 边界单点）
+   * @type {HitCommitter}
+   */
+  hitCommitter;
+
+  /**
    * Core 侧对象 id 分配器表
    * @description 键为来源标识，值为该来源的 Core id 分配器；首次使用时 lazy 创建。
    * @type {Map<string, IncrementalIdPool>}
@@ -150,6 +171,7 @@ class BoardCore {
    *   rootPath?: string,
    *   persistenceAdapter?: PersistenceAdapter,
    *   aomRenderHooks?: AomRenderHooks,
+   *   source?: string,
    * }} [options={}] - 白板核心初始化选项
    */
   constructor(options = {}) {
@@ -174,6 +196,14 @@ class BoardCore {
       options.aomRenderHooks ?? createDefaultAomRenderHooks();
     this.activeObjectManager = new ActiveObjectManager(this, {
       renderHooks: this.aomRenderHooks,
+    });
+
+    this.operationLog = new OperationLog();
+    this.undoTree = new UndoTree(this.operationLog);
+    this.hitCommitter = new HitCommitter({
+      source: options.source ?? "core",
+      log: this.operationLog,
+      tree: this.undoTree,
     });
 
     this.#bindChunkLoadEvents();
