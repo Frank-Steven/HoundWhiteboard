@@ -120,3 +120,29 @@ describe("超分子", () => {
 		expect(record.supraOpId).toBeNull();
 	});
 });
+
+describe("超分子闭合", () => {
+	test("成员只入日志，endSupra 时在树上凝聚为一个节点", () => {
+		const { log, tree, committer } = setup([100, 200]);
+		const supra = committer.beginSupra();
+		committer.commitAdd({ ...addEffect("obj-1"), supra });
+		committer.commitAdd({ ...addEffect("obj-2"), supra });
+		expect(log.size).toBe(2);
+		expect(tree.head).toBe(tree.root);
+
+		committer.endSupra(supra);
+		expect(tree.getActiveChain()).toHaveLength(1);
+		expect(tree.head.shareId).toBe("alice/op-1");
+	});
+
+	test("空超分子不成节点；重复闭合幂等", () => {
+		const { tree, committer } = setup();
+		const supra = committer.beginSupra();
+		committer.endSupra(supra);
+		expect(tree.getActiveChain()).toHaveLength(0);
+		committer.commitAdd({ ...addEffect("obj-1"), supra });
+		committer.endSupra(supra);
+		committer.endSupra(supra);
+		expect(tree.getActiveChain()).toHaveLength(1);
+	});
+});

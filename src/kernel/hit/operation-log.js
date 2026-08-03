@@ -35,6 +35,12 @@ class OperationLog {
 	#byId = new Map();
 
 	/**
+	 * 超分子索引（supraOpId -> 成员记录，按追加序）
+	 * @type {Map<string, import("./operation.js").OperationRecord[]>}
+	 */
+	#bySupra = new Map();
+
+	/**
 	 * 各 source 的下一个操作序号
 	 * @type {Map<string, number>}
 	 */
@@ -86,6 +92,11 @@ class OperationLog {
 		}
 		this.#records.push(record);
 		this.#byId.set(record.id, record);
+		if (record.supraOpId !== null) {
+			const members = this.#bySupra.get(record.supraOpId) ?? [];
+			members.push(record);
+			this.#bySupra.set(record.supraOpId, members);
+		}
 		this.#nextSeq.set(record.source, expected + 1);
 		this.#lastTime.set(record.source, record.time);
 		return [];
@@ -107,6 +118,30 @@ class OperationLog {
 	 */
 	has(id) {
 		return this.#byId.has(id);
+	}
+
+	/**
+	 * 取节点的代表记录（时间标记的来源）
+	 * @description 独立分子为其自身；超分子节点为其末分子（完成时刻）。
+	 * @param {string} id - 操作 id 或超分子 id
+	 * @returns {?import("./operation.js").OperationRecord} 代表记录；不存在时为 null
+	 */
+	getLastMember(id) {
+		const record = this.get(id);
+		if (record === null || record.supraOpId === null) {
+			return record;
+		}
+		const members = this.#bySupra.get(record.supraOpId);
+		return members?.[members.length - 1] ?? record;
+	}
+
+	/**
+	 * 取超分子的成员记录组
+	 * @param {string} supraOpId - 超分子 id（首分子 id）
+	 * @returns {import("./operation.js").OperationRecord[]} 成员记录数组的副本
+	 */
+	getSupraMembers(supraOpId) {
+		return [...(this.#bySupra.get(supraOpId) ?? [])];
 	}
 
 	/**

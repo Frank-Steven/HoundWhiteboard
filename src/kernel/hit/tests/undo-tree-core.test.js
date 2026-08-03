@@ -4,6 +4,7 @@ import { MolecularNode, UndoTree } from "../undo-tree-core.js";
 import {
 	createAddObjectOperation,
 	createUndoOperation,
+	createRedoOperation,
 	makeOperationId,
 } from "../operation.js";
 
@@ -155,18 +156,16 @@ describe("准入与分派", () => {
 		expect(() => tree.applyRecord(makeAdd("alice", 1, 100))).toThrow("记录未入数据池：alice/op-1");
 	});
 
-	test("树级操作暂不支持", () => {
+	test("重做暂不支持", () => {
 		const log = new OperationLog();
 		const tree = new UndoTree(log);
-		const undo = createUndoOperation({
+		const redo = createRedoOperation({
 			id: "alice/op-1",
 			source: "alice",
 			time: 100,
-			targetNodeId: "alice/op-0",
-			previousHeadId: "alice/op-0",
 		});
-		log.append(undo);
-		expect(() => tree.applyRecord(undo)).toThrow("树级操作的应用随撤销与重做落地补全：undo");
+		log.append(redo);
+		expect(() => tree.applyRecord(redo)).toThrow("树级操作的应用随重做落地补全：redo");
 	});
 });
 
@@ -184,5 +183,132 @@ describe("派生重建", () => {
 			sequential.getActiveChain().map((node) => node.depth),
 		);
 		expect(rebuilt.head.shareId).toBe(sequential.head.shareId);
+	});
+});
+
+describe("撤销", () => {
+	/**
+	 * 构造一条撤销记录
+	 * @param {string} source - 发起者标识
+	 * @param {number} n - 操作序号
+	 * @param {number} time - 毫秒时间标记
+	 * @param {string} targetNodeId - 目标节点 id
+	 * @param {string} previousHeadId - 撤销前的 HEAD 位置
+	 * @returns {import("../operation.js").OperationRecord} 撤销操作记录
+	 */
+	const makeUndo = (source, n, time, targetNodeId, previousHeadId) =>
+		createUndoOperation({ id: makeOperationId(source, n), source, time, targetNodeId, previousHeadId });
+
+	test("退化：目标为活动链末端时 HEAD 回退", () => {
+		const { log, tree } = applyAll(makeAdd("alice", 1, 100), makeAdd("alice", 2, 200));
+		const undo = makeUndo("alice", 3, 300, "alice/op-2", "alice/op-2");
+		log.append(undo);
+		tree.applyRecord(undo);
+		expect(chainIds(tree)).toEqual(["alice/op-1"]);
+		expect(tree.head.shareId).toBe("alice/op-1");
+		expect(tree.findNode("alice/op-2")).not.toBeNull();
+	});
+
+	test("一般形态：链中段目标分叉改挂，不晚于撤销的节点两侧共享", () => {
+		const { log, tree } = applyAll(
+			makeAdd("alice", 1, 100),
+			makeAdd("alice", 2, 200),
+			makeAdd("alice", 3, 300),
+		);
+		const undo = makeUndo("alice", 4, 400, "alice/op-2", "alice/op-3");
+		log.append(undo);
+		tree.applyRecord(undo);
+		expect(chainIds(tree)).toEqual(["alice/op-1", "alice/op-3"]);
+		expect(tree.isOnActiveChain("alice/op-2")).toBe(false);
+		const op2 = tree.findNode("alice/op-2");
+		expect(op2.children.map((node) => node.shareId)).toContain("alice/op-3");
+		const activeOp3 = tree.getActiveNode("alice/op-3");
+		expect(activeOp3.parent.shareId).toBe("alice/op-1");
+		expect(op2.children.includes(activeOp3)).toBe(false);
+	});
+
+	test("截断：晚于撤销操作的节点只存在于撤消分支", () => {
+		const { log, tree } = applyAll(
+			makeAdd("alice", 1, 100),
+			makeAdd("alice", 2, 200),
+			makeAdd("alice", 3, 300),
+			makeAdd("bob", 1, 350),
+			makeAdd("bob", 2, 450),
+		);
+		const undo = makeUndo("alice", 4, 400, "alice/op-2", "bob/op-2");
+		log.append(undo);
+		tree.applyRecord(undo);
+		expect(chainIds(tree)).toEqual(["alice/op-1", "alice/op-3", "bob/op-1", "bob/op-2"]);
+		expect(tree.head.shareId).toBe("bob/op-2");
+		const op2 = tree.findNode("alice/op-2");
+		const originalOp3 = op2.children.find((node) => node.shareId === "alice/op-3");
+		expect(originalOp3).toBeDefined();
+		expect(originalOp3.children.map((node) => node.shareId)).toEqual(["bob/op-1"]);
+		expect(originalOp3.children[0].children).toEqual([]);
+	});
+
+	test("被吸收：目标不在活动链上时无结构变化", () => {
+		const { log, tree } = applyAll(makeAdd("alice", 1, 100));
+		const undo = makeUndo("alice", 2, 200, "alice/op-9", "alice/op-1");
+		log.append(undo);
+		tree.applyRecord(undo);
+		expect(chainIds(tree)).toEqual(["alice/op-1"]);
+		expect(tree.head.shareId).toBe("alice/op-1");
+	});
+});
+
+describe("超分子节点", () => {
+	/**
+	 * 构造一条超分子成员记录
+	 * @param {string} source - 发起者标识
+	 * @param {number} n - 操作序号
+	 * @param {number} time - 毫秒时间标记
+	 * @param {string} supraOpId - 超分子 id
+	 * @returns {import("../operation.js").OperationRecord} 分子操作记录
+	 */
+	const makeMember = (source, n, time, supraOpId) => ({
+		...makeAdd(source, n, time),
+		supraOpId,
+	});
+
+	test("成员组凝聚为单节点，时间标记取末分子", () => {
+		const log = new OperationLog();
+		const tree = new UndoTree(log);
+		const m1 = makeMember("alice", 1, 100, "alice/op-1");
+		const m2 = makeMember("alice", 2, 500, "alice/op-1");
+		log.append(m1);
+		log.append(m2);
+		const node = tree.applySupraNode([m1, m2]);
+		expect(node.shareId).toBe("alice/op-1");
+		expect(tree.getActiveChain()).toHaveLength(1);
+		// 末分子时间为 500：bob 的 200 应插入超分子节点之前
+		const bob = makeAdd("bob", 1, 200);
+		log.append(bob);
+		tree.applyRecord(bob);
+		expect(chainIds(tree)).toEqual(["bob/op-1", "alice/op-1"]);
+	});
+
+	test("超分子成员不径 applyRecord 产生独立节点", () => {
+		const log = new OperationLog();
+		const tree = new UndoTree(log);
+		const member = makeMember("alice", 1, 100, "alice/op-1");
+		log.append(member);
+		expect(() => tree.applyRecord(member)).toThrow("超分子成员不产生独立节点");
+	});
+
+	test("重建按末分子时间分组定序", () => {
+		const log = new OperationLog();
+		log.append(makeMember("alice", 1, 100, "alice/op-1"));
+		log.append(makeAdd("bob", 1, 200));
+		log.append(makeMember("alice", 2, 300, "alice/op-1"));
+		const tree = UndoTree.rebuildFromLog(log);
+		// 超分子节点时间 300，bob 200 在前
+		expect(chainIds(tree)).toEqual(["bob/op-1", "alice/op-1"]);
+	});
+
+	test("空成员组不产生节点", () => {
+		const tree = new UndoTree(new OperationLog());
+		expect(tree.applySupraNode([])).toBeNull();
+		expect(tree.getActiveChain()).toHaveLength(0);
 	});
 });

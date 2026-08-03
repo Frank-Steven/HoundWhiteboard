@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 import { OperationLog } from "../operation-log.js";
-import { createRedoOperation, makeOperationId } from "../operation.js";
+import { createAddObjectOperation, createRedoOperation, makeOperationId } from "../operation.js";
 
 /**
  * 构造一条合法的重做记录
@@ -135,5 +135,43 @@ describe("序列化", () => {
 		const log = OperationLog.fromJSON([]);
 		expect(log.size).toBe(0);
 		expect(log.nextId("alice")).toBe("alice/op-1");
+	});
+});
+
+describe("超分子索引", () => {
+	/**
+	 * 构造一条超分子成员记录（增加对象）
+	 * @param {string} source - 发起者标识
+	 * @param {number} n - 操作序号
+	 * @param {number} time - 毫秒时间标记
+	 * @param {string} supraOpId - 超分子 id
+	 * @returns {import("../operation.js").OperationRecord} 分子操作记录
+	 */
+	const makeSupraMember = (source, n, time, supraOpId) =>
+		createAddObjectOperation({
+			id: makeOperationId(source, n),
+			source,
+			time,
+			supraOpId,
+			chunkId: "c",
+			objectId: `obj-${n}`,
+			data: {},
+			layerStackSnapshot: [],
+		});
+
+	test("成员分组与末分子解析", () => {
+		const log = new OperationLog();
+		log.append(makeSupraMember("alice", 1, 100, "alice/op-1"));
+		log.append(makeSupraMember("alice", 2, 200, "alice/op-1"));
+		expect(log.getSupraMembers("alice/op-1").map((r) => r.id)).toEqual(["alice/op-1", "alice/op-2"]);
+		expect(log.getLastMember("alice/op-1").id).toBe("alice/op-2");
+	});
+
+	test("独立分子的代表记录是其自身", () => {
+		const log = new OperationLog();
+		log.append(makeRecord("alice", 1, 100));
+		expect(log.getLastMember("alice/op-1").id).toBe("alice/op-1");
+		expect(log.getSupraMembers("alice/op-1")).toEqual([]);
+		expect(log.getLastMember("alice/op-9")).toBeNull();
 	});
 });

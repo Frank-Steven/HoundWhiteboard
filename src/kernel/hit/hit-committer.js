@@ -12,6 +12,7 @@ import {
 	createDeleteObjectOperation,
 	createChooseObjectOperation,
 	createUnchooseObjectOperation,
+	createUndoOperation,
 } from "./operation.js";
 
 /**
@@ -80,11 +81,26 @@ class HitCommitter {
 	/**
 	 * 开始一个超分子操作
 	 * @description 返回超分子句柄，句柄 id 取首个分子的操作 id（首分子自指）；把句柄传给同一次
-	 * 逻辑操作的各 commit 调用，它们的记录即关联为同一超分子。
-	 * @returns {{ id: ?string }} 超分子句柄
+	 * 逻辑操作的各 commit 调用，它们的记录即关联为同一超分子。成员只入日志，树节点在
+	 * endSupra 时凝聚；调用方须在 finally 中闭合。
+	 * @returns {{ id: ?string, records: import("./operation.js").OperationRecord[] }} 超分子句柄
 	 */
 	beginSupra() {
-		return { id: null };
+		return { id: null, records: [] };
+	}
+
+	/**
+	 * 闭合一个超分子操作
+	 * @description 全部成员在树上凝聚为一个节点；空组不产生节点。重复闭合是幂等空操作。
+	 * @param {?{ id: ?string, records: import("./operation.js").OperationRecord[] }} supra - 超分子句柄
+	 * @returns {void}
+	 */
+	endSupra(supra) {
+		if (!supra) {
+			return;
+		}
+		this.#tree.applySupraNode(supra.records);
+		supra.records = [];
 	}
 
 	/**
@@ -154,6 +170,21 @@ class HitCommitter {
 	}
 
 	/**
+	 * 提交撤销分子操作
+	 * @description 记录目标节点与撤销前 HEAD 位置（重做的移动目标）；退化/分叉改挂/被吸收在应用时确定。
+	 * @param {Object} effect - 效果摘要
+	 * @param {string} effect.targetNodeId - 撤消操作的目标节点 id（缺省为活动链末端，由调用方解析后传入）
+	 * @param {?{ id: ?string }} [effect.supra] - 超分子句柄
+	 * @returns {import("./operation.js").OperationRecord} 撤销操作记录
+	 */
+	commitUndo(effect) {
+		return this.#emit(createUndoOperation, {
+			...effect,
+			previousHeadId: this.#tree.head.shareId,
+		});
+	}
+
+	/**
 	 * 统一的发射管线：构造记录、入日志、应用到树
 	 * @param {(fields: Object) => import("./operation.js").OperationRecord} factory - 分子记录工厂
 	 * @param {Object} effect - 效果摘要
@@ -180,6 +211,11 @@ class HitCommitter {
 		const errors = this.#log.append(record);
 		if (errors.length > 0) {
 			throw new Error(errors.join("；"));
+		}
+		// 超分子成员只入日志，树应用推迟到 endSupra 时凝聚为一个节点
+		if (supra !== null) {
+			supra.records.push(record);
+			return record;
 		}
 		this.#tree.applyRecord(record);
 		return record;

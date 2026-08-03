@@ -236,3 +236,31 @@ describe("validateOperation", () => {
 		expect(validateOperation(undo)).toContain("undo 载荷的 previousHeadId 非法：undefined");
 	});
 });
+
+describe("超分子结构校验", () => {
+	test("增加节点类可携带 supraOpId", () => {
+		const record = createAddObjectOperation({
+			id: "alice/op-1",
+			source: "alice",
+			time: 1,
+			supraOpId: "alice/op-1",
+			chunkId: "c",
+			objectId: "o",
+			data: {},
+			layerStackSnapshot: [],
+		});
+		expect(validateOperation(record)).toEqual([]);
+	});
+
+	test("树级操作不可属于超分子", () => {
+		const record = createUndoOperation({
+			id: "alice/op-1",
+			source: "alice",
+			time: 1,
+			supraOpId: "alice/op-1",
+			targetNodeId: "alice/op-0",
+			previousHeadId: "alice/op-0",
+		});
+		expect(validateOperation(record)).toContain("仅增加节点类操作可属于超分子操作");
+	});
+});

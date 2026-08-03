@@ -281,3 +281,121 @@ describe("hit commit 边界", () => {
     expect(tree.head.shareId).toBe(log.toArray().at(-1).id);
   });
 });
+
+describe("撤销", () => {
+  /** 静态状态图上存在该边。 @param {BoardCore} boardCore - 白板核心。 @param {string} from - 起点。 @param {string} to - 终点。 @returns {boolean} 是否存在。 */
+  const hasStaticEdge = (boardCore, from, to) =>
+    [...boardCore.chunkLoaded.values()].some(({ chunk }) =>
+      chunk?.objectManager?.staticGraph?.hasEdge?.(from, to),
+    );
+
+  test("无可撤销时返回 undone false", () => {
+    const api = new BoardApi(createBoardCore());
+    expect(api.undo()).toEqual({ undone: false, targetNodeId: null });
+  });
+
+  test("撤销增加对象：对象从白板移除，HEAD 回退", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+
+    expect(api.undo()).toEqual({ undone: true, targetNodeId: "core/op-1" });
+    expect(boardCore.getObjectById("s1")).toBeUndefined();
+    expect(boardCore.undoTree.head).toBe(boardCore.undoTree.root);
+    expect(boardCore.operationLog.toArray().at(-1).type).toBe("undo");
+  });
+
+  test("拖拽的完整撤销序列：修改与取消选择同属一个超分子节点", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+    await api.addActiveObjects(["s1"]);
+    api.modifyObject("s1", { position: { x: 50, y: 50 } });
+    await api.commitObjects(["s1"]);
+    const aom = boardCore.activeObjectManager;
+
+    // 链：add、choose、（modify+unchoose）超分子节点
+    api.undo();
+    expect(aom.isActive("s1")).toBe(true);
+    expect(boardCore.getObjectById("s1").position.x).toBe(0);
+    api.undo();
+    expect(aom.has("s1")).toBe(false);
+    api.undo();
+    expect(boardCore.getObjectById("s1")).toBeUndefined();
+    expect(api.undo().undone).toBe(false);
+  });
+
+  test("一次撤销回退整次擦除（超分子节点）", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+
+    await api.eraseData({
+      points: [
+        new Vector(15, 95),
+        new Vector(15, 105),
+        new Vector(25, 105),
+        new Vector(25, 95),
+      ],
+      radius: 1,
+      source: "test",
+    });
+    expect(boardCore.operationLog.size).toBe(3);
+    expect(boardCore.undoTree.getActiveChain()).toHaveLength(2);
+    const splitId = "test/core/1";
+    expect(boardCore.getObjectById(splitId)).toBeDefined();
+
+    api.undo();
+    expect(boardCore.getObjectById(splitId)).toBeUndefined();
+    expect(boardCore.getObjectById("s1").data.points).toHaveLength(5);
+    expect(boardCore.undoTree.getActiveChain()).toHaveLength(1);
+  });
+
+  test("同一次选择的多个对象聚合为一个节点", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+    await createStaticStroke(api, "s2", [{ x: 300, y: 300 }, { x: 320, y: 300 }]);
+
+    await api.addActiveObjects(["s1", "s2"]);
+    const chain = boardCore.undoTree.getActiveChain();
+    expect(chain).toHaveLength(3);
+    const chooseNode = chain[2];
+    const members = boardCore.operationLog.getSupraMembers(chooseNode.shareId);
+    expect(members.map((r) => r.type)).toEqual(["choose-object", "choose-object"]);
+  });
+
+  test("撤销删除对象：对象与层位边从回收站恢复", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+    api.createObject("StrokeObject", {
+      id: "s2",
+      position: { x: 0, y: 0 },
+      property: { width: 2 },
+      data: { points: [{ x: 20, y: 90 }, { x: 20, y: 110 }] },
+    });
+    await api.commitObjects(["s2"]);
+    api.deleteObjects(["s1"]);
+    expect(boardCore.trash.has("s1")).toBe(true);
+
+    api.undo();
+    expect(boardCore.getObjectById("s1")).toBeDefined();
+    expect(boardCore.trash.has("s1")).toBe(false);
+    expect(hasStaticEdge(boardCore, "s1", "s2")).toBe(true);
+  });
+
+  test("撤销后再操作长成新分支，旧分支保留", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+    api.undo();
+    await createStaticStroke(api, "s2");
+
+    const tree = boardCore.undoTree;
+    expect(tree.getChildrenOf(tree.root)).toHaveLength(2);
+    expect(tree.getActiveChain()).toHaveLength(1);
+    expect(boardCore.getObjectById("s2")).toBeDefined();
+    expect(boardCore.getObjectById("s1")).toBeUndefined();
+  });
+});

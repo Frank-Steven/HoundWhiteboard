@@ -7,6 +7,7 @@
  */
 
 import {
+	OPERATION_TYPES,
 	OPERATION_EFFECT_KINDS,
 	getOperationEffectKind,
 	compareTimeMarks,
@@ -169,22 +170,99 @@ class UndoTree {
 	 * 应用一条分子操作记录
 	 * @description
 	 * 增加节点类按时间标记落位：晚于 HEAD（时钟环）时在 HEAD 之后追加并推进 HEAD，否则插入活动链的
-	 * 对应位置、插入点之后的节点改挂。树级操作（更改 HEAD、撤销、重做）的应用随撤销与重做落地补全。
+	 * 对应位置、插入点之后的节点改挂。撤销按目标在活动链上的位置呈现退化/分叉改挂/被吸收形态。
+	 * 更改 HEAD 与重做的应用随重做落地补全。
 	 * @param {import("./operation.js").OperationRecord} record - 分子操作记录
-	 * @returns {MolecularNode} 记录产生的新节点
+	 * @returns {?MolecularNode} 记录产生的新节点；撤销不产生节点返回 null
 	 * @throws {Error} 记录未入数据池（日志），或类型暂不支持时抛出
 	 */
 	applyRecord(record) {
 		if (!this.#log.has(record.id)) {
 			throw new Error(`记录未入数据池：${record.id}`);
 		}
-		if (getOperationEffectKind(record.type) !== OPERATION_EFFECT_KINDS.APPEND_NODE) {
-			throw new Error(`树级操作的应用随撤销与重做落地补全：${record.type}`);
+		if (record.type === OPERATION_TYPES.UNDO) {
+			return this.#applyUndo(record);
 		}
-		if (this.#head === this.#root || this.#compareRecords(record, this.#log.get(this.#head.shareId)) > 0) {
+		if (getOperationEffectKind(record.type) !== OPERATION_EFFECT_KINDS.APPEND_NODE) {
+			throw new Error(`树级操作的应用随重做落地补全：${record.type}`);
+		}
+		if (record.supraOpId !== null) {
+			throw new Error(`超分子成员不产生独立节点，经 applySupraNode 应用：${record.id}`);
+		}
+		if (this.#head === this.#root || this.#compareRecords(record, this.#timeRecordOf(this.#head.shareId)) > 0) {
 			return this.appendRecord(record);
 		}
 		return this.insertRecordByTimeMark(record);
+	}
+
+	/**
+	 * 应用一个超分子操作（全部成员凝聚为一个节点）
+	 * @description 节点 shareId 为超分子 id（首分子 id），时间标记取末分子（完成时刻）；
+	 * 晚于 HEAD 时追加并推进 HEAD，否则插入活动链对应位置。空成员组不产生节点。
+	 * @param {import("./operation.js").OperationRecord[]} members - 超分子成员记录（按追加序）
+	 * @returns {?MolecularNode} 超分子节点；空组返回 null
+	 */
+	applySupraNode(members) {
+		if (!Array.isArray(members) || members.length === 0) {
+			return null;
+		}
+		const shareId = members[0].supraOpId;
+		const last = members[members.length - 1];
+		if (this.#head === this.#root || this.#compareRecords(last, this.#timeRecordOf(this.#head.shareId)) > 0) {
+			return this.#appendNode(shareId);
+		}
+		return this.#insertNodeByTime(shareId, last);
+	}
+
+	/**
+	 * 应用撤销操作记录
+	 * @description
+	 * 目标不在活动链上时被吸收（无结构变化）；目标为活动链末端时退化为 HEAD 回退；
+	 * 目标在链中段时在目标父节点处分叉：目标与 HEAD 之间的链（不含目标）改挂到分叉点，
+	 * 原位置按 (时间, author) 截断——不晚于撤销操作的节点留在原位置（凭同一 share id 共享数据），
+	 * 晚于的只存在于撤消分支；HEAD 移到新末端。撤销本身不产生节点。
+	 * @param {import("./operation.js").OperationRecord} record - 撤销操作记录
+	 * @returns {null}
+	 * @private
+	 */
+	#applyUndo(record) {
+		const target = this.getActiveNode(record.payload.targetNodeId);
+		if (target === null) {
+			return null;
+		}
+		if (target === this.#head) {
+			this.#head = target.parent;
+			this.#rebuildActiveIndex();
+			return null;
+		}
+		const forkPoint = target.parent;
+		// 目标与 HEAD 之间的链（不含目标），按时间升序
+		const chain = [];
+		for (let node = this.#head; node !== target; node = node.parent) {
+			chain.unshift(node);
+		}
+		// 原位置截断：不晚于撤销操作的前缀留在原位置，其后从原位置摘下
+		let keepCount = 0;
+		while (
+			keepCount < chain.length &&
+			this.#compareRecords(this.#log.get(chain[keepCount].shareId), record) <= 0
+		) {
+			keepCount++;
+		}
+		if (keepCount < chain.length) {
+			const dropped = chain[keepCount];
+			dropped.parent.children = dropped.parent.children.filter((child) => child !== dropped);
+		}
+		// 改挂：分叉点下新建链，节点凭同一 share id 共享数据
+		let parent = forkPoint;
+		for (const old of chain) {
+			const copy = new MolecularNode(old.shareId, parent);
+			this.#insertChildSorted(parent, copy);
+			parent = copy;
+		}
+		this.#head = parent;
+		this.#rebuildActiveIndex();
+		return null;
 	}
 
 	/**
@@ -193,11 +271,7 @@ class UndoTree {
 	 * @returns {MolecularNode} 新节点
 	 */
 	appendRecord(record) {
-		const node = new MolecularNode(record.id, this.#head);
-		this.#insertChildSorted(this.#head, node);
-		this.#head = node;
-		this.#rebuildActiveIndex();
-		return node;
+		return this.#appendNode(record.id);
 	}
 
 	/**
@@ -206,15 +280,40 @@ class UndoTree {
 	 * @returns {MolecularNode} 新节点
 	 */
 	insertRecordByTimeMark(record) {
+		return this.#insertNodeByTime(record.id, record);
+	}
+
+	/**
+	 * 在 HEAD 之后追加节点并推进 HEAD
+	 * @param {string} shareId - 数据池共享 id
+	 * @returns {MolecularNode} 新节点
+	 * @private
+	 */
+	#appendNode(shareId) {
+		const node = new MolecularNode(shareId, this.#head);
+		this.#insertChildSorted(this.#head, node);
+		this.#head = node;
+		this.#rebuildActiveIndex();
+		return node;
+	}
+
+	/**
+	 * 按时间标记插入活动链的对应位置，插入点之后的节点改挂；HEAD 不变
+	 * @param {string} shareId - 数据池共享 id
+	 * @param {import("./operation.js").OperationRecord} timeRecord - 时间标记的来源记录
+	 * @returns {MolecularNode} 新节点
+	 * @private
+	 */
+	#insertNodeByTime(shareId, timeRecord) {
 		const chain = this.getActiveChain();
 		const successor = chain.find(
-			(node) => this.#compareRecords(record, this.#log.get(node.shareId)) < 0,
+			(node) => this.#compareRecords(timeRecord, this.#timeRecordOf(node.shareId)) < 0,
 		) ?? null;
 		if (successor === null) {
-			return this.appendRecord(record);
+			return this.#appendNode(shareId);
 		}
 		const parent = successor.parent;
-		const node = new MolecularNode(record.id, parent);
+		const node = new MolecularNode(shareId, parent);
 		this.#replaceChild(parent, successor, node);
 		node.children = [successor];
 		const delta = node.depth + 1 - successor.depth;
@@ -246,10 +345,42 @@ class UndoTree {
 	 */
 	static rebuildFromLog(log) {
 		const tree = new UndoTree(log);
-		for (const record of log.toSortedArray()) {
-			tree.applyRecord(record);
+		// 分组：独立分子各自成组，超分子成员并入其超分子组
+		const groups = [];
+		const supraGroups = new Map();
+		for (const record of log.toArray()) {
+			if (record.supraOpId === null) {
+				groups.push([record]);
+			} else {
+				let group = supraGroups.get(record.supraOpId);
+				if (group === undefined) {
+					group = [];
+					supraGroups.set(record.supraOpId, group);
+					groups.push(group);
+				}
+				group.push(record);
+			}
+		}
+		// 组序取末分子时间标记（完成时刻），保证确定性全序
+		groups.sort((a, b) => tree.#compareRecords(a[a.length - 1], b[b.length - 1]));
+		for (const group of groups) {
+			if (group[0].supraOpId === null) {
+				tree.applyRecord(group[0]);
+			} else {
+				tree.applySupraNode(group);
+			}
 		}
 		return tree;
+	}
+
+	/**
+	 * 取节点的代表记录（时间标记的来源）
+	 * @param {string} shareId - 数据池共享 id
+	 * @returns {import("./operation.js").OperationRecord} 代表记录
+	 * @private
+	 */
+	#timeRecordOf(shareId) {
+		return this.#log.getLastMember(shareId);
 	}
 
 	/**
@@ -274,9 +405,9 @@ class UndoTree {
 	 * @private
 	 */
 	#insertChildSorted(parent, child) {
-		const childRecord = this.#log.get(child.shareId);
+		const childRecord = this.#timeRecordOf(child.shareId);
 		const index = parent.children.findIndex(
-			(sibling) => this.#compareRecords(childRecord, this.#log.get(sibling.shareId)) < 0,
+			(sibling) => this.#compareRecords(childRecord, this.#timeRecordOf(sibling.shareId)) < 0,
 		);
 		if (index === -1) {
 			parent.children.push(child);

@@ -319,6 +319,12 @@ function validateOperation(record) {
 	if (record.supraOpId !== null && parseOperationId(record.supraOpId) === null) {
 		errors.push(`supraOpId 非法：${String(record.supraOpId)}`);
 	}
+	if (
+		record.supraOpId !== null &&
+		getOperationEffectKind(record.type) !== OPERATION_EFFECT_KINDS.APPEND_NODE
+	) {
+		errors.push("仅增加节点类操作可属于超分子操作");
+	}
 	if (!Array.isArray(record.properties) || record.properties.some((p) => typeof p !== "string")) {
 		errors.push("properties 必须是字符串数组");
 	}

@@ -10,6 +10,7 @@
  */
 
 import { deserialize } from "../objects/object-deserializer.js";
+import { OPERATION_TYPES } from "../hit/operation.js";
 import { Matrix, Vector } from "../utils/math.js";
 import { intersectsRanges, RectangleRange } from "../range/index.js";
 import { ChunkObjectManager } from "../chunk/chunk-object-manager.js";
@@ -315,12 +316,19 @@ class BoardApi {
         activeToDiscard.push(obj);
       }
 
+      const trashChunks = [];
       for (const { chunk } of boardCore.chunkLoaded.values()) {
-        if (chunk?.objectManager?.staticGraph?.hasNode?.(objectId)) {
-          chunk.removeObject(objectId);
-          affectedChunks.add(chunk);
-        }
+        const graph = chunk?.objectManager?.staticGraph;
+        if (!graph?.hasNode?.(objectId)) continue;
+        trashChunks.push({
+          chunkId: String(chunk.id),
+          below: new Set(graph.predecessors(objectId)),
+          above: new Set(graph.neighbors(objectId)),
+        });
+        chunk.removeObject(objectId);
+        affectedChunks.add(chunk);
       }
+      boardCore.trash.set(objectId, { data: obj.serialize(), chunks: trashChunks });
 
       boardCore.objectLoaded.delete(objectId);
       this.#chooseSnapshots.delete(objectId);
@@ -332,10 +340,17 @@ class BoardApi {
 
     const committer = boardCore.hitCommitter;
     const supra = options.supra ?? committer.beginSupra();
-    for (const objectId of ids) {
-      const chunkId = chunkIds.get(objectId);
-      if (chunkId) {
-        committer.commitDelete({ chunkId, objectId, supra });
+    const ownSupra = options.supra ? null : supra;
+    try {
+      for (const objectId of ids) {
+        const chunkId = chunkIds.get(objectId);
+        if (chunkId) {
+          committer.commitDelete({ chunkId, objectId, supra });
+        }
+      }
+    } finally {
+      if (ownSupra) {
+        committer.endSupra(ownSupra);
       }
     }
 
@@ -517,6 +532,23 @@ class BoardApi {
    * @private
    */
   async #performEraseData(payload) {
+    // 一次 FD 擦除 = 修改对象（回写首段）+ 增加对象（分裂段）+ 删除对象（整笔擦没）的有序组合
+    const supra = this.#boardCore.hitCommitter.beginSupra();
+    try {
+      return await this.#performEraseDataInner(payload, supra);
+    } finally {
+      this.#boardCore.hitCommitter.endSupra(supra);
+    }
+  }
+
+  /**
+   * 单次数据擦除的内部实现
+   * @param {{ points: Array<{x: number, y: number}>, radius: number, source?: string }} payload - 轨迹段（世界坐标）、橡皮半径与来源标识
+   * @param {{ id: ?string, records: import("../hit/operation.js").OperationRecord[] }} supra - 超分子句柄
+   * @returns {Promise<{ modified: string[], created: string[], deleted: string[] }>} 受影响对象 id 三组
+   * @private
+   */
+  async #performEraseDataInner(payload, supra) {
     const boardCore = this.#boardCore;
     const points = Array.isArray(payload?.points) ? payload.points : [];
     const radius = Number.isFinite(payload?.radius) ? payload.radius : 0;
@@ -526,9 +558,6 @@ class BoardApi {
     if (points.length === 0 || radius <= 0) {
       return result;
     }
-
-    // 一次 FD 擦除 = 修改对象（回写首段）+ 增加对象（分裂段）+ 删除对象（整笔擦没）的有序组合
-    const supra = boardCore.hitCommitter.beginSupra();
 
     const xs = points.map((p) => p.x);
     const ys = points.map((p) => p.y);
@@ -677,38 +706,45 @@ class BoardApi {
 
     const committer = boardCore.hitCommitter;
     const supra = options.supra ?? committer.beginSupra();
-    for (const obj of committable) {
-      const chunkId = this.#resolveObjectChunkId(obj.id);
-      const after = obj.serialize();
-      const layerStackSnapshot = this.#captureLayerStackSnapshot(chunkId);
-      if (wasStatic.get(obj.id)) {
-        const before = this.#chooseSnapshots.get(obj.id);
-        if (before === undefined) {
-          throw new Error(`对象 ${obj.id} 缺选择前快照`);
-        }
-        const properties = this.#diffProperties(before, after);
-        // 无实际差异时不产生修改分子；层位调整（置顶/置底等）不经 serialize 差异表达，落地时需另行保证不被跳过
-        if (properties.length > 0) {
-          committer.commitModify({
+    const ownSupra = options.supra ? null : supra;
+    try {
+      for (const obj of committable) {
+        const chunkId = this.#resolveObjectChunkId(obj.id);
+        const after = obj.serialize();
+        const layerStackSnapshot = this.#captureLayerStackSnapshot(chunkId);
+        if (wasStatic.get(obj.id)) {
+          const before = this.#chooseSnapshots.get(obj.id);
+          if (before === undefined) {
+            throw new Error(`对象 ${obj.id} 缺选择前快照`);
+          }
+          const properties = this.#diffProperties(before, after);
+          // 无实际差异时不产生修改分子；层位调整（置顶/置底等）不经 serialize 差异表达，落地时需另行保证不被跳过
+          if (properties.length > 0) {
+            committer.commitModify({
+              chunkId,
+              objectId: obj.id,
+              properties,
+              before,
+              after,
+              layerStackSnapshot,
+              supra,
+            });
+          }
+          committer.commitUnchoose({ chunkId, objectId: obj.id, supra });
+          this.#chooseSnapshots.delete(obj.id);
+        } else {
+          committer.commitAdd({
             chunkId,
             objectId: obj.id,
-            properties,
-            before,
-            after,
+            data: after,
             layerStackSnapshot,
             supra,
           });
         }
-        committer.commitUnchoose({ chunkId, objectId: obj.id, supra });
-        this.#chooseSnapshots.delete(obj.id);
-      } else {
-        committer.commitAdd({
-          chunkId,
-          objectId: obj.id,
-          data: after,
-          layerStackSnapshot,
-          supra,
-        });
+      }
+    } finally {
+      if (ownSupra) {
+        committer.endSupra(ownSupra);
       }
     }
     return objects.map((obj) => obj.id);
@@ -732,18 +768,22 @@ class BoardApi {
     }
     const committer = boardCore.hitCommitter;
     const supra = committer.beginSupra();
-    for (const obj of objects) {
-      if (!hasStaticBoardObject(boardCore, obj.id)) continue;
-      // 已在选择中的对象不重复记录，前快照保留首次选择时刻的状态
-      if (this.#chooseSnapshots.has(obj.id)) continue;
-      this.#chooseSnapshots.set(obj.id, obj.serialize());
-      committer.commitChoose({
-        chunkId: this.#resolveObjectChunkId(obj.id),
-        objectId: obj.id,
-        supra,
-      });
+    try {
+      for (const obj of objects) {
+        if (!hasStaticBoardObject(boardCore, obj.id)) continue;
+        // 已在选择中的对象不重复记录，前快照保留首次选择时刻的状态
+        if (this.#chooseSnapshots.has(obj.id)) continue;
+        this.#chooseSnapshots.set(obj.id, obj.serialize());
+        committer.commitChoose({
+          chunkId: this.#resolveObjectChunkId(obj.id),
+          objectId: obj.id,
+          supra,
+        });
+      }
+      await boardCore.activeObjectManager.choose(new Set(objects));
+    } finally {
+      committer.endSupra(supra);
     }
-    await boardCore.activeObjectManager.choose(new Set(objects));
   }
 
   /**
@@ -767,16 +807,20 @@ class BoardApi {
 
     const committer = boardCore.hitCommitter;
     const supra = committer.beginSupra();
-    for (const obj of objects) {
-      // 放弃更改仅在对象确经选择时产生取消选择分子
-      if (this.#chooseSnapshots.has(obj.id)) {
-        committer.commitUnchoose({
-          chunkId: this.#resolveObjectChunkId(obj.id),
-          objectId: obj.id,
-          supra,
-        });
-        this.#chooseSnapshots.delete(obj.id);
+    try {
+      for (const obj of objects) {
+        // 放弃更改仅在对象确经选择时产生取消选择分子
+        if (this.#chooseSnapshots.has(obj.id)) {
+          committer.commitUnchoose({
+            chunkId: this.#resolveObjectChunkId(obj.id),
+            objectId: obj.id,
+            supra,
+          });
+          this.#chooseSnapshots.delete(obj.id);
+        }
       }
+    } finally {
+      committer.endSupra(supra);
     }
 
     for (const objectId of transientObjectIds) {
@@ -974,11 +1018,207 @@ class BoardApi {
 
   /**
    * 执行撤销
-   * @returns {void}
-   * @throws {Error} 尚未实现
+   * @description
+   * 缺省以活动链末端为目标：先逆序回退目标至 HEAD 的白板效果，记录撤销并应用树
+   * （退化/分叉改挂/被吸收在应用时确定），再按新活动链自分叉点正向重放分支效果。
+   * @returns {{ undone: boolean, targetNodeId: ?string }} 撤销结果
    */
   undo() {
-    throw new Error("Undo not implemented yet.");
+    const boardCore = this.#boardCore;
+    const tree = boardCore.undoTree;
+    if (tree.head === tree.root) {
+      return { undone: false, targetNodeId: null };
+    }
+    const targetId = tree.head.shareId;
+    const chain = tree.getActiveChain();
+    const targetIndex = chain.findIndex((node) => node.shareId === targetId);
+    const log = boardCore.operationLog;
+    // 节点的成员记录：独立分子为单件，超分子为全组
+    const recordsOf = (node) => {
+      const record = log.get(node.shareId);
+      return record.supraOpId === null ? [record] : log.getSupraMembers(record.supraOpId);
+    };
+    for (let i = chain.length - 1; i >= targetIndex; i--) {
+      const records = recordsOf(chain[i]);
+      for (let j = records.length - 1; j >= 0; j--) {
+        this.#revertOpEffect(records[j]);
+      }
+    }
+    boardCore.hitCommitter.commitUndo({ targetNodeId: targetId });
+    for (const node of tree.getActiveChain().slice(targetIndex)) {
+      for (const record of recordsOf(node)) {
+        this.#applyOpEffect(record);
+      }
+    }
+    return { undone: true, targetNodeId: targetId };
+  }
+
+  /**
+   * 应用一条分子操作的白板效果（重放）
+   * @param {import("../hit/operation.js").OperationRecord} record - 分子操作记录
+   * @returns {void}
+   * @private
+   */
+  #applyOpEffect(record) {
+    const boardCore = this.#boardCore;
+    const { type, payload } = record;
+    switch (type) {
+      case OPERATION_TYPES.ADD_OBJECT:
+        this.#addObjectEffect(payload);
+        break;
+      case OPERATION_TYPES.MODIFY_OBJECT: {
+        const obj = boardCore.getObjectById(payload.objectId);
+        if (obj) this.#applyObjectPatch(obj, payload.after);
+        break;
+      }
+      case OPERATION_TYPES.DELETE_OBJECT:
+        this.#removeObjectEffect(payload.objectId);
+        break;
+      case OPERATION_TYPES.CHOOSE_OBJECT:
+        this.#enterAomEffect(payload.objectId);
+        break;
+      case OPERATION_TYPES.UNCHOOSE_OBJECT:
+        this.#leaveAomEffect(payload.objectId);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * 回退一条分子操作的白板效果（逆放）
+   * @param {import("../hit/operation.js").OperationRecord} record - 分子操作记录
+   * @returns {void}
+   * @private
+   */
+  #revertOpEffect(record) {
+    const { type, payload } = record;
+    switch (type) {
+      case OPERATION_TYPES.ADD_OBJECT:
+        this.#removeObjectEffect(payload.objectId);
+        break;
+      case OPERATION_TYPES.MODIFY_OBJECT: {
+        const obj = this.#boardCore.getObjectById(payload.objectId);
+        if (obj) this.#applyObjectPatch(obj, payload.before);
+        break;
+      }
+      case OPERATION_TYPES.DELETE_OBJECT:
+        this.#restoreDeletedObjectEffect(payload.objectId);
+        break;
+      case OPERATION_TYPES.CHOOSE_OBJECT:
+        this.#leaveAomEffect(payload.objectId);
+        break;
+      case OPERATION_TYPES.UNCHOOSE_OBJECT:
+        this.#enterAomEffect(payload.objectId);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * 增加对象效果：重建实例并按后到者居上写入相交区块
+   * @param {Object} payload - 增加对象分子载荷
+   * @returns {void}
+   * @private
+   */
+  #addObjectEffect(payload) {
+    const boardCore = this.#boardCore;
+    if (boardCore.getObjectById(payload.objectId)) return;
+    const obj = deserialize(payload.data);
+    boardCore.registerObjectInstance(obj);
+    if (boardCore.width <= 0 || boardCore.height <= 0) return;
+    const rect = getObjectWorldRect(obj);
+    if (!rect) return;
+    const covered = ChunkObjectManager.calculateCoveredChunkIdsForRange(
+      rect,
+      boardCore.width,
+      boardCore.height,
+    );
+    for (const chunkId of covered) {
+      const chunk = boardCore.getChunkById(chunkId);
+      const graph = chunk?.objectManager?.staticGraph;
+      if (!graph) continue;
+      const below = graph.getNodes().filter((nodeId) => {
+        const nodeRect = getObjectWorldRect(boardCore.getObjectById(nodeId));
+        return nodeRect && intersectsRanges(rect, nodeRect);
+      });
+      chunk.addObject(obj, below, []);
+    }
+  }
+
+  /**
+   * 静默移除对象（不产生记录）
+   * @param {string} objectId - 对象 id
+   * @returns {void}
+   * @private
+   */
+  #removeObjectEffect(objectId) {
+    const boardCore = this.#boardCore;
+    for (const { chunk } of boardCore.chunkLoaded.values()) {
+      if (chunk?.objectManager?.staticGraph?.hasNode?.(objectId)) {
+        chunk.removeObject(objectId);
+      }
+    }
+    const aom = boardCore.activeObjectManager;
+    if (aom?.onLayer?.get(objectId)) {
+      aom.removeObjectFromLayer(objectId);
+      aom.unregisterTrackedActiveObject(objectId);
+    }
+    boardCore.objectLoaded.delete(objectId);
+  }
+
+  /**
+   * 从回收站恢复被删除的对象及其层位边
+   * @param {string} objectId - 对象 id
+   * @returns {void}
+   * @private
+   */
+  #restoreDeletedObjectEffect(objectId) {
+    const boardCore = this.#boardCore;
+    const entry = boardCore.trash.get(objectId);
+    if (!entry || boardCore.getObjectById(objectId)) return;
+    const obj = deserialize(entry.data);
+    boardCore.registerObjectInstance(obj);
+    for (const { chunkId, below, above } of entry.chunks) {
+      const chunk = boardCore.getChunkById(Number(chunkId));
+      const graph = chunk?.objectManager?.staticGraph;
+      if (!graph) continue;
+      chunk.addObject(
+        obj,
+        [...below].filter((id) => graph.hasNode(id)),
+        [...above].filter((id) => graph.hasNode(id)),
+      );
+    }
+    boardCore.trash.delete(objectId);
+  }
+
+  /**
+   * 进入动态图效果：对象成为活动对象
+   * @param {string} objectId - 对象 id
+   * @returns {void}
+   * @private
+   */
+  #enterAomEffect(objectId) {
+    const boardCore = this.#boardCore;
+    const obj = boardCore.getObjectById(objectId);
+    const aom = boardCore.activeObjectManager;
+    if (!obj || aom.isActive(objectId)) return;
+    aom.add(new Set([obj]));
+  }
+
+  /**
+   * 离开动态图效果：对象退出活动状态
+   * @param {string} objectId - 对象 id
+   * @returns {void}
+   * @private
+   */
+  #leaveAomEffect(objectId) {
+    const boardCore = this.#boardCore;
+    const obj = boardCore.getObjectById(objectId);
+    const aom = boardCore.activeObjectManager;
+    if (!obj || !aom.has(objectId)) return;
+    aom.discard(new Set([obj]));
   }
 
   /**

@@ -152,6 +152,15 @@ class BoardCore {
   hitCommitter;
 
   /**
+   * 已删除对象的回收站（history/trash/ 的内存态）
+   * @description
+   * 对象 id -> { data（删除时刻的全量序列化）, chunks（各区块层位边集） }；
+   * 撤销删除时恢复对象与层位的依据，落盘随持久化落地。
+   * @type {Map<string, Object>}
+   */
+  trash = new Map();
+
+  /**
    * Core 侧对象 id 分配器表
    * @description 键为来源标识，值为该来源的 Core id 分配器；首次使用时 lazy 创建。
    * @type {Map<string, IncrementalIdPool>}
