@@ -169,6 +169,22 @@ const BOARD_API_ROUTES = {
     invoke: (api, p) => api.applyRemoteOperations(p.records),
     flush: "sync",
   },
+
+  /**
+   * 开启一个超分子（手势括号）
+   */
+  beginSupra: {
+    invoke: (api) => api.beginSupra(),
+    flush: "none",
+  },
+
+  /**
+   * 闭合当前开启的超分子
+   */
+  endSupra: {
+    invoke: (api) => api.endSupra(),
+    flush: "none",
+  },
 };
 
 export { BOARD_API_ROUTES };

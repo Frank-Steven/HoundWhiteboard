@@ -297,13 +297,11 @@ class BoardApi {
 
   /**
    * 永久删除对象集合
-   * @description 删除静态对象即删除对象分子操作；同一次删除的记录关联为同一超分子。
+   * @description 删除静态对象即删除对象分子操作；有开启中的超分子则加入，否则同一次删除自成一个超分子。
    * @param {string[]} objectIds - 要删除的对象 id 列表
-   * @param {Object} [options] - 删除选项
-   * @param {?{ id: ?string }} [options.supra] - 超分子句柄（复合操作内部调用时传入）
    * @returns {void}
    */
-  deleteObjects(objectIds, options = {}) {
+  deleteObjects(objectIds) {
     const boardCore = this.#boardCore;
     const ids = Array.isArray(objectIds) ? objectIds : [];
     const aom = boardCore.activeObjectManager;
@@ -344,18 +342,17 @@ class BoardApi {
     }
 
     const committer = boardCore.hitCommitter;
-    const supra = options.supra ?? committer.beginSupra();
-    const ownSupra = options.supra ? null : supra;
+    const { supra, owned } = this.#joinOrBeginSupra();
     try {
       for (const objectId of ids) {
         const chunkId = chunkIds.get(objectId);
         if (chunkId) {
-          committer.commitDelete({ chunkId, objectId, supra });
+          committer.commitDelete({ chunkId, objectId });
         }
       }
     } finally {
-      if (ownSupra) {
-        committer.endSupra(ownSupra);
+      if (owned) {
+        committer.endSupra(supra);
       }
     }
 
@@ -538,22 +535,23 @@ class BoardApi {
    */
   async #performEraseData(payload) {
     // 一次 FD 擦除 = 修改对象（回写首段）+ 增加对象（分裂段）+ 删除对象（整笔擦没）的有序组合
-    const supra = this.#boardCore.hitCommitter.beginSupra();
+    const { supra, owned } = this.#joinOrBeginSupra();
     try {
-      return await this.#performEraseDataInner(payload, supra);
+      return await this.#performEraseDataInner(payload);
     } finally {
-      this.#boardCore.hitCommitter.endSupra(supra);
+      if (owned) {
+        this.#boardCore.hitCommitter.endSupra(supra);
+      }
     }
   }
 
   /**
    * 单次数据擦除的内部实现
    * @param {{ points: Array<{x: number, y: number}>, radius: number, source?: string }} payload - 轨迹段（世界坐标）、橡皮半径与来源标识
-   * @param {{ id: ?string, records: import("../hit/operation.js").OperationRecord[] }} supra - 超分子句柄
    * @returns {Promise<{ modified: string[], created: string[], deleted: string[] }>} 受影响对象 id 三组
    * @private
    */
-  async #performEraseDataInner(payload, supra) {
+  async #performEraseDataInner(payload) {
     const boardCore = this.#boardCore;
     const points = Array.isArray(payload?.points) ? payload.points : [];
     const radius = Number.isFinite(payload?.radius) ? payload.radius : 0;
@@ -621,7 +619,6 @@ class BoardApi {
         before: beforeErase,
         after: obj.serialize(),
         layerStackSnapshot: this.#captureLayerStackSnapshot(erasedChunkId),
-        supra,
       });
       result.modified.push(objectId);
       modifiedStaticObjects.push(obj);
@@ -648,10 +645,10 @@ class BoardApi {
     }
 
     if (result.deleted.length > 0) {
-      this.deleteObjects(result.deleted, { supra });
+      this.deleteObjects(result.deleted);
     }
     if (result.created.length > 0) {
-      await this.commitObjects(result.created, { supra });
+      await this.commitObjects(result.created);
     }
 
     const correctedChunks = new Set();
@@ -677,13 +674,11 @@ class BoardApi {
   /**
    * 将 AOM 动态图中的对象写回静态图
    * @description commit 边界：首次进入静态图的对象凝聚为增加对象分子，被选择过的静态对象凝聚为
-   * 修改对象分子（前快照取自选择时刻）并配对取消选择分子；同一次提交的记录关联为同一超分子。
+   * 修改对象分子（前快照取自选择时刻）并配对取消选择分子；有开启中的超分子则加入，否则同一次提交自成一个超分子。
    * @param {string[]} objectIds - 要提交的对象 id 列表
-   * @param {Object} [options] - 提交选项
-   * @param {?{ id: ?string }} [options.supra] - 超分子句柄（复合操作内部调用时传入）
    * @returns {Promise<string[]>} 实际提交的对象 id（缺失的 id 被跳过，供调用方对账）
    */
-  async commitObjects(objectIds, options = {}) {
+  async commitObjects(objectIds) {
     const boardCore = this.#boardCore;
     const ids = Array.isArray(objectIds) ? objectIds : [];
     const objects = ids
@@ -710,8 +705,7 @@ class BoardApi {
     await boardCore.activeObjectManager.apply(new Set(committable));
 
     const committer = boardCore.hitCommitter;
-    const supra = options.supra ?? committer.beginSupra();
-    const ownSupra = options.supra ? null : supra;
+    const { supra, owned } = this.#joinOrBeginSupra();
     try {
       for (const obj of committable) {
         const chunkId = this.#resolveObjectChunkId(obj.id);
@@ -732,10 +726,9 @@ class BoardApi {
               before,
               after,
               layerStackSnapshot,
-              supra,
             });
           }
-          committer.commitUnchoose({ chunkId, objectId: obj.id, supra });
+          committer.commitUnchoose({ chunkId, objectId: obj.id });
           this.#chooseSnapshots.delete(obj.id);
         } else {
           committer.commitAdd({
@@ -743,13 +736,12 @@ class BoardApi {
             objectId: obj.id,
             data: after,
             layerStackSnapshot,
-            supra,
           });
         }
       }
     } finally {
-      if (ownSupra) {
-        committer.endSupra(ownSupra);
+      if (owned) {
+        committer.endSupra(supra);
       }
     }
     return objects.map((obj) => obj.id);
@@ -772,7 +764,7 @@ class BoardApi {
       return;
     }
     const committer = boardCore.hitCommitter;
-    const supra = committer.beginSupra();
+    const { supra, owned } = this.#joinOrBeginSupra();
     try {
       for (const obj of objects) {
         if (!hasStaticBoardObject(boardCore, obj.id)) continue;
@@ -782,12 +774,13 @@ class BoardApi {
         committer.commitChoose({
           chunkId: this.#resolveObjectChunkId(obj.id),
           objectId: obj.id,
-          supra,
         });
       }
       await boardCore.activeObjectManager.choose(new Set(objects));
     } finally {
-      committer.endSupra(supra);
+      if (owned) {
+        committer.endSupra(supra);
+      }
     }
   }
 
@@ -811,7 +804,7 @@ class BoardApi {
     boardCore.activeObjectManager.discard(new Set(objects));
 
     const committer = boardCore.hitCommitter;
-    const supra = committer.beginSupra();
+    const { supra, owned } = this.#joinOrBeginSupra();
     try {
       for (const obj of objects) {
         // 放弃更改仅在对象确经选择时产生取消选择分子
@@ -819,13 +812,14 @@ class BoardApi {
           committer.commitUnchoose({
             chunkId: this.#resolveObjectChunkId(obj.id),
             objectId: obj.id,
-            supra,
           });
           this.#chooseSnapshots.delete(obj.id);
         }
       }
     } finally {
-      committer.endSupra(supra);
+      if (owned) {
+        committer.endSupra(supra);
+      }
     }
 
     for (const objectId of transientObjectIds) {
@@ -1019,6 +1013,45 @@ class BoardApi {
       if (larger.has(id)) return true;
     }
     return false;
+  }
+
+  /**
+   * 开启一个超分子（手势括号）
+   * @description 开启期间的增加节点类提交自动关联为该超分子的成员并缓冲为草稿，
+   * endSupra 时简并、定稿、整体入日志并凝聚为单节点。同时至多开启一个；开启方须保证闭合。
+   * @returns {void}
+   */
+  beginSupra() {
+    this.#boardCore.hitCommitter.beginSupra();
+  }
+
+  /**
+   * 闭合当前开启的超分子
+   * @description 无开启中的超分子时是幂等空操作（工具卸载等兜底路径可安全调用）。
+   * @returns {boolean} 是否实际闭合了超分子
+   */
+  endSupra() {
+    const committer = this.#boardCore.hitCommitter;
+    const open = committer.openSupra;
+    if (open === null) {
+      return false;
+    }
+    committer.endSupra(open);
+    return true;
+  }
+
+  /**
+   * 获取当前超分子：有开启中的则加入，否则自行开启
+   * @returns {{ supra: { id: ?string, drafts: Object[] }, owned: boolean }} 超分子句柄与是否本方法开启
+   * @private
+   */
+  #joinOrBeginSupra() {
+    const committer = this.#boardCore.hitCommitter;
+    const open = committer.openSupra;
+    if (open !== null) {
+      return { supra: open, owned: false };
+    }
+    return { supra: committer.beginSupra(), owned: true };
   }
 
   /**

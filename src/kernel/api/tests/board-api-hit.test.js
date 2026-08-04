@@ -373,6 +373,39 @@ describe("撤销", () => {
     expect(boardCore.undoTree.getActiveChain()).toHaveLength(1);
   });
 
+  test("一次拖拽凝聚为一个节点：跨调用括号 + 逐帧修改简并，一次撤销回退整次拖拽", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+
+    api.beginSupra();
+    // 三帧拖拽：每帧 选择 → 修改 → 提交
+    for (let i = 1; i <= 3; i++) {
+      await api.addActiveObjects(["s1"]);
+      api.modifyObject("s1", { position: { x: i * 10, y: 100 } });
+      await api.commitObjects(["s1"]);
+    }
+    api.endSupra();
+
+    // 整次拖拽 = 一个超分子节点，成员简并为 选择+修改+取消选择 三条
+    expect(recordTypes(boardCore)).toEqual([
+      "add-object",
+      "choose-object",
+      "modify-object",
+      "unchoose-object",
+    ]);
+    const modify = boardCore.operationLog.toArray()[2];
+    expect(modify.payload.before.position).toEqual({ x: 0, y: 0 });
+    expect(modify.payload.after.position).toEqual({ x: 30, y: 100 });
+    expect(boardCore.undoTree.getActiveChain()).toHaveLength(2);
+
+    // 一次撤销回退整次拖拽
+    expect(api.undo().undone).toBe(true);
+    expect(boardCore.getObjectById("s1").position.x).toBe(0);
+    expect(api.redo().redone).toBe(true);
+    expect(boardCore.getObjectById("s1").position.x).toBe(30);
+  });
+
   test("同一次选择的多个对象聚合为一个节点", async () => {
     const boardCore = createBoardCore();
     const api = new BoardApi(boardCore);

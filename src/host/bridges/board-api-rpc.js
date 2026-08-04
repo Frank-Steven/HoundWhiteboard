@@ -539,6 +539,22 @@ class BoardApiRpc {
   }
 
   /**
+   * 开启一个超分子（手势括号）
+   * @returns {Promise<void>}
+   */
+  async beginSupra() {
+    return this.#call("beginSupra", {});
+  }
+
+  /**
+   * 闭合当前开启的超分子
+   * @returns {Promise<boolean>} 是否实际闭合了超分子
+   */
+  async endSupra() {
+    return this.#call("endSupra", {});
+  }
+
+  /**
    * 发送调试请求到 Worker（fire-and-forget，不等待响应）
    * @param {string} query - 调试查询名（如 "chunkLoadState"）
    * @param {Record<string, any>} [extra={}] - 附加参数
