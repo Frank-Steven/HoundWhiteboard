@@ -305,6 +305,28 @@ describe("撤销", () => {
     expect(boardCore.operationLog.toArray().at(-1).type).toBe("undo");
   });
 
+  test("undo/redo 后请求静态渲染刷新受影响区块", async () => {
+    const requestedChunks = [];
+    const aomRenderHooks = createDefaultAomRenderHooks();
+    aomRenderHooks.requestStaticRender = (chunks) => requestedChunks.push(...chunks);
+    const boardCore = new BoardCore({
+      width: 800,
+      height: 600,
+      aomRenderHooks,
+      persistenceAdapter: createDefaultPersistenceAdapter(),
+    });
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+
+    requestedChunks.length = 0;
+    api.undo();
+    expect(requestedChunks.length).toBeGreaterThan(0);
+
+    requestedChunks.length = 0;
+    api.redo();
+    expect(requestedChunks.length).toBeGreaterThan(0);
+  });
+
   test("拖拽的完整撤销序列：修改与取消选择同属一个超分子节点", async () => {
     const boardCore = createBoardCore();
     const api = new BoardApi(boardCore);

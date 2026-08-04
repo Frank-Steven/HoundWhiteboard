@@ -1056,16 +1056,20 @@ class BoardApi {
     ) {
       diverge++;
     }
+    const affectedChunks = new Set();
     for (let i = beforeChain.length - 1; i >= diverge; i--) {
       const records = this.#recordsOfNode(beforeChain[i]);
       for (let j = records.length - 1; j >= 0; j--) {
-        this.#revertOpEffect(records[j]);
+        this.#revertOpEffect(records[j], affectedChunks);
       }
     }
     for (let i = diverge; i < afterChain.length; i++) {
       for (const record of this.#recordsOfNode(afterChain[i])) {
-        this.#applyOpEffect(record);
+        this.#applyOpEffect(record, affectedChunks);
       }
+    }
+    if (affectedChunks.size > 0) {
+      this.#boardCore.aomRenderHooks?.requestStaticRender?.([...affectedChunks]);
     }
     return diverge !== beforeChain.length || diverge !== afterChain.length;
   }
@@ -1076,26 +1080,30 @@ class BoardApi {
    * @returns {void}
    * @private
    */
-  #applyOpEffect(record) {
+  #applyOpEffect(record, affectedChunks) {
     const boardCore = this.#boardCore;
     const { type, payload } = record;
     switch (type) {
       case OPERATION_TYPES.ADD_OBJECT:
-        this.#addObjectEffect(payload);
+        this.#addObjectEffect(payload, affectedChunks);
         break;
       case OPERATION_TYPES.MODIFY_OBJECT: {
         const obj = boardCore.getObjectById(payload.objectId);
-        if (obj) this.#applyObjectPatch(obj, payload.after);
+        if (obj) {
+          this.#collectObjectChunks(obj, affectedChunks);
+          this.#applyObjectPatch(obj, payload.after);
+          this.#collectObjectChunks(obj, affectedChunks);
+        }
         break;
       }
       case OPERATION_TYPES.DELETE_OBJECT:
-        this.#removeObjectEffect(payload.objectId);
+        this.#removeObjectEffect(payload.objectId, affectedChunks);
         break;
       case OPERATION_TYPES.CHOOSE_OBJECT:
-        this.#enterAomEffect(payload.objectId);
+        this.#enterAomEffect(payload.objectId, affectedChunks);
         break;
       case OPERATION_TYPES.UNCHOOSE_OBJECT:
-        this.#leaveAomEffect(payload.objectId);
+        this.#leaveAomEffect(payload.objectId, affectedChunks);
         break;
       default:
         break;
@@ -1108,25 +1116,29 @@ class BoardApi {
    * @returns {void}
    * @private
    */
-  #revertOpEffect(record) {
+  #revertOpEffect(record, affectedChunks) {
     const { type, payload } = record;
     switch (type) {
       case OPERATION_TYPES.ADD_OBJECT:
-        this.#removeObjectEffect(payload.objectId);
+        this.#removeObjectEffect(payload.objectId, affectedChunks);
         break;
       case OPERATION_TYPES.MODIFY_OBJECT: {
         const obj = this.#boardCore.getObjectById(payload.objectId);
-        if (obj) this.#applyObjectPatch(obj, payload.before);
+        if (obj) {
+          this.#collectObjectChunks(obj, affectedChunks);
+          this.#applyObjectPatch(obj, payload.before);
+          this.#collectObjectChunks(obj, affectedChunks);
+        }
         break;
       }
       case OPERATION_TYPES.DELETE_OBJECT:
-        this.#restoreDeletedObjectEffect(payload.objectId);
+        this.#restoreDeletedObjectEffect(payload.objectId, affectedChunks);
         break;
       case OPERATION_TYPES.CHOOSE_OBJECT:
-        this.#leaveAomEffect(payload.objectId);
+        this.#leaveAomEffect(payload.objectId, affectedChunks);
         break;
       case OPERATION_TYPES.UNCHOOSE_OBJECT:
-        this.#enterAomEffect(payload.objectId);
+        this.#enterAomEffect(payload.objectId, affectedChunks);
         break;
       default:
         break;
@@ -1134,17 +1146,44 @@ class BoardApi {
   }
 
   /**
-   * 增加对象效果：重建实例并按后到者居上写入相交区块
-   * @param {Object} payload - 增加对象分子载荷
+   * 收集对象覆盖的已加载区块（渲染失效用）
+   * @param {import("../objects/basic-obj.js").BasicObject} object - 对象实例
+   * @param {Set<import("../chunk/chunk.js").Chunk>} affectedChunks - 受影响区块集合（输出参数）
    * @returns {void}
    * @private
    */
-  #addObjectEffect(payload) {
+  #collectObjectChunks(object, affectedChunks) {
+    const boardCore = this.#boardCore;
+    if (boardCore.width <= 0 || boardCore.height <= 0) return;
+    const rect = getObjectWorldRect(object);
+    if (!rect) return;
+    const covered = ChunkObjectManager.calculateCoveredChunkIdsForRange(
+      rect,
+      boardCore.width,
+      boardCore.height,
+    );
+    for (const chunkId of covered) {
+      const chunk = boardCore.getChunkById(chunkId);
+      if (chunk) {
+        affectedChunks.add(chunk);
+      }
+    }
+  }
+
+  /**
+   * 增加对象效果：重建实例并按后到者居上写入相交区块
+   * @param {Object} payload - 增加对象分子载荷
+   * @param {Set<import("../chunk/chunk.js").Chunk>} affectedChunks - 受影响区块集合（输出参数）
+   * @returns {void}
+   * @private
+   */
+  #addObjectEffect(payload, affectedChunks) {
     const boardCore = this.#boardCore;
     if (boardCore.getObjectById(payload.objectId)) return;
     const obj = deserialize(payload.data);
     boardCore.registerObjectInstance(obj);
     if (boardCore.width <= 0 || boardCore.height <= 0) return;
+    this.#collectObjectChunks(obj, affectedChunks);
     const rect = getObjectWorldRect(obj);
     if (!rect) return;
     const covered = ChunkObjectManager.calculateCoveredChunkIdsForRange(
@@ -1167,11 +1206,16 @@ class BoardApi {
   /**
    * 静默移除对象（不产生记录）
    * @param {string} objectId - 对象 id
+   * @param {Set<import("../chunk/chunk.js").Chunk>} affectedChunks - 受影响区块集合（输出参数）
    * @returns {void}
    * @private
    */
-  #removeObjectEffect(objectId) {
+  #removeObjectEffect(objectId, affectedChunks) {
     const boardCore = this.#boardCore;
+    const obj = boardCore.getObjectById(objectId);
+    if (obj) {
+      this.#collectObjectChunks(obj, affectedChunks);
+    }
     for (const { chunk } of boardCore.chunkLoaded.values()) {
       if (chunk?.objectManager?.staticGraph?.hasNode?.(objectId)) {
         chunk.removeObject(objectId);
@@ -1188,15 +1232,17 @@ class BoardApi {
   /**
    * 从回收站恢复被删除的对象及其层位边
    * @param {string} objectId - 对象 id
+   * @param {Set<import("../chunk/chunk.js").Chunk>} affectedChunks - 受影响区块集合（输出参数）
    * @returns {void}
    * @private
    */
-  #restoreDeletedObjectEffect(objectId) {
+  #restoreDeletedObjectEffect(objectId, affectedChunks) {
     const boardCore = this.#boardCore;
     const entry = boardCore.trash.get(objectId);
     if (!entry || boardCore.getObjectById(objectId)) return;
     const obj = deserialize(entry.data);
     boardCore.registerObjectInstance(obj);
+    this.#collectObjectChunks(obj, affectedChunks);
     for (const { chunkId, below, above } of entry.chunks) {
       const chunk = boardCore.getChunkById(Number(chunkId));
       const graph = chunk?.objectManager?.staticGraph;
@@ -1213,28 +1259,32 @@ class BoardApi {
   /**
    * 进入动态图效果：对象成为活动对象
    * @param {string} objectId - 对象 id
+   * @param {Set<import("../chunk/chunk.js").Chunk>} affectedChunks - 受影响区块集合（输出参数）
    * @returns {void}
    * @private
    */
-  #enterAomEffect(objectId) {
+  #enterAomEffect(objectId, affectedChunks) {
     const boardCore = this.#boardCore;
     const obj = boardCore.getObjectById(objectId);
     const aom = boardCore.activeObjectManager;
     if (!obj || aom.isActive(objectId)) return;
+    this.#collectObjectChunks(obj, affectedChunks);
     aom.add(new Set([obj]));
   }
 
   /**
    * 离开动态图效果：对象退出活动状态
    * @param {string} objectId - 对象 id
+   * @param {Set<import("../chunk/chunk.js").Chunk>} affectedChunks - 受影响区块集合（输出参数）
    * @returns {void}
    * @private
    */
-  #leaveAomEffect(objectId) {
+  #leaveAomEffect(objectId, affectedChunks) {
     const boardCore = this.#boardCore;
     const obj = boardCore.getObjectById(objectId);
     const aom = boardCore.activeObjectManager;
     if (!obj || !aom.has(objectId)) return;
+    this.#collectObjectChunks(obj, affectedChunks);
     aom.discard(new Set([obj]));
   }
 
