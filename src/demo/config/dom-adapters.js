@@ -174,11 +174,37 @@ function attachKeyboardAdapter(viewport, board, demoLog, tools) {
   };
 
   /**
+   * 处理撤销/重做快捷键（Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y）
+   * @description 组合键不进入设备图，直接经 BoardApi 路由调用；返回 true 表示事件已被消费。
+   * @param {KeyboardEvent} event - 键盘事件
+   * @returns {boolean} 是否已消费
+   */
+  const handleHistoryHotkey = (event) => {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return false;
+    if (event.code !== "KeyZ" && event.code !== "KeyY") return false;
+    if (event.type !== "keydown" || event.repeat) {
+      event.preventDefault();
+      return true;
+    }
+    event.preventDefault();
+    const api = board.getBoardApi();
+    if (!api) return true;
+    const isRedo = event.code === "KeyY" || event.shiftKey;
+    demoLog.logKeyInput(isRedo ? "重做" : "撤销");
+    const pending = isRedo ? api.redo() : api.undo();
+    pending?.catch?.((error) => {
+      console.error("[whiteboard] undo/redo failed:", error);
+    });
+    return true;
+  };
+
+  /**
    * 键盘事件处理器
    * @param {KeyboardEvent} event
    * @returns {void}
    */
   const onKey = (event) => {
+    if (handleHistoryHotkey(event)) return;
     if (!shouldHandle(event)) return;
     event.preventDefault();
     if (event.type === "keydown") {
@@ -254,6 +280,52 @@ function attachKeyboardAdapter(viewport, board, demoLog, tools) {
     canvas.removeEventListener("keyup", onKey);
     canvas.removeEventListener("blur", onBlur);
   };
+}
+
+/**
+ * 绑定撤销/重做按钮适配器
+ * @description 侧栏按钮直接经 BoardApi 路由调用，不进入设备图。
+ * @param {import("../../ui/components/orchestration/board.js").Board} board - 白板实例
+ * @returns {() => void} 解绑函数
+ */
+function attachHistoryAdapter(board) {
+  /** @type {Array<() => void>} */
+  const unbinds = [];
+
+  /**
+   * 绑定单个按钮
+   * @param {string} id - 按钮元素 id
+   * @param {() => void} run - 点击行为
+   * @returns {void}
+   */
+  const bind = (id, run) => {
+    const button = document.getElementById(id);
+    if (!button) return;
+    const onClick = (event) => {
+      event.preventDefault();
+      run();
+    };
+    button.addEventListener("click", onClick);
+    unbinds.push(() => button.removeEventListener("click", onClick));
+  };
+
+  /**
+   * 经 BoardApi 调用并兜底异常
+   * @param {string} method - 方法名（undo / redo）
+   * @returns {void}
+   */
+  const invoke = (method) => {
+    const api = board.getBoardApi();
+    if (!api) return;
+    const pending = method === "redo" ? api.redo() : api.undo();
+    pending?.catch?.((error) => {
+      console.error(`[whiteboard] ${method} failed:`, error);
+    });
+  };
+
+  bind("undo-btn", () => invoke("undo"));
+  bind("redo-btn", () => invoke("redo"));
+  return () => unbinds.forEach((fn) => fn());
 }
 
 /**
@@ -424,6 +496,7 @@ function attachResizeAdapter(viewport, appLeft) {
 }
 
 export {
+  attachHistoryAdapter,
   attachKeyboardAdapter,
   attachPointerAdapter,
   attachResizeAdapter,

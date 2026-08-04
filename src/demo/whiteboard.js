@@ -16,6 +16,7 @@ import { DEMO_ID_SOURCE } from "./config/constants.js";
 import { DemoLog } from "./config/log.js";
 import { ViewportTool } from "./config/viewport-tool.js";
 import {
+  attachHistoryAdapter,
   attachKeyboardAdapter,
   attachPointerAdapter,
   attachResizeAdapter,
@@ -104,6 +105,7 @@ async function bootstrapWhiteboard() {
 
   attachPointerAdapter(viewport, board, demoLog);
   attachKeyboardAdapter(viewport, board, demoLog, toolbar?.tools);
+  attachHistoryAdapter(board);
   attachResizeAdapter(viewport, appLeft);
   attachWheelAdapter(viewport, board, appLeft);
 

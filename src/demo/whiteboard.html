@@ -37,6 +37,13 @@
             </div>
           </section>
           <section>
+            <h2>操作</h2>
+            <div class="toolbar-btn-group">
+              <button class="toolbar-btn" id="undo-btn">撤销</button>
+              <button class="toolbar-btn" id="redo-btn">重做</button>
+            </div>
+          </section>
+          <section>
             <style>
               .kbd {
                 border: 1px solid #aaa;
@@ -87,6 +94,14 @@
                 <kbd class="kbd">D</kbd>
               </span>
               <span class="desc">移动选中对象</span>
+              <span class="key">
+                <kbd class="kbd">Ctrl</kbd>+<kbd class="kbd">Z</kbd>
+              </span>
+              <span class="desc">撤销</span>
+              <span class="key">
+                <kbd class="kbd">Ctrl</kbd>+<kbd class="kbd">Shift</kbd>+<kbd class="kbd">Z</kbd> / <kbd class="kbd">Ctrl</kbd>+<kbd class="kbd">Y</kbd>
+              </span>
+              <span class="desc">重做</span>
               <span class="key">触摸拖动</span>
               <span class="desc">多指同时创建笔画（每指独立，彩色）</span>
             </div>
