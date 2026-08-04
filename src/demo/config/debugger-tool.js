@@ -78,6 +78,9 @@ class DebuggerTool extends Tool {
         case "debug:aom":
           board.getBoardApi()?.requestDebug("aomState");
           break;
+        case "debug:hit":
+          board.getBoardApi()?.requestDebug("hitState");
+          break;
         case "debug:board":
           board.getBoardApi()?.requestDebug("boardState");
           break;

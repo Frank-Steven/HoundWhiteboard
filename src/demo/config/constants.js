@@ -130,6 +130,7 @@ const DEBUG_KEYS = Object.freeze([
         : "debug:objectload",
   },
   { code: "KeyM", type: "debug:viewport" },
+  { code: "KeyU", type: "debug:hit" },
   {
     code: "KeyB",
     type: (signals) =>
