@@ -504,8 +504,8 @@ class BoardApiRpc {
    * @param {{ points: Array<{x: number, y: number}>, radius: number, source?: string }} payload - 轨迹段、橡皮半径与来源标识
    * @returns {Promise<{ modified: string[], created: string[], deleted: string[] }>} 受影响对象 id 三组
    */
-  async eraseData(payload) {
-    return this.#call("eraseData", payload);
+  async eraseData(payload, options) {
+    return this.#call("eraseData", { ...payload, options });
   }
 
   /**

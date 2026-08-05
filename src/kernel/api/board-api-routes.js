@@ -94,7 +94,7 @@ const BOARD_API_ROUTES = {
    * 按橡皮轨迹擦除命中对象的数据
    */
   eraseData: {
-    invoke: (api, p) => api.eraseData(p),
+    invoke: (api, p) => api.eraseData(p, p.options),
     flush: "async",
   },
 

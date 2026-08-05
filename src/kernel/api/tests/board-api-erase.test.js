@@ -61,6 +61,41 @@ describe("BoardApi.eraseData", () => {
     ]);
   });
 
+  test("指定会话 key：同一擦除手势的多次擦除凝聚为一个节点", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    const densePoints = [];
+    for (let x = 0; x <= 80; x += 10) {
+      densePoints.push({ x, y: 100 });
+    }
+    createStaticStroke(api, "s1", densePoints);
+
+    api.beginSupra("eraser/1");
+    await api.eraseData({
+      points: [new Vector(25, 95), new Vector(25, 105)],
+      radius: 1,
+      source: "test",
+    }, { supraKey: "eraser/1" });
+    // 会话期间尚无节点（成员缓冲中）
+    expect(boardCore.undoTree.getActiveChain()).toHaveLength(1);
+    await api.eraseData({
+      points: [new Vector(65, 95), new Vector(65, 105)],
+      radius: 1,
+      source: "test",
+    }, { supraKey: "eraser/1" });
+    api.endSupra("eraser/1");
+
+    // 两次擦除的成员同属一个超分子节点：modify(原笔) + add(首段分裂，吸并第二刀取终态) + add(末段分裂)
+    expect(boardCore.undoTree.getActiveChain()).toHaveLength(2);
+    const members = boardCore.operationLog.getSupraMembers(boardCore.undoTree.head.shareId);
+    expect(members).toHaveLength(3);
+    expect(new Set(members.map((r) => r.supraOpId)).size).toBe(1);
+
+    // 一次撤销回退整个擦除手势：原笔恢复
+    api.undo();
+    expect(boardCore.getObjectById("s1").data.points).toHaveLength(9);
+  });
+
   test("一笔擦成两笔时原对象保留首段，其余段以 Core 来源 id 分裂新建", async () => {
     const boardCore = createBoardCore();
     const api = new BoardApi(boardCore);

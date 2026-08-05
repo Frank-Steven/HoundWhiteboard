@@ -113,7 +113,7 @@ describe("BOARD_API_ROUTES", () => {
 
     const payload = { points: [{ x: 0, y: 0 }], radius: 8, source: "t" };
     BOARD_API_ROUTES.eraseData.invoke(api, payload);
-    expect(api.eraseData).toHaveBeenCalledWith(payload);
+    expect(api.eraseData).toHaveBeenCalledWith(payload, undefined);
 
     BOARD_API_ROUTES.commitObjects.invoke(api, { objectIds: ["obj-1"] });
     expect(api.commitObjects).toHaveBeenCalledWith(["obj-1"], undefined);

@@ -50,7 +50,7 @@ describe("DataObjectEraserTool", () => {
       points: [{ x: 0, y: 0 }],
       radius: 10,
       source: "zhouc_yu",
-    });
+    }, { supraKey: expect.any(String) });
     expect(boardApi.eraseData).toHaveBeenNthCalledWith(2, {
       points: [
         { x: 0, y: 0 },
@@ -58,7 +58,7 @@ describe("DataObjectEraserTool", () => {
       ],
       radius: 10,
       source: "zhouc_yu",
-    });
+    }, { supraKey: expect.any(String) });
   });
 
   test("单击（位置不变）只发送一次单点轨迹", () => {
@@ -77,7 +77,7 @@ describe("DataObjectEraserTool", () => {
       points: [{ x: 7, y: 7 }],
       radius: 8,
       source: "test",
-    });
+    }, { supraKey: expect.any(String) });
   });
 
   test("boardApi 缺少 eraseData 或缺省时不抛错", () => {
@@ -106,7 +106,7 @@ describe("DataObjectEraserTool", () => {
       points: [{ x: 30, y: 30 }],
       radius: 8,
       source: "test",
-    });
+    }, { supraKey: expect.any(String) });
   });
 
   test("端到端：手势轨迹经 Engine BoardApi 真实切割 Core 中的笔画", async () => {

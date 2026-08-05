@@ -515,10 +515,12 @@ class BoardApi {
    * 数据擦除的 Core 侧统一入口。调用进入串行队列依次执行，返回的 Promise
    * 在本次调用（含队列等待）完成后兑现。
    * @param {{ points: Array<{x: number, y: number}>, radius: number, source?: string }} payload - 轨迹段（世界坐标）、橡皮半径与来源标识
+   * @param {Object} [options] - 擦除选项
+   * @param {string} [options.supraKey] - 指定进入的超分子 key（缺省本次调用自成一个超分子）
    * @returns {Promise<{ modified: string[], created: string[], deleted: string[] }>} 受影响对象 id 三组
    */
-  eraseData(payload) {
-    const run = this.#eraseDataQueue.then(() => this.#performEraseData(payload));
+  eraseData(payload, options = {}) {
+    const run = this.#eraseDataQueue.then(() => this.#performEraseData(payload, options.supraKey));
     this.#eraseDataQueue = run.catch(() => { });
     return run;
   }
@@ -537,13 +539,15 @@ class BoardApi {
    * @returns {Promise<{ modified: string[], created: string[], deleted: string[] }>} 受影响对象 id 三组
    * @private
    */
-  async #performEraseData(payload) {
+  async #performEraseData(payload, supraKey) {
     // 一次 FD 擦除 = 修改对象（回写首段）+ 增加对象（分裂段）+ 删除对象（整笔擦没）的有序组合
-    const internalKey = this.#beginInternalSupra();
+    const internalKey = supraKey === undefined ? this.#beginInternalSupra() : null;
     try {
-      return await this.#performEraseDataInner(payload, internalKey);
+      return await this.#performEraseDataInner(payload, supraKey ?? internalKey);
     } finally {
-      this.#boardCore.hitCommitter.endSupra(internalKey);
+      if (internalKey !== null) {
+        this.#boardCore.hitCommitter.endSupra(internalKey);
+      }
     }
   }
 
