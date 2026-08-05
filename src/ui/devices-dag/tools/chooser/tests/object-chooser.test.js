@@ -61,7 +61,7 @@ describe("ObjectChooserTool", () => {
       deviceContext,
     );
 
-    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["1"]);
+    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["1"], { supraKey: undefined });
     expect(stateAccess.getState().objects).toEqual([chosenObject]);
     expect(stateAccess.getState()).toEqual({
       objects: [chosenObject],
@@ -90,7 +90,7 @@ describe("ObjectChooserTool", () => {
 
     tool.umount(deviceContext);
 
-    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith(["4"]);
+    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith(["4"], { supraKey: undefined });
     expect(tool._selectedObjects).toEqual([]);
     expect(stateAccess.getState().objects).toBeUndefined();
     expect(stateAccess.getState()).toEqual({});
@@ -128,7 +128,7 @@ describe("ObjectChooserTool", () => {
       deviceContext,
     );
 
-    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["31"]);
+    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["31"], { supraKey: undefined });
     expect(stateAccess.getState().objects).toEqual([
       {
         id: "31",
@@ -183,7 +183,7 @@ describe("ObjectChooserTool", () => {
       deviceContext,
     );
 
-    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["32"]);
+    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["32"], { supraKey: undefined });
     expect(stateAccess.getState().objects).toEqual([rpcSummary]);
     expect(deviceContext.services.board.getObjectById).not.toHaveBeenCalled();
     expect(stateAccess.getState()).toEqual({ objects: [rpcSummary] });
@@ -209,7 +209,7 @@ describe("ObjectChooserTool", () => {
     tool.replaceSelection(deviceContext, [chosenObject]);
     tool.umount(deviceContext);
 
-    expect(discardActiveObjects).toHaveBeenCalledWith(["41"]);
+    expect(discardActiveObjects).toHaveBeenCalledWith(["41"], { supraKey: undefined });
     expect(tool._selectedObjects).toEqual([]);
     expect(stateAccess.getState().objects).toBeUndefined();
     expect(stateAccess.getState()).toEqual({});
@@ -573,13 +573,13 @@ describe("ObjectChooserTool", () => {
         deviceContext,
       );
 
-      expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["15"]);
+      expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["15"], { supraKey: undefined });
       expect(stateAccess.getState().objects).toEqual([chosenObject]);
 
       // cancel 应撤销已选中的对象
       tool.process({ signals: [{ type: "cancel" }] }, deviceContext);
 
-      expect(boardApi.discardActiveObjects).toHaveBeenCalledWith(["15"]);
+      expect(boardApi.discardActiveObjects).toHaveBeenCalledWith(["15"], { supraKey: undefined });
       expect(stateAccess.getState().objects).toBeUndefined();
       // nodeState 中 objects 应被清理
       expect(stateAccess.getState()).toEqual({});

@@ -407,7 +407,7 @@ class ObjectModifierTool extends GestureTool {
       return false;
     }
 
-    boardApi.commitObjects(objectIds);
+    boardApi.commitObjects(objectIds, { supraKey: context?.services?.supraKey });
     this._overlayModifiedObjects = [];
     this.clearContextObjects(context);
 
@@ -461,7 +461,7 @@ class ObjectModifierTool extends GestureTool {
     const objectIds = this.resolveObjectIds(context, normalizedObjects);
 
     if (boardApi && objectIds.length > 0) {
-      boardApi.discardActiveObjects(objectIds);
+      boardApi.discardActiveObjects(objectIds, { supraKey: context?.services?.supraKey });
     }
 
     this._overlayModifiedObjects = [];
@@ -513,7 +513,7 @@ class ObjectModifierTool extends GestureTool {
     const objectIds = this.resolveObjectIds(context, normalizedObjects);
 
     if (boardApi && objectIds.length > 0) {
-      boardApi.discardActiveObjects(objectIds);
+      boardApi.discardActiveObjects(objectIds, { supraKey: context?.services?.supraKey });
     }
 
     this._overlayModifiedObjects = [];
@@ -792,11 +792,9 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
 
   /**
    * 修改手势开始（委托给 processor）
-   * @description 同时开启超分子手势括号：一次拖拽的所有提交凝聚为一个节点。
    * @param {Object} interaction - 当前交互上下文
    */
   beginGesture(interaction) {
-    interaction?.context?.services?.boardApi?.beginSupra?.();
     this.processor.begin(this, interaction);
   }
 
@@ -813,11 +811,7 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
    * @param {Object} interaction - 当前交互上下文
    */
   completeGesture(interaction) {
-    try {
-      this.processor.complete(this, interaction);
-    } finally {
-      interaction?.context?.services?.boardApi?.endSupra?.();
-    }
+    this.processor.complete(this, interaction);
   }
 
   /**
@@ -829,11 +823,7 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
    * @param {Object} interaction - 当前交互上下文
    */
   cancelGesture(interaction) {
-    try {
-      this.processor.cancel(this, interaction);
-    } finally {
-      interaction?.context?.services?.boardApi?.endSupra?.();
-    }
+    this.processor.cancel(this, interaction);
   }
 
   /**
@@ -844,8 +834,6 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
   umount(context = {}) {
     this.isActionActive = false;
     this.isGestureActive = false;
-    // 兜底闭合可能残留的手势超分子（无开启时是空操作）
-    context?.services?.boardApi?.endSupra?.();
     super.umount(context);
   }
 

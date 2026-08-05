@@ -237,7 +237,7 @@ describe("CommonObjectModifierTool", () => {
 
     expect(result).toBeUndefined();
     expect(object.position).toEqual(new Vector(8, 6));
-    expect(boardApi.commitObjects).toHaveBeenCalledWith(["7"]);
+    expect(boardApi.commitObjects).toHaveBeenCalledWith(["7"], { supraKey: undefined });
     expect(mockDag.unmount).toHaveBeenCalledWith(
       "/viewport/mouse/primary/tool/tool",
     );
@@ -304,7 +304,7 @@ describe("CommonObjectModifierTool", () => {
       context,
     );
 
-    expect(commitSpy).toHaveBeenCalledWith(["501"]);
+    expect(commitSpy).toHaveBeenCalledWith(["501"], { supraKey: undefined });
     expect(mockDag.unmount).toHaveBeenCalledWith(
       "/viewport/mouse/primary/tool/tool",
     );
@@ -1455,7 +1455,7 @@ describe("CommonObjectModifierTool", () => {
         { signals: [{ type: "success", context: {} }] },
         aomCtx(tool, object, { boardApi }),
       );
-      expect(boardApi.commitObjects).toHaveBeenCalledWith(["1"]);
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["1"], { supraKey: undefined });
     });
 
     test("Worker mode 下 summary-like 对象应能基于 plain boundingBox 启动 modifier 手势", () => {

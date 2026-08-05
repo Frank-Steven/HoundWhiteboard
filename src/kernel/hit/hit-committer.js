@@ -22,7 +22,7 @@ import {
 /**
  * 简并一个对象在超分子内的草稿序列
  * @description 规则：add+delete 相消；add 吸并后续 modify（数据取终态）；delete 吸并前行 modify；
- * modify 链合一（首条 before + 末条 after，属性集合取并集）；choose/unchoose 空转消除。
+ * modify 链合一（首条 before + 末条 after，属性集合取并集）；choose/unchoose 无净效果时空转消除。
  * @param {SupraDraft[]} ops - 同一对象的草稿序列（按提交顺序）
  * @returns {SupraDraft[]} 简并后的草稿序列
  */
@@ -130,8 +130,9 @@ function collapseSupraDrafts(drafts) {
  * 分子操作的 commit 边界单点。白板效果执行后，调用方把效果摘要交给提交器，
  * 由提交器统一完成：构造分子操作记录（id、单调时间标记、本地视角父节点、超分子关联）、
  * 入操作日志、应用到时间回溯树（HEAD 随结构自然移动）。
- * 超分子开启期间成员缓冲为草稿（不入日志、不上树），endSupra 时简并、定稿、整体入日志
- * 并凝聚为单个节点——超分子在日志中也是原子出现的。
+ * 超分子按键（supraKey）开启与指定：开启期间指定该 key 的增加节点类提交缓冲为草稿
+ * （不入日志、不上树），endSupra(key) 时简并、定稿、整体入日志并凝聚为单个节点——
+ * 超分子在日志中原子出现。未指定 key 的提交永远独立成录，不受开启中的超分子影响。
  * @class
  * @author Zhou Chenyu
  */
@@ -167,10 +168,10 @@ class HitCommitter {
   #lastTime = 0;
 
   /**
-   * 当前开启的超分子句柄（同时至多一个）
-   * @type {?{ id: ?string, drafts: SupraDraft[] }}
+   * 开启中的超分子（key → 句柄）
+   * @type {Map<string, { id: ?string, drafts: SupraDraft[] }>}
    */
-  #openSupra = null;
+  #supras = new Map();
 
   /**
    * 构造 hit 提交器
@@ -196,42 +197,173 @@ class HitCommitter {
   }
 
   /**
-   * 当前开启的超分子句柄（无开启时为 null）
-   * @type {?{ id: ?string, drafts: SupraDraft[] }}
+   * 某 key 的超分子是否开启中
+   * @param {string} key - 超分子 key
+   * @returns {boolean} 是否开启中
    */
-  get openSupra() {
-    return this.#openSupra;
+  hasSupra(key) {
+    return this.#supras.has(key);
   }
 
   /**
-   * 开始一个超分子操作
-   * @description 返回超分子句柄；开启期间的增加节点类 commit 自动关联为该超分子的成员
-   * （缓冲为草稿），endSupra 时简并定稿。同时至多开启一个；调用方须保证闭合（finally）。
-   * @returns {{ id: ?string, drafts: SupraDraft[] }} 超分子句柄
-   * @throws {Error} 已有开启中的超分子时抛出
+   * 开启一个超分子
+   * @description 开启期间指定该 key 的增加节点类提交缓冲为草稿，endSupra 时简并定稿。
+   * 谁开启谁关闭；调用方须保证闭合（finally）。
+   * @param {string} key - 超分子 key（调用方提供的会话标识，可跨通道序列化）
+   * @returns {void}
+   * @throws {Error} 该 key 已开启时抛出
    */
-  beginSupra() {
-    if (this.#openSupra !== null) {
-      throw new Error("已有开启中的超分子（同时至多一个，须先闭合）");
+  beginSupra(key) {
+    if (this.#supras.has(key)) {
+      throw new Error(`超分子 ${key} 已开启（重复开启）`);
     }
-    const supra = { id: null, drafts: [] };
-    this.#openSupra = supra;
-    return supra;
+    this.#supras.set(key, { id: null, drafts: [] });
   }
 
   /**
-   * 闭合一个超分子操作
+   * 闭合一个超分子
    * @description 草稿经简并后定稿：顺序分配 id（首分子自指为超分子 id）、整体入日志，
    * 并在树上凝聚为一个节点；空组（含简并后为空的组）不产生节点。
-   * @param {?{ id: ?string, drafts: SupraDraft[] }} supra - 超分子句柄
+   * @param {string} key - 超分子 key
    * @returns {void}
-   * @throws {Error} 句柄不是当前开启的超分子时抛出（谁开启谁关闭）
+   * @throws {Error} 该 key 未开启时抛出
    */
-  endSupra(supra) {
-    if (supra === null || supra !== this.#openSupra) {
-      throw new Error("超分子关闭者与开启者不一致");
+  endSupra(key) {
+    const supra = this.#supras.get(key);
+    if (supra === undefined) {
+      throw new Error(`超分子 ${key} 未开启（闭合者与开启者不一致）`);
     }
-    this.#openSupra = null;
+    this.#supras.delete(key);
+    this.#materializeSupra(supra);
+  }
+
+  /**
+   * 中止一个超分子：丢弃全部缓冲草稿，不产生记录与节点
+   * @description 用于会话取消：几何已回滚，缓冲的草稿随之丢弃。
+   * @param {string} key - 超分子 key
+   * @returns {void}
+   * @throws {Error} 该 key 未开启时抛出
+   */
+  abortSupra(key) {
+    const supra = this.#supras.get(key);
+    if (supra === undefined) {
+      throw new Error(`超分子 ${key} 未开启（中止者与开启者不一致）`);
+    }
+    supra.drafts = [];
+    this.#supras.delete(key);
+  }
+
+  /**
+   * 提交增加对象分子操作
+   * @param {Object} effect - 效果摘要
+   * @param {string} effect.chunkId - 区块 id
+   * @param {string} effect.objectId - 对象 id
+   * @param {Object} effect.data - 对象全量内容（可 JSON 序列化）
+   * @param {string[]} effect.layerStackSnapshot - 操作时刻的完整层栈快照（z-order）
+   * @param {string} [effect.supraKey] - 指定进入的超分子 key（缺省独立成录）
+   * @returns {import("./operation.js").OperationRecord} 分子操作记录（超分子成员为未定稿草稿）
+   */
+  commitAdd(effect) {
+    return this.#emit(createAddObjectOperation, effect);
+  }
+
+  /**
+   * 提交修改对象分子操作
+   * @param {Object} effect - 效果摘要
+   * @param {string} effect.chunkId - 区块 id
+   * @param {string} effect.objectId - 对象 id
+   * @param {string[]} effect.properties - 涉及属性的集合
+   * @param {Object} effect.before - 修改前快照
+   * @param {Object} effect.after - 修改后快照
+   * @param {string[]} effect.layerStackSnapshot - 操作时刻的完整层栈快照（z-order）
+   * @param {string} [effect.supraKey] - 指定进入的超分子 key（缺省独立成录）
+   * @returns {import("./operation.js").OperationRecord} 分子操作记录（超分子成员为未定稿草稿）
+   */
+  commitModify(effect) {
+    return this.#emit(createModifyObjectOperation, effect);
+  }
+
+  /**
+   * 提交删除对象分子操作
+   * @param {Object} effect - 效果摘要
+   * @param {string} effect.chunkId - 区块 id
+   * @param {string} effect.objectId - 对象 id
+   * @param {string} [effect.supraKey] - 指定进入的超分子 key（缺省独立成录）
+   * @returns {import("./operation.js").OperationRecord} 分子操作记录（超分子成员为未定稿草稿）
+   */
+  commitDelete(effect) {
+    return this.#emit(createDeleteObjectOperation, effect);
+  }
+
+  /**
+   * 提交选择对象分子操作
+   * @param {Object} effect - 效果摘要
+   * @param {string} effect.chunkId - 区块 id
+   * @param {string} effect.objectId - 对象 id
+   * @param {string} [effect.supraKey] - 指定进入的超分子 key（缺省独立成录）
+   * @returns {import("./operation.js").OperationRecord} 分子操作记录（超分子成员为未定稿草稿）
+   */
+  commitChoose(effect) {
+    return this.#emit(createChooseObjectOperation, effect);
+  }
+
+  /**
+   * 提交取消选择分子操作
+   * @param {Object} effect - 效果摘要
+   * @param {string} effect.chunkId - 区块 id
+   * @param {string} effect.objectId - 对象 id
+   * @param {string} [effect.supraKey] - 指定进入的超分子 key（缺省独立成录）
+   * @returns {import("./operation.js").OperationRecord} 分子操作记录（超分子成员为未定稿草稿）
+   */
+  commitUnchoose(effect) {
+    return this.#emit(createUnchooseObjectOperation, effect);
+  }
+
+  /**
+   * 提交撤销分子操作
+   * @description 记录目标节点与撤销前 HEAD 位置（重做的移动目标）；退化/分叉改挂/被吸收在应用时确定。
+   * 撤销不属于任何超分子：即使携带 supraKey 也独立成录、即时上树。
+   * @param {Object} effect - 效果摘要
+   * @param {string} effect.targetNodeId - 撤消操作的目标节点 id（缺省为活动链末端，由调用方解析后传入）
+   * @returns {import("./operation.js").OperationRecord} 撤销操作记录
+   */
+  commitUndo(effect) {
+    return this.#emit(createUndoOperation, {
+      ...effect,
+      previousHeadId: this.#tree.head.shareId,
+    });
+  }
+
+  /**
+   * 提交重做分子操作
+   * @description 重做的移动目标由最近一次生效撤销的记录派生，自身不携带目标；
+   * 是否生效由树侧按条件应用判定（新工作洗掉则不移动，记录仍在日志）。
+   * 重做任何时刻都是独立分子，不进入超分子。
+   * @returns {import("./operation.js").OperationRecord} 重做操作记录
+   */
+  commitRedo() {
+    return this.#emit(createRedoOperation, {});
+  }
+
+  /**
+   * 单调时间推进
+   * @returns {number} 时间标记
+   * @private
+   */
+  #tick() {
+    const time = Math.max(this.#now(), this.#lastTime);
+    this.#lastTime = time;
+    return time;
+  }
+
+  /**
+   * 超分子物化：草稿简并、定稿（首分子自指）、整体入日志、凝聚为单节点
+   * @param {{ id: ?string, drafts: SupraDraft[] }} supra - 超分子句柄
+   * @returns {void}
+   * @throws {Error} 记录未通过日志准入校验时抛出
+   * @private
+   */
+  #materializeSupra(supra) {
     const kept = collapseSupraDrafts(supra.drafts);
     supra.drafts = [];
     if (kept.length === 0) {
@@ -256,111 +388,25 @@ class HitCommitter {
   }
 
   /**
-   * 提交增加对象分子操作
-   * @param {Object} effect - 效果摘要
-   * @param {string} effect.chunkId - 区块 id
-   * @param {string} effect.objectId - 对象 id
-   * @param {Object} effect.data - 对象全量内容（可 JSON 序列化）
-   * @param {string[]} effect.layerStackSnapshot - 操作时刻的完整层栈快照（z-order）
-   * @returns {import("./operation.js").OperationRecord} 分子操作记录（超分子成员为未定稿草稿）
-   */
-  commitAdd(effect) {
-    return this.#emit(createAddObjectOperation, effect);
-  }
-
-  /**
-   * 提交修改对象分子操作
-   * @param {Object} effect - 效果摘要
-   * @param {string} effect.chunkId - 区块 id
-   * @param {string} effect.objectId - 对象 id
-   * @param {string[]} effect.properties - 涉及属性的集合
-   * @param {Object} effect.before - 修改前快照
-   * @param {Object} effect.after - 修改后快照
-   * @param {string[]} effect.layerStackSnapshot - 操作时刻的完整层栈快照（z-order）
-   * @returns {import("./operation.js").OperationRecord} 分子操作记录（超分子成员为未定稿草稿）
-   */
-  commitModify(effect) {
-    return this.#emit(createModifyObjectOperation, effect);
-  }
-
-  /**
-   * 提交删除对象分子操作
-   * @param {Object} effect - 效果摘要
-   * @param {string} effect.chunkId - 区块 id
-   * @param {string} effect.objectId - 对象 id
-   * @returns {import("./operation.js").OperationRecord} 分子操作记录（超分子成员为未定稿草稿）
-   */
-  commitDelete(effect) {
-    return this.#emit(createDeleteObjectOperation, effect);
-  }
-
-  /**
-   * 提交选择对象分子操作
-   * @param {Object} effect - 效果摘要
-   * @param {string} effect.chunkId - 区块 id
-   * @param {string} effect.objectId - 对象 id
-   * @returns {import("./operation.js").OperationRecord} 分子操作记录（超分子成员为未定稿草稿）
-   */
-  commitChoose(effect) {
-    return this.#emit(createChooseObjectOperation, effect);
-  }
-
-  /**
-   * 提交取消选择分子操作
-   * @param {Object} effect - 效果摘要
-   * @param {string} effect.chunkId - 区块 id
-   * @param {string} effect.objectId - 对象 id
-   * @returns {import("./operation.js").OperationRecord} 分子操作记录（超分子成员为未定稿草稿）
-   */
-  commitUnchoose(effect) {
-    return this.#emit(createUnchooseObjectOperation, effect);
-  }
-
-  /**
-   * 提交撤销分子操作
-   * @description 记录目标节点与撤销前 HEAD 位置（重做的移动目标）；退化/分叉改挂/被吸收在应用时确定。
-   * 撤销不属于任何超分子：开启中的超分子不拦截它。
-   * @param {Object} effect - 效果摘要
-   * @param {string} effect.targetNodeId - 撤消操作的目标节点 id（缺省为活动链末端，由调用方解析后传入）
-   * @returns {import("./operation.js").OperationRecord} 撤销操作记录
-   */
-  commitUndo(effect) {
-    return this.#emit(createUndoOperation, {
-      ...effect,
-      previousHeadId: this.#tree.head.shareId,
-    });
-  }
-
-  /**
-   * 提交重做分子操作
-   * @description 重做的移动目标由最近一次生效撤销的记录派生，自身不携带目标；
-   * 是否生效由树侧按条件应用判定（新工作洗掉则不移动，记录仍在日志）。
-   * 重做任何时刻都是独立分子，不进入超分子。
-   * @returns {import("./operation.js").OperationRecord} 重做操作记录
-   */
-  commitRedo() {
-    return this.#emit(createRedoOperation, {});
-  }
-
-  /**
    * 统一的发射管线：构造记录、入日志、应用到树
-   * @description 增加节点类操作在超分子开启期间缓冲为草稿（不入日志、不上树，id 与
-   * supraOpId 在 endSupra 定稿时补齐）；撤销与重做永远独立成录，即时入日志并上树。
+   * @description 指定了 supraKey 的增加节点类操作缓冲为该超分子的草稿（不入日志、不上树，
+   * id 与 supraOpId 在 endSupra 定稿时补齐）；未指定 key 的提交即时独立成录；
+   * 撤销与重做永远独立成录，即时入日志并上树。
    * @param {(fields: Object) => import("./operation.js").OperationRecord} factory - 分子记录工厂
    * @param {Object} effect - 效果摘要
    * @returns {import("./operation.js").OperationRecord} 分子操作记录（超分子成员为未定稿草稿）
-   * @throws {Error} 记录未通过日志准入校验，或显式传入的超分子句柄已闭合时抛出
+   * @throws {Error} 记录未通过日志准入校验，或指定的超分子未开启时抛出
    * @private
    */
   #emit(factory, effect) {
-    const time = Math.max(this.#now(), this.#lastTime);
-    this.#lastTime = time;
+    const time = this.#tick();
     const joinable =
       factory !== createUndoOperation && factory !== createRedoOperation;
-    const supra = joinable ? (effect.supra ?? this.#openSupra) : null;
-    if (supra !== null) {
-      if (supra !== this.#openSupra) {
-        throw new Error("超分子句柄已闭合或未开启");
+    const supraKey = joinable ? (effect.supraKey ?? null) : null;
+    if (supraKey !== null) {
+      const supra = this.#supras.get(supraKey);
+      if (supra === undefined) {
+        throw new Error(`超分子 ${supraKey} 未开启（分子无法指定进入）`);
       }
       const draft = factory({
         ...effect,

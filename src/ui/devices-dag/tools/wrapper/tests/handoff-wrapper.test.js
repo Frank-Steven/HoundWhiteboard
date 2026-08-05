@@ -202,7 +202,9 @@ describe("HandoffWrapperTool", () => {
     // success → 提交并切回 first
     dispatchToHandoff(dag, [{ type: "success", context: {} }]);
 
-    expect(boardApi.commitObjects).toHaveBeenCalledWith([object.id]);
+    expect(boardApi.commitObjects).toHaveBeenCalledWith([object.id], {
+      supraKey: expect.any(String),
+    });
     expect(object.position).toEqual(new Vector(8, 6));
     expect(wrapper.getDebugInfo().phase).toBe("first");
     expect(dag.getNodeState("/viewport/handoff")).toMatchObject({
@@ -239,7 +241,9 @@ describe("HandoffWrapperTool", () => {
     // cancel 手势回滚几何
     expect(object.position).toEqual(new Vector(5, 5));
     // wrapper 显式丢弃 second 持有的活动对象（对齐旧 completeOnCancel 语义）
-    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith([object.id]);
+    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith([object.id], {
+      supraKey: expect.any(String),
+    });
     expect(wrapper.getDebugInfo().phase).toBe("first");
     expect(dag.getNodeState("/viewport/handoff")).toMatchObject({
       phase: "first",

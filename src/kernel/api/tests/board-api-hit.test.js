@@ -347,6 +347,32 @@ describe("撤销", () => {
     expect(api.undo().undone).toBe(false);
   });
 
+  test("指定同一会话 key：选择+修改+提交凝聚为一个节点", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+
+    api.beginSupra("session/1");
+    await api.addActiveObjects(["s1"], { supraKey: "session/1" });
+    api.modifyObject("s1", { position: { x: 50, y: 50 } });
+    await api.commitObjects(["s1"], { supraKey: "session/1" });
+    // 会话期间尚无节点（成员缓冲中）
+    expect(boardCore.undoTree.getActiveChain()).toHaveLength(1);
+    api.endSupra("session/1");
+
+    // 物化后：add、（choose+modify+unchoose）超分子节点——整次会话一步撤销
+    expect(boardCore.undoTree.getActiveChain()).toHaveLength(2);
+    const members = boardCore.operationLog.getSupraMembers(boardCore.undoTree.head.shareId);
+    expect(members.map((r) => r.type)).toEqual([
+      "choose-object",
+      "modify-object",
+      "unchoose-object",
+    ]);
+    api.undo();
+    expect(boardCore.getObjectById("s1").position.x).toBe(0);
+    expect(boardCore.activeObjectManager.has("s1")).toBe(false);
+  });
+
   test("一次撤销回退整次擦除（超分子节点）", async () => {
     const boardCore = createBoardCore();
     const api = new BoardApi(boardCore);
@@ -373,19 +399,19 @@ describe("撤销", () => {
     expect(boardCore.undoTree.getActiveChain()).toHaveLength(1);
   });
 
-  test("一次拖拽凝聚为一个节点：跨调用括号 + 逐帧修改简并，一次撤销回退整次拖拽", async () => {
+  test("一次拖拽凝聚为一个节点：会话内逐帧修改简并，一次撤销回退整次拖拽", async () => {
     const boardCore = createBoardCore();
     const api = new BoardApi(boardCore);
     await createStaticStroke(api, "s1");
 
-    api.beginSupra();
+    api.beginSupra("drag/1");
     // 三帧拖拽：每帧 选择 → 修改 → 提交
     for (let i = 1; i <= 3; i++) {
-      await api.addActiveObjects(["s1"]);
+      await api.addActiveObjects(["s1"], { supraKey: "drag/1" });
       api.modifyObject("s1", { position: { x: i * 10, y: 100 } });
-      await api.commitObjects(["s1"]);
+      await api.commitObjects(["s1"], { supraKey: "drag/1" });
     }
-    api.endSupra();
+    api.endSupra("drag/1");
 
     // 整次拖拽 = 一个超分子节点，成员简并为 选择+修改+取消选择 三条
     expect(recordTypes(boardCore)).toEqual([

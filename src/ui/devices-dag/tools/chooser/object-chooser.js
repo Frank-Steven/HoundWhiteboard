@@ -355,7 +355,7 @@ class ObjectChooserTool extends GestureTool {
     const boardApi = context?.services?.boardApi;
     const objectIds = this.resolveObjectIds(context, selectedObjects);
     if (boardApi && objectIds.length > 0) {
-      boardApi.discardActiveObjects(objectIds);
+      boardApi.discardActiveObjects(objectIds, { supraKey: context?.services?.supraKey });
     }
     this._selectedObjects = [];
     this.clearContextObjects(context);
@@ -374,7 +374,7 @@ class ObjectChooserTool extends GestureTool {
     const boardApi = context.services?.boardApi;
     const previousIds = this.resolveObjectIds(context, previousObjects);
     if (boardApi && previousIds.length > 0) {
-      boardApi.discardActiveObjects(previousIds);
+      boardApi.discardActiveObjects(previousIds, { supraKey: context?.services?.supraKey });
     }
 
     this._selectedObjects = [];
@@ -391,7 +391,7 @@ class ObjectChooserTool extends GestureTool {
 
     const nextIds = this.resolveObjectIds(context, resolvedNextObjects);
     if (boardApi && nextIds.length > 0) {
-      boardApi.addActiveObjects(nextIds);
+      boardApi.addActiveObjects(nextIds, { supraKey: context?.services?.supraKey });
     }
     this._selectedObjects = this.setContextObjects(
       context,
@@ -502,7 +502,7 @@ class ObjectChooserTool extends GestureTool {
     const boardApi = context?.services?.boardApi;
     const objectIds = this.resolveObjectIds(context, selectedObjects);
     if (boardApi && objectIds.length > 0) {
-      boardApi.discardActiveObjects(objectIds);
+      boardApi.discardActiveObjects(objectIds, { supraKey: context?.services?.supraKey });
     }
     this._selectedObjects = [];
     this.clearContextObjects(context);

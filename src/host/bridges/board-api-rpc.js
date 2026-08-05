@@ -431,37 +431,41 @@ class BoardApiRpc {
   /**
    * 永久删除对象集合
    * @param {string[]} objectIds - 要删除的对象 id 列表
+   * @param {Object} [options] - 删除选项（supraKey 指定超分子）
    * @returns {Promise<void>}
    */
-  async deleteObjects(objectIds) {
-    return this.#call("deleteObjects", { objectIds });
+  async deleteObjects(objectIds, options) {
+    return this.#call("deleteObjects", { objectIds, options });
   }
 
   /**
    * 将 AOM 动态图中的对象写回静态图
    * @param {string[]} objectIds - 要提交的对象 id 列表
+   * @param {Object} [options] - 提交选项（supraKey 指定超分子）
    * @returns {Promise<string[]>} 实际提交的对象 id 列表
    */
-  async commitObjects(objectIds) {
-    return this.#call("commitObjects", { objectIds });
+  async commitObjects(objectIds, options) {
+    return this.#call("commitObjects", { objectIds, options });
   }
 
   /**
    * 将对象加入 AOM 动态图
    * @param {string[]} objectIds - 对象 id 列表
+   * @param {Object} [options] - 选择选项（supraKey 指定超分子）
    * @returns {Promise<void>}
    */
-  async addActiveObjects(objectIds) {
-    return this.#call("addActiveObjects", { objectIds });
+  async addActiveObjects(objectIds, options) {
+    return this.#call("addActiveObjects", { objectIds, options });
   }
 
   /**
    * 将对象从 AOM 动态图移除
    * @param {string[]} objectIds - 对象 id 列表
+   * @param {Object} [options] - 选项（supraKey 指定超分子）
    * @returns {Promise<void>}
    */
-  async discardActiveObjects(objectIds) {
-    return this.#call("discardActiveObjects", { objectIds });
+  async discardActiveObjects(objectIds, options) {
+    return this.#call("discardActiveObjects", { objectIds, options });
   }
 
   /**
@@ -539,19 +543,30 @@ class BoardApiRpc {
   }
 
   /**
-   * 开启一个超分子（手势括号）
+   * 开启一个超分子
+   * @param {string} key - 超分子 key（调用方提供的会话标识）
    * @returns {Promise<void>}
    */
-  async beginSupra() {
-    return this.#call("beginSupra", {});
+  async beginSupra(key) {
+    return this.#call("beginSupra", { key });
   }
 
   /**
-   * 闭合当前开启的超分子
-   * @returns {Promise<boolean>} 是否实际闭合了超分子
+   * 闭合一个超分子
+   * @param {string} key - 超分子 key
+   * @returns {Promise<void>}
    */
-  async endSupra() {
-    return this.#call("endSupra", {});
+  async endSupra(key) {
+    return this.#call("endSupra", { key });
+  }
+
+  /**
+   * 中止一个超分子（丢弃全部缓冲草稿）
+   * @param {string} key - 超分子 key
+   * @returns {Promise<void>}
+   */
+  async abortSupra(key) {
+    return this.#call("abortSupra", { key });
   }
 
   /**

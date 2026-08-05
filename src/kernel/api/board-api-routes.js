@@ -86,7 +86,7 @@ const BOARD_API_ROUTES = {
    * 永久删除对象集合
    */
   deleteObjects: {
-    invoke: (api, p) => api.deleteObjects(p.objectIds),
+    invoke: (api, p) => api.deleteObjects(p.objectIds, p.options),
     flush: "sync",
   },
 
@@ -102,7 +102,7 @@ const BOARD_API_ROUTES = {
    * 将 AOM 动态图中的对象写回静态图
    */
   commitObjects: {
-    invoke: (api, p) => api.commitObjects(p.objectIds),
+    invoke: (api, p) => api.commitObjects(p.objectIds, p.options),
     flush: "none",
   },
 
@@ -110,7 +110,7 @@ const BOARD_API_ROUTES = {
    * 将对象加入 AOM 动态图
    */
   addActiveObjects: {
-    invoke: (api, p) => api.addActiveObjects(p.objectIds),
+    invoke: (api, p) => api.addActiveObjects(p.objectIds, p.options),
     flush: "none",
   },
 
@@ -118,7 +118,7 @@ const BOARD_API_ROUTES = {
    * 将对象从 AOM 动态图移除
    */
   discardActiveObjects: {
-    invoke: (api, p) => api.discardActiveObjects(p.objectIds),
+    invoke: (api, p) => api.discardActiveObjects(p.objectIds, p.options),
     flush: "none",
   },
 
@@ -171,18 +171,26 @@ const BOARD_API_ROUTES = {
   },
 
   /**
-   * 开启一个超分子（手势括号）
+   * 开启一个超分子
    */
   beginSupra: {
-    invoke: (api) => api.beginSupra(),
+    invoke: (api, p) => api.beginSupra(p.key),
     flush: "none",
   },
 
   /**
-   * 闭合当前开启的超分子
+   * 闭合一个超分子
    */
   endSupra: {
-    invoke: (api) => api.endSupra(),
+    invoke: (api, p) => api.endSupra(p.key),
+    flush: "none",
+  },
+
+  /**
+   * 中止一个超分子（丢弃全部缓冲草稿）
+   */
+  abortSupra: {
+    invoke: (api, p) => api.abortSupra(p.key),
     flush: "none",
   },
 };
