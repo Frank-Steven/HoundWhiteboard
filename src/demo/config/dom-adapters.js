@@ -174,6 +174,23 @@ function attachKeyboardAdapter(viewport, board, demoLog, tools) {
   };
 
   /**
+   * 向各工具 workflow 广播 hit 变更信号（撤销/重做后工具清理失效对象引用）
+   * @returns {void}
+   */
+  const notifyHitChanged = () => {
+    const workflows = [
+      DEMO_WORKFLOW_NAMES.TOOL_SWITCHER,
+      DEMO_WORKFLOW_NAMES.SECONDARY_CHOOSER,
+    ];
+    for (const wf of workflows) {
+      board.signalsEventBus.emit("input", {
+        to: `/${viewport.viewportId}/workflows/${wf}`,
+        signals: [{ type: "hit:changed", context: {} }],
+      });
+    }
+  };
+
+  /**
    * 处理撤销/重做快捷键（Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y）
    * @description 组合键不进入设备图，直接经 BoardApi 路由调用；返回 true 表示事件已被消费。
    * @param {KeyboardEvent} event - 键盘事件
@@ -192,9 +209,11 @@ function attachKeyboardAdapter(viewport, board, demoLog, tools) {
     const isRedo = event.code === "KeyY" || event.shiftKey;
     demoLog.logKeyInput(isRedo ? "重做" : "撤销");
     const pending = isRedo ? api.redo() : api.undo();
-    pending?.catch?.((error) => {
-      console.error("[whiteboard] undo/redo failed:", error);
-    });
+    Promise.resolve(pending)
+      .catch((error) => {
+        console.error("[whiteboard] undo/redo failed:", error);
+      })
+      .finally(notifyHitChanged);
     return true;
   };
 
@@ -284,11 +303,12 @@ function attachKeyboardAdapter(viewport, board, demoLog, tools) {
 
 /**
  * 绑定撤销/重做按钮适配器
- * @description 侧栏按钮直接经 BoardApi 路由调用，不进入设备图。
+ * @description 侧栏按钮直接经 BoardApi 路由调用，不进入设备图；完成后向工具 workflow 广播 hit 变更。
  * @param {import("../../ui/components/orchestration/board.js").Board} board - 白板实例
+ * @param {import("../../ui/components/orchestration/viewport.js").Viewport} viewport - 视口实例
  * @returns {() => void} 解绑函数
  */
-function attachHistoryAdapter(board) {
+function attachHistoryAdapter(board, viewport) {
   /** @type {Array<() => void>} */
   const unbinds = [];
 
@@ -310,7 +330,7 @@ function attachHistoryAdapter(board) {
   };
 
   /**
-   * 经 BoardApi 调用并兜底异常
+   * 经 BoardApi 调用并兜底异常，完成后广播 hit 变更
    * @param {string} method - 方法名（undo / redo）
    * @returns {void}
    */
@@ -318,9 +338,22 @@ function attachHistoryAdapter(board) {
     const api = board.getBoardApi();
     if (!api) return;
     const pending = method === "redo" ? api.redo() : api.undo();
-    pending?.catch?.((error) => {
-      console.error(`[whiteboard] ${method} failed:`, error);
-    });
+    Promise.resolve(pending)
+      .catch((error) => {
+        console.error(`[whiteboard] ${method} failed:`, error);
+      })
+      .finally(() => {
+        const workflows = [
+          DEMO_WORKFLOW_NAMES.TOOL_SWITCHER,
+          DEMO_WORKFLOW_NAMES.SECONDARY_CHOOSER,
+        ];
+        for (const wf of workflows) {
+          board.signalsEventBus.emit("input", {
+            to: `/${viewport.viewportId}/workflows/${wf}`,
+            signals: [{ type: "hit:changed", context: {} }],
+          });
+        }
+      });
   };
 
   bind("undo-btn", () => invoke("undo"));

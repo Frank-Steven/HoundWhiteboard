@@ -632,12 +632,42 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
   }
 
   /**
+   * hit 变更后的失效清理：持有对象已被撤销移除时丢弃当前动作
+   * @description 撤销/重做可能移除工具仍持有的对象（幽灵选择）；收到 hit:changed 时按
+   * queryObjects 校验，存在已移除对象则丢弃动作（dead 对象由 discardActiveObjects 过滤）。
+   * @param {SignalPacket|Object} signalPacket - 输入信号包
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @returns {?Promise<void>} 校验 Promise（测试可等待）
+   * @private
+   */
+  #pruneStaleObjects(signalPacket, context) {
+    const signals = signalPacket?.signals ?? [];
+    if (!signals.some((s) => s?.type === "hit:changed")) return null;
+    const boardApi = context?.services?.boardApi;
+    const held = this.resolveActiveModifiedObjects(context);
+    if (typeof boardApi?.queryObjects !== "function" || held.length === 0) {
+      return null;
+    }
+    const ids = this.resolveObjectIds(context, held);
+    if (ids.length === 0) return null;
+    return Promise.resolve(boardApi.queryObjects(ids))
+      .then((summaries) => {
+        const alive = new Set((summaries ?? []).map((s) => String(s?.id)));
+        if (ids.some((id) => !alive.has(String(id)))) {
+          this.discardAction(context);
+        }
+      })
+      .catch(() => { });
+  }
+
+  /**
    * 处理信号包（手势驱动）
    * @param {SignalPacket|Object} signalPacket - 输入信号包
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void}
    */
   process(signalPacket, context = {}) {
+    this.#pruneStaleObjects(signalPacket, context);
     const packet = SignalPacket.from(signalPacket);
 
     const objects = this.resolveActiveModifiedObjects(context);

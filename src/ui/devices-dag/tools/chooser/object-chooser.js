@@ -478,7 +478,37 @@ class ObjectChooserTool extends GestureTool {
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void|Promise<void>}
    */
+  /**
+   * hit 变更后的失效清理：选择中的对象已被撤销移除时将其移出选择
+   * @param {SignalPacket|Object} signalPacket - 输入信号包
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @returns {?Promise<void>} 校验 Promise（测试可等待）
+   * @private
+   */
+  #pruneStaleSelection(signalPacket, context) {
+    const signals = signalPacket?.signals ?? [];
+    if (!signals.some((s) => s?.type === "hit:changed")) return null;
+    const boardApi = context?.services?.boardApi;
+    const held = this._selectedObjects.filter(Boolean);
+    if (typeof boardApi?.queryObjects !== "function" || held.length === 0) {
+      return null;
+    }
+    const ids = this.resolveObjectIds(context, held);
+    if (ids.length === 0) return null;
+    return Promise.resolve(boardApi.queryObjects(ids))
+      .then((summaries) => {
+        const alive = new Set((summaries ?? []).map((s) => String(s?.id)));
+        const kept = held.filter((obj, index) => alive.has(String(ids[index])));
+        if (kept.length !== held.length) {
+          this._selectedObjects = kept;
+          this.setContextObjects(context, kept);
+        }
+      })
+      .catch(() => { });
+  }
+
   process(signalPacket, context = {}) {
+    this.#pruneStaleSelection(signalPacket, context);
     if (
       this._overlaySelectedObjects.length > 0 &&
       this._selectedObjects.length === 0

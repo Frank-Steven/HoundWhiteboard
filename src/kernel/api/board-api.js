@@ -1283,6 +1283,7 @@ class BoardApi {
     if (obj) {
       this.#collectObjectChunks(obj, affectedChunks);
     }
+    this.#chooseSnapshots.delete(objectId);
     for (const { chunk } of boardCore.chunkLoaded.values()) {
       if (chunk?.objectManager?.staticGraph?.hasNode?.(objectId)) {
         chunk.removeObject(objectId);
