@@ -2,6 +2,10 @@
 
 本文是 [undo-tree-kernel-document.md](./undo-tree-kernel-document.md) 的示例部分，以具体情景模拟内核设计在多用户、弱网下的行为，验证收敛性与语义正确性。
 
+> [!NOTE]
+>
+> **回归固化**：本文九个情景已全部固化为回归测试——[undo-tree-scenarios.test.js](../tests/undo-tree-scenarios.test.js) 覆盖回放路径（`rebuildFromLog` 全量重放）与增量路径（纯插入/纯应用），[board-api-sync.test.js](../../api/tests/board-api-sync.test.js) 按本文各端的到达顺序双端/三端互喂，验证「插入与重放的边界」分流与全量重建兜底下的全端收敛。
+
 ## 图例
 
 - 根节点用圆圈表示，圆内的文字表示该树是以该方视角来看的。

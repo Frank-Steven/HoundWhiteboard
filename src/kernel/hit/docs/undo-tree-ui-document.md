@@ -2,9 +2,9 @@
 
 本文档描述 Undo Tree 的前端逻辑的设计目标与术语。
 
-> [!WARNING]
+> [!NOTE]
 >
-> 当前 `src/core/engine/hit/undo-tree-core.js` 仍主要是骨架实现：保留了 `UndoTree`、`MolecularNode`、`AttemptNode`、`TreeBlock`、`AttemptBlock` 等基础类型，但本文中的大部分树操作、分块存储、VIP 逻辑与协作语义尚未落地。阅读时应将本文视为**设计文档**，而不是当前完整实现说明。
+> **实现状态**：内核语义（操作日志、时间回溯树、撤销/重做、指定式超分子、远端应用入口）已落地，见[时间回溯树内核文档](undo-tree-kernel-document.md)。demo 侧已落地：撤销/重做快捷键（Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y）与侧栏按钮、hit 全景调试输出（U 键：回溯树 / 日志 / 状态 / 操作数据）。本文的前端导航结构（当前点、后继点、焦点链、尝试、收树、关键点、分块与存储结构、显示与交互规范）仍属设计目标 [todo]；`move-head`（移动至此）的应用入口随树导航 UI 落地。
 
 ## 术语定义
 
