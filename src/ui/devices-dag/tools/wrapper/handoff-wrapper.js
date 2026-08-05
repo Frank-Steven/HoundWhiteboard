@@ -9,6 +9,9 @@ import { SignalPacket } from "../../dag-core/signal.js";
 import { normalizeObjectCollection } from "../tool.js";
 import { WrapperTool } from "./wrapper-tool.js";
 
+/** 会话超分子模块级单调序号（跨 wrapper 实例唯一） @type {number} */
+let handoffSessionSeq = 0;
+
 /**
  * handoff 包装工具
  * @class
@@ -40,14 +43,9 @@ class HandoffWrapperTool extends WrapperTool {
   #sessionKey = null;
 
   /**
-   * 会话超分子序号（实例级递增，保证 key 唯一）
-   * @type {number}
-   */
-  #sessionSeq = 0;
-
-  /**
    * 开启会话超分子（first 阶段信号到达时）
    * @description 一次「选择 → 修改 → 提交」会话的所有提交指定同一 key，闭合时凝聚为一个节点。
+   * key 取模块级单调序号，跨 wrapper 实例唯一。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
    * @returns {void}
    */
@@ -55,8 +53,8 @@ class HandoffWrapperTool extends WrapperTool {
     if (this.#sessionKey !== null) {
       return;
     }
-    this.#sessionSeq += 1;
-    this.#sessionKey = `handoff/${this.#sessionSeq}`;
+    handoffSessionSeq += 1;
+    this.#sessionKey = `handoff/${handoffSessionSeq}`;
     context?.services?.boardApi?.beginSupra?.(this.#sessionKey);
   }
 
