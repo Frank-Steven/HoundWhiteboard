@@ -111,14 +111,15 @@ describe("超分子（指定 key）", () => {
     committer.commitAdd({ ...addEffect("obj-2"), supraKey: "s" });
     committer.commitDelete({ chunkId: "1", objectId: "obj-1", supraKey: "s" });
     committer.endSupra("s");
-    // obj-1：modify+delete 简并为 delete；obj-2：add —— 简并后两条，按时间定序（add 在前）
+    // obj-1：modify+delete 简并为 delete；obj-2：add —— 简并后两条，组序保持首次出现顺序（delete 在前）
     expect(log.size).toBe(2);
     const [first, second] = log.toArray();
-    expect(first.type).toBe("add-object");
+    expect(first.type).toBe("delete-object");
     expect(first.id).toBe("alice/op-1");
     expect(first.supraOpId).toBe("alice/op-1");
-    expect(second.type).toBe("delete-object");
+    expect(second.type).toBe("add-object");
     expect(second.supraOpId).toBe("alice/op-1");
+    expect(first.time).toBeLessThanOrEqual(second.time);
   });
 
   test("未指定 key 的提交即时独立成录，不受开启中的超分子影响", () => {
@@ -154,6 +155,19 @@ describe("超分子（指定 key）", () => {
     expect(committer.hasSupra("s")).toBe(false);
     expect(log.size).toBe(0);
     expect(tree.getActiveChain()).toHaveLength(0);
+  });
+
+  test("两个会话交错闭合不发生时间回拨（时间标记在物化时分配）", () => {
+    const { log, committer } = setup([500, 100]);
+    committer.beginSupra("right");
+    committer.commitAdd({ ...addEffect("o1"), supraKey: "right" });
+    committer.beginSupra("left");
+    committer.commitAdd({ ...addEffect("o2"), supraKey: "left" });
+    // 右手先闭合、左手后闭合；物理时间回拨（500 → 100）也由定稿时的钳制保证单调
+    committer.endSupra("right");
+    expect(() => committer.endSupra("left")).not.toThrow();
+    const times = log.toArray().map((r) => r.time);
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
   });
 
   test("空超分子（含简并后为空的组）不成节点", () => {

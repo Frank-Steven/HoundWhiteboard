@@ -119,8 +119,7 @@ function collapseSupraDrafts(drafts) {
   for (const ops of groups.values()) {
     result.push(...foldObjectDrafts(ops));
   }
-  // 稳定排序保证时间单调（组内顺序即原相对顺序，跨组按时间交错，不同对象的成员语义可交换）
-  result.sort((a, b) => a.time - b.time);
+  // 组序保持首次出现顺序（组内顺序即原相对顺序；不同对象的成员语义可交换；时间标记在定稿时分配）
   return result;
 }
 
@@ -376,7 +375,8 @@ class HitCommitter {
       if (supraId === null) {
         supraId = id;
       }
-      const record = { ...draft, id, supraOpId: supraId };
+      // 定稿时分配 id 与时间标记（同源时间单调由构造保证）
+      const record = { ...draft, id, supraOpId: supraId, time: this.#tick() };
       const errors = this.#log.append(record);
       if (errors.length > 0) {
         throw new Error(errors.join("；"));
@@ -399,7 +399,6 @@ class HitCommitter {
    * @private
    */
   #emit(factory, effect) {
-    const time = this.#tick();
     const joinable =
       factory !== createUndoOperation && factory !== createRedoOperation;
     const supraKey = joinable ? (effect.supraKey ?? null) : null;
@@ -408,11 +407,12 @@ class HitCommitter {
       if (supra === undefined) {
         throw new Error(`超分子 ${supraKey} 未开启（分子无法指定进入）`);
       }
+      // 草稿不携带时间：时间标记在物化定稿时分配（超分子是原子单元，完成时刻即闭合时刻）
       const draft = factory({
         ...effect,
         id: null,
         source: this.#source,
-        time,
+        time: null,
         parentId: this.#tree.head.shareId,
         supraOpId: null,
       });
@@ -423,7 +423,7 @@ class HitCommitter {
       ...effect,
       id: this.#log.nextId(this.#source),
       source: this.#source,
-      time,
+      time: this.#tick(),
       parentId: this.#tree.head.shareId,
       supraOpId: null,
     });
