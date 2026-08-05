@@ -53,6 +53,25 @@ class OperationLog {
   #lastTime = new Map();
 
   /**
+   * 追加事件订阅者集合
+   * @type {Set<(record: Object) => void>}
+   */
+  #appendListeners = new Set();
+
+  /**
+   * 订阅追加事件
+   * @param {(record: Object) => void} listener - 记录成功入日志后的回调
+   * @returns {() => void} 退订函数
+   *
+   * @description
+   * 本地 commit 与远端应用共用本日志的 append 通道，订阅者可观察到全部新增记录。
+   */
+  onAppend(listener) {
+    this.#appendListeners.add(listener);
+    return () => this.#appendListeners.delete(listener);
+  }
+
+  /**
    * 记录条数
    * @type {number}
    */
@@ -99,6 +118,9 @@ class OperationLog {
     }
     this.#nextSeq.set(record.source, expected + 1);
     this.#lastTime.set(record.source, record.time);
+    for (const listener of this.#appendListeners) {
+      listener(record);
+    }
     return [];
   }
 

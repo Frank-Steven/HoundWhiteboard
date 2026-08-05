@@ -352,6 +352,14 @@ class BoardCore {
   }
 
   /**
+   * 获取全部活动对象实例
+   * @returns {BasicObject[]} 活动对象数组（不含 trash 中的已删对象）
+   */
+  getAllObjects() {
+    return [...this.objectLoaded.values()].map((entry) => entry.obj);
+  }
+
+  /**
    * 获取对象当前完整加载计数
    * @param {string} objectId - 对象 id
    * @returns {number}
