@@ -8,7 +8,6 @@
 
 import { DirectedGraph } from "../utils/directed-graph.js";
 import { BasicObject } from "../objects/basic-obj.js";
-import { boardFileOperateBridge } from "../../host/bridges/file-operate-bridge-renderer.js";
 import {
   intersectsRanges,
   RectangleRange,
@@ -229,18 +228,17 @@ class ChunkObjectManager {
 
   /**
    * 加载区块元数据（层叠图 + 覆盖索引）
-   * @param {string} boardRootPath - 白板根目录
    * @returns {Promise<void>} 加载完成
    * @description
-   * 一次 IPC 读取合并后的 chunks/{chunkId}.json。
+   * 经 BoardCore 注入的持久化适配器读取 chunks/{chunkId}.json；
+   * 内存模式跳过（默认无操作适配器返回的空元数据会冲掉运行期已建的静态图）。
    */
-  async loadChunkMetadata(boardRootPath) {
-    if (typeof boardRootPath !== "string" || boardRootPath.trim() === "") {
-      return;
-    }
+  async loadChunkMetadata() {
+    const adapter = this.board?.persistenceAdapter;
+    if (!adapter || this.board.memoryMode?.()) return;
 
     const { tierGraph, objectCoverIndex } =
-      await boardFileOperateBridge.loadChunkMetadata(boardRootPath, this.id);
+      await adapter.loadChunkMetadata(this.id);
 
     this.staticGraph = DirectedGraph.parse(tierGraph);
     this.loadObjectCoverChunksFromData(objectCoverIndex);
@@ -248,15 +246,13 @@ class ChunkObjectManager {
 
   /**
    * 保存区块元数据（层叠图 + 覆盖索引）
-   * @param {string} boardRootPath - 白板根目录
    * @returns {Promise<void>} 保存完成
    */
-  async saveChunkMetadata(boardRootPath) {
-    if (typeof boardRootPath !== "string" || boardRootPath.trim() === "") {
-      return;
-    }
+  async saveChunkMetadata() {
+    const adapter = this.board?.persistenceAdapter;
+    if (!adapter || this.board.memoryMode?.()) return;
 
-    await boardFileOperateBridge.saveChunkMetadata(boardRootPath, this.id, {
+    await adapter.saveChunkMetadata(this.id, {
       tierGraph: this.staticGraph.toArray(),
       objectCoverIndex: this.serializeObjectCoverChunks(),
     });

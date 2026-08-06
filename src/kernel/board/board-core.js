@@ -679,12 +679,11 @@ class BoardCore {
     const { previousStrategy, effectiveStrategy } =
       this.#registerChunkLoadRequest(chunk.id, requesterId, strategy);
 
-    const boardRootPath = this.resolvePersistenceRootPath();
     const shouldSyncChunkObjects =
       (chunk?.objectManager?.staticGraph?.getNodes?.()?.length ?? 0) > 0;
 
     if (effectiveStrategy === CHUNK_LOAD_STRATEGIES.FULL) {
-      const changed = await chunk.loadFull(boardRootPath);
+      const changed = await chunk.loadFull();
       if (
         previousStrategy !== CHUNK_LOAD_STRATEGIES.FULL &&
         shouldSyncChunkObjects
@@ -704,7 +703,7 @@ class BoardCore {
       return false;
     }
 
-    const changed = await chunk.loadTemp(boardRootPath);
+    const changed = await chunk.loadTemp();
     this.chunkLoadEventBus.emit(CHUNK_LOAD_EVENTS.LOAD_COMPLETE, {
       chunkId: chunk.id,
     });

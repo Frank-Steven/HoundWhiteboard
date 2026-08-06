@@ -345,17 +345,14 @@ class Chunk {
 
   /**
    * 完整加载该区块
-   * @description
-   * @param {string} boardRootPath - 白板根目录
-   * @todo
    * @returns {Promise<boolean>} 是否成功
    */
-  async loadFull(boardRootPath) {
+  async loadFull() {
     // 已完整加载
     if (this.isLoad && !this.isTempLoad) return false;
 
     // 未加载，升级为临时加载
-    if (!this.isLoad) await this.loadTemp(boardRootPath);
+    if (!this.isLoad) await this.loadTemp();
     this.isTempLoad = false;
     return true;
   }
@@ -403,10 +400,9 @@ class Chunk {
 
   /**
    * 临时加载该区块
-   * @param {string} boardRootPath - 白板根目录
    * @returns {Promise<boolean>} 是否成功
    */
-  async loadTemp(boardRootPath) {
+  async loadTemp() {
     if (this.isLoad) {
       // 已加载，不管是完整加载还是临时加载，都不能重复加载
       return false;
@@ -418,7 +414,7 @@ class Chunk {
     } else if (!this.objectManager.board && this.board) {
       this.objectManager.setBoard(this.board);
     }
-    await this.objectManager.loadChunkMetadata(boardRootPath);
+    await this.objectManager.loadChunkMetadata();
     return true;
   }
 }
