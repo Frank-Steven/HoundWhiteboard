@@ -44,7 +44,9 @@ export const createTauriDriver = (options = {}) => {
   const call = async (command, args, fallback = null) => {
     try {
       return await invoke(command, args);
-    } catch {
+    } catch (error) {
+      // 不抛业务错误，但保留诊断痕迹（转发/参数映射问题否则无从定位）
+      console.warn(`[safe-io] invoke ${command} failed:`, error);
       return fallback;
     }
   };
@@ -246,7 +248,9 @@ export const createTauriDriver = (options = {}) => {
      * @returns {Promise<{rootId: string}>} 根目录引用
      */
     async registerRoot(absPath, permissions) {
-      return call("safe_io_register_root", { absPath, permissions });
+      const rootId = await call("safe_io_register_root", { absPath, permissions });
+      // Rust 返回纯字符串 root_id，契约要求 { rootId } 包装
+      return typeof rootId === "string" && rootId !== "" ? { rootId } : null;
     },
 
     /**

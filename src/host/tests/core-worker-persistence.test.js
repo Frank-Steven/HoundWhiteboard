@@ -85,7 +85,8 @@ function createMemoryCommandHandler() {
   const handler = async (command, args) => {
     switch (command) {
       case "safe_io_register_root":
-        return { rootId: "mem" };
+        // Rust 侧返回纯字符串 root_id（与真实 command 行为一致）
+        return "mem";
       case "safe_io_unregister_root":
         return true;
       case "safe_io_fs_read":
