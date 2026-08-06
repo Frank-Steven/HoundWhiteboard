@@ -180,8 +180,12 @@ function createJournaler({ boardCore, store, collectMeta }) {
       for (const data of knownObjects) {
         lastSync.set(data.id, { location: "objects", json: JSON.stringify(data) });
       }
-      for (const data of knownTrash) {
-        lastSync.set(data.id, { location: "trash", json: JSON.stringify(data) });
+      for (const entry of knownTrash) {
+        // trash 条目的 id 在 entry.data.id（条目为 {data, chunks} 形状）
+        lastSync.set(entry.data.id, {
+          location: "trash",
+          json: JSON.stringify(entry),
+        });
       }
       unsubscribe = boardCore.operationLog.onAppend((record) => {
         pendingRecords.push(record);

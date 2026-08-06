@@ -208,6 +208,48 @@ describe("Journaler", () => {
     expect(writeCount).toBe(0);
   });
 
+  test("trash 种子：重开后撤销删除，trash 文件随对象复活移除", async () => {
+    const { boardCore, api, store } = setup();
+    await store.create();
+    const journaler = createJournaler({ boardCore, store });
+    journaler.attach();
+    await createStaticStroke(api, "s1");
+    await api.deleteObjects(["s1"]);
+    await journaler.detach();
+
+    // 模拟重新打开：对象在 trash 中；以盘上内容为种子挂接新跟随者
+    const boardCore2 = new BoardCore({
+      width: 800,
+      height: 600,
+      aomRenderHooks: createDefaultAomRenderHooks(),
+      persistenceAdapter: createDefaultPersistenceAdapter(),
+      hitRecords: await readRecords(store),
+    });
+    const session2 = {
+      chunkMetadataList: await store.readAllChunkMetadata(),
+      objects: await store.readAllObjects(),
+      trash: await store.readAllTrash(),
+    };
+    boardCore2.restoreSession(session2);
+    const api2 = new BoardApi(boardCore2);
+    const journaler2 = createJournaler({ boardCore: boardCore2, store });
+    journaler2.attach({
+      nextSegmentSeq: 10,
+      lastTime: 0,
+      knownObjects: session2.objects,
+      knownTrash: session2.trash,
+    });
+
+    // 撤销删除：对象复活回活动区
+    const result = api2.undo();
+    expect(result.undone).toBe(true);
+    expect(boardCore2.getAllObjects().map((o) => o.id)).toEqual(["s1"]);
+    await journaler2.flush();
+
+    expect((await store.readAllObjects()).map((o) => o.id)).toEqual(["s1"]);
+    expect(await store.readAllTrash()).toEqual([]);
+  });
+
   test("超分子物化后一段含全部成员", async () => {
     const { boardCore, api, store } = setup();
     await store.create();
