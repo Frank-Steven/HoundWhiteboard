@@ -8,7 +8,7 @@
 
 当前 Core 可以按职责分为四层：
 
-1. **宿主层**：Tauri / 模板页面 / DOM 事件绑定 / 文件桥接宿主
+1. **宿主层**：Tauri（Rust 可信执行面：safe-io commands）/ 模板页面 / DOM 事件绑定
 2. **UI 线程层**：`src/ui/**`
 3. **Worker 层**：`src/host/**` + `src/renderers/**`
 4. **Kernel 层**：`src/kernel/**`
@@ -30,10 +30,12 @@ UI 线程负责：
 Worker 层负责真正的数据与渲染权威：
 
 - `CoreWorkerRuntime`：`src/host/core-worker.js` 中的消息入口与 RPC 调度器
-- `BoardCore`：对象、区块、AOM、UndoTree、持久化协调
+- `BoardCore`：对象、区块、AOM、时间回溯树、持久化协调
 - `ViewportCore`：Worker 视口状态、区块缓冲、`ViewportRenderer` 渲染输出
 - `ActiveObjectManager`：交互态对象与动态层关系
 - `kernel/chunk/`：区块、加载器、区块对象管理
+- `kernel/hit/`：操作日志与时间回溯树（撤销/重做权威）
+- `kernel/store/`：会话存储（日志跟随者增量落盘与会话恢复）
 - `renderers/canvas/`：`ViewportRenderer` 与 Worker 侧脏区绘制
 
 ### Kernel 层
@@ -95,13 +97,15 @@ Kernel 不依赖 DOM，也不依赖 Worker 宿主：
 - 命中查询与对象摘要查询
 - AOM 动态层与静态图提交
 - 视口区块缓冲与位图渲染
-- UndoTree 运行时骨架
+- 操作日志与时间回溯树（撤销/重做/远端应用）
+- 会话落盘与恢复（日志跟随者）
 
 ### Kernel 层职责
 
 - 对象、范围、渲染器基类的纯逻辑复用
 - Worker / UI / Node 测试之间共享的数据结构与算法
 - JSDoc typedef 与协议约定
+- 文档与操作的权威模型（hit）与持久化逻辑（store，文件原理由外部注入）
 
 ## 当前实现状态
 
@@ -110,8 +114,8 @@ Kernel 不依赖 DOM，也不依赖 Worker 宿主：
 - devices / prefixes / tools 全部停留在 UI 线程
 - 高频对象修改通过 `rpc-batch` 做微任务级合并发送
 - `hitTest`、`queryObjects`、`queryChunkObjects` 已接到 Worker 权威状态
-- `undo` / `redo` RPC 名称已预留，但当前仍是 `[todo]`
-- 持久化接口与文件桥接协议已存在，但 Worker runtime 默认仍使用 `createDefaultPersistenceAdapter()`；完整文件模式应视为进行中集成能力
+- `undo` / `redo` 已接通（含侧栏按钮与快捷键）
+- 持久化已接通：demo 以 `~/hound-whiteboard/demo-board` 为板目录运行，撤销历史穿越重开
 
 ## 关键术语
 

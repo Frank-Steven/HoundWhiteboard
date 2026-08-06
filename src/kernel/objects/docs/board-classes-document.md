@@ -1,6 +1,6 @@
 # 白板对象文档
 
-本文档提供当前白板对象族的概览，重点对应 `src/engine/objects/` 下已经存在的模块。
+本文档提供当前白板对象族的概览，重点对应 `src/kernel/objects/` 下已经存在的模块。
 
 ## 概述
 
@@ -27,7 +27,7 @@
 `Container` 定义在：
 
 ```text
-src/engine/objects/container.js
+src/kernel/objects/container.js
 ```
 
 它派生于 [BasicObject](./basic-classes-document.md)，并引入 `ContainerMode` 概念。
@@ -54,7 +54,7 @@ src/engine/objects/container.js
 定义于：
 
 ```text
-src/engine/objects/one-dim/one-dim-obj.js
+src/kernel/objects/one-dim/one-dim-obj.js
 ```
 
 当前在 `Container` 基础上增加：
@@ -67,7 +67,7 @@ src/engine/objects/one-dim/one-dim-obj.js
 定义于：
 
 ```text
-src/engine/objects/two-dim/two-dim-obj.js
+src/kernel/objects/two-dim/two-dim-obj.js
 ```
 
 当前主要作为二维对象的类型骨架存在。
@@ -77,7 +77,7 @@ src/engine/objects/two-dim/two-dim-obj.js
 图形对象相关模块位于：
 
 ```text
-src/engine/objects/graph/
+src/kernel/objects/graph/
 ```
 
 当前核心成员：
@@ -103,7 +103,7 @@ src/engine/objects/graph/
 构成，定义于：
 
 ```text
-src/engine/objects/stroke/stroke.js
+src/kernel/objects/stroke/stroke.js
 ```
 
 它的主要特征是：
@@ -119,7 +119,7 @@ src/engine/objects/stroke/stroke.js
 白板对象在持久化时，应先调用具体对象实例的 `serialize()` 生成普通 JSON 对象；恢复时，统一使用：
 
 ```text
-src/engine/objects/object-deserializer.js
+src/kernel/objects/object-deserializer.js
 ```
 
 中的 `deserialize()`。

@@ -1,6 +1,6 @@
 # chain 文档
 
-本文档提供 `src/engine/utils/chain.js` 的概述。
+本文档提供 `src/kernel/utils/chain.js` 的概述。
 
 ## 模块职责
 

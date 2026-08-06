@@ -1,6 +1,6 @@
 # path 文档
 
-本文档提供 `src/engine/utils/path.js` 的概述。
+本文档提供 `src/kernel/utils/path.js` 的概述。
 
 ## 模块职责
 
@@ -39,7 +39,7 @@
 - 磁盘盘符或绝对文件系统路径
 - 文件扩展名、目录存在性或规范化大小写
 
-这部分职责应由 `src/utils/filesys/` 或 Node.js 路径工具承担。
+这部分职责应由 `src/io/core/dsl` 或 Node.js 路径工具承担。
 
 ## 在仓库中的典型用途
 

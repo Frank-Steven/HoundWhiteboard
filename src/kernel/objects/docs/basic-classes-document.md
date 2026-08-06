@@ -1,6 +1,6 @@
 # 基础类型文档
 
-本文档提供白板中基础对象类型的概述，重点对应当前 `src/engine/objects/` 下的实现。
+本文档提供白板中基础对象类型的概述，重点对应当前 `src/kernel/objects/` 下的实现。
 
 ## 模块概览
 
@@ -112,7 +112,7 @@
 当前统一反序列化入口位于：
 
 ```text
-src/engine/objects/object-deserializer.js
+src/kernel/objects/object-deserializer.js
 ```
 
 对应导出：

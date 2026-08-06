@@ -1,6 +1,6 @@
 # deque 文档
 
-本文档提供 `src/engine/utils/deque.js` 的概述。
+本文档提供 `src/kernel/utils/deque.js` 的概述。
 
 ## 模块职责
 

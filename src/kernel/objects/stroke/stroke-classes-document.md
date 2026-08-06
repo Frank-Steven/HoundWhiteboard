@@ -1,13 +1,13 @@
 # 笔画对象文档
 
-本文档提供当前笔画对象族的概述，对应 `src/engine/objects/stroke/` 下的实现。
+本文档提供当前笔画对象族的概述，对应 `src/kernel/objects/stroke/` 下的实现。
 
 ## `StrokeObject`
 
 `StrokeObject` 定义于：
 
 ```text
-src/engine/objects/stroke/stroke.js
+src/kernel/objects/stroke/stroke.js
 ```
 
 它派生于 [BasicObject](../docs/basic-classes-document.md)，当前特征是：

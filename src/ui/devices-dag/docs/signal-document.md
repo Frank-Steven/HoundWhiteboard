@@ -26,7 +26,7 @@
 当前代码里，这个结构集中抽象为 [../dag-core/signal.js](../dag-core/signal.js) 中的 `SignalPacket` 类，对应源码路径：
 
 ```text
-src/ui-thread/devices-dag/dag-core/signal.js
+src/ui/devices-dag/dag-core/signal.js
 ```
 
 ## `SignalPacket` 的作用

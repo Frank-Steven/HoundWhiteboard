@@ -55,12 +55,12 @@
 - 让区块静态图与覆盖索引就绪
 - 不主动在这里装载对象实例
 
-### 完整加载 `loadFull(boardRootPath)`
+### 完整加载 `loadFull()`
 
 当前实现非常轻量：
 
 1. 若已完整加载，直接返回 `false`
-2. 若尚未加载，先执行 `loadTemp(boardRootPath)`
+2. 若尚未加载，先执行 `loadTemp()`
 3. 将 `isTempLoad` 置为 `false`
 
 需要特别说明：

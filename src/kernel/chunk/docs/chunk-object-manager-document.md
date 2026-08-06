@@ -113,13 +113,12 @@ chunks/{chunkId}.json
 - 被 [chunk-document.md](./chunk-document.md) 持有
 - 与 [board-core-document.md](../../board/docs/board-core-document.md) 一起维护对象与区块关系
 - 会被 [active-object-manager-document.md](../../board/docs/active-object-manager-document.md) 的跨区块逻辑间接依赖
-- 底层图结构依赖 `src/engine/utils/directed-graph.js`
+- 底层图结构依赖 `src/kernel/utils/directed-graph.js`
 
 ## 当前实现状态
 
-- 已实现：静态图管理、覆盖区块索引管理、区块元数据加载/保存、通过 `board` 间接获取对象实例、基于 `Range` 的覆盖区块计算
+- 已实现：静态图管理、覆盖区块索引管理、区块元数据加载/保存（经 `board.persistenceAdapter` 注入缝）、通过 `board` 间接获取对象实例、基于 `Range` 的覆盖区块计算
 - 已接线：对象创建/提交路径上的覆盖索引同步、AOM 跨区块操作读取覆盖索引
-- 需诚实说明：区块元数据读写当前仍直接调用 `boardFileOperateBridge`，尚未完全统一到纯 `persistenceAdapter` 路径
 
 ## 相关文档
 

@@ -1,6 +1,6 @@
 # queue 文档
 
-本文档提供 `src/engine/utils/queue.js` 的概述。
+本文档提供 `src/kernel/utils/queue.js` 的概述。
 
 ## 模块职责
 

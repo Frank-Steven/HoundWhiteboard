@@ -6,7 +6,7 @@
 
 > **定位**：标准链路（mouse / touchscreen 设备）的根 handler 已完成转换，**不需要**再挂本 prefix——挂在设备通道下游会导致二次转换。本 prefix 只用于**非标准链路**：信号源未经设备根节点转换时（如测试桩、自定义 adapter 直连 workflow），在边上补齐转换。详见 [设备文档的坐标转换约定](../../devices/docs/device-document.md#坐标转换约定)。
 
-源文件：`src/ui-thread/devices-dag/prefixes/canvas-to-world-handler.js`
+源文件：`src/ui/devices-dag/prefixes/canvas-to-world-handler.js`
 
 ## 信号转换规则
 

@@ -39,13 +39,13 @@ sequenceDiagram
 
 ### 消息类型
 
-| type              | 方向        | 说明                                               |
-| ----------------- | ----------- | -------------------------------------------------- |
-| `rpc`             | UI → Worker | 带 msgId 的单次远程调用，必有响应                  |
-| `rpc-batch`       | UI → Worker | 批量 fire-and-forget 消息，携带递增 batchId        |
-| `rpc-response`    | Worker → UI | RPC 调用结果，包含 result 或 error                 |
-| `rpc-batch-error` | Worker → UI | 批处理失败条目回执，仅在有条目失败时回传           |
-| `ready`           | Worker → UI | Worker 初始化完成通知                              |
+| type              | 方向        | 说明                                        |
+| ----------------- | ----------- | ------------------------------------------- |
+| `rpc`             | UI → Worker | 带 msgId 的单次远程调用，必有响应           |
+| `rpc-batch`       | UI → Worker | 批量 fire-and-forget 消息，携带递增 batchId |
+| `rpc-response`    | Worker → UI | RPC 调用结果，包含 result 或 error          |
+| `rpc-batch-error` | Worker → UI | 批处理失败条目回执，仅在有条目失败时回传    |
+| `ready`           | Worker → UI | Worker 初始化完成通知                       |
 
 ## API 面
 
@@ -67,11 +67,12 @@ sequenceDiagram
 
 ### 对象创建与提交
 
-| 方法                        | 说明                                                                           |
-| --------------------------- | ------------------------------------------------------------------------------ |
-| `createObject(type, props)` | 创建对象实例并加入 AOM 动态图。`props` 需含 `id` / `position`。不触发区块加载  |
-| `commitObjects(objectIds)`  | 将 AOM 中的对象按动态层关系写入区块静态图。走 `ActiveObjectManager.apply` 路径 |
-| `deleteObjects(objectIds)`  | 从 AOM 和静态图中彻底删除对象                                                  |
+| 方法                                | 说明                                                                                                                  |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `createObject(type, props)`         | 创建对象实例并加入 AOM 动态图。`props` 需含 `id` / `position`。不触发区块加载                                         |
+| `commitObjects(objectIds, options)` | 将 AOM 中的对象按动态层关系写入区块静态图。走 `ActiveObjectManager.apply` 路径；`options.supraKey` 可指定进入的超分子 |
+| `deleteObjects(objectIds, options)` | 删除对象并移入 trash（可撤销恢复）                                                                                    |
+| `eraseData(payload, options)`       | 数据擦除（轨迹段 + 半径）；`options.supraKey` 可指定会话 key 使一次擦除手势凝聚为一个节点                             |
 
 ### 对象修改（高频写入）
 
@@ -87,10 +88,10 @@ sequenceDiagram
 
 ### 批处理控制
 
-| 方法                   | 说明                                                                 |
-| ---------------------- | -------------------------------------------------------------------- |
-| `flush()`              | 强制 flush 当前批处理缓冲。resolve 时机为消息已写入传输层，不代表 Core 已应用 |
-| `onBatchError(handler)` | 订阅批处理条目失败回执，返回取消订阅函数                             |
+| 方法                    | 说明                                                                          |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| `flush()`               | 强制 flush 当前批处理缓冲。resolve 时机为消息已写入传输层，不代表 Core 已应用 |
+| `onBatchError(handler)` | 订阅批处理条目失败回执，返回取消订阅函数                                      |
 
 ### AOM 控制
 
@@ -109,10 +110,25 @@ sequenceDiagram
 
 ### 撤销 / 重做
 
-| 方法     | 说明   |
-| -------- | ------ |
-| `undo()` | [todo] |
-| `redo()` | [todo] |
+| 方法     | 说明                               |
+| -------- | ---------------------------------- |
+| `undo()` | 撤销（目标节点语义，含截断形态）   |
+| `redo()` | 重做（重做栈为派生投影，条件应用） |
+
+### 超分子会话
+
+| 方法              | 说明                                         |
+| ----------------- | -------------------------------------------- |
+| `beginSupra(key)` | 按 key 开启超分子（成员缓冲为草稿）          |
+| `endSupra(key)`   | 闭合并简并定稿，成员整体入日志、凝聚为单节点 |
+| `abortSupra(key)` | 中止并丢弃缓冲成员                           |
+
+### 会话元数据
+
+| 方法                                     | 说明                                         |
+| ---------------------------------------- | -------------------------------------------- |
+| `reportObjectIdCounter(source, counter)` | 上报 UI 侧对象 id 池计数（随板元数据持久化） |
+| `getObjectIdCounters()`                  | 读取对象 id 池计数表（重开板后续种）         |
 
 ### 调试
 

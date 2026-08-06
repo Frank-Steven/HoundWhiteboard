@@ -1,6 +1,6 @@
 # 图形对象文档
 
-本文档提供当前图形对象族的概述，对应 `src/engine/objects/graph/` 下的实现。
+本文档提供当前图形对象族的概述，对应 `src/kernel/objects/graph/` 下的实现。
 
 ## 概述
 
@@ -18,7 +18,7 @@
 `GraphObject` 定义于：
 
 ```text
-src/engine/objects/graph/graph.js
+src/kernel/objects/graph/graph.js
 ```
 
 它派生于 [BasicObject](../docs/basic-classes-document.md)，并统一约定：

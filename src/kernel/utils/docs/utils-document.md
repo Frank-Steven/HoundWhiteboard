@@ -1,8 +1,8 @@
 # utils 文档
 
-本文档提供 `src/engine/utils/` 的总览。
+本文档提供 `src/kernel/utils/` 的总览。
 
-`src/engine/utils/` 负责提供 Core 运行时共用的基础结构、数学能力和路径工具。这一层只提供通用能力，不直接决定白板业务规则。
+`src/kernel/utils/` 负责提供 Core 运行时共用的基础结构、数学能力和路径工具。这一层只提供通用能力，不直接决定白板业务规则。
 
 ## 模块分组
 
@@ -30,7 +30,7 @@
 
 ## 目录关系
 
-- 这一层服务于 `src/engine/`、`src/ui-thread/` 和 `src/engine/` 中的各模块。
+- 这一层服务于 `src/kernel/`、`src/ui/` 和 `src/kernel/` 中的各模块。
 - `math.js`、`math3d.js` 和 `math-algorithm.js` 负责几何表达与交互计算。
 - `queue.js`、`deque.js`、`chain.js`、`directed-graph.js` 负责提供基础容器。
 - `path.js` 只处理 Core 内部逻辑路径，不处理操作系统文件路径。
@@ -46,6 +46,6 @@
 
 ## 当前状态
 
-- 当前文档集已经覆盖 `src/engine/utils/` 下现有模块。
+- 当前文档集已经覆盖 `src/kernel/utils/` 下现有模块。
 - 文档按当前实现描述，不把未来扩展写成既有能力。
 - 若后续新增工具模块，建议继续沿用“总览区块 + 单模块文档”的组织方式。

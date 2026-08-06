@@ -1,20 +1,21 @@
 # Core 模块详解
 
-本文档按 `src/kernel/` + `src/ui/` + `src/host/bridges/` 当前目录结构总结各模块职责与协作关系。
+本文档按 `src/kernel/` + `src/ui/` + `src/host/` + `src/io/` 当前目录结构总结各模块职责与协作关系。
 
 更细的线程边界见 [core-runtime-boundaries.md](./core-runtime-boundaries.md)。
 
 ## 顶层目录
 
-| 目录            | 主要职责                         | 说明                                                                |
-| --------------- | -------------------------------- | ------------------------------------------------------------------- |
-| `kernel/`       | 内核层（零 canvas/DOM）          | 对象模型、range、BoardCore、chunk、AOM、hit、api                    |
-| `renderers/`    | 渲染插件                         | canvas 渲染器、绘制策略注册表                                       |
-| `host/`         | 组合根与通道                     | core-worker、bridges（RPC、持久化接口、文件 I/O bridge）            |
-| `ui/`           | UI 线程运行时                    | Board、Viewport、DevicesDAG、UiRenderer                             |
-| `test-support/` | 测试支撑                         | canvas mock、worker-mode fixture、AOM fixture                       |
-| `tests/`        | 跨模块冒烟测试                   | Board 输入流、Worker smoke、共享模块 smoke                          |
-| `docs/`         | 架构总览文档                     | 当前这组顶层说明文档                                                |
+| 目录            | 主要职责                | 说明                                                                  |
+| --------------- | ----------------------- | --------------------------------------------------------------------- |
+| `kernel/`       | 内核层（零 canvas/DOM） | 对象模型、range、BoardCore、chunk、AOM、hit、api、store               |
+| `renderers/`    | 渲染插件                | canvas 渲染器、绘制策略注册表                                         |
+| `host/`         | 组合根与通道            | core-worker、bridges（RPC、IO 转发）                                  |
+| `io/`           | 安全文件操作            | 路径 DSL 与权限策略、driver 三实现、PersistenceAdapter 实现、对外 api |
+| `ui/`           | UI 线程运行时           | Board、Viewport、DevicesDAG、UiRenderer                               |
+| `test-support/` | 测试支撑                | canvas mock、worker-mode fixture、AOM fixture                         |
+| `tests/`        | 跨模块冒烟测试          | Board 输入流、Worker smoke、共享模块 smoke                            |
+| `docs/`         | 架构总览文档            | 当前这组顶层说明文档                                                  |
 
 ## `ui/`
 
@@ -89,6 +90,16 @@
 - RPC / `rpc-batch` 分发
 - `viewport-change` / `request-render-flush` 处理
 - `render-frame` 回传
+- 持久化装配：rootPath 有效时注册根目录、恢复会话并挂接日志跟随者
+
+### `host/bridges/`
+
+- `board-api-rpc.js`：UI 侧 RPC 客户端（`rpc` / `rpc-batch` / `rpc-response`）
+- `io-invoke-forwarder.js`：worker 内驱动的文件操作转发到主线程 Tauri invoke
+
+## `io/`
+
+`io/` 是安全文件操作框架（safe-io v4），分层为 core（路径 DSL 与权限策略，纯 JS 零依赖）、driver（IoDriver 契约与 memory / node / tauri 三实现）、adapter（PersistenceAdapter 实现）、api（registerRoot → open → handle）。Tauri 模式下安全判断下沉 Rust 可信执行面（`src-tauri/src/commands/`）。详见 [../io/README.md](../io/README.md)。
 
 ## `kernel/`
 
@@ -101,6 +112,7 @@
 | `board-core.js`            | Worker 侧白板权威状态，对象、区块、AOM、UndoTree、持久化协调 |
 | `active-object-manager.js` | 动态图与活动对象生命周期                                     |
 | `aom-render-hooks.js`      | 渲染 hook 协议（kernel 调渲染的注入缝）与默认空实现          |
+| `persistence-adapter.js`   | 持久化适配器契约与默认无操作实现                             |
 
 ### `kernel/chunk/`
 
@@ -123,10 +135,24 @@
 
 ### `kernel/hit/`
 
-- `undo-tree-core.js`：UndoTree 骨架
-- `operation.js`：操作结构定义
+- `operation.js`：八类分子操作记录模型（载荷、校验、id 构造、时钟环比较）
+- `operation-log.js`：append-only 操作日志（序号连续与时间单调把关、追加事件订阅、序列化往返）
+- `undo-tree-core.js`：时间回溯树（f(日志) 派生、统一撤销三形态与截断、重做栈派生投影、超分子节点）
+- `hit-committer.js`：commit 边界单管线（记录构造、时间标记、指定式超分子与简并）
 
-当前撤销/重做入口仍属 `[todo]`。
+详见 `kernel/hit/docs/` 四篇文档。
+
+### `kernel/api/`
+
+- `board-api.js`：BoardApi 契约面（对象操作、AOM 控制、擦除、撤销/重做、远端应用入口、会话元数据）
+- `board-api-routes.js`：RPC 路由表（方法名到契约面方法的分发与 flush 策略）
+
+### `kernel/store/`
+
+- `session-store.js`：会话存储布局（board.json / objects / trash / chunks / hit 日志段）与 SessionDriver 注入缝
+- `journaler.js`：日志跟随者（append 事件驱动、微任务合批、指纹调和落盘）
+
+详见 [../kernel/store/docs/store-document.md](../kernel/store/docs/store-document.md)。
 
 ### `kernel/objects/`
 
