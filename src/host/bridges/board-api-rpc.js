@@ -478,6 +478,24 @@ class BoardApiRpc {
   }
 
   /**
+   * 上报 UI 侧对象 id 池计数（随板元数据持久化）
+   * @param {string} source - 来源标识
+   * @param {number} counter - 已分配的最大计数
+   * @returns {Promise<boolean>} 是否成功
+   */
+  async reportObjectIdCounter(source, counter) {
+    return this.#call("reportObjectIdCounter", { source, counter });
+  }
+
+  /**
+   * 读取 UI 侧对象 id 池计数表（重开板后续种）
+   * @returns {Promise<Object<string, number>>} 各来源已分配的最大计数
+   */
+  async getObjectIdCounters() {
+    return this.#call("getObjectIdCounters", {});
+  }
+
+  /**
    * 按区块查询对象 id
    * @param {number[]} chunkIds - 区块 id 列表
    * @returns {Promise<string[]>} 对象 id 列表

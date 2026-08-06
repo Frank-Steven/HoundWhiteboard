@@ -165,6 +165,13 @@ class BoardCore {
   #idAllocatorTable = new Map();
 
   /**
+   * UI 侧对象 id 池计数表
+   * @description 键为来源标识，值为该来源已分配的最大计数；随板元数据持久化，重开续种。
+   * @type {Map<string, number>}
+   */
+  #objectIdCounters = new Map();
+
+  /**
    * 日志 Logger
    * @type {Logger}
    */
@@ -181,6 +188,7 @@ class BoardCore {
    *   hitRecords?: Object[],
    *   lastTime?: number,
    *   coreIdCounters?: Object<string, number>,
+   *   objectIdCounters?: Object<string, number>,
    * }} [options={}] - 白板核心初始化选项
    */
   constructor(options = {}) {
@@ -227,6 +235,13 @@ class BoardCore {
         source,
         new IncrementalIdPool(source ? `${source}/core` : "core", counter),
       );
+    }
+    for (const [source, counter] of Object.entries(
+      options.objectIdCounters ?? {},
+    )) {
+      if (Number.isInteger(counter)) {
+        this.#objectIdCounters.set(source, counter);
+      }
     }
 
     this.#bindChunkLoadEvents();
@@ -415,14 +430,41 @@ class BoardCore {
 
   /**
    * 收集随板元数据持久化的会话状态
-   * @returns {{coreIdCounters: Object<string, number>}} 各来源的 Core id 已分配最大计数
+   * @returns {{coreIdCounters: Object<string, number>, objectIdCounters: Object<string, number>}} 会话计数器
    */
   collectSessionMeta() {
     const coreIdCounters = {};
     for (const [source, allocator] of this.#idAllocatorTable) {
       coreIdCounters[source] = allocator.counter;
     }
-    return { coreIdCounters };
+    return {
+      coreIdCounters,
+      objectIdCounters: Object.fromEntries(this.#objectIdCounters),
+    };
+  }
+
+  /**
+   * 上报 UI 侧对象 id 池计数
+   * @param {string} source - 来源标识
+   * @param {number} counter - 已分配的最大计数
+   * @returns {boolean} 是否接受（单调取大，回拨拒绝）
+   */
+  reportObjectIdCounter(source, counter) {
+    if (typeof source !== "string" || !Number.isInteger(counter) || counter < 0) {
+      return false;
+    }
+    const current = this.#objectIdCounters.get(source) ?? 0;
+    if (counter < current) return false;
+    this.#objectIdCounters.set(source, counter);
+    return true;
+  }
+
+  /**
+   * 读取 UI 侧对象 id 池计数表
+   * @returns {Object<string, number>} 各来源已分配的最大计数
+   */
+  getObjectIdCounters() {
+    return Object.fromEntries(this.#objectIdCounters);
   }
 
   /**

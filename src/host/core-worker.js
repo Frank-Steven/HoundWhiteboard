@@ -429,6 +429,7 @@ class CoreWorkerRuntime {
         : undefined,
       lastTime: persistence?.session?.meta?.lastTime,
       coreIdCounters: persistence?.session?.meta?.coreIdCounters,
+      objectIdCounters: persistence?.session?.meta?.objectIdCounters,
     });
 
     const renderHooks = this.#createViewportRenderHooks();

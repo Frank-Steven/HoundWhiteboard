@@ -180,7 +180,26 @@ class Board {
    * @returns {string} 携带来源命名空间的字符串 id
    */
   allocateObjectId() {
-    return this.#idPool.allocate();
+    const id = this.#idPool.allocate();
+    // 计数随板元数据持久化（上报在随后的 createObject 之前到达内核，同一通道保序）
+    void this.#boardApi?.reportObjectIdCounter?.(
+      this.idSource,
+      this.#idPool.counter,
+    );
+    return id;
+  }
+
+  /**
+   * 按会话元数据续种对象 id 池
+   * @param {Object<string, number>} counters - 各来源已分配的最大计数
+   * @returns {void}
+   * @private
+   */
+  #reseedIdPool(counters) {
+    const counter = counters?.[this.idSource];
+    if (Number.isInteger(counter) && counter > 0) {
+      this.#idPool.ensureAbove(counter);
+    }
   }
 
   /**
@@ -221,6 +240,9 @@ class Board {
         height: this.height,
         rootPath: this.rootPath,
       });
+      // 按会话元数据续种对象 id 池，避免重开后分配碰撞
+      const counters = await boardApi.getObjectIdCounters();
+      this.#reseedIdPool(counters);
     } catch (error) {
       boardApi.destroy(error?.message ?? "Failed to enable worker mode.");
       throw error;

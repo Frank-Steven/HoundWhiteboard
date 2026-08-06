@@ -99,6 +99,7 @@ async function openSession(store) {
     hitRecords: session.records,
     lastTime: session.meta?.lastTime ?? 0,
     coreIdCounters: session.meta?.coreIdCounters ?? {},
+    objectIdCounters: session.meta?.objectIdCounters ?? {},
   });
   boardCore.restoreSession(session);
   return { boardCore, api: new BoardApi(boardCore), session };
@@ -180,6 +181,35 @@ describe("会话恢复", () => {
     // 新 commit 时间不回拨
     const tail = b.operationLog.toArray().at(-1);
     expect(tail.time).toBeGreaterThanOrEqual(session.meta.lastTime);
+  });
+
+  test("UI 侧对象 id 计数器随元数据持久化与恢复", async () => {
+    const store = await setup();
+    const boardCore = createBoard();
+    const journaler = createJournaler({
+      boardCore,
+      store,
+      collectMeta: () => boardCore.collectSessionMeta(),
+    });
+    journaler.attach();
+
+    // UI 侧上报：demo 来源已分配到 7
+    expect(boardCore.reportObjectIdCounter("demo", 7)).toBe(true);
+    // 回拨拒绝
+    expect(boardCore.reportObjectIdCounter("demo", 5)).toBe(false);
+    await journaler.flush();
+    await journaler.detach();
+
+    const session = await store.loadAll();
+    expect(session.meta.objectIdCounters).toEqual({ demo: 7 });
+
+    const b = createBoard({
+      hitRecords: session.records,
+      lastTime: session.meta?.lastTime ?? 0,
+      coreIdCounters: session.meta?.coreIdCounters ?? {},
+      objectIdCounters: session.meta?.objectIdCounters ?? {},
+    });
+    expect(b.getObjectIdCounters()).toEqual({ demo: 7 });
   });
 
   test("重开后撤销擦除：分裂段消失，原笔恢复", async () => {

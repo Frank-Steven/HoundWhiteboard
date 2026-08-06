@@ -138,6 +138,7 @@ describe("会话录制回放一致性", () => {
       hitRecords: session.records,
       lastTime: session.meta?.lastTime ?? 0,
       coreIdCounters: session.meta?.coreIdCounters ?? {},
+      objectIdCounters: session.meta?.objectIdCounters ?? {},
     });
     b.restoreSession(session);
 
@@ -166,6 +167,7 @@ describe("会话录制回放一致性", () => {
       hitRecords: session.records,
       lastTime: session.meta?.lastTime ?? 0,
       coreIdCounters: session.meta?.coreIdCounters ?? {},
+      objectIdCounters: session.meta?.objectIdCounters ?? {},
     });
     b.restoreSession(session);
     const apiB = new BoardApi(b);

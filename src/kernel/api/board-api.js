@@ -852,6 +852,27 @@ class BoardApi {
   }
 
   /**
+   * 上报 UI 侧对象 id 池计数
+   * @param {string} source - 来源标识
+   * @param {number} counter - 已分配的最大计数
+   * @returns {boolean} 是否接受（单调取大，回拨不报）
+   *
+   * @description
+   * UI 侧对象 id 池的计数随板元数据持久化，重开板后续种防碰撞。
+   */
+  reportObjectIdCounter(source, counter) {
+    return this.#boardCore.reportObjectIdCounter(source, counter);
+  }
+
+  /**
+   * 读取 UI 侧对象 id 池计数表
+   * @returns {Object<string, number>} 各来源已分配的最大计数
+   */
+  getObjectIdCounters() {
+    return this.#boardCore.getObjectIdCounters();
+  }
+
+  /**
    * 按 id 查询对象摘要
    * @param {string[]} ids - 对象 id 列表
    * @returns {import("../types/types.js").ObjectSummary[]} 对象摘要列表

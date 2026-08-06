@@ -131,6 +131,22 @@ const BOARD_API_ROUTES = {
   },
 
   /**
+   * 上报 UI 侧对象 id 池计数
+   */
+  reportObjectIdCounter: {
+    invoke: (api, p) => api.reportObjectIdCounter(p.source, p.counter),
+    flush: "none",
+  },
+
+  /**
+   * 读取 UI 侧对象 id 池计数表
+   */
+  getObjectIdCounters: {
+    invoke: (api) => api.getObjectIdCounters(),
+    flush: "none",
+  },
+
+  /**
    * 按区块查询对象 id
    */
   queryChunkObjects: {

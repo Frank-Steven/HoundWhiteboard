@@ -66,6 +66,22 @@ class FakeWorkerEndpoint {
         result: { ok: true },
       });
     }
+
+    if (message?.type === "rpc" && message?.method === "getObjectIdCounters") {
+      this.emit({
+        type: "rpc-response",
+        msgId: message.msgId,
+        result: this.objectIdCounters ?? {},
+      });
+    }
+
+    if (message?.type === "rpc" && message?.method === "reportObjectIdCounter") {
+      this.emit({
+        type: "rpc-response",
+        msgId: message.msgId,
+        result: true,
+      });
+    }
   }
 
   /**
@@ -164,6 +180,36 @@ function installMockDocument() {
 }
 
 describe("Board worker mode", () => {
+  test("enableWorkerMode 按会话元数据续种对象 id 池", async () => {
+    const board = new Board({ width: 800, height: 600, idSource: "demo" });
+    const worker = new FakeWorkerEndpoint();
+    // 板元数据里 demo 来源已分配到 9
+    worker.objectIdCounters = { demo: 9 };
+
+    const enablePromise = board.enableWorkerMode(worker);
+    worker.emit({ type: "ready" });
+    await enablePromise;
+
+    expect(board.allocateObjectId()).toBe("demo/10");
+    expect(board.allocateObjectId()).toBe("demo/11");
+
+    // 分配即上报内核（随板元数据持久化）
+    const reports = worker.postedMessages.filter(
+      (m) => m.type === "rpc" && m.method === "reportObjectIdCounter",
+    );
+    expect(reports.map((m) => m.params.counter)).toEqual([10, 11]);
+  });
+
+  test("空板时 id 池从 1 开始", async () => {
+    const board = new Board({ width: 800, height: 600, idSource: "demo" });
+    const worker = new FakeWorkerEndpoint();
+
+    const enablePromise = board.enableWorkerMode(worker);
+    worker.emit({ type: "ready" });
+    await enablePromise;
+
+    expect(board.allocateObjectId()).toBe("demo/1");
+  });
   test("enableWorkerMode 后 createViewport 应返回 Viewport 并发送 createViewport RPC", async () => {
     const restoreAnimationFrame = installMockAnimationFrame();
     const restoreDocument = installMockDocument();

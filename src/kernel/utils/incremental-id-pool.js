@@ -60,6 +60,20 @@ class IncrementalIdPool {
   get counter() {
     return this.#counterPool.counter;
   }
+
+  /**
+   * 确保计数不低于指定值
+   * @param {number} n - 已使用的最大计数
+   * @returns {void}
+   *
+   * @description
+   * 会话恢复时按盘上已存在的 id 续号，避免重开后分配碰撞。
+   */
+  ensureAbove(n) {
+    if (Number.isInteger(n) && n > this.#counterPool.counter) {
+      this.#counterPool.counter = n;
+    }
+  }
 }
 
 export { IncrementalIdPool };
