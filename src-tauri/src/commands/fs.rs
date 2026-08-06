@@ -11,6 +11,7 @@ use super::registry;
 
 /// 目录条目
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FsEntry {
     pub name: String,
     pub is_dir: bool,
@@ -21,6 +22,7 @@ pub struct FsEntry {
 
 /// 文件状态
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FsStat {
     pub size: u64,
     pub is_dir: bool,

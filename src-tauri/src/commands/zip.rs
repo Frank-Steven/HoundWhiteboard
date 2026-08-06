@@ -12,6 +12,7 @@ use super::registry;
 
 /// ZIP 条目
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ZipEntryInfo {
     pub name: String,
     pub size: u64,
