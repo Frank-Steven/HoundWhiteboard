@@ -417,9 +417,11 @@ class CoreWorkerRuntime {
 
     const persistence = await this.#setupPersistence(options.rootPath);
 
+    // 盘上板配置优先：板尺寸是文档数据（决定区块划分），重开必须与原值一致
+    const boardConfig = persistence?.session?.meta?.boardConfig;
     this.#boardCore = new BoardCore({
-      width: options.width,
-      height: options.height,
+      width: boardConfig?.width || options.width,
+      height: boardConfig?.height || options.height,
       rootPath: options.rootPath,
       persistenceAdapter:
         persistence?.adapter ?? createDefaultPersistenceAdapter(),

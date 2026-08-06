@@ -430,7 +430,7 @@ class BoardCore {
 
   /**
    * 收集随板元数据持久化的会话状态
-   * @returns {{coreIdCounters: Object<string, number>, objectIdCounters: Object<string, number>}} 会话计数器
+   * @returns {{boardConfig: {width: number, height: number}, coreIdCounters: Object<string, number>, objectIdCounters: Object<string, number>}} 会话计数器与板配置
    */
   collectSessionMeta() {
     const coreIdCounters = {};
@@ -438,6 +438,10 @@ class BoardCore {
       coreIdCounters[source] = allocator.counter;
     }
     return {
+      // 板尺寸为 0 表示未知（未设置），不写入元数据，避免覆盖调用方显式配置
+      ...(this.width > 0 && this.height > 0
+        ? { boardConfig: { width: this.width, height: this.height } }
+        : {}),
       coreIdCounters,
       objectIdCounters: Object.fromEntries(this.#objectIdCounters),
     };
