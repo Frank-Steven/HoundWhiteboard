@@ -79,7 +79,7 @@ src/
 /**
  * @file 简短描述，不加句号
  * @description 一句话职责说明，以句号结尾。
- * @module {kernel|canvas|host|ui}/{path/to/module}
+ * @module {kernel|canvas|host|ui|io}/{path/to/module}
  * @author {git config user.name}
  */
 ```
