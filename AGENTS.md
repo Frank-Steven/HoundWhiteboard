@@ -41,6 +41,7 @@ src/
 │   ├── chunk/               # 区块（空间分区）
 │   ├── board/               # Board 权威状态（BoardCore 静态图 / AOM / render-hooks 缝）
 │   ├── hit/                 # 操作日志与时间回溯树
+│   ├── store/               # 会话存储（布局 v1、日志跟随者落盘、恢复）
 │   ├── api/                 # BoardApi 契约面
 │   ├── utils/               # 内核工具（id 池、图、数学）
 │   └── types/               # 类型定义
@@ -48,6 +49,7 @@ src/
 │   └── canvas/              # canvas 渲染插件（viewport-renderer、绘制策略注册表）
 ├── host/                    # 组合根 + 通道（core-worker、debug-helper、bridges/）
 ├── io/                      # 安全文件操作（core 契约 / driver / adapter / api）
+├── cli/                     # 无头第二前端（node 直读直写板文件）
 ├── ui/                      # UI front（Board / Viewport / DevicesDAG / Tools / overlay）
 ├── utils/                   # 应用级工具（log）
 ├── docs/                    # 架构文档
@@ -79,7 +81,7 @@ src/
 /**
  * @file 简短描述，不加句号
  * @description 一句话职责说明，以句号结尾。
- * @module {kernel|canvas|host|ui|io}/{path/to/module}
+ * @module {kernel|canvas|host|ui|io|cli}/{path/to/module}
  * @author {git config user.name}
  */
 ```

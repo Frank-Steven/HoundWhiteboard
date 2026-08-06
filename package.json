@@ -37,6 +37,8 @@
     "build:desktop-platforms": "htb build desktop-platforms",
     "build:mobile": "htb build mobile",
     "build:all": "htb build all",
+    "cli": "node src/cli/index.js",
+    "cli": "node src/cli/index.js",
     "test": "node --experimental-vm-modules --localstorage-file=/tmp/jest-localstorage node_modules/jest/bin/jest.js --passWithNoTests",
     "ship": "htb ship",
     "ship:win": "htb ship win",
