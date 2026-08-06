@@ -6,9 +6,10 @@
 
 本项目专注于白板内核与 Tauri 桌面端：
 
-- **Kernel** — 对象模型、几何、区块、BoardCore 静态图、AOM 动态图、操作日志（hit）与 BoardApi 契约；零 canvas/DOM，可运行于 Worker、UI 线程或 Node 环境
+- **Kernel** — 对象模型、几何、区块、BoardCore 静态图、AOM 动态图、操作日志（hit）、会话存储（store）与 BoardApi 契约；零 canvas/DOM，可运行于 Worker、UI 线程或 Node 环境
 - **Renderer 插件** — canvas 渲染器贴附内核同宿运行：脏区渲染、位图合成、对象绘制策略注册表；渲染过程不过桥，RPC 只过操作与帧
 - **Host** — 组合根与通道：Core Worker 宿主与 bridges，决定内核与渲染器进程内直连（standalone）还是 RPC 绑定（Worker）
+- **CLI** — 命令行第二前端：Node 环境直读直写板文件，全程经 BoardApi 契约
 - **Devices DAG** — 输入设备路由图，将鼠标/键盘/触摸等输入信号路由到对应的工具处理器
 - **Tool System** — 创建、选择、修改、擦除等交互工具
 
@@ -18,13 +19,15 @@ UI Kit 另由 [HoundTek/hound-react-ui-kit](https://github.com/HoundTek/hound-re
 
 ```
 src/
-├── kernel/        # 内核包（零 canvas/DOM：对象、几何、区块、BoardCore、AOM、hit、BoardApi）
+├── kernel/        # 内核包（零 canvas/DOM：对象、几何、区块、BoardCore、AOM、hit、store、BoardApi）
 ├── renderers/     # 渲染插件（canvas 渲染器、绘制策略注册表）
-├── host/          # 组合根与通道（core-worker、bridges/RPC）
+├── host/          # 组合根与通道（core-worker、bridges/RPC、IO 转发）
+├── io/            # 安全文件操作（core 契约 / driver / adapter / api）
+├── cli/           # 命令行第二前端（node 直读直写板文件）
 ├── ui/            # UI front（Board、Viewport、DevicesDAG、Tools、overlay）
 ├── docs/          # 架构文档
 ├── demo/          # 白板 HTML/CSS/JS 入口
-├── utils/         # 应用级工具（filesys、log、safe-io）
+├── utils/         # 应用级工具（log）
 └── src-tauri/     # Rust 后端（Cargo workspace）
 ```
 
@@ -56,14 +59,24 @@ yarn build
 
 ### 开发
 
-| 命令              | 说明                       |
-| ----------------- | -------------------------- |
-| `yarn dev`        | Tauri 开发模式（带热更新） |
-| `yarn dev:win`    | Windows 开发模式           |
-| `yarn dev:mac`    | macOS 开发模式             |
-| `yarn dev:linux`  | Linux 开发模式             |
-| `yarn dev:android`| Android 开发模式           |
-| `yarn dev:ios`    | iOS 开发模式               |
+| 命令               | 说明                       |
+| ------------------ | -------------------------- |
+| `yarn dev`         | Tauri 开发模式（带热更新） |
+| `yarn dev:win`     | Windows 开发模式           |
+| `yarn dev:mac`     | macOS 开发模式             |
+| `yarn dev:linux`   | Linux 开发模式             |
+| `yarn dev:android` | Android 开发模式           |
+| `yarn dev:ios`     | iOS 开发模式               |
+
+### CLI
+
+| 命令                       | 说明              |
+| -------------------------- | ----------------- |
+| `yarn cli <命令> <板目录>` | 以 CLI 读写板文件 |
+
+详细命令面与使用说明见 [src/cli/docs/cli-document.md](src/cli/docs/cli-document.md)。
+
+注意：目前 CLI 是直接对文件的读写，不会与 GUI 同步。
 
 ### 测试与 CI
 

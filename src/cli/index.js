@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * @file Hound Whiteboard CLI 入口
- * @description 无头第二前端：直接以 BoardApi 契约读写板文件，全程 Node 环境。
+ * @description 命令行第二前端：直接以 BoardApi 契约读写板文件，全程 Node 环境。
  * @module cli/index
  * @author Zhou Chenyu
  */

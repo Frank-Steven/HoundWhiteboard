@@ -27,6 +27,9 @@ yarn ci-check                   # 文档链接 + @module 路径一致性检查
 yarn bench                      # 全部基准
 yarn bench:io                   # I/O 桥接基准
 yarn bench:io:direct            # I/O 直连基准
+
+# CLI
+yarn cli <命令> <板目录>        # 直读直写板文件（见 src/cli/docs/cli-document.md）
 ```
 
 运行测试需要 `NODE_OPTIONS='--experimental-vm-modules --localstorage-file=/tmp/jest-localstorage'`（`package.json` 已配好）。
@@ -49,7 +52,7 @@ src/
 │   └── canvas/              # canvas 渲染插件（viewport-renderer、绘制策略注册表）
 ├── host/                    # 组合根 + 通道（core-worker、debug-helper、bridges/）
 ├── io/                      # 安全文件操作（core 契约 / driver / adapter / api）
-├── cli/                     # 无头第二前端（node 直读直写板文件）
+├── cli/                     # 命令行第二前端（node 直读直写板文件）
 ├── ui/                      # UI front（Board / Viewport / DevicesDAG / Tools / overlay）
 ├── utils/                   # 应用级工具（log）
 ├── docs/                    # 架构文档

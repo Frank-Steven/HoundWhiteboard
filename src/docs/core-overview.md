@@ -116,6 +116,7 @@ Kernel 不依赖 DOM，也不依赖 Worker 宿主：
 - `hitTest`、`queryObjects`、`queryChunkObjects` 已接到 Worker 权威状态
 - `undo` / `redo` 已接通（含侧栏按钮与快捷键）
 - 持久化已接通：demo 以 `~/hound-whiteboard/demo-board` 为板目录运行，撤销历史穿越重开
+- CLI 前端已接通：`yarn cli` 直读直写板文件（`src/cli/`；与 GUI 不同步，GUI 运行期间勿操作同一板目录）
 
 ## 关键术语
 
@@ -132,3 +133,4 @@ Kernel 不依赖 DOM，也不依赖 Worker 宿主：
 - [core-input-flow.md](./core-input-flow.md)
 - [core-runtime-boundaries.md](./core-runtime-boundaries.md)
 - [core-stable-interfaces.md](./core-stable-interfaces.md)
+- [cli-document.md](../cli/docs/cli-document.md)

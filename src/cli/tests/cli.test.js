@@ -1,6 +1,6 @@
 /**
  * @file CLI 端到端测试
- * @description 以子进程驱动 CLI 验证第二前端契约：加载、修改、保存板文件全程无头可用。
+ * @description 以子进程驱动 CLI 验证第二前端契约：加载、修改、保存板文件全程命令行可用。
  * @module cli/tests/cli.test
  * @author Zhou Chenyu
  */

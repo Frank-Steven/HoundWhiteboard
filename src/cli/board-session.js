@@ -1,6 +1,6 @@
 /**
  * @file CLI 板会话装配
- * @description 无头组合根：node driver + 会话存储 + BoardCore + 日志跟随者 + BoardApi。
+ * @description 命令行组合根：node driver + 会话存储 + BoardCore + 日志跟随者 + BoardApi。
  * @module cli/board-session
  * @author Zhou Chenyu
  */

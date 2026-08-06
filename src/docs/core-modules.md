@@ -12,6 +12,7 @@
 | `renderers/`    | 渲染插件                | canvas 渲染器、绘制策略注册表                                         |
 | `host/`         | 组合根与通道            | core-worker、bridges（RPC、IO 转发）                                  |
 | `io/`           | 安全文件操作            | 路径 DSL 与权限策略、driver 三实现、PersistenceAdapter 实现、对外 api |
+| `cli/`          | 命令行第二前端          | node 直读直写板文件，全程经 BoardApi 契约                             |
 | `ui/`           | UI 线程运行时           | Board、Viewport、DevicesDAG、UiRenderer                               |
 | `test-support/` | 测试支撑                | canvas mock、worker-mode fixture、AOM fixture                         |
 | `tests/`        | 跨模块冒烟测试          | Board 输入流、Worker smoke、共享模块 smoke                            |
@@ -100,6 +101,10 @@
 ## `io/`
 
 `io/` 是安全文件操作框架（safe-io v4），分层为 core（路径 DSL 与权限策略，纯 JS 零依赖）、driver（IoDriver 契约与 memory / node / tauri 三实现）、adapter（PersistenceAdapter 实现）、api（registerRoot → open → handle）。Tauri 模式下安全判断下沉 Rust 可信执行面（`src-tauri/src/commands/`）。详见 [../io/README.md](../io/README.md)。
+
+## `cli/`
+
+`cli/` 是命令行第二前端：node driver 直读直写板文件，每次调用完整走完「装配 → 恢复 → 执行 → 落盘」循环，证明 BoardApi 契约面的完整边界。与 GUI 不同步：GUI 运行期间操作同一板目录会互相覆盖，只应在 GUI 未运行时使用。详见 [../cli/docs/cli-document.md](../cli/docs/cli-document.md)。
 
 ## `kernel/`
 
