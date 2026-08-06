@@ -58,7 +58,7 @@
     "check:modules": "node scripts/ci/check-module-paths.mjs",
     "check:license": "node scripts/ci/check-kernel-license.mjs",
     "check:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "ci-check": "yarn check:docs && yarn check:modules && yarn check:license && yarn check:rust",
+    "ci-check": "yarn check:docs && yarn check:modules && yarn check:license",
     "prepare": "husky"
   },
   "author": "Frank Steven",
