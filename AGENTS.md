@@ -47,8 +47,9 @@ src/
 ├── renderers/
 │   └── canvas/              # canvas 渲染插件（viewport-renderer、绘制策略注册表）
 ├── host/                    # 组合根 + 通道（core-worker、debug-helper、bridges/）
+├── io/                      # 安全文件操作（core 契约 / driver / adapter / api）
 ├── ui/                      # UI front（Board / Viewport / DevicesDAG / Tools / overlay）
-├── utils/                   # 应用级工具（filesys, log, safe-io）
+├── utils/                   # 应用级工具（log）
 ├── docs/                    # 架构文档
 ├── test-support/            # 测试 mock 支撑
 ├── tests/                   # 跨包冒烟 / 集成测试
