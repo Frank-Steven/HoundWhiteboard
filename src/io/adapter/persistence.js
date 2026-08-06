@@ -1,6 +1,6 @@
 /**
  * @file 持久化适配器
- * @description 实现 host 的 PersistenceAdapter 契约（区块元数据 / 对象批量读写），底层经 IoDriver 执行；存储布局与旧 file-operate-bridge 兼容。
+ * @description 实现 kernel 的 PersistenceAdapter 契约（区块元数据 / 对象批量读写），底层经 IoDriver 执行。
  * @module io/adapter/persistence
  * @author Zhou Chenyu
  */
@@ -16,7 +16,7 @@ import { bindRoot } from "../driver/io-driver.js";
  * @returns {Object} PersistenceAdapter 契约实现
  *
  * @description
- * 存储布局（与旧 file-operate-bridge 兼容）：
+ * 存储布局：
  * - 区块元数据：{root}/chunks/{chunkId}.json，内容 { tierGraph, objectCoverIndex }
  * - 对象：{root}/objects/{objectId}.json，扁平存储每对象一文件
  */

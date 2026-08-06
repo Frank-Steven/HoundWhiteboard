@@ -60,7 +60,7 @@ import { createDefaultPersistenceAdapter } from "./persistence-adapter.js";
  * @description
  * BoardCore 是白板在 Worker 中的纯数据/逻辑实现。
  * - 承载对象注册表（objectLoaded）、区块加载状态（chunkLoaded）、IncrementalIdPool、AOM
- * - 通过注入式 persistenceAdapter 完成文件读写，不直接依赖 file-operate-bridge-renderer
+ * - 通过注入式 persistenceAdapter 完成文件读写（契约与默认实现见 kernel/board/persistence-adapter）
  * - 通过注入式 renderHooks 消除 AOM 对 viewport/renderer 的直接依赖
  * - 不持有 DevicesDAG、signalsEventBus、DOM 引用
  * @class

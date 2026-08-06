@@ -10,7 +10,6 @@ import {
 import { StrokeObject } from "../../objects/stroke/stroke.js";
 import { Vector } from "../../utils/math.js";
 import { ChunkObjectManager } from "../../chunk/chunk-object-manager.js";
-import { boardFileOperateBridge } from "../../../host/bridges/file-operate-bridge-renderer.js";
 import { createDefaultAomRenderHooks } from "../aom-render-hooks.js";
 import { createDefaultPersistenceAdapter } from "../persistence-adapter.js";
 

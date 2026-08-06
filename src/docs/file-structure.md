@@ -201,4 +201,3 @@ chunks/{chunkId}/
 - [core-data-model.md](./core-data-model.md)
 - [core-overview.md](./core-overview.md)
 - [board-core-document.md](../kernel/board/docs/board-core-document.md)
-- [file-operate-document.md](../host/bridges/docs/file-operate-document.md)
