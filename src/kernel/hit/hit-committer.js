@@ -180,11 +180,12 @@ class HitCommitter {
    * @param {import("./undo-tree-core.js").UndoTree} options.tree - 时间回溯树
    * @param {() => number} [options.now] - 物理时间来源，缺省 Date.now
    */
-  constructor({ source, log, tree, now }) {
+  constructor({ source, log, tree, now, lastTime }) {
     this.#source = source;
     this.#log = log;
     this.#tree = tree;
     this.#now = now ?? (() => Date.now());
+    this.#lastTime = lastTime ?? 0;
   }
 
   /**

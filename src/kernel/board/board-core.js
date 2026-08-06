@@ -25,6 +25,8 @@ import {
   ChunkLoader,
 } from "../chunk/chunk-loader.js";
 import { Chunk } from "../chunk/chunk.js";
+import { ChunkObjectManager } from "../chunk/chunk-object-manager.js";
+import { DirectedGraph } from "../utils/directed-graph.js";
 import { createDefaultPersistenceAdapter } from "../../host/bridges/persistence-adapter.js";
 
 /**
@@ -181,6 +183,9 @@ class BoardCore {
    *   persistenceAdapter?: PersistenceAdapter,
    *   aomRenderHooks?: AomRenderHooks,
    *   source?: string,
+   *   hitRecords?: Object[],
+   *   lastTime?: number,
+   *   coreIdCounters?: Object<string, number>,
    * }} [options={}] - 白板核心初始化选项
    */
   constructor(options = {}) {
@@ -207,13 +212,27 @@ class BoardCore {
       renderHooks: this.aomRenderHooks,
     });
 
-    this.operationLog = new OperationLog();
+    this.operationLog = options.hitRecords
+      ? OperationLog.fromJSON(options.hitRecords)
+      : new OperationLog();
     this.undoTree = new UndoTree(this.operationLog);
+    if (options.hitRecords) {
+      this.undoTree.rebuild();
+    }
     this.hitCommitter = new HitCommitter({
       source: options.source ?? "core",
       log: this.operationLog,
       tree: this.undoTree,
+      lastTime: options.lastTime,
     });
+    for (const [source, counter] of Object.entries(
+      options.coreIdCounters ?? {},
+    )) {
+      this.#idAllocatorTable.set(
+        source,
+        new IncrementalIdPool(source ? `${source}/core` : "core", counter),
+      );
+    }
 
     this.#bindChunkLoadEvents();
   }
@@ -357,6 +376,58 @@ class BoardCore {
    */
   getAllObjects() {
     return [...this.objectLoaded.values()].map((entry) => entry.obj);
+  }
+
+  /**
+   * 恢复会话状态（对象、trash 与区块层叠图）
+   * @param {Object} session - 会话数据
+   * @param {Array<{chunkId: number, tierGraph: any[], objectCoverIndex: any[]}>} [session.chunkMetadataList] - 区块元数据列表
+   * @param {Object[]} [session.objects] - 活动对象序列化数据数组
+   * @param {Array<{data: Object, chunks: Array}>} [session.trash] - trash 条目数组
+   * @returns {void}
+   *
+   * @description
+   * 打开既有板时调用：层叠图与覆盖索引先回填（决定对象注册时的加载计数），
+   * 随后注册活动对象实例，最后恢复 trash 条目（含层位边，供跨会话撤销删除使用）。
+   */
+  restoreSession({ chunkMetadataList = [], objects = [], trash = [] } = {}) {
+    for (const { chunkId, tierGraph, objectCoverIndex } of chunkMetadataList) {
+      const chunk = this.getChunkById(chunkId);
+      if (!chunk) continue;
+      if (!chunk.objectManager) {
+        chunk.objectManager = new ChunkObjectManager(chunk.id, this);
+      }
+      chunk.objectManager.staticGraph = DirectedGraph.parse(tierGraph);
+      chunk.objectManager.loadObjectCoverChunksFromData(objectCoverIndex);
+      // 层叠图与覆盖索引已从盘上恢复，区块即完整加载态
+      chunk.isLoad = true;
+      chunk.isTempLoad = false;
+    }
+    for (const data of objects) {
+      const obj = deserialize(data);
+      if (obj) {
+        this.registerObjectInstance(obj);
+      }
+    }
+    for (const entry of trash) {
+      if (!entry?.data?.id) continue;
+      this.trash.set(entry.data.id, {
+        data: entry.data,
+        chunks: entry.chunks ?? [],
+      });
+    }
+  }
+
+  /**
+   * 收集随板元数据持久化的会话状态
+   * @returns {{coreIdCounters: Object<string, number>}} 各来源的 Core id 已分配最大计数
+   */
+  collectSessionMeta() {
+    const coreIdCounters = {};
+    for (const [source, allocator] of this.#idAllocatorTable) {
+      coreIdCounters[source] = allocator.counter;
+    }
+    return { coreIdCounters };
   }
 
   /**

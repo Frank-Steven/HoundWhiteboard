@@ -37,6 +37,9 @@ const TRASH_DIR = "trash";
 /** 操作日志目录名 */
 const HIT_DIR = "hit";
 
+/** 区块元数据目录名 */
+const CHUNKS_DIR = "chunks";
+
 /** 日志段文件名前缀 */
 const SEGMENT_PREFIX = "seg-";
 
@@ -123,8 +126,8 @@ function parseJson(content) {
  *
  * @description
  * 布局 v1：board.json（板元数据）、objects/{id}.json（活动对象快照）、
- * trash/{id}.json（已删对象数据留存）、hit/seg-{NNNNNN}.jsonl（操作日志段，一行一条记录）。
- * 区块元数据（chunks/）由持久化适配器独立管理，不在本布局内。
+ * trash/{id}.json（trash 条目，含层位边）、chunks/{chunkId}.json（区块层叠图与覆盖索引）、
+ * hit/seg-{NNNNNN}.jsonl（操作日志段，一行一条记录）。
  */
 function createSessionStore(driver) {
   /**
@@ -170,6 +173,7 @@ function createSessionStore(driver) {
         driver.mkdir(OBJECTS_DIR),
         driver.mkdir(TRASH_DIR),
         driver.mkdir(HIT_DIR),
+        driver.mkdir(CHUNKS_DIR),
       ]);
       if (!dirsReady.every(Boolean)) return false;
       return driver.write(
@@ -276,15 +280,15 @@ function createSessionStore(driver) {
     },
 
     /**
-     * 写入 trash 对象数据
-     * @param {Object} objectData - 对象序列化数据（必须含字符串 id）
+     * 写入 trash 条目
+     * @param {Object} entry - trash 条目（含 data 与 chunks 层位边）
      * @returns {Promise<boolean>} 是否成功
      */
-    async writeTrashObject(objectData) {
-      if (!objectData || typeof objectData.id !== "string") return false;
+    async writeTrashEntry(entry) {
+      if (!entry?.data || typeof entry.data.id !== "string") return false;
       return driver.write(
-        `${TRASH_DIR}/${encodeObjectFileName(objectData.id)}`,
-        JSON.stringify(objectData),
+        `${TRASH_DIR}/${encodeObjectFileName(entry.data.id)}`,
+        JSON.stringify(entry),
       );
     },
 
@@ -297,6 +301,67 @@ function createSessionStore(driver) {
       const rel = `${OBJECTS_DIR}/${encodeObjectFileName(objectId)}`;
       if (!(await driver.exists(rel))) return true;
       return driver.rm(rel);
+    },
+
+    /**
+     * 写入区块元数据
+     * @param {number} chunkId - 区块 id
+     * @param {{tierGraph: any[], objectCoverIndex: any[]}} metadata - 区块元数据
+     * @returns {Promise<boolean>} 是否成功
+     */
+    async writeChunkMetadata(chunkId, metadata) {
+      if (!Number.isInteger(chunkId) || !metadata) return false;
+      return driver.write(
+        `${CHUNKS_DIR}/${chunkId}.json`,
+        JSON.stringify({
+          tierGraph: Array.isArray(metadata.tierGraph) ? metadata.tierGraph : [],
+          objectCoverIndex: Array.isArray(metadata.objectCoverIndex)
+            ? metadata.objectCoverIndex
+            : [],
+        }),
+      );
+    },
+
+    /**
+     * 读取全部区块元数据
+     * @returns {Promise<Array<{chunkId: number, tierGraph: any[], objectCoverIndex: any[]}>>} 区块元数据列表
+     */
+    async readAllChunkMetadata() {
+      const entries = await driver.ls(CHUNKS_DIR);
+      const files = entries
+        .filter((entry) => entry.isFile)
+        .map((entry) => entry.name)
+        .filter((name) => /^\d+\.json$/.test(name));
+      const list = await Promise.all(
+        files.map(async (name) => {
+          const data = parseJson(await driver.read(`${CHUNKS_DIR}/${name}`));
+          if (!data || typeof data !== "object") return null;
+          return {
+            chunkId: Number(name.slice(0, -".json".length)),
+            tierGraph: Array.isArray(data.tierGraph) ? data.tierGraph : [],
+            objectCoverIndex: Array.isArray(data.objectCoverIndex)
+              ? data.objectCoverIndex
+              : [],
+          };
+        }),
+      );
+      return list.filter((item) => item !== null);
+    },
+
+    /**
+     * 聚合读取全部会话数据（打开既有板）
+     * @returns {Promise<Object>} 会话数据（meta、records、nextSegmentSeq、chunkMetadataList、objects、trash）
+     */
+    async loadAll() {
+      const [meta, { records, nextSegmentSeq }, chunkMetadataList, objects, trash] =
+        await Promise.all([
+          this.readMeta(),
+          this.readAllRecords(),
+          this.readAllChunkMetadata(),
+          this.readAllObjects(),
+          this.readAllTrash(),
+        ]);
+      return { meta, records, nextSegmentSeq, chunkMetadataList, objects, trash };
     },
 
     /**

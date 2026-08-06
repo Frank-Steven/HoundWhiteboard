@@ -59,16 +59,20 @@ describe("SessionStore", () => {
     expect(await store.writeObject(null)).toBe(false);
   });
 
-  test("trash 写入与两侧移除", async () => {
+  test("trash 条目写入与两侧移除", async () => {
     const store = setup();
     await store.create();
     await store.writeObject({ id: "demo/1", type: "StrokeObject" });
-    await store.writeTrashObject({ id: "demo/2", type: "StrokeObject" });
+    await store.writeTrashEntry({
+      data: { id: "demo/2", type: "StrokeObject" },
+      chunks: [{ chunkId: "1", below: ["demo/1"], above: [] }],
+    });
 
     expect(await store.readAllObjects()).toHaveLength(1);
     const trash = await store.readAllTrash();
     expect(trash).toHaveLength(1);
-    expect(trash[0].id).toBe("demo/2");
+    expect(trash[0].data.id).toBe("demo/2");
+    expect(trash[0].chunks[0].below).toEqual(["demo/1"]);
 
     // 移除是幂等的（已不存在视为成功）
     expect(await store.removeObject("demo/1")).toBe(true);
@@ -77,6 +81,21 @@ describe("SessionStore", () => {
     expect(await store.removeTrashObject("demo/2")).toBe(true);
     expect(await store.removeTrashObject("demo/404")).toBe(true);
     expect(await store.readAllTrash()).toHaveLength(0);
+  });
+
+  test("区块元数据写入与全量读回", async () => {
+    const store = setup();
+    await store.create();
+    await store.writeChunkMetadata(1, {
+      tierGraph: [["a", ["b"]]],
+      objectCoverIndex: [["a", [1]]],
+    });
+    await store.writeChunkMetadata(2, { tierGraph: [], objectCoverIndex: [] });
+    const list = await store.readAllChunkMetadata();
+    expect(list).toHaveLength(2);
+    const chunk1 = list.find((c) => c.chunkId === 1);
+    expect(chunk1.tierGraph).toEqual([["a", ["b"]]]);
+    expect(chunk1.objectCoverIndex).toEqual([["a", [1]]]);
   });
 
   test("日志段追加与全量读取（段序拼接、序号推进）", async () => {

@@ -41,6 +41,26 @@ function createJournaler({ boardCore, store, collectMeta }) {
   const lastSync = new Map();
 
   /**
+   * 已落盘区块元数据的内容指纹
+   * @type {Map<number, string>}
+   */
+  const lastChunkSync = new Map();
+
+  /**
+   * 归一化 trash 条目（层位边集合转数组，使其可 JSON 序列化）
+   * @param {Object} entry - trash 条目
+   * @returns {Object} 归一化后的条目
+   */
+  const normalizeTrashEntry = (entry) => ({
+    data: entry.data,
+    chunks: (entry.chunks ?? []).map((c) => ({
+      chunkId: c.chunkId,
+      below: [...c.below],
+      above: [...c.above],
+    })),
+  });
+
+  /**
    * 将对象文件对齐到当前白板状态
    * @returns {Promise<void>}
    *
@@ -61,10 +81,11 @@ function createJournaler({ boardCore, store, collectMeta }) {
       lastSync.set(obj.id, { location: "objects", json });
     }
     for (const [id, entry] of boardCore.trash) {
-      const json = JSON.stringify(entry.data);
+      const normalized = normalizeTrashEntry(entry);
+      const json = JSON.stringify(normalized);
       const prev = lastSync.get(id);
       if (prev?.json === json && prev.location === "trash") continue;
-      await store.writeTrashObject(entry.data);
+      await store.writeTrashEntry(normalized);
       if (prev?.location === "objects") await store.removeObject(id);
       lastSync.set(id, { location: "trash", json });
     }
@@ -77,7 +98,25 @@ function createJournaler({ boardCore, store, collectMeta }) {
   };
 
   /**
-   * 执行一轮落盘：日志段 → 对象调和 → 板元数据
+   * 将区块元数据文件对齐到当前层叠图状态
+   * @returns {Promise<void>}
+   */
+  const reconcileChunks = async () => {
+    for (const { chunk } of boardCore.chunkLoaded.values()) {
+      if (!chunk?.objectManager) continue;
+      const metadata = {
+        tierGraph: chunk.objectManager.staticGraph.toArray(),
+        objectCoverIndex: chunk.objectManager.serializeObjectCoverChunks(),
+      };
+      const json = JSON.stringify(metadata);
+      if (lastChunkSync.get(chunk.id) === json) continue;
+      await store.writeChunkMetadata(chunk.id, metadata);
+      lastChunkSync.set(chunk.id, json);
+    }
+  };
+
+  /**
+   * 执行一轮落盘：日志段 → 对象调和 → 区块调和 → 板元数据
    * @returns {Promise<void>}
    */
   const doFlush = async () => {
@@ -93,6 +132,7 @@ function createJournaler({ boardCore, store, collectMeta }) {
       }
     }
     await reconcileObjects();
+    await reconcileChunks();
     await store.writeMeta({
       lastTime: state.lastTime,
       nextSegmentSeq: state.nextSegmentSeq,
@@ -129,7 +169,7 @@ function createJournaler({ boardCore, store, collectMeta }) {
      * @param {number} [options.nextSegmentSeq=0] - 下一个可用段序号（打开既有板时由存储读出）
      * @param {number} [options.lastTime=0] - 已落盘的最晚时间标记
      * @param {Object[]} [options.knownObjects=[]] - 盘上已有活动对象数据（指纹种子，避免首 flush 重写）
-     * @param {Object[]} [options.knownTrash=[]] - 盘上已有 trash 对象数据（指纹种子）
+     * @param {Object[]} [options.knownTrash=[]] - 盘上已有 trash 条目（指纹种子）
      * @returns {void}
      */
     attach({ nextSegmentSeq = 0, lastTime = 0, knownObjects = [], knownTrash = [] } = {}) {

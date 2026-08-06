@@ -116,7 +116,9 @@ describe("Journaler", () => {
     await api.deleteObjects(["s1"]);
     await journaler.flush();
     expect(await store.readAllObjects()).toHaveLength(0);
-    expect((await store.readAllTrash()).map((o) => o.id)).toEqual(["s1"]);
+    const trashEntries = await store.readAllTrash();
+    expect(trashEntries.map((e) => e.data.id)).toEqual(["s1"]);
+    expect(trashEntries[0].chunks[0].below).toBeDefined();
 
     api.undo();
     await journaler.flush();
