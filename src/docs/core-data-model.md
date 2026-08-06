@@ -236,16 +236,19 @@ AOM 内部关键结构包括：
 
 ### 已有协议
 
-- `BoardCore` 通过 `persistenceAdapter` 暴露 `loadChunkMetadata` / `saveChunkMetadata` / `loadObjects` / `saveObjects` / `deleteObject`
-- 文件桥接协议位于 `bridges/file-operate-bridge-*.js`
+- `BoardCore` 通过 `persistenceAdapter` 暴露 `loadChunkMetadata` / `saveChunkMetadata` / `loadObjects` / `saveObjects` / `deleteObject`（契约与默认实现位于 `kernel/board/persistence-adapter.js`）
+- 会话存储布局与恢复语义位于 `kernel/store/`（详见 [file-structure.md](./file-structure.md)）
+- 文件操作实现位于 `io/` 包（driver / adapter）
 
 ### 默认运行时现状
 
-- 默认 Worker runtime 仍主要跑内存模式
-- 若按当前文件桥协议落盘，主结构是：
+- demo 以 `~/hound-whiteboard/demo-board` 为板目录运行于持久化模式
+- 落盘主结构是：
   - `chunks/{chunkId}.json`：`{ tierGraph, objectCoverIndex }`
-  - `objects/{objectId}.json`：扁平对象文件
-- `createChunkStorage()` 还会创建 `chunks/{chunkId}/` 目录，但当前主读写路径不是它
+  - `objects/{objectId}.json`：扁平对象文件（id 经百分号编码）
+  - `trash/{objectId}.json`：trash 条目（含层位边）
+  - `hit/seg-{NNNNNN}.jsonl`：操作日志段
+  - `board.json`：板元数据
 
 ### 当前不要过度假设的语义
 

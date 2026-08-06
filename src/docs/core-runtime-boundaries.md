@@ -14,9 +14,8 @@
 | 目录 / 文件                                                | 运行边界 | 说明                                                            |
 | ---------------------------------------------------------- | -------- | --------------------------------------------------------------- |
 | `host/bridges/board-api-rpc.js`                                 | UI       | UI 侧 RPC 客户端，封装 `rpc` / `rpc-batch` / `rpc-response`     |
-| `host/bridges/persistence-adapter.js`                           | Kernel   | 持久化适配器协议与工厂，本身不依赖线程宿主                      |
-| `host/bridges/file-operate-bridge-renderer.js`                  | UI       | 渲染线程侧文件桥调用入口                                        |
-| `host/bridges/file-operate-bridge-main.js`                      | Host     | 宿主/主线程的真实文件系统实现                                   |
+| `kernel/board/persistence-adapter.js`                           | Kernel   | 持久化适配器契约与默认无操作实现                                |
+| `host/bridges/io-invoke-forwarder.js`                           | UI       | worker 内驱动的文件操作转发到主线程 Tauri invoke                |
 | `ui/components/orchestration/board.js`              | UI       | UI 白板 facade、唯一 `DevicesDAG`、viewport 管理、Worker 初始化 |
 | `ui/components/orchestration/viewport.js`           | UI       | DOM canvas、overlay、Worker 同步、workflow 挂载代理             |
 | `ui/components/orchestration/board-render-hooks.js` | UI       | 本地渲染路径用的 render hook 辅助                               |
@@ -118,15 +117,15 @@ Worker 不解析 DOM 事件，也不持有 DevicesDAG。
 
 ### 已存在的协议层
 
-- `persistence-adapter.js` 定义了 `BoardCore` 依赖的持久化接口
-- `file-operate-bridge-*` 定义了宿主文件 I/O bridge 协议
+- `kernel/board/persistence-adapter.js` 定义了 `BoardCore` 依赖的持久化接口
+- `kernel/store/session-store.js` 定义了会话存储布局，`kernel/store/journaler.js` 驱动增量落盘
 - `rootPath`、`memoryMode()`、`isPersistent()` 等能力已经存在于 `BoardCore`
 
 ### 当前默认运行时
 
-- `CoreWorkerRuntime.createBoard()` 当前默认注入的是 `createDefaultPersistenceAdapter()`
-- 默认 demo 主要运行在内存模式
-- `undo` / `redo` 尚未接通到持久化历史路径
+- `CoreWorkerRuntime.createBoard()` 在 `rootPath` 有效时装配 tauri driver、会话恢复与日志跟随者
+- demo 以 `~/hound-whiteboard/demo-board` 为板目录运行于持久化模式
+- 撤销/重做历史随操作日志段落盘，重开后可跨会话撤销
 
 ## 当前默认运行模式
 
