@@ -2,7 +2,7 @@ import { handleDebugQuery } from "../debug-helper.js";
 import { BoardApi } from "../../kernel/api/board-api.js";
 import { BoardCore } from "../../kernel/board/board-core.js";
 import { createDefaultAomRenderHooks } from "../../kernel/board/aom-render-hooks.js";
-import { createDefaultPersistenceAdapter } from "../bridges/persistence-adapter.js";
+import { createDefaultPersistenceAdapter } from "../../kernel/board/persistence-adapter.js";
 import { logBus } from "../../utils/log/log-bus.js";
 
 function createBoardCore() {

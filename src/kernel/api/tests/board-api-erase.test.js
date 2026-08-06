@@ -4,7 +4,7 @@ import { jest } from "@jest/globals";
 import { BoardApi } from "../board-api.js";
 import { BoardCore } from "../../board/board-core.js";
 import { createDefaultAomRenderHooks } from "../../board/aom-render-hooks.js";
-import { createDefaultPersistenceAdapter } from "../../../host/bridges/persistence-adapter.js";
+import { createDefaultPersistenceAdapter } from "../../board/persistence-adapter.js";
 import { Matrix, Vector } from "../../utils/math.js";
 
 function createBoardCore() {

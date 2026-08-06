@@ -27,7 +27,7 @@ import {
 import { Chunk } from "../chunk/chunk.js";
 import { ChunkObjectManager } from "../chunk/chunk-object-manager.js";
 import { DirectedGraph } from "../utils/directed-graph.js";
-import { createDefaultPersistenceAdapter } from "../../host/bridges/persistence-adapter.js";
+import { createDefaultPersistenceAdapter } from "./persistence-adapter.js";
 
 /**
  * @typedef {Object} BoardChunkLoadedState
@@ -52,12 +52,7 @@ import { createDefaultPersistenceAdapter } from "../../host/bridges/persistence-
  */
 
 /**
- * @typedef {Object} PersistenceAdapter
- * @property {(chunkId: number) => Promise<{ tierGraph: any[], objectCoverIndex: any[] }>} loadChunkMetadata
- * @property {(chunkId: number, metadata: { tierGraph: any[], objectCoverIndex: any[] }) => Promise<boolean>} saveChunkMetadata
- * @property {(objectIds: string[]) => Promise<object[]>} loadObjects
- * @property {(objects: object[]) => Promise<boolean>} saveObjects
- * @property {(objectId: string) => Promise<boolean>} deleteObject
+ * @typedef {import("./persistence-adapter.js").PersistenceAdapter} PersistenceAdapter
  */
 
 /**
@@ -123,7 +118,7 @@ class BoardCore {
   /**
    * 持久化适配器
    * @description 用于替代直接 import boardFileOperateBridge。
-   *   内存模式使用 createDefaultPersistenceAdapter()，文件模式使用 createRendererPersistenceAdapter()。
+   *   内存模式使用 createDefaultPersistenceAdapter()，文件模式注入 io 包的 createPersistenceAdapter()。
    * @type {PersistenceAdapter}
    */
   persistenceAdapter;

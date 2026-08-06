@@ -11,7 +11,7 @@ import { bindRoot } from "../../../io/driver/io-driver.js";
 import { BoardCore } from "../../board/board-core.js";
 import { BoardApi } from "../../api/board-api.js";
 import { createDefaultAomRenderHooks } from "../../board/aom-render-hooks.js";
-import { createDefaultPersistenceAdapter } from "../../../host/bridges/persistence-adapter.js";
+import { createDefaultPersistenceAdapter } from "../../board/persistence-adapter.js";
 import { Vector } from "../../utils/math.js";
 import { createSessionStore } from "../session-store.js";
 import { createJournaler } from "../journaler.js";

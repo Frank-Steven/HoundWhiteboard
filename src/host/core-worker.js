@@ -9,7 +9,7 @@
  * @author Zhou Chenyu
  */
 
-import { createDefaultPersistenceAdapter } from "./bridges/persistence-adapter.js";
+import { createDefaultPersistenceAdapter } from "../kernel/board/persistence-adapter.js";
 import { createDefaultAomRenderHooks } from "../kernel/board/aom-render-hooks.js";
 import { BoardCore } from "../kernel/board/board-core.js";
 import { ViewportCore } from "../renderers/canvas/viewport-core.js";
