@@ -468,7 +468,21 @@ class CoreWorkerRuntime {
     const driver = createTauriDriver({
       invoke: (command, args) => this.#forwardIoInvoke(command, args),
     });
-    const { rootId } = await driver.registerRoot(rootPath);
+    // 板存储需要读、写、列目录、建目录与删除（journaler 调和会移除对象文件）
+    const registered = await driver.registerRoot(rootPath, {
+      read: true,
+      write: true,
+      ls: true,
+      mkdir: true,
+      rm: true,
+      hide: false,
+      zip: false,
+    });
+    if (!registered?.rootId) {
+      this.#log.warn(`持久化根目录注册失败，回退内存模式：${rootPath}`);
+      return null;
+    }
+    const { rootId } = registered;
     const store = createSessionStore(bindRoot(driver, rootId));
     if (!(await store.exists())) {
       await store.create();
