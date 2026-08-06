@@ -82,6 +82,29 @@ class FakeWorkerHost {
   }
 }
 
+/**
+ * 等待宿主消息输出静默（连续若干 tick 无新消息）
+ * @param {FakeWorkerHost} host - 假宿主
+ * @param {number} [idleTicks=3] - 静默 tick 数
+ * @returns {Promise<void>}
+ *
+ * @description
+ * createBoard 改异步后单微任务等待不足以竞态对齐，以消息静默作为处理完成信号。
+ */
+async function settle(host, idleTicks = 3) {
+  let lastCount = -1;
+  let idle = 0;
+  while (idle < idleTicks) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (host.postedMessages.length === lastCount) {
+      idle++;
+    } else {
+      lastCount = host.postedMessages.length;
+      idle = 0;
+    }
+  }
+}
+
 describe("core-worker", () => {
   /**
    * OffscreenCanvas 恢复函数
@@ -118,7 +141,7 @@ describe("core-worker", () => {
       method: "createBoard",
       params: { width: 10, height: 10 },
     });
-    await Promise.resolve();
+    await settle(host);
 
     expect(host.postedMessages).toContainEqual({
       type: "rpc-response",
@@ -139,7 +162,7 @@ describe("core-worker", () => {
         },
       },
     });
-    await Promise.resolve();
+    await settle(host);
 
     expect(host.postedMessages).toContainEqual({
       type: "rpc-response",
@@ -153,7 +176,7 @@ describe("core-worker", () => {
       method: "queryObjects",
       params: { ids: [8] },
     });
-    await Promise.resolve();
+    await settle(host);
 
     expect(host.postedMessages).toContainEqual(
       expect.objectContaining({
@@ -183,7 +206,7 @@ describe("core-worker", () => {
       method: "createBoard",
       params: { width: 800, height: 600 },
     });
-    await Promise.resolve();
+    await settle(host);
 
     host.emit({
       type: "rpc",
@@ -197,7 +220,7 @@ describe("core-worker", () => {
         },
       },
     });
-    await Promise.resolve();
+    await settle(host);
 
     expect(host.postedMessages).toContainEqual({
       type: "rpc-response",
@@ -216,7 +239,7 @@ describe("core-worker", () => {
       type: "request-render-flush",
       viewportId: "main",
     });
-    await Promise.resolve();
+    await settle(host);
 
     const renderFrameIndex = host.postedMessages.findIndex(
       (message) => message?.type === "render-frame",
@@ -246,7 +269,7 @@ describe("core-worker", () => {
       method: "createBoard",
       params: { width: 800, height: 600 },
     });
-    await Promise.resolve();
+    await settle(host);
 
     host.emit({
       type: "rpc",
@@ -260,7 +283,7 @@ describe("core-worker", () => {
         },
       },
     });
-    await Promise.resolve();
+    await settle(host);
 
     host.emit({
       type: "viewport-change",
@@ -270,7 +293,7 @@ describe("core-worker", () => {
       viewportSize: { width: 400, height: 300 },
     });
     host.emit({ type: "request-render-flush", viewportId: "main" });
-    await Promise.resolve();
+    await settle(host);
 
     host.emit({
       type: "viewport-change",
@@ -280,7 +303,7 @@ describe("core-worker", () => {
       force: true,
     });
     host.emit({ type: "request-render-flush", viewportId: "main" });
-    await Promise.resolve();
+    await settle(host);
 
     const renderFrames = host.postedMessages.filter(
       (message) => message?.type === "render-frame",
@@ -308,7 +331,7 @@ describe("core-worker", () => {
       method: "createBoard",
       params: { width: 800, height: 600 },
     });
-    await Promise.resolve();
+    await settle(host);
 
     host.emit({
       type: "rpc",
@@ -318,7 +341,7 @@ describe("core-worker", () => {
         options: { viewportId: "main", width: 400, height: 300 },
       },
     });
-    await Promise.resolve();
+    await settle(host);
 
     // 创建对象并产生初始帧
     host.emit({
@@ -330,7 +353,7 @@ describe("core-worker", () => {
         props: { id: 100, position: { x: 10, y: 20 }, data: { radius: 5 } },
       },
     });
-    await Promise.resolve();
+    await settle(host);
 
     host.emit({
       type: "viewport-change",
@@ -341,7 +364,7 @@ describe("core-worker", () => {
       force: true,
     });
     host.emit({ type: "request-render-flush", viewportId: "main" });
-    await Promise.resolve();
+    await settle(host);
 
     expect(
       host.postedMessages.filter((m) => m?.type === "render-frame"),
@@ -357,10 +380,10 @@ describe("core-worker", () => {
         patch: { position: { x: 30, y: 40 } },
       },
     });
-    await Promise.resolve();
+    await settle(host);
 
     host.emit({ type: "request-render-flush", viewportId: "main" });
-    await Promise.resolve();
+    await settle(host);
 
     const renderFrames = host.postedMessages.filter(
       (m) => m?.type === "render-frame",
@@ -377,10 +400,10 @@ describe("core-worker", () => {
       method: "appendListItem",
       params: { objectId: 100, key: "points", items: [{ x: 1, y: 2 }] },
     });
-    await Promise.resolve();
+    await settle(host);
 
     host.emit({ type: "request-render-flush", viewportId: "main" });
-    await Promise.resolve();
+    await settle(host);
 
     expect(
       host.postedMessages.filter((m) => m?.type === "render-frame"),
@@ -393,10 +416,10 @@ describe("core-worker", () => {
       method: "replaceListItem",
       params: { objectId: 100, key: "points", index: 0, item: { x: 5, y: 6 } },
     });
-    await Promise.resolve();
+    await settle(host);
 
     host.emit({ type: "request-render-flush", viewportId: "main" });
-    await Promise.resolve();
+    await settle(host);
 
     expect(
       host.postedMessages.filter((m) => m?.type === "render-frame"),
@@ -416,7 +439,7 @@ describe("core-worker", () => {
       method: "createBoard",
       params: { width: 100, height: 100 },
     });
-    await Promise.resolve();
+    await settle(host);
 
     // createObject → commitObjects
     host.emit({
@@ -432,7 +455,7 @@ describe("core-worker", () => {
         },
       },
     });
-    await Promise.resolve();
+    await settle(host);
 
     host.emit({
       type: "rpc",
@@ -473,7 +496,7 @@ describe("core-worker", () => {
       method: "createBoard",
       params: { width: 100, height: 100 },
     });
-    await Promise.resolve();
+    await settle(host);
 
     // 仅 createObject（未 commit），对象在 AOM 中
     host.emit({
@@ -489,7 +512,7 @@ describe("core-worker", () => {
         },
       },
     });
-    await Promise.resolve();
+    await settle(host);
 
     // hitTest — AOM 对象在 objectLoaded 中，应被找到
     host.emit({

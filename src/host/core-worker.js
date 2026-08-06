@@ -19,6 +19,11 @@ import { createConsolePrinter } from "../utils/log/console-printer.js";
 import { handleDebugQuery } from "./debug-helper.js";
 import { BoardApi } from "../kernel/api/board-api.js";
 import { BOARD_API_ROUTES } from "../kernel/api/board-api-routes.js";
+import { createTauriDriver } from "../io/driver/tauri.js";
+import { bindRoot } from "../io/driver/io-driver.js";
+import { createPersistenceAdapter } from "../io/adapter/persistence.js";
+import { createSessionStore } from "../kernel/store/session-store.js";
+import { createJournaler } from "../kernel/store/journaler.js";
 
 /**
  * 判断值是否可作为 Worker 消息宿主
@@ -122,6 +127,24 @@ class CoreWorkerRuntime {
   #flushScheduled;
 
   /**
+   * 日志跟随者（持久化模式非空）
+   * @type {Object | null}
+   */
+  #journaler;
+
+  /**
+   * 等待主线程 io-response 的挂起表
+   * @type {Map<string, { resolve: Function, reject: Function }>}
+   */
+  #ioPending;
+
+  /**
+   * io-invoke 消息序号
+   * @type {number}
+   */
+  #ioMsgSeq;
+
+  /**
    * @param {{ postMessage: Function, addEventListener: Function, removeEventListener: Function }} host - Worker 消息宿主
    */
   constructor(host) {
@@ -140,6 +163,9 @@ class CoreWorkerRuntime {
     this.#offWorkerLogs = null;
     this.#started = false;
     this.#flushScheduled = false;
+    this.#journaler = null;
+    this.#ioPending = new Map();
+    this.#ioMsgSeq = 0;
   }
 
   /**
@@ -206,6 +232,22 @@ class CoreWorkerRuntime {
   }
 
   /**
+   * 处理主线程回传的 IO 执行结果
+   * @param {Object} message - io-response 消息
+   * @returns {void}
+   */
+  #handleIoResponse(message) {
+    const pending = this.#ioPending.get(message?.msgId);
+    if (!pending) return;
+    this.#ioPending.delete(message.msgId);
+    if (message.ok) {
+      pending.resolve(message.result);
+    } else {
+      pending.reject(new Error(message.error ?? "io-invoke failed"));
+    }
+  }
+
+  /**
    * 处理宿主消息事件
    * @param {MessageEvent | { data?: any }} event - 宿主消息事件
    * @returns {void}
@@ -231,6 +273,9 @@ class CoreWorkerRuntime {
         return;
       case "debug-request":
         this.#handleDebugRequest(message);
+        return;
+      case "io-response":
+        this.#handleIoResponse(message);
         return;
       default:
         return;
@@ -359,24 +404,51 @@ class CoreWorkerRuntime {
   /**
    * 创建 Worker 侧 BoardCore
    * @param {{ width?: number, height?: number, rootPath?: string }} [options={}] - Board 初始化选项
-   * @returns {{ ok: boolean }} 创建结果
+   * @returns {Promise<{ ok: boolean }>} 创建结果
+   *
+   * @description
+   * rootPath 有效时进入持久化模式：tauri driver 经主线程转发落地文件，
+   * 既有板从会话存储恢复（树、对象、trash、层叠图、计数器），随后挂接日志跟随者增量落盘。
    */
-  createBoard(options = {}) {
+  async createBoard(options = {}) {
     if (this.#boardCore) {
       throw new Error("BoardCore already created.");
     }
+
+    const persistence = await this.#setupPersistence(options.rootPath);
 
     this.#boardCore = new BoardCore({
       width: options.width,
       height: options.height,
       rootPath: options.rootPath,
-      persistenceAdapter: createDefaultPersistenceAdapter(),
+      persistenceAdapter:
+        persistence?.adapter ?? createDefaultPersistenceAdapter(),
       aomRenderHooks: createDefaultAomRenderHooks(),
+      hitRecords: persistence?.session?.records?.length
+        ? persistence.session.records
+        : undefined,
+      lastTime: persistence?.session?.meta?.lastTime,
+      coreIdCounters: persistence?.session?.meta?.coreIdCounters,
     });
 
     const renderHooks = this.#createViewportRenderHooks();
     this.#boardCore.aomRenderHooks = renderHooks;
     this.#boardCore.activeObjectManager.renderHooks = renderHooks;
+
+    if (persistence) {
+      this.#boardCore.restoreSession(persistence.session);
+      this.#journaler = createJournaler({
+        boardCore: this.#boardCore,
+        store: persistence.store,
+        collectMeta: () => this.#boardCore.collectSessionMeta(),
+      });
+      this.#journaler.attach({
+        nextSegmentSeq: persistence.session.nextSegmentSeq,
+        lastTime: persistence.session.meta?.lastTime ?? 0,
+        knownObjects: persistence.session.objects,
+        knownTrash: persistence.session.trash,
+      });
+    }
 
     this.#boardApi = new BoardApi(this.#boardCore);
 
@@ -384,10 +456,55 @@ class CoreWorkerRuntime {
   }
 
   /**
-   * 销毁 Worker 侧 BoardCore
-   * @returns {{ ok: boolean }} 销毁结果
+   * 装配持久化（rootPath 有效时）
+   * @param {string} [rootPath] - 白板根路径
+   * @returns {Promise<{ adapter: Object, store: Object, session: Object } | null>} 持久化上下文，内存模式为 null
+   * @private
    */
-  destroyBoard() {
+  async #setupPersistence(rootPath) {
+    if (typeof rootPath !== "string" || rootPath.trim() === "") {
+      return null;
+    }
+    const driver = createTauriDriver({
+      invoke: (command, args) => this.#forwardIoInvoke(command, args),
+    });
+    const { rootId } = await driver.registerRoot(rootPath);
+    const store = createSessionStore(bindRoot(driver, rootId));
+    if (!(await store.exists())) {
+      await store.create();
+    }
+    const session = await store.loadAll();
+    return {
+      adapter: createPersistenceAdapter({ driver, rootId }),
+      store,
+      session,
+    };
+  }
+
+  /**
+   * 转发 IO 调用到主线程执行
+   * @param {string} command - Rust command 名称
+   * @param {Object} args - 参数
+   * @returns {Promise<*>} 执行结果
+   * @private
+   */
+  #forwardIoInvoke(command, args) {
+    const msgId = `io-${++this.#ioMsgSeq}`;
+    return new Promise((resolve, reject) => {
+      this.#ioPending.set(msgId, { resolve, reject });
+      this.#postMessage({ type: "io-invoke", msgId, command, args });
+    });
+  }
+
+  /**
+   * 销毁 Worker 侧 BoardCore
+   * @returns {Promise<{ ok: boolean }>} 销毁结果
+   */
+  async destroyBoard() {
+    if (this.#journaler) {
+      await this.#journaler.detach();
+      this.#journaler = null;
+    }
     this.#destroyAllViewportCores();
     this.#boardApi = null;
     this.#boardCore = null;

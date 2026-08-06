@@ -12,6 +12,7 @@ import { EventBus } from "../../../kernel/utils/event-bus.js";
 import { SharedStateStore } from "../../../kernel/utils/shared-state-store.js";
 import { DevicesDAG } from "../../devices-dag/index.js";
 import { BoardApiRpc } from "../../../host/bridges/board-api-rpc.js";
+import { attachIoInvokeForwarder } from "../../../host/bridges/io-invoke-forwarder.js";
 import { Viewport } from "./viewport.js";
 import { joinPath } from "../../../kernel/utils/path.js";
 import { Logger } from "../../../utils/log/logger.js";
@@ -50,6 +51,12 @@ class Board {
    * @type {{ postMessage: Function, addEventListener: Function, removeEventListener: Function } | null}
    */
   #worker;
+
+  /**
+   * IO invoke 转发器卸接函数
+   * @type {(() => void) | null}
+   */
+  #detachIoForwarder;
 
   /**
    * 白板宽度
@@ -119,6 +126,7 @@ class Board {
 
     this.#boardApi = null;
     this.#worker = null;
+    this.#detachIoForwarder = null;
     this.#idPool = new IncrementalIdPool(options.idSource ?? "");
     this.viewports = new Map();
     this.signalsEventBus = new EventBus();
@@ -200,6 +208,9 @@ class Board {
         errors,
       );
     });
+
+    // worker 内驱动的文件操作经主线程转发到 Tauri invoke
+    this.#detachIoForwarder = attachIoInvokeForwarder(worker);
 
     try {
       await boardApi.waitUntilReady(

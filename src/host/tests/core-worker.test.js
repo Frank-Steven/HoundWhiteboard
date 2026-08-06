@@ -86,24 +86,35 @@ function createStartedRuntime() {
 }
 
 /**
- * 向宿主发送 createBoard 请求
+ * 向宿主发送 createBoard 请求并等待响应
  * @param {FakeWorkerHost} host - 假宿主
- * @returns {void}
+ * @returns {Promise<void>}
+ *
+ * @description
+ * createBoard 已改异步（持久化装配），须等 rpc-response 落地再发后续消息。
  */
-function emitCreateBoard(host) {
+async function emitCreateBoard(host) {
   host.emit({
     type: "rpc",
     msgId: "create-board",
     method: "createBoard",
     params: { width: 800, height: 600 },
   });
+  for (let i = 0; i < 100; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const responded = host.postedMessages.some(
+      (m) => m.type === "rpc-response" && m.msgId === "create-board",
+    );
+    if (responded) return;
+  }
+  throw new Error("createBoard 超时");
 }
 
 describe("CoreWorkerRuntime 批处理错误回执", () => {
-  test("单条目失败应回传 rpc-batch-error，其余条目正常执行", () => {
+  test("单条目失败应回传 rpc-batch-error，其余条目正常执行", async () => {
     const { host, runtime } = createStartedRuntime();
     try {
-      emitCreateBoard(host);
+      await emitCreateBoard(host);
 
       host.emit({
         type: "rpc-batch",
@@ -164,10 +175,10 @@ describe("CoreWorkerRuntime 批处理错误回执", () => {
     }
   });
 
-  test("全部条目成功时不回传 rpc-batch-error", () => {
+  test("全部条目成功时不回传 rpc-batch-error", async () => {
     const { host, runtime } = createStartedRuntime();
     try {
-      emitCreateBoard(host);
+      await emitCreateBoard(host);
 
       host.emit({
         type: "rpc-batch",
