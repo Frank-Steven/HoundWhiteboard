@@ -152,7 +152,8 @@ pub fn require_zip(perms: &RootPermissions) -> Result<(), String> {
 
 /// 注册根目录
 ///
-/// 返回生成的 root_id；路径必须存在且为目录。
+/// 返回生成的 root_id。路径支持 `~` 家目录展开；
+/// 路径不存在且声明了写权限时自动创建（开板即建板），否则报错。
 #[tauri::command]
 pub fn safe_io_register_root(
     abs_path: String,
@@ -162,7 +163,19 @@ pub fn safe_io_register_root(
         return Err("empty root path".into());
     }
 
-    let canonical = std::fs::canonicalize(&abs_path)
+    let expanded = expand_home(&abs_path)?;
+    let perms = permissions.unwrap_or_default();
+
+    let path = std::path::Path::new(&expanded);
+    if !path.exists() {
+        if !perms.write {
+            return Err("root path does not exist".into());
+        }
+        std::fs::create_dir_all(path)
+            .map_err(|e| format!("failed to create root: {e}"))?;
+    }
+
+    let canonical = std::fs::canonicalize(path)
         .map_err(|e| format!("root path not resolvable: {e}"))?;
 
     if !canonical.is_dir() {
@@ -173,7 +186,7 @@ pub fn safe_io_register_root(
 
     let entry = RootEntry {
         abs: canonical,
-        perms: permissions.unwrap_or_default(),
+        perms,
     };
 
     roots()
@@ -182,6 +195,20 @@ pub fn safe_io_register_root(
         .insert(root_id.clone(), entry);
 
     Ok(root_id)
+}
+
+/// 展开路径开头的 `~` 为家目录
+fn expand_home(path: &str) -> Result<String, String> {
+    if path == "~" || path.starts_with("~/") || path.starts_with("~\\") {
+        let home = std::env::home_dir()
+            .ok_or_else(|| "home directory unavailable".to_string())?;
+        // "~" 单独使用即家目录本身（join("") 会引入尾部分隔符）
+        if path == "~" {
+            return Ok(home.to_string_lossy().into_owned());
+        }
+        return Ok(home.join(&path[2..]).to_string_lossy().into_owned());
+    }
+    Ok(path.to_string())
 }
 
 /// 注销根目录
@@ -302,5 +329,18 @@ mod tests {
     #[test]
     fn resolve_unknown_root_fails() {
         assert!(resolve("nope", "a.txt").is_err());
+    }
+
+    #[test]
+    fn expand_home_expands_tilde_prefix() {
+        let home = std::env::home_dir().unwrap();
+        assert_eq!(expand_home("~").unwrap(), home.to_string_lossy());
+        assert_eq!(
+            expand_home("~/demo-board").unwrap(),
+            home.join("demo-board").to_string_lossy()
+        );
+        // 不以 ~ 开头的路径原样返回
+        assert_eq!(expand_home("/abs/path").unwrap(), "/abs/path");
+        assert_eq!(expand_home("~other/x").unwrap(), "~other/x");
     }
 }

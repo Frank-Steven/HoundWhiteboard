@@ -32,7 +32,11 @@ createConsolePrinter(logBus, { timestamps: true });
  * @returns {Promise<void>}
  */
 async function bootstrapWhiteboard() {
-  const board = new Board({ idSource: DEMO_ID_SOURCE });
+  // demo 板目录：家目录下 hound-whiteboard/demo-board（首次运行自动创建）
+  const board = new Board({
+    idSource: DEMO_ID_SOURCE,
+    rootPath: "~/hound-whiteboard/demo-board",
+  });
   board.width = 800;
   board.height = 600;
 
