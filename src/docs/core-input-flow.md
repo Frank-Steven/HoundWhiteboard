@@ -23,7 +23,7 @@
 flowchart LR
     Host[Host Input] --> Bus[Board.signalsEventBus]
     Bus --> DAG[Board.devicesDAG]
-    DAG --> ViewportRoot[/viewportId]
+    DAG --> ViewportRoot["/viewportId"]
     ViewportRoot --> Device[Device SubDAG]
     Device --> Prefix[Prefix / Wrapper]
     Prefix --> Tool[Tool Leaf]
