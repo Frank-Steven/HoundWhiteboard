@@ -150,6 +150,13 @@ class ActiveObjectManager {
   layerPool;
 
   /**
+   * 远程活动对象登记表
+   * @description 键为对象 id，值为持有方的来源标识；远程 choose 登记，unchoose/commit 与断线清理注销。
+   * @type {Map<string, string>}
+   */
+  #remoteActive = new Map();
+
+  /**
    * 对象所在的层
    * @description 对象 id -> 层实例的引用，便于快速查找某对象所在层。
    * @type {Map<string, Layer>}
@@ -1681,6 +1688,73 @@ class ActiveObjectManager {
    */
   isActive(objectId) {
     return this.activeObjectIndex.has(objectId);
+  }
+
+  /**
+   * 查询对象是否被远程持有（远程活动）
+   * @param {string} objectId - 对象 id
+   * @returns {boolean} 是否远程活动
+   */
+  isRemoteActive(objectId) {
+    return this.#remoteActive.has(objectId);
+  }
+
+  /**
+   * 查询远程活动对象的持有方来源
+   * @param {string} objectId - 对象 id
+   * @returns {string|undefined} 来源标识
+   */
+  remoteActiveSource(objectId) {
+    return this.#remoteActive.get(objectId);
+  }
+
+  /**
+   * 登记远程活动对象
+   * @param {Iterable<string>} objectIds - 对象 id 集合
+   * @param {string} source - 持有方来源标识
+   * @returns {void}
+   *
+   * @description
+   * 本地活跃中的对象忽略远程登记（并发 choose 冲突 v1：本地优先，两端各持己见一致收敛）。
+   */
+  applyRemoteChoose(objectIds, source) {
+    for (const id of objectIds) {
+      if (typeof id !== "string" || this.isActive(id)) continue;
+      this.#remoteActive.set(id, source);
+    }
+  }
+
+  /**
+   * 注销远程活动对象
+   * @param {Iterable<string>} objectIds - 对象 id 集合
+   * @param {string} source - 持有方来源标识
+   * @returns {void}
+   *
+   * @description
+   * 仅注销确由该来源持有的条目；远程 unchoose/commit 与断线清理共用本路径。
+   */
+  applyRemoteUnchoose(objectIds, source) {
+    for (const id of objectIds) {
+      if (this.#remoteActive.get(id) === source) {
+        this.#remoteActive.delete(id);
+      }
+    }
+  }
+
+  /**
+   * 清理某来源持有的全部远程活动登记（断线清理）
+   * @param {string} source - 来源标识
+   * @returns {string[]} 被清理的对象 id 列表
+   */
+  clearRemoteActive(source) {
+    const removed = [];
+    for (const [id, owner] of this.#remoteActive) {
+      if (owner === source) {
+        this.#remoteActive.delete(id);
+        removed.push(id);
+      }
+    }
+    return removed;
   }
 
   /**

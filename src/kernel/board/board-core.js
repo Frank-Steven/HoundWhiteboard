@@ -199,6 +199,12 @@ class BoardCore {
     this.chunkLoaded = new Map();
     this.objectLoaded = new Map();
     this.chunkLoadEventBus = new EventBus();
+    /**
+     * AOM 活动事件总线（ephemeral）
+     * @description 本地 choose/unchoose/commit 手势事件即时广播通道；不经日志，同步宿主订阅后转发中继。
+     * @type {EventBus}
+     */
+    this.activityEventBus = new EventBus();
     this.rootChunkLoader = new ChunkLoader({
       resolveChunkById: (chunkId) =>
         this.#getOrCreateChunkLoadedState(chunkId).chunk,
@@ -672,7 +678,8 @@ class BoardCore {
 
       if (
         entry.loadedCount <= 0 &&
-        !this.activeObjectManager?.isActive?.(objectId)
+        !this.activeObjectManager?.isActive?.(objectId) &&
+        !this.activeObjectManager?.isRemoteActive?.(objectId)
       ) {
         this.objectLoaded.delete(objectId);
       }
@@ -974,7 +981,8 @@ class BoardCore {
 
     if (
       entry.loadedCount <= 0 &&
-      !this.activeObjectManager?.isActive?.(objectId)
+      !this.activeObjectManager?.isActive?.(objectId) &&
+      !this.activeObjectManager?.isRemoteActive?.(objectId)
     ) {
       this.objectLoaded.delete(objectId);
     }

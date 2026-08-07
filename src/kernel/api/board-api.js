@@ -316,6 +316,8 @@ class BoardApi {
     for (const objectId of ids) {
       const obj = boardCore.getObjectById(objectId);
       if (!obj) continue;
+      // 远程活动对象被持有方锁定，本地不可删除
+      if (boardCore.activeObjectManager?.isRemoteActive?.(objectId)) continue;
 
       if (aom?.isActive?.(objectId)) {
         activeToDiscard.push(obj);
@@ -593,8 +595,11 @@ class BoardApi {
       if (!obj) continue;
       if (typeof obj.isErasable !== "function" || !obj.isErasable()) continue;
       if (typeof obj.eraseData !== "function") continue;
-      // 已被选中的对象（活动对象）不能被擦除
-      if (boardCore.activeObjectManager?.isActive?.(objectId)) {
+      // 已被选中的对象（本地或远程活动对象）不能被擦除
+      if (
+        boardCore.activeObjectManager?.isActive?.(objectId) ||
+        boardCore.activeObjectManager?.isRemoteActive?.(objectId)
+      ) {
         continue;
       }
 
@@ -758,6 +763,10 @@ class BoardApi {
         committer.endSupra(internalKey);
       }
     }
+    this.#emitActivity(
+      "commit",
+      committable.map((obj) => obj.id),
+    );
     return objects.map((obj) => obj.id);
   }
 
@@ -775,7 +784,9 @@ class BoardApi {
     const ids = Array.isArray(objectIds) ? objectIds : [];
     const objects = ids
       .map((id) => boardCore.getObjectById(id))
-      .filter(Boolean);
+      .filter(Boolean)
+      // 远程活动对象被持有方锁定，本地不可选择
+      .filter((obj) => !boardCore.activeObjectManager.isRemoteActive(obj.id));
     if (objects.length === 0) {
       return;
     }
@@ -801,6 +812,10 @@ class BoardApi {
         committer.endSupra(internalKey);
       }
     }
+    this.#emitActivity(
+      "choose",
+      objects.map((obj) => obj.id),
+    );
   }
 
   /**
@@ -849,6 +864,76 @@ class BoardApi {
     for (const objectId of transientObjectIds) {
       boardCore.objectLoaded.delete(objectId);
     }
+    this.#emitActivity(
+      "unchoose",
+      objects.map((obj) => obj.id),
+    );
+  }
+
+  /**
+   * 发射本地 AOM 活动事件（ephemeral）
+   * @param {"choose"|"unchoose"|"commit"} kind - 事件种类
+   * @param {string[]} ids - 对象 id 列表
+   * @returns {void}
+   * @private
+   *
+   * @description
+   * 手势内 choose 在超分子闭合前不入日志，互斥与实时可见依赖本即时通道；日志仍是权威路径。
+   */
+  #emitActivity(kind, ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    this.#boardCore.activityEventBus?.emit("activity", {
+      kind,
+      ids: [...ids],
+      source: this.#boardCore.hitCommitter.source,
+      time: Date.now(),
+    });
+  }
+
+  /**
+   * 应用远程 AOM 活动事件（ephemeral 通道入口）
+   * @param {Object|Object[]} events - 远程活动事件（{kind, ids}）
+   * @param {string} source - 持有方来源标识
+   * @returns {void}
+   */
+  applyRemoteActivity(events, source) {
+    if (typeof source !== "string" || source === "") return;
+    const boardCore = this.#boardCore;
+    const aom = boardCore.activeObjectManager;
+    const list = Array.isArray(events) ? events : [events];
+    const changedIds = new Set();
+    for (const event of list) {
+      const ids = Array.isArray(event?.ids) ? event.ids : [];
+      if (ids.length === 0) continue;
+      if (event.kind === "choose") {
+        aom.applyRemoteChoose(ids, source);
+      } else if (event.kind === "unchoose" || event.kind === "commit") {
+        aom.applyRemoteUnchoose(ids, source);
+      }
+      for (const id of ids) changedIds.add(id);
+    }
+    const instances = [...changedIds]
+      .map((id) => boardCore.getObjectById(id))
+      .filter(Boolean);
+    if (instances.length > 0) {
+      aom.requestActiveRender(instances);
+    }
+  }
+
+  /**
+   * 清理某来源的全部远程活动登记（断线清理入口）
+   * @param {string} source - 来源标识
+   * @returns {string[]} 被清理的对象 id 列表
+   */
+  clearRemoteActivity(source) {
+    const removed = this.#boardCore.activeObjectManager.clearRemoteActive(source);
+    const instances = removed
+      .map((id) => this.#boardCore.getObjectById(id))
+      .filter(Boolean);
+    if (instances.length > 0) {
+      this.#boardCore.activeObjectManager.requestActiveRender(instances);
+    }
+    return removed;
   }
 
   /**
@@ -1188,10 +1273,10 @@ class BoardApi {
         this.#removeObjectEffect(payload.objectId, affectedChunks);
         break;
       case OPERATION_TYPES.CHOOSE_OBJECT:
-        this.#enterAomEffect(payload.objectId, affectedChunks);
+        this.#enterAomEffect(payload.objectId, affectedChunks, record.source);
         break;
       case OPERATION_TYPES.UNCHOOSE_OBJECT:
-        this.#leaveAomEffect(payload.objectId, affectedChunks);
+        this.#leaveAomEffect(payload.objectId, affectedChunks, record.source);
         break;
       default:
         break;
@@ -1223,10 +1308,10 @@ class BoardApi {
         this.#restoreDeletedObjectEffect(payload.objectId, affectedChunks);
         break;
       case OPERATION_TYPES.CHOOSE_OBJECT:
-        this.#leaveAomEffect(payload.objectId, affectedChunks);
+        this.#leaveAomEffect(payload.objectId, affectedChunks, record.source);
         break;
       case OPERATION_TYPES.UNCHOOSE_OBJECT:
-        this.#enterAomEffect(payload.objectId, affectedChunks);
+        this.#enterAomEffect(payload.objectId, affectedChunks, record.source);
         break;
       default:
         break;
@@ -1349,13 +1434,20 @@ class BoardApi {
    * 进入动态图效果：对象成为活动对象
    * @param {string} objectId - 对象 id
    * @param {Set<import("../chunk/chunk.js").Chunk>} affectedChunks - 受影响区块集合（输出参数）
+   * @param {string} [source] - 记录来源；与本端不同则登记远程活动而非本地活动
    * @returns {void}
    * @private
    */
-  #enterAomEffect(objectId, affectedChunks) {
+  #enterAomEffect(objectId, affectedChunks, source) {
     const boardCore = this.#boardCore;
     const obj = boardCore.getObjectById(objectId);
     const aom = boardCore.activeObjectManager;
+    // 远程 choose：登记远程活动（锁定 + 可见），不进本地活动集
+    if (source !== undefined && source !== boardCore.hitCommitter.source) {
+      aom.applyRemoteChoose([objectId], source);
+      if (obj) this.#collectObjectChunks(obj, affectedChunks);
+      return;
+    }
     if (!obj || aom.isActive(objectId)) return;
     this.#collectObjectChunks(obj, affectedChunks);
     aom.add(new Set([obj]));
@@ -1365,13 +1457,20 @@ class BoardApi {
    * 离开动态图效果：对象退出活动状态
    * @param {string} objectId - 对象 id
    * @param {Set<import("../chunk/chunk.js").Chunk>} affectedChunks - 受影响区块集合（输出参数）
+   * @param {string} [source] - 记录来源；与本端不同则注销远程活动登记
    * @returns {void}
    * @private
    */
-  #leaveAomEffect(objectId, affectedChunks) {
+  #leaveAomEffect(objectId, affectedChunks, source) {
     const boardCore = this.#boardCore;
     const obj = boardCore.getObjectById(objectId);
     const aom = boardCore.activeObjectManager;
+    // 远程 unchoose：注销远程活动登记
+    if (source !== undefined && source !== boardCore.hitCommitter.source) {
+      aom.applyRemoteUnchoose([objectId], source);
+      if (obj) this.#collectObjectChunks(obj, affectedChunks);
+      return;
+    }
     if (!obj || !aom.has(objectId)) return;
     this.#collectObjectChunks(obj, affectedChunks);
     aom.discard(new Set([obj]));

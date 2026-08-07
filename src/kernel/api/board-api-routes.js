@@ -147,6 +147,22 @@ const BOARD_API_ROUTES = {
   },
 
   /**
+   * 应用远程 AOM 活动事件
+   */
+  applyRemoteActivity: {
+    invoke: (api, p) => api.applyRemoteActivity(p.events, p.source),
+    flush: "none",
+  },
+
+  /**
+   * 清理某来源的全部远程活动登记
+   */
+  clearRemoteActivity: {
+    invoke: (api, p) => api.clearRemoteActivity(p.source),
+    flush: "none",
+  },
+
+  /**
    * 按区块查询对象 id
    */
   queryChunkObjects: {
