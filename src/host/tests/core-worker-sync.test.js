@@ -186,7 +186,10 @@ describe("CoreWorker 同步接线", () => {
     }, "worker 看到 peer/1");
 
     await rpc(host, "destroyBoard");
-    expect(server.roomSize("test-room")).toBe(1); // 仅剩对等端
+    await until(
+      () => server.roomSize("test-room") === 1,
+      "destroyBoard 后 worker 退出房间（仅剩对等端）",
+    );
   });
 
   test("中继不可达时降级离线运行", async () => {
