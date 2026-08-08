@@ -94,8 +94,27 @@ async function startBoardDaemon(options) {
       : resolveDeviceSource();
   const session = await openBoardSession(rootPath, { source });
 
-  // 可选连中继：失败降级为单机权威端，不阻塞 daemon
+  // 可选连中继：失败降级单机并每 3s 自动重试（中继可能后于 daemon 启动）
   let coordinator = null;
+  let relayRetryTimer = null;
+  const connectRelay = async () => {
+    const next = createNetworkCoordinator({
+      boardCore: session.boardCore,
+      boardApi: session.api,
+      url: options.relayUrl,
+      boardId: options.boardId ?? rootPath,
+    });
+    try {
+      await next.connect();
+      coordinator = next;
+      relayRetryTimer = null;
+      console.log(
+        `[daemon] 已连接中继：${options.relayUrl}（房间 ${options.boardId ?? rootPath}）`,
+      );
+    } catch {
+      relayRetryTimer = setTimeout(() => void connectRelay(), 3000);
+    }
+  };
   if (options.relayUrl) {
     coordinator = createNetworkCoordinator({
       boardCore: session.boardCore,
@@ -107,9 +126,10 @@ async function startBoardDaemon(options) {
       await coordinator.connect();
     } catch (error) {
       console.warn(
-        `[daemon] 中继连接失败（${error?.message ?? error}），按单机模式运行`,
+        `[daemon] 中继连接失败（${error?.message ?? error}），按单机模式运行并每 3s 重试`,
       );
       coordinator = null;
+      relayRetryTimer = setTimeout(() => void connectRelay(), 3000);
     }
   }
 
@@ -150,6 +170,10 @@ async function startBoardDaemon(options) {
   );
 
   const close = async () => {
+    if (relayRetryTimer !== null) {
+      clearTimeout(relayRetryTimer);
+      relayRetryTimer = null;
+    }
     for (const ws of wss.clients) {
       try {
         ws.close();

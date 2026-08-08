@@ -328,4 +328,93 @@ describe("板 daemon", () => {
       await cleanup();
     }
   }, 20000);
+
+  test("免路径下 show/delete 的对象 id 不误判为板路径", async () => {
+    const { dir, cleanup } = await tempBoard();
+    const daemon = await startBoardDaemon({
+      rootPath: dir,
+      source: "daemon-z",
+    });
+    try {
+      const { stdout: idOut } = await execFileAsync(
+        process.execPath,
+        [CLI_PATH, "add", "--type", "CircleObject", "--data", "{radius: 20}"],
+        { env: process.env },
+      );
+      const id = idOut.trim();
+      expect(id).toBe("daemon-z/1");
+
+      const { stdout: showOut } = await execFileAsync(
+        process.execPath,
+        [CLI_PATH, "show", id],
+        { env: process.env },
+      );
+      expect(JSON.parse(showOut).data.radius).toBe(20);
+
+      await execFileAsync(process.execPath, [CLI_PATH, "delete", id], {
+        env: process.env,
+      });
+      const { stdout: listOut } = await execFileAsync(
+        process.execPath,
+        [CLI_PATH, "list"],
+        { env: process.env },
+      );
+      expect(JSON.parse(listOut).trash).toEqual([id]);
+    } finally {
+      await daemon.close();
+      await cleanup();
+    }
+  }, 20000);
+
+  test("daemon 先于中继启动：自动重连后参与协作", async () => {
+    // 先占一个空闲端口再释放，模拟中继未启动
+    const probe = createRelayServer({ port: 0 });
+    const port = probe.port;
+    await probe.close();
+
+    const { dir, cleanup } = await tempBoard();
+    const relayUrl = `ws://127.0.0.1:${port}`;
+    const daemon = await startBoardDaemon({
+      rootPath: dir,
+      source: "daemon-r",
+      relayUrl,
+      boardId: "room",
+    });
+    try {
+      // 中继后启动，daemon 应在重试周期内自动连上
+      const relay = createRelayServer({ port });
+      try {
+        await waitFor(() => relay.roomSize("room") >= 1, 8000);
+
+        const client = await connectDaemon(dir);
+        const id = await client.api.addObject("StrokeObject", {
+          data: { ...STROKE_DATA },
+        });
+
+        const peerCore = new BoardCore({
+          width: 800,
+          height: 600,
+          source: "peer",
+          aomRenderHooks: createDefaultAomRenderHooks(),
+          persistenceAdapter: createDefaultPersistenceAdapter(),
+        });
+        const peerApi = new BoardApi(peerCore);
+        const peerCoordinator = createNetworkCoordinator({
+          boardCore: peerCore,
+          boardApi: peerApi,
+          url: relayUrl,
+          boardId: "room",
+        });
+        await peerCoordinator.connect();
+        await waitFor(() => peerCore.getObjectById(id) != null);
+        await peerCoordinator.close();
+        client.close();
+      } finally {
+        await relay.close();
+      }
+    } finally {
+      await daemon.close();
+      await cleanup();
+    }
+  }, 25000);
 });
