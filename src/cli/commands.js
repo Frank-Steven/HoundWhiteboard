@@ -155,16 +155,17 @@ async function cmdRedo(session, _args, flags) {
 
 /**
  * 命令表
- * @description 键为命令名；create 标志为 true 的命令在板目录不存在时创建空板。
- * @type {Object<string, {run: Function, create?: boolean}>}
+ * @description 键为命令名；create 标志为 true 的命令在板目录不存在时创建空板；
+ * positional 标志为 true 的命令接受位置参数（对象 id），免路径模式下首位置参数按对象 id 处理。
+ * @type {Object<string, {run: Function, create?: boolean, positional?: boolean}>}
  */
 const COMMANDS = {
   create: { run: cmdInfo, create: true },
   info: { run: cmdInfo },
   list: { run: cmdList },
-  show: { run: cmdShow },
+  show: { run: cmdShow, positional: true },
   add: { run: cmdAdd },
-  delete: { run: cmdDelete },
+  delete: { run: cmdDelete, positional: true },
   undo: { run: cmdUndo },
   redo: { run: cmdRedo },
 };

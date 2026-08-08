@@ -9,6 +9,7 @@
 import { openBoardSession } from "./board-session.js";
 import { connectDaemon } from "./daemon-client.js";
 import { readActiveDaemonRoot } from "./board-daemon.js";
+import { resolveBoardPath, isExistingBoardDir } from "./board-path.js";
 import { COMMANDS } from "./commands.js";
 
 /**
@@ -77,9 +78,27 @@ function parseArgv(argv) {
  */
 async function main() {
   const parsed = parseArgv(process.argv.slice(2));
-  const { command, args, flags } = parsed;
+  const { command, flags } = parsed;
   let board = parsed.board;
+  let args = parsed.args;
   const spec = COMMANDS[command];
+  if (board && spec && !spec.create) {
+    const resolved = resolveBoardPath(board);
+    if (await isExistingBoardDir(resolved)) {
+      board = resolved;
+    } else if (spec.positional === true) {
+      // show/delete 等命令的首位置参数是对象 id：非板路径且有活动 daemon 时按对象 id 处理
+      const activeRoot = await readActiveDaemonRoot();
+      if (activeRoot) {
+        args = [board, ...args];
+        board = activeRoot;
+      } else {
+        board = resolved;
+      }
+    } else {
+      board = resolved;
+    }
+  }
   if (!board && command !== "help" && spec && !spec.create) {
     // daemon 启动后 CLI 可免路径：从活动 daemon 引用取板目录
     board = (await readActiveDaemonRoot()) ?? undefined;

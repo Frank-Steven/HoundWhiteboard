@@ -16,6 +16,15 @@ import { jest } from "@jest/globals";
 const execFileAsync = promisify(execFile);
 const CLI_PATH = fileURLToPath(new URL("../index.js", import.meta.url));
 
+// 测试环境隔离：避免子进程读到真实 daemon 的全局引用
+beforeAll(() => {
+  process.env.HWB_DAEMON_REF = path.join(tmpdir(), "hwb-cli-test-no-daemon.json");
+});
+
+afterAll(() => {
+  delete process.env.HWB_DAEMON_REF;
+});
+
 /**
  * 运行一次 CLI 命令
  * @param {string[]} argv - 命令参数
