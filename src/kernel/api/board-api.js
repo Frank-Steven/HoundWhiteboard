@@ -1454,6 +1454,8 @@ class BoardApi {
     }
     if (!obj || aom.isActive(objectId)) return;
     this.#collectObjectChunks(obj, affectedChunks);
+    // 本地选择优先：撤销该对象的远程活动登记（并发 choose 冲突按链序收敛）
+    aom.revokeRemoteActive(objectId);
     aom.add(new Set([obj]));
   }
 

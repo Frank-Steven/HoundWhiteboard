@@ -1709,13 +1709,26 @@ class ActiveObjectManager {
   }
 
   /**
+   * 撤销对象的远程活动登记（本地选择优先）
+   * @param {string} objectId - 对象 id
+   * @returns {void}
+   *
+   * @description
+   * 并发 choose 冲突时本地 choose 效果在链上后到者胜出：本地进入动态图即撤销该对象的远程登记，
+   * 两端按同一链序收敛到同一登记状态。
+   */
+  revokeRemoteActive(objectId) {
+    this.#remoteActive.delete(objectId);
+  }
+
+  /**
    * 登记远程活动对象
    * @param {Iterable<string>} objectIds - 对象 id 集合
    * @param {string} source - 持有方来源标识
    * @returns {void}
    *
    * @description
-   * 本地活跃中的对象忽略远程登记（并发 choose 冲突 v1：本地优先，两端各持己见一致收敛）。
+   * 本地活跃中的对象忽略远程登记（并发 choose 冲突：本地进入动态图的效果会撤销远程登记）。
    */
   applyRemoteChoose(objectIds, source) {
     for (const id of objectIds) {
