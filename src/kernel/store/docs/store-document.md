@@ -8,15 +8,12 @@
 
 ## 模块定位
 
-会话存储是内核的持久化子系统。依据内核宪章（文档 + 操作 + 持久化 + 同步，零 canvas/DOM），持久化的**逻辑**写在 kernel，文件操作原语（read/write/ls/exists/rm/mv/mkdir）从外部注入。
+会话存储是内核的持久化子系统。依据内核宪章（文档 + 操作 + 持久化 + 同步，零 canvas/DOM），持久化的**逻辑**写在 kernel，文件操作原语（read/write/ls/exists/rm/mv/mkdir）从外部注入：
 
-```
-host（组合根）：选路径 → registerRoot → bindRoot → 注入内核
-kernel/store/：
-  ├─ session-store.js   # 布局语义：create/open/save 编排、对象/trash/段文件读写
-  └─ journaler.js       # 日志跟随者：flush 时增量写段 + 对象/trash/区块文件 + board.json
-io/driver/：memory / node / tauri 三实现，纯执行，不做任何判断
-```
+- `host`（组合根）：选路径 → registerRoot → bindRoot → 注入内核
+- `kernel/store/session-store.js`：布局语义，create/open/save 编排、对象/trash/段文件读写
+- `kernel/store/journaler.js`：日志跟随者，flush 时增量写段 + 对象/trash/区块文件 + board.json
+- `io/driver/`：memory / node / tauri 三实现，纯执行，不做任何判断
 
 ## SessionDriver 契约
 

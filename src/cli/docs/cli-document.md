@@ -10,13 +10,7 @@
 
 CLI 是白板的**第二前端**：不经过 Worker、不经渲染管线，进程内直接持有内核。它证明 BoardApi 契约面的完整边界——板文件的全部读写（加载、修改、保存）都能在纯命令行环境中完成，也是脚本化与自动化验证的入口。
 
-```
-CLI 进程（纯命令行）
-  └─ board-session.js   # 组合根：node driver → session-store → BoardCore → journaler → BoardApi
-       ├─ io/driver/node.js      # 文件操作执行面
-       ├─ kernel/store/          # 布局、恢复、日志跟随者落盘
-       └─ kernel/api/board-api.js # 契约面（与 Worker 内同一份）
-```
+组合根为 `src/cli/board-session.js`：node driver 提供文件操作执行面，kernel/store 负责布局、恢复与日志跟随者落盘，最终经 kernel/api 的 BoardApi 契约面（与 Worker 内同一份）对外。
 
 与 UI 前端的差异只在组合根：UI 经 RPC 跨线程调用，CLI 进程内直调；两侧最终落到同一份内核代码与同一种板文件布局。
 
