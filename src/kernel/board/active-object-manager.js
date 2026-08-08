@@ -1415,17 +1415,26 @@ class ActiveObjectManager {
           const chunk = this.board.getChunkById(chunkId);
           if (!chunk || (chunk.isLoad && !chunk.isTempLoad)) continue;
           loader.trackChunk(chunk);
-          loader.emitLoadRequest(chunk, { strategy: "full" });
-          // 通过 LOAD_COMPLETE 事件等待加载完成
+          // 先注册监听再触发加载（加载可能同步完成，事件先于注册会错过）。
+          // 不能用 once：多区块并发预加载时首个 LOAD_COMPLETE 会消耗全部 once 监听，
+          // 仅匹配者 resolve、其余监听已被移除而永久挂起（如圆对象跨区块场景）。
           const promise = new Promise((resolve) => {
-            const unsub = this.board.chunkLoadEventBus.once(
+            const handler = (payload) => {
+              if (payload.chunkId === chunkId) {
+                this.board.chunkLoadEventBus.off(
+                  CHUNK_LOAD_EVENTS.LOAD_COMPLETE,
+                  handler,
+                );
+                resolve();
+              }
+            };
+            this.board.chunkLoadEventBus.on(
               CHUNK_LOAD_EVENTS.LOAD_COMPLETE,
-              (payload) => {
-                if (payload.chunkId === chunkId) resolve();
-              },
+              handler,
             );
           });
           loadPromises.push(promise);
+          loader.emitLoadRequest(chunk, { strategy: "full" });
         }
         await Promise.all(loadPromises);
         // 延时销毁：保留已预加载区块，短时间内后续 apply 可复用缓存
