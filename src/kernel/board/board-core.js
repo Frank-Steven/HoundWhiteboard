@@ -187,6 +187,7 @@ class BoardCore {
    *   source?: string,
    *   hitRecords?: Object[],
    *   lastTime?: number,
+   *   now?: () => number,
    *   coreIdCounters?: Object<string, number>,
    *   objectIdCounters?: Object<string, number>,
    * }} [options={}] - 白板核心初始化选项
@@ -232,6 +233,7 @@ class BoardCore {
       source: options.source ?? "core",
       log: this.operationLog,
       tree: this.undoTree,
+      now: options.now,
       lastTime: options.lastTime,
     });
     for (const [source, counter] of Object.entries(
