@@ -12,9 +12,11 @@ import { createSessionStore } from "../kernel/store/session-store.js";
 import { bindRoot } from "../io/driver/io-driver.js";
 import { createNodeDriver } from "../io/driver/node.js";
 
+import { resolveBoardPath } from "./board-path.js";
+
 /**
  * 打开（或创建并打开）一个板会话
- * @param {string} rootPath - 板目录绝对路径
+ * @param {string} rootPath - 板目录（绝对路径 / ~ 路径 / 板名）
  * @param {Object} [options={}] - 会话选项
  * @param {boolean} [options.create=false] - 板目录不存在时创建空板
  * @param {number} [options.width=0] - 新建板的宽度（重开时以盘上配置为准）
@@ -30,7 +32,7 @@ async function openBoardSession(rootPath, options = {}) {
   if (typeof rootPath !== "string" || rootPath.trim() === "") {
     throw new Error("缺少板目录路径。");
   }
-  const driver = createNodeDriver(rootPath);
+  rootPath = resolveBoardPath(rootPath);  const driver = createNodeDriver(rootPath);
   const { rootId } = await driver.registerRoot(rootPath);
   const store = createSessionStore(bindRoot(driver, rootId));
 
@@ -57,6 +59,8 @@ async function openBoardSession(rootPath, options = {}) {
     lastTime: meta?.lastTime ?? 0,
     coreIdCounters: meta?.coreIdCounters ?? {},
     objectIdCounters: meta?.objectIdCounters ?? {},
+    // CLI / daemon 常驻持板：关闭区块卸载，查询面口径保持全量
+    chunkUnload: false,
   });
   if (exists) {
     boardCore.restoreSession(session);

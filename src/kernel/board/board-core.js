@@ -172,6 +172,13 @@ class BoardCore {
   #objectIdCounters = new Map();
 
   /**
+   * 区块卸载开关（false 时根加载器不卸载区块，对象全量驻留）
+   * @type {boolean}
+   * @private
+   */
+  #chunkUnloadEnabled = true;
+
+  /**
    * 日志 Logger
    * @type {Logger}
    */
@@ -218,6 +225,7 @@ class BoardCore {
       options.persistenceAdapter ?? createDefaultPersistenceAdapter();
     this.aomRenderHooks =
       options.aomRenderHooks ?? createDefaultAomRenderHooks();
+    this.#chunkUnloadEnabled = options.chunkUnload !== false;
     this.activeObjectManager = new ActiveObjectManager(this, {
       renderHooks: this.aomRenderHooks,
     });
@@ -678,7 +686,9 @@ class BoardCore {
         coveredChunkIds.size > 0 ? coveredChunkIds : new Set([chunk.id]);
       entry.loadedCount = this.#countFullLoadReferences(effectiveChunkIds);
 
+      // chunkUnload 关闭时（CLI / daemon 常驻持板）对象不从内存移除，查询面口径保持全量
       if (
+        this.#chunkUnloadEnabled !== false &&
         entry.loadedCount <= 0 &&
         !this.activeObjectManager?.isActive?.(objectId) &&
         !this.activeObjectManager?.isRemoteActive?.(objectId)
@@ -981,7 +991,9 @@ class BoardCore {
 
     entry.loadedCount = loadedCount;
 
+    // chunkUnload 关闭时（CLI / daemon 常驻持板）对象不从内存移除
     if (
+      this.#chunkUnloadEnabled !== false &&
       entry.loadedCount <= 0 &&
       !this.activeObjectManager?.isActive?.(objectId) &&
       !this.activeObjectManager?.isRemoteActive?.(objectId)
