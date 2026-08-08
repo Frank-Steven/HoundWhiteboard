@@ -109,7 +109,27 @@ function createNetworkCoordinator(options) {
   let unsubscribeAppend = null;
   /** @type {Function|null} */
   let unsubscribeActivity = null;
+  /** @type {Object[]} 待发送记录缓冲（微任务合批） */
+  const outbox = [];
+  /** @type {boolean} 发送微任务是否已排队 */
+  let sendScheduled = false;
 
+  /**
+   * 微任务合批发送本地记录
+   * @returns {void}
+   *
+   * @description
+   * 超分子成员在 endSupra 时同步连续物化，微任务合批保证成员同批到达（传输中的超分子原子性）。
+   */
+  const scheduleSend = () => {
+    if (sendScheduled) return;
+    sendScheduled = true;
+    queueMicrotask(() => {
+      sendScheduled = false;
+      if (outbox.length === 0) return;
+      send({ type: "records", records: outbox.splice(0) });
+    });
+  };
   /**
    * 发送消息到中继
    * @param {Object} message - 消息体
@@ -321,7 +341,8 @@ function createNetworkCoordinator(options) {
       unsubscribeAppend = log.onAppend((record) => {
         // 只广播本端产生的记录；远程应用的记录不回环
         if (record.source !== source) return;
-        send({ type: "records", records: [record] });
+        outbox.push(record);
+        scheduleSend();
       });
       unsubscribeActivity = boardCore.activityEventBus.on("activity", (event) => {
         send({ type: "aom", event });

@@ -173,8 +173,11 @@ describe("同步收敛性质", () => {
       };
 
       /**
-       * 投递一步：随机挑一个父已满足的（接收端, 来源）对投递下一条
+       * 投递一步：随机挑一个父已满足的（接收端, 来源）对投递下一批
        * @returns {boolean} 是否投递成功
+       *
+       * @description
+       * 投递粒度与真实通道一致：超分子成员同批完整到达（发送侧重微任务合批保证原子性）。
        */
       const deliverOne = () => {
         const eligible = [];
@@ -199,9 +202,21 @@ describe("同步收敛性质", () => {
           (e) => e.boardCore.hitCommitter.source === receiver,
         );
         const cursor = cursors.get(receiver).get(source);
-        const record = streams.get(source)[cursor];
-        end.api.applyRemoteOperations([record]);
-        cursors.get(receiver).set(source, cursor + 1);
+        const stream = streams.get(source);
+        // 批次：独立记录单条；超分子连同其全部连续成员
+        const batch = [stream[cursor]];
+        if (stream[cursor].supraOpId !== null) {
+          let i = cursor + 1;
+          while (
+            i < stream.length &&
+            stream[i].supraOpId === stream[cursor].supraOpId
+          ) {
+            batch.push(stream[i]);
+            i++;
+          }
+        }
+        end.api.applyRemoteOperations(batch);
+        cursors.get(receiver).set(source, cursor + batch.length);
         return true;
       };
 
