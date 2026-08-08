@@ -1,11 +1,53 @@
 /**
  * @file CLI 命令实现
- * @description 板会话上的各命令处理器；所有变更命令以 --source 为操作作者。
+ * @description 板会话上的各命令处理器；命令只经 session.api（BoardApi 契约面）执行，文件模式与 daemon 模式同一条路。
  * @module cli/commands
  * @author Zhou Chenyu
  */
 
-import { IncrementalIdPool } from "../kernel/utils/incremental-id-pool.js";
+import fs from "node:fs/promises";
+
+/**
+ * 宽松解析 JSON：先试严格解析；失败则补裸属性名引号、单引号转双引号后重试
+ * @param {string} text - 待解析文本
+ * @returns {Object} 解析结果
+ *
+ * @description
+ * PowerShell/cmd 手写 JSON 转义繁琐，宽松模式兼容 `'{radius: 20}'`、`{'a':1}` 这类写法。
+ * 复杂结构仍建议写标准 JSON 或用 --data @文件。
+ */
+function parseLenientJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const relaxed = text
+      .replace(/'/g, '"')
+      .replace(/([{,]\s*)([a-zA-Z_$][\w$]*)(\s*:)/g, '$1"$2"$3');
+    try {
+      return JSON.parse(relaxed);
+    } catch (error) {
+      throw new Error(
+        `--data 不是合法 JSON：${error.message}（复杂数据建议写标准 JSON 或用 --data @文件）`,
+      );
+    }
+  }
+}
+
+/**
+ * 解析 --data 参数：@ 前缀从文件读取，否则按（宽松）JSON 解析
+ * @param {string} dataText - --data 参数值（必传：对象数据无默认值）
+ * @returns {Promise<Object>} 数据
+ */
+async function parseDataArgument(dataText) {
+  if (typeof dataText !== "string" || dataText === "") {
+    throw new Error("add 需要 --data（可用 --data '<json>' 或 --data @文件）。");
+  }
+  if (dataText.startsWith("@")) {
+    const text = await fs.readFile(dataText.slice(1), "utf-8");
+    return parseLenientJson(text);
+  }
+  return parseLenientJson(dataText);
+}
 
 /**
  * 解析位置参数
@@ -27,23 +69,8 @@ function parsePosition(text) {
  * @returns {Promise<void>}
  */
 async function cmdInfo(session) {
-  const live = session.boardCore.getAllObjects();
-  const meta = session.boardCore.collectSessionMeta();
-  console.log(
-    JSON.stringify(
-      {
-        boardConfig: meta.boardConfig,
-        records: session.boardCore.operationLog.size,
-        head: session.boardCore.undoTree.head?.shareId ?? null,
-        objects: live.length,
-        trash: session.boardCore.trash.size,
-        coreIdCounters: meta.coreIdCounters,
-        objectIdCounters: meta.objectIdCounters,
-      },
-      null,
-      2,
-    ),
-  );
+  const info = await session.api.queryBoardInfo();
+  console.log(JSON.stringify(info, null, 2));
 }
 
 /**
@@ -52,11 +79,8 @@ async function cmdInfo(session) {
  * @returns {Promise<void>}
  */
 async function cmdList(session) {
-  const live = session.boardCore
-    .getAllObjects()
-    .map((obj) => ({ id: obj.id, type: obj.type ?? obj.constructor.name }));
-  const trash = [...session.boardCore.trash.keys()];
-  console.log(JSON.stringify({ objects: live, trash }, null, 2));
+  const { objects, trash } = await session.api.queryObjectList();
+  console.log(JSON.stringify({ objects, trash }, null, 2));
 }
 
 /**
@@ -68,9 +92,9 @@ async function cmdList(session) {
 async function cmdShow(session, args) {
   const id = args[0];
   if (!id) throw new Error("show 需要一个对象 id。");
-  const obj = session.boardCore.getObjectById(id);
-  if (!obj) throw new Error(`对象不存在：${id}`);
-  console.log(JSON.stringify(obj.serialize(), null, 2));
+  const data = await session.api.queryObject(id);
+  if (!data) throw new Error(`对象不存在：${id}`);
+  console.log(JSON.stringify(data, null, 2));
 }
 
 /**
@@ -86,17 +110,9 @@ async function cmdShow(session, args) {
 async function cmdAdd(session, _args, flags) {
   const type = flags.type;
   if (!type) throw new Error("add 需要 --type。");
-  const data = flags.data ? JSON.parse(flags.data) : undefined;
+  const data = await parseDataArgument(flags.data);
   const position = parsePosition(flags.position);
-  const source = flags.source;
-
-  const counters = session.api.getObjectIdCounters();
-  const pool = new IncrementalIdPool(source, counters[source] ?? 0);
-  const id = pool.allocate();
-
-  session.api.createObject(type, { id, position, data });
-  session.api.commitObjects([id]);
-  session.api.reportObjectIdCounter(source, pool.counter);
+  const id = await session.api.addObject(type, { position, data });
   console.log(id);
 }
 
@@ -109,7 +125,7 @@ async function cmdAdd(session, _args, flags) {
  */
 async function cmdDelete(session, args, flags) {
   if (args.length === 0) throw new Error("delete 需要至少一个对象 id。");
-  session.api.deleteObjects(args);
+  await session.api.deleteObjects(args);
   console.log(`deleted: ${args.join(", ")}`);
 }
 
@@ -121,7 +137,7 @@ async function cmdDelete(session, args, flags) {
  * @returns {Promise<void>}
  */
 async function cmdUndo(session, _args, flags) {
-  session.api.undo();
+  await session.api.undo();
   console.log("undo ok");
 }
 
@@ -133,7 +149,7 @@ async function cmdUndo(session, _args, flags) {
  * @returns {Promise<void>}
  */
 async function cmdRedo(session, _args, flags) {
-  session.api.redo();
+  await session.api.redo();
   console.log("redo ok");
 }
 

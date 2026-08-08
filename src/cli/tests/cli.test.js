@@ -6,7 +6,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -101,6 +101,47 @@ describe("CLI 第二前端", () => {
       const listed = await runCliJson(["list", dir]);
       expect(listed.objects).toEqual([{ id: "cli/1", type: "StrokeObject" }]);
       expect(listed.trash).toEqual([]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("add 缺 --data 报错；--data @文件可读", async () => {
+    const { dir, cleanup } = tempBoardDir();
+    const dataFile = path.join(dir, "stroke.json");
+    try {
+      await runCli(["create", dir, "--width", "800", "--height", "600"]);
+      writeFileSync(dataFile, JSON.stringify(JSON.parse(STROKE_DATA)));
+      await expect(
+        runCli(["add", dir, "--type", "StrokeObject"]),
+      ).rejects.toThrow("需要 --data");
+      const id = (
+        await runCli(["add", dir, "--type", "StrokeObject", "--data", `@${dataFile}`])
+      ).stdout.trim();
+      expect(id).toBe("cli/1");
+      const listed = await runCliJson(["list", dir]);
+      expect(listed.objects).toEqual([{ id: "cli/1", type: "StrokeObject" }]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("add 宽松解析 --data：裸属性名与单引号可接受", async () => {
+    const { dir, cleanup } = tempBoardDir();
+    try {
+      await runCli(["create", dir, "--width", "800", "--height", "600"]);
+      const id = (
+        await runCli(["add", dir, "--type", "CircleObject", "--data", "{radius: 20}"])
+      ).stdout.trim();
+      expect(id).toBe("cli/1");
+      const shown = await runCliJson(["show", dir, "cli/1"]);
+      expect(shown.data.radius).toBe(20);
+
+      const id2 = (
+        await runCli(["add", dir, "--type", "CircleObject", "--data", "{'radius': 30}"])
+      ).stdout.trim();
+      const shown2 = await runCliJson(["show", dir, id2]);
+      expect(shown2.data.radius).toBe(30);
     } finally {
       cleanup();
     }

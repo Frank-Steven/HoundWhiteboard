@@ -12,6 +12,33 @@ CLI 是白板的**第二前端**：不经过 Worker、不经渲染管线，进�
 
 组合根为 `src/cli/board-session.js`：node driver 提供文件操作执行面，kernel/store 负责布局、恢复与日志跟随者落盘，最终经 kernel/api 的 BoardApi 契约面（与 Worker 内同一份）对外。
 
+## daemon 模式
+
+常驻 daemon 进程持有板（`yarn daemon <板目录|板名> [--source 身份] [--relay 中继] [--board-id 房间] [--port 端口]`）：进程内装配与文件模式相同（BoardCore + BoardApi + 日志跟随者落盘），同时起 WebSocket 服务提供 BoardApi RPC，板目录写入 `.daemon.json`（端口/pid/身份）。
+
+CLI 在板目录发现活 daemon 时自动切换为薄客户端：命令语义不变，执行从进程内直调换成经 RPC 发操作，与 GUI 调 BoardApi 同一条路。daemon 若连了中继（`--relay`），CLI 操作实时广播到协作端，协作端的操作 CLI 也能查到——「与 GUI 不同步」限制在 daemon 模式下消除。
+
+- **身份**：daemon 模式下操作作者为 daemon 身份（`--source` 或设备自动身份），CLI 的 `--source` 可省略
+- **并发**：id 分配在持板侧原子完成（`addObject` 组合面），多 CLI 并发不撞号
+- **回退**：无活 daemon（或描述文件为僵尸）时 CLI 回退文件直读直写，与 GUI 不同步的限制同前
+- **create**：永远走文件模式（新建板时无 daemon 可连）
+
+## 板路径与数据参数
+
+- **板路径**：CLI 与 daemon 的板目录参数需传全称路径（支持 `~` 家目录展开，如 `~/hound-whiteboard/test-board`）。**daemon 启动后 CLI 可免路径**：板目录写入 `.daemon.json` 的同时，daemon 会把板目录登记到全局引用（`~/.hound-whiteboard/daemon.json`），`yarn cli <命令>` 不带板目录时自动操作当前活动 daemon 的板。
+- **--data**：`add` 的 `--data` 必传（StrokeObject 无默认数据）；传 JSON 字符串（shell 转义麻烦时）或以 `@` 开头传 JSON 文件路径，如 `--data @stroke.json`。
+
+```bash
+# 终端 1：daemon 启动（全称路径）
+$ yarn daemon ~/hound-whiteboard/test-board --relay ws://127.0.0.1:8377 --board-id demo-board
+
+# 终端 2：CLI 免路径操作同一板
+$ yarn cli add --type StrokeObject --data @stroke.json
+$ yarn cli list
+$ yarn cli info
+$ yarn cli undo
+```
+
 与 UI 前端的差异只在组合根：UI 经 RPC 跨线程调用，CLI 进程内直调；两侧最终落到同一份内核代码与同一种板文件布局。
 
 ## 命令面

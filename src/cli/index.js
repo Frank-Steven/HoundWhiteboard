@@ -7,6 +7,8 @@
  */
 
 import { openBoardSession } from "./board-session.js";
+import { connectDaemon } from "./daemon-client.js";
+import { readActiveDaemonRoot } from "./board-daemon.js";
 import { COMMANDS } from "./commands.js";
 
 /**
@@ -27,6 +29,10 @@ const USAGE = `用法：hwb <命令> <板目录> [参数] [--标志 值]
 
 通用标志：
   --source <来源>   操作作者命名空间（默认 cli），决定新对象 id 前缀
+
+协作模式：
+  板目录存在 daemon（.daemon.json）时自动连接，操作经 daemon 执行；
+  daemon 若连了中继，CLI 操作与 GUI 实时互见。启动 daemon 见 yarn daemon。
 `;
 
 /**
@@ -35,14 +41,23 @@ const USAGE = `用法：hwb <命令> <板目录> [参数] [--标志 值]
  * @returns {{command: string, board: string|undefined, args: string[], flags: Object}} 解析结果
  */
 function parseArgv(argv) {
-  const [command, board, ...rest] = argv;
+  const [command, maybeBoard, ...rest] = argv;
+  // 板目录缺省：首个位置参数以 -- 开头时视为命令标志而非板路径（免路径模式）
+  const board =
+    maybeBoard !== undefined && maybeBoard.startsWith("--")
+      ? undefined
+      : maybeBoard;
+  const all =
+    maybeBoard !== undefined && board === undefined
+      ? [maybeBoard, ...rest]
+      : rest;
   const args = [];
   const flags = {};
-  for (let i = 0; i < rest.length; i++) {
-    const token = rest[i];
+  for (let i = 0; i < all.length; i++) {
+    const token = all[i];
     if (token.startsWith("--")) {
       const key = token.slice(2);
-      const next = rest[i + 1];
+      const next = all[i + 1];
       if (next === undefined || next.startsWith("--")) {
         flags[key] = true;
       } else {
@@ -61,22 +76,41 @@ function parseArgv(argv) {
  * @returns {Promise<void>}
  */
 async function main() {
-  const { command, board, args, flags } = parseArgv(process.argv.slice(2));
+  const parsed = parseArgv(process.argv.slice(2));
+  const { command, args, flags } = parsed;
+  let board = parsed.board;
   const spec = COMMANDS[command];
-  if (!spec || (!board && command !== "help")) {
+  if (!board && command !== "help" && spec && !spec.create) {
+    // daemon 启动后 CLI 可免路径：从活动 daemon 引用取板目录
+    board = (await readActiveDaemonRoot()) ?? undefined;
+  }
+  if (!spec || !board) {
     console.log(USAGE);
+    if (command && command !== "help" && !board) {
+      console.error("缺少板目录；已启动 daemon 时可直接省略，或传板目录路径。");
+    }
     process.exit(command === "help" || !command ? 0 : 1);
   }
 
-  const session = await openBoardSession(board, {
-    create: spec.create === true,
-    width: Number(flags.width ?? 0) || 0,
-    height: Number(flags.height ?? 0) || 0,
-    source: flags.source ?? "cli",
-  });
+  let session = null;
+  let viaDaemon = false;
+  if (!spec.create) {
+    session = await connectDaemon(board);
+    viaDaemon = session != null;
+  }
+  if (!session) {
+    session = await openBoardSession(board, {
+      create: spec.create === true,
+      width: Number(flags.width ?? 0) || 0,
+      height: Number(flags.height ?? 0) || 0,
+      source: flags.source ?? "cli",
+    });
+  }
   try {
     await spec.run(session, args, { ...flags, source: flags.source ?? "cli" });
-    await session.flush();
+    if (!viaDaemon) {
+      await session.flush();
+    }
   } finally {
     await session.close();
   }
