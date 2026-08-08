@@ -174,8 +174,9 @@ describe("网络协调器", () => {
       "a 收到 b 的修改",
     );
 
-    // a 撤销 b 的修改（各撤各的策略为 UI 层，内核 undo 为目标节点语义）
-    a.api.undo();
+    // a 撤销 b 的修改（显式目标；undo() 缺省为各撤各的，只撤本端节点）
+    const bModifyNodeId = a.boardCore.undoTree.head.shareId;
+    a.api.undo(bModifyNodeId);
     await until(
       () => a.boardCore.getObjectById("a/1").position.x === 0,
       "a 撤销生效",

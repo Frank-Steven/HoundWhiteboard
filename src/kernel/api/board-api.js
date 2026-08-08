@@ -1207,17 +1207,35 @@ class BoardApi {
 
   /**
    * 执行撤销
-   * @description
-   * 缺省以活动链末端为目标：记录撤销并应用树（退化/分叉改挂/被吸收在应用时确定），再经链过渡对齐白板效果。
+   * @param {string} [targetNodeId] - 显式撤销目标（活动链节点 shareId）；缺省时取本端来源最近的活动链节点（各撤各的）
    * @returns {{ undone: boolean, targetNodeId: ?string }} 撤销结果
+   *
+   * @description
+   * 记录撤销并应用树（退化/分叉改挂/被吸收在应用时确定），再经链过渡对齐白板效果。
    */
-  undo() {
+  undo(targetNodeId) {
     const boardCore = this.#boardCore;
     const tree = boardCore.undoTree;
     if (tree.head === tree.root) {
       return { undone: false, targetNodeId: null };
     }
-    const targetId = tree.head.shareId;
+    // 缺省各撤各的：目标为本端来源最近的活动链节点，而非链末端——
+    // 协作下链末端可能是远端操作。显式传 targetNodeId 可撤任意活动链节点。
+    let targetId = targetNodeId ?? null;
+    if (targetId === null) {
+      const source = boardCore.hitCommitter.source;
+      const log = boardCore.operationLog;
+      const chain = tree.getActiveChain();
+      for (let i = chain.length - 1; i >= 0; i--) {
+        if (log.get(chain[i].shareId)?.source === source) {
+          targetId = chain[i].shareId;
+          break;
+        }
+      }
+    }
+    if (targetId === null || !tree.isOnActiveChain(targetId)) {
+      return { undone: false, targetNodeId: null };
+    }
     const beforeChain = tree.getActiveChain();
     boardCore.hitCommitter.commitUndo({ targetNodeId: targetId });
     this.#transitionEffects(beforeChain, tree.getActiveChain());
