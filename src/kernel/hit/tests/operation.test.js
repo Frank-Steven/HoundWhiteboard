@@ -126,9 +126,22 @@ describe("分子操作记录构造", () => {
     expect(record.payload.after).toEqual({ x: 10 });
   });
 
-  test("删除/选择/取消选择：只携带定位信息", () => {
+  test("删除：携带快照与层位边；选择/取消选择：只携带定位信息", () => {
+    const deleteRecord = createDeleteObjectOperation({
+      ...BASE_FIELDS,
+      chunkId: "chunk-1",
+      objectId: "obj-1",
+      data: { id: "obj-1", type: "StrokeObject" },
+      chunks: [{ chunkId: "chunk-1", below: ["obj-0"], above: [] }],
+    });
+    expect(deleteRecord.payload).toEqual({
+      chunkId: "chunk-1",
+      objectId: "obj-1",
+      data: { id: "obj-1", type: "StrokeObject" },
+      chunks: [{ chunkId: "chunk-1", below: ["obj-0"], above: [] }],
+    });
     const fields = { ...BASE_FIELDS, chunkId: "chunk-1", objectId: "obj-1" };
-    for (const create of [createDeleteObjectOperation, createChooseObjectOperation, createUnchooseObjectOperation]) {
+    for (const create of [createChooseObjectOperation, createUnchooseObjectOperation]) {
       const record = create(fields);
       expect(record.payload).toEqual({ chunkId: "chunk-1", objectId: "obj-1" });
     }
@@ -157,6 +170,8 @@ describe("分子操作记录构造", () => {
       supraOpId: "alice/op-9",
       chunkId: "chunk-1",
       objectId: "obj-1",
+      data: { id: "obj-1" },
+      chunks: [],
     });
     expect(record.supraOpId).toBe("alice/op-9");
   });
@@ -179,7 +194,7 @@ describe("validateOperation", () => {
   const validRecords = () => [
     createAddObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", data: {}, layerStackSnapshot: ["o"] }),
     createModifyObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", before: {}, after: {}, layerStackSnapshot: [] }),
-    createDeleteObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o" }),
+    createDeleteObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", data: { id: "o" }, chunks: [] }),
     createChooseObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o" }),
     createUnchooseObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o" }),
     createMoveHeadOperation({ ...BASE_FIELDS, targetNodeId: "alice/op-1" }),

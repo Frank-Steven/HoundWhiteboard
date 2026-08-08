@@ -225,16 +225,24 @@ function createModifyObjectOperation(fields) {
 
 /**
  * 构造删除对象操作记录
- * @description 对象本体由 commit 边界移入 history/trash/，记录只携带定位信息。
+ * @description 记录携带对象快照与层位边：接收端凭以重建 trash 条目（撤销删除可恢复），复制的是效果而非重执行。
  * @param {Object} fields - 公共属性，同 _buildRecord 的 fields
  * @param {string} fields.chunkId - 区块 id
  * @param {string} fields.objectId - 对象 id
+ * @param {Object} fields.data - 对象序列化快照
+ * @param {Array<{chunkId: string, below: Iterable<string>, above: Iterable<string>}>} [fields.chunks] - 层位边（归一化为数组）
  * @returns {OperationRecord} 删除对象操作记录
  */
 function createDeleteObjectOperation(fields) {
   return _buildRecord({ ...fields, type: OPERATION_TYPES.DELETE_OBJECT }, {
     chunkId: fields.chunkId,
     objectId: fields.objectId,
+    data: fields.data,
+    chunks: (fields.chunks ?? []).map((entry) => ({
+      chunkId: entry.chunkId,
+      below: [...(entry.below ?? [])],
+      above: [...(entry.above ?? [])],
+    })),
   });
 }
 
@@ -396,6 +404,15 @@ function _validatePayload(record, errors) {
       _validateLayerStackSnapshot(payload, errors);
       break;
     case OPERATION_TYPES.DELETE_OBJECT:
+      requireString("chunkId");
+      requireString("objectId");
+      if (payload.data === null || typeof payload.data !== "object") {
+        errors.push("delete-object 载荷缺 data 快照");
+      }
+      if (!Array.isArray(payload.chunks)) {
+        errors.push("delete-object 载荷缺 chunks 层位边");
+      }
+      break;
     case OPERATION_TYPES.CHOOSE_OBJECT:
     case OPERATION_TYPES.UNCHOOSE_OBJECT:
       requireString("chunkId");

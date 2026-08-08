@@ -68,7 +68,7 @@ describe("发射管线", () => {
     });
     expect(modify.type).toBe("modify-object");
     expect(modify.payload.before).toEqual({ x: 0 });
-    expect(committer.commitDelete({ chunkId: "1", objectId: "obj-1" }).type).toBe("delete-object");
+    expect(committer.commitDelete({ chunkId: "1", objectId: "obj-1", data: { id: "obj-1" }, chunks: [] }).type).toBe("delete-object");
     expect(committer.commitChoose({ chunkId: "1", objectId: "obj-2" }).type).toBe("choose-object");
     expect(committer.commitUnchoose({ chunkId: "1", objectId: "obj-3" }).type).toBe("unchoose-object");
   });
@@ -77,7 +77,7 @@ describe("发射管线", () => {
     const { log, tree, committer } = setup([100, 200, 300]);
     committer.commitAdd(addEffect("obj-1"));
     committer.commitAdd(addEffect("obj-2"));
-    committer.commitDelete({ chunkId: "1", objectId: "obj-1" });
+    committer.commitDelete({ chunkId: "1", objectId: "obj-1", data: { id: "obj-1" }, chunks: [] });
     expect(tree.getActiveChain().map((node) => node.shareId)).toEqual(
       log.toArray().map((record) => record.id),
     );
@@ -109,7 +109,7 @@ describe("超分子（指定 key）", () => {
     expect(draft.id).toBeNull();
     expect(log.size).toBe(0);
     committer.commitAdd({ ...addEffect("obj-2"), supraKey: "s" });
-    committer.commitDelete({ chunkId: "1", objectId: "obj-1", supraKey: "s" });
+    committer.commitDelete({ chunkId: "1", objectId: "obj-1", data: { id: "obj-1" }, chunks: [], supraKey: "s" });
     committer.endSupra("s");
     // obj-1：modify+delete 简并为 delete；obj-2：add —— 简并后两条，组序保持首次出现顺序（delete 在前）
     expect(log.size).toBe(2);
@@ -177,7 +177,7 @@ describe("超分子（指定 key）", () => {
     expect(tree.getActiveChain()).toHaveLength(0);
     committer.beginSupra("t");
     committer.commitAdd({ ...addEffect("obj-1"), supraKey: "t" });
-    committer.commitDelete({ chunkId: "1", objectId: "obj-1", supraKey: "t" });
+    committer.commitDelete({ chunkId: "1", objectId: "obj-1", data: { id: "obj-1" }, chunks: [], supraKey: "t" });
     committer.endSupra("t");
     expect(tree.getActiveChain()).toHaveLength(0);
   });
@@ -269,7 +269,7 @@ describe("超分子简并", () => {
     const { log, committer } = setup();
     committer.beginSupra("s");
     committer.commitModify({ ...modifyEffect("o1", { v: 0 }, { v: 1 }), supraKey: "s" });
-    committer.commitDelete({ chunkId: "1", objectId: "o1", supraKey: "s" });
+    committer.commitDelete({ chunkId: "1", objectId: "o1", data: { id: "o1" }, chunks: [], supraKey: "s" });
     committer.endSupra("s");
     expect(types(log)).toEqual(["delete-object"]);
   });

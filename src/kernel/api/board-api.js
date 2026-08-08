@@ -309,6 +309,7 @@ class BoardApi {
     const aom = boardCore.activeObjectManager;
     const activeToDiscard = [];
     const affectedChunks = new Set();
+    const deletePayloads = new Map();
     const chunkIds = new Map(
       ids.map((objectId) => [objectId, this.#resolveObjectChunkId(objectId)]),
     );
@@ -335,7 +336,10 @@ class BoardApi {
         chunk.removeObject(objectId);
         affectedChunks.add(chunk);
       }
-      boardCore.trash.set(objectId, { data: obj.serialize(), chunks: trashChunks });
+      const snapshot = obj.serialize();
+      boardCore.trash.set(objectId, { data: snapshot, chunks: trashChunks });
+      // 删除记录携带快照与层位边：接收端凭以重建 trash 条目
+      deletePayloads.set(objectId, { data: snapshot, chunks: trashChunks });
 
       boardCore.objectLoaded.delete(objectId);
       this.#chooseSnapshots.delete(objectId);
@@ -352,8 +356,15 @@ class BoardApi {
     try {
       for (const objectId of ids) {
         const chunkId = chunkIds.get(objectId);
-        if (chunkId) {
-          committer.commitDelete({ chunkId, objectId, supraKey });
+        const payload = deletePayloads.get(objectId);
+        if (chunkId && payload) {
+          committer.commitDelete({
+            chunkId,
+            objectId,
+            data: payload.data,
+            chunks: payload.chunks,
+            supraKey,
+          });
         }
       }
     } finally {
@@ -1266,11 +1277,14 @@ class BoardApi {
           this.#collectObjectChunks(obj, affectedChunks);
           this.#applyObjectPatch(obj, payload.after);
           this.#collectObjectChunks(obj, affectedChunks);
+        } else {
+          // 对象在 trash 中：快照随链上修改滚动，恢复时拿到的是当前状态
+          this.#patchTrashSnapshot(payload.objectId, payload.after);
         }
         break;
       }
       case OPERATION_TYPES.DELETE_OBJECT:
-        this.#removeObjectEffect(payload.objectId, affectedChunks);
+        this.#deleteObjectEffect(payload, affectedChunks);
         break;
       case OPERATION_TYPES.CHOOSE_OBJECT:
         this.#enterAomEffect(payload.objectId, affectedChunks, record.source);
@@ -1301,6 +1315,8 @@ class BoardApi {
           this.#collectObjectChunks(obj, affectedChunks);
           this.#applyObjectPatch(obj, payload.before);
           this.#collectObjectChunks(obj, affectedChunks);
+        } else {
+          this.#patchTrashSnapshot(payload.objectId, payload.before);
         }
         break;
       }
@@ -1355,6 +1371,8 @@ class BoardApi {
     if (boardCore.getObjectById(payload.objectId)) return;
     const obj = deserialize(payload.data);
     boardCore.registerObjectInstance(obj);
+    // 不变量：对象在垍即无 trash 条目（重放/重插入自愈僵尸条目）
+    boardCore.trash.delete(payload.objectId);
     if (boardCore.width <= 0 || boardCore.height <= 0) return;
     this.#collectObjectChunks(obj, affectedChunks);
     const rect = getObjectWorldRect(obj);
@@ -1405,6 +1423,47 @@ class BoardApi {
       aom.unregisterTrackedActiveObject(objectId);
     }
     boardCore.objectLoaded.delete(objectId);
+  }
+
+  /**
+   * 将修改快照滚入 trash 条目
+   * @param {string} objectId - 对象 id
+   * @param {Object} [snapshot] - 全量快照（after 或 before）
+   * @returns {void}
+   * @private
+   *
+   * @description
+   * 对象在 trash 中时修改效果不落活对象而落 trash 快照：乱序下先删后改的场景恢复时与链上重放一致。
+   */
+  #patchTrashSnapshot(objectId, snapshot) {
+    const entry = this.#boardCore.trash.get(objectId);
+    if (!entry || snapshot === undefined || snapshot === null) return;
+    entry.data = JSON.parse(JSON.stringify(snapshot));
+  }
+
+  /**
+   * 删除对象效果：以记录载荷重建 trash 条目并移除对象
+   * @param {Object} payload - 删除载荷（chunkId/objectId/data/chunks）
+   * @param {Set<import("../chunk/chunk.js").Chunk>} affectedChunks - 受影响区块集合（输出参数）
+   * @returns {void}
+   * @private
+   *
+   * @description
+   * trash 条目以记录携带的作者端快照与层位边为准，各端重建结果一致；本地路径已建条目时跳过。
+   */
+  #deleteObjectEffect(payload, affectedChunks) {
+    const boardCore = this.#boardCore;
+    if (!boardCore.trash.has(payload.objectId)) {
+      boardCore.trash.set(payload.objectId, {
+        data: payload.data,
+        chunks: (payload.chunks ?? []).map((entry) => ({
+          chunkId: entry.chunkId,
+          below: new Set(entry.below),
+          above: new Set(entry.above),
+        })),
+      });
+    }
+    this.#removeObjectEffect(payload.objectId, affectedChunks);
   }
 
   /**
