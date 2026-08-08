@@ -396,10 +396,25 @@ function createNetworkCoordinator(options) {
       const socket = ws;
       ws = null;
       state = "closed";
-      if (socket !== null) {
+      // readyState 3 = CLOSED；实例常量（socket.CLOSED）在 undici 上不存在，用数值
+      if (socket !== null && socket.readyState !== 3) {
         await new Promise((resolve) => {
-          socket.addEventListener("close", resolve, { once: true });
-          socket.close();
+          // undici 在连接失败的套接字上不发 close 事件：以短超时兜底
+          const timer = setTimeout(resolve, 100);
+          socket.addEventListener(
+            "close",
+            () => {
+              clearTimeout(timer);
+              resolve();
+            },
+            { once: true },
+          );
+          try {
+            socket.close();
+          } catch {
+            clearTimeout(timer);
+            resolve();
+          }
         });
       }
     },
