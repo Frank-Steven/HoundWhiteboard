@@ -215,6 +215,11 @@ class UndoTree {
       return null;
     }
     const shareId = members[0].supraOpId;
+    // 成员增量到达幂等：节点已存在时不重复建节点（成员全集由数据池凭 shareId 提供）
+    const existing = this.getActiveNode(shareId);
+    if (existing !== null) {
+      return existing;
+    }
     const last = members[members.length - 1];
     if (this.#head === this.#root || this.#compareRecords(last, this.#timeRecordOf(this.#head.shareId)) > 0) {
       return this.#appendNode(shareId);
