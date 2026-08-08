@@ -23,6 +23,7 @@ import { createTauriDriver } from "../io/driver/tauri.js";
 import { bindRoot } from "../io/driver/io-driver.js";
 import { createPersistenceAdapter } from "../io/adapter/persistence.js";
 import { createSessionStore } from "../kernel/store/session-store.js";
+import { createNetworkCoordinator } from "./sync/network-coordinator.js";
 import { createJournaler } from "../kernel/store/journaler.js";
 
 /**
@@ -133,6 +134,12 @@ class CoreWorkerRuntime {
   #journaler;
 
   /**
+   * 网络协调器（syncUrl 存在且连接成功时非空）
+   * @type {Object | null}
+   */
+  #coordinator;
+
+  /**
    * 等待主线程 io-response 的挂起表
    * @type {Map<string, { resolve: Function, reject: Function }>}
    */
@@ -164,6 +171,7 @@ class CoreWorkerRuntime {
     this.#started = false;
     this.#flushScheduled = false;
     this.#journaler = null;
+    this.#coordinator = null;
     this.#ioPending = new Map();
     this.#ioMsgSeq = 0;
   }
@@ -423,6 +431,7 @@ class CoreWorkerRuntime {
       width: boardConfig?.width || options.width,
       height: boardConfig?.height || options.height,
       rootPath: options.rootPath,
+      source: options.source,
       persistenceAdapter:
         persistence?.adapter ?? createDefaultPersistenceAdapter(),
       aomRenderHooks: createDefaultAomRenderHooks(),
@@ -454,6 +463,27 @@ class CoreWorkerRuntime {
     }
 
     this.#boardApi = new BoardApi(this.#boardCore);
+
+    // 同步：syncUrl 存在时连接中继；连接失败降级为离线运行
+    if (typeof options.syncUrl === "string" && options.syncUrl !== "") {
+      this.#coordinator = createNetworkCoordinator({
+        boardCore: this.#boardCore,
+        boardApi: this.#boardApi,
+        url: options.syncUrl,
+        boardId:
+          typeof options.boardId === "string" && options.boardId !== ""
+            ? options.boardId
+            : options.rootPath,
+      });
+      try {
+        await this.#coordinator.connect();
+        this.#log.info(`已连接同步中继：${options.syncUrl}`);
+      } catch (error) {
+        this.#log.warn(`同步中继连接失败，离线运行：${error?.message ?? error}`);
+        await this.#coordinator.close();
+        this.#coordinator = null;
+      }
+    }
 
     return { ok: true };
   }
@@ -518,6 +548,10 @@ class CoreWorkerRuntime {
    * @returns {Promise<{ ok: boolean }>} 销毁结果
    */
   async destroyBoard() {
+    if (this.#coordinator) {
+      await this.#coordinator.close();
+      this.#coordinator = null;
+    }
     if (this.#journaler) {
       await this.#journaler.detach();
       this.#journaler = null;
