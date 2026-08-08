@@ -12,7 +12,7 @@ import {
   configureWhiteboardDemo,
   mountToolSwitcher,
 } from "./config/whiteboard-demo.js";
-import { DEMO_ID_SOURCE } from "./config/constants.js";
+import { resolveDeviceSource } from "../utils/device-identity.js";
 import { DemoLog } from "./config/log.js";
 import { ViewportTool } from "./config/viewport-tool.js";
 import {
@@ -33,9 +33,22 @@ createConsolePrinter(logBus, { timestamps: true });
  */
 async function bootstrapWhiteboard() {
   // demo 板目录：家目录下 hound-whiteboard/demo-board（首次运行自动创建）
+  // 同步中继：URL ?relay= 或 localStorage hwb-relay（双开时第二窗口用 localStorage 设不同值）
+  // 身份：URL ?source= 或 localStorage hwb-source（同机双开需不同身份）
+  // 板副本：URL ?board=（双开时第二窗口用不同路径，各自持久化副本）
+  const query = new URLSearchParams(globalThis.location?.search ?? "");
+  const storage = globalThis.localStorage;
+  const relayUrl =
+    query.get("relay") ?? storage?.getItem?.("hwb-relay") ?? undefined;
+  const sourceOverride =
+    query.get("source") ?? storage?.getItem?.("hwb-source") ?? undefined;
+  const boardPath =
+    query.get("board") ?? storage?.getItem?.("hwb-board") ?? undefined;
   const board = new Board({
-    idSource: DEMO_ID_SOURCE,
-    rootPath: "~/hound-whiteboard/demo-board",
+    idSource: sourceOverride ?? resolveDeviceSource(),
+    rootPath: boardPath ?? "~/hound-whiteboard/demo-board",
+    syncUrl: relayUrl,
+    boardId: "demo-board",
   });
   board.width = 800;
   board.height = 600;

@@ -241,6 +241,9 @@ describe("Board worker mode", () => {
               width: 800,
               height: 600,
               rootPath: undefined,
+              source: undefined,
+              syncUrl: undefined,
+              boardId: undefined,
             },
           }),
           expect.objectContaining({
