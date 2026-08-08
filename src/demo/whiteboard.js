@@ -13,6 +13,7 @@ import {
   mountToolSwitcher,
 } from "./config/whiteboard-demo.js";
 import { resolveDeviceSource } from "../utils/device-identity.js";
+import { installSyncConsole } from "./config/sync-console.js";
 import { DemoLog } from "./config/log.js";
 import { ViewportTool } from "./config/viewport-tool.js";
 import {
@@ -32,6 +33,7 @@ createConsolePrinter(logBus, { timestamps: true });
  * @returns {Promise<void>}
  */
 async function bootstrapWhiteboard() {
+  installSyncConsole();
   // demo 板目录：家目录下 hound-whiteboard/demo-board（首次运行自动创建）
   // 同步中继：URL ?relay= 或 localStorage hwb-relay（双开时第二窗口用 localStorage 设不同值）
   // 身份：URL ?source= 或 localStorage hwb-source（同机双开需不同身份）

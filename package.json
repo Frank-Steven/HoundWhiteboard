@@ -39,6 +39,7 @@
     "build:all": "htb build all",
     "cli": "node src/cli/index.js",
     "relay": "node src/host/sync/start-relay.js",
+    "demo:web": "node scripts/serve-demo.mjs",
     "test": "node --experimental-vm-modules --localstorage-file=/tmp/jest-localstorage node_modules/jest/bin/jest.js --passWithNoTests",
     "ship": "htb ship",
     "ship:win": "htb ship win",
