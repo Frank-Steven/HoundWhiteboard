@@ -1364,14 +1364,18 @@ class BoardApi {
       boardCore.width,
       boardCore.height,
     );
+    boardCore.setObjectCoverChunks(obj.id, covered);
     for (const chunkId of covered) {
       const chunk = boardCore.getChunkById(chunkId);
-      const graph = chunk?.objectManager?.staticGraph;
-      if (!graph) continue;
-      const below = graph.getNodes().filter((nodeId) => {
-        const nodeRect = getObjectWorldRect(boardCore.getObjectById(nodeId));
-        return nodeRect && intersectsRanges(rect, nodeRect);
-      });
+      if (!chunk) continue;
+      // 新区块的 objectManager 尚未创建时静态图为空，below 为空即可（addObject 会创建管理器）
+      const graph = chunk.objectManager?.staticGraph;
+      const below = graph
+        ? graph.getNodes().filter((nodeId) => {
+            const nodeRect = getObjectWorldRect(boardCore.getObjectById(nodeId));
+            return nodeRect && intersectsRanges(rect, nodeRect);
+          })
+        : [];
       chunk.addObject(obj, below, []);
     }
   }
