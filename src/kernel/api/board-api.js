@@ -17,6 +17,7 @@ import {
   compareRecords,
 } from "../hit/operation.js";
 import { Matrix, Vector } from "../utils/math.js";
+import { IncrementalIdPool } from "../utils/incremental-id-pool.js";
 import { intersectsRanges, RectangleRange } from "../range/index.js";
 import { ChunkObjectManager } from "../chunk/chunk-object-manager.js";
 import { CHUNK_LOAD_EVENTS } from "../chunk/chunk-loader.js";
@@ -966,6 +967,69 @@ class BoardApi {
    */
   getObjectIdCounters() {
     return this.#boardCore.getObjectIdCounters();
+  }
+
+  /**
+   * 创建并提交一个对象（持板侧原子完成 id 分配、创建、提交与计数上报）
+   * @param {string} type - 对象类型名
+   * @param {Object} [props={}] - 创建属性（position / transform / property / data，不含 id）
+   * @returns {Promise<string>} 新对象的 objectId
+   *
+   * @description
+   * id 按板身份的对象 id 池续号分配。组合面供非本地前端（CLI / daemon 客户端）使用：
+   * 若由客户端先读计数再创建，并发客户端可能取到同一计数而撞 id，故分配必须在持板侧串行完成。
+   */
+  async addObject(type, props = {}) {
+    const boardCore = this.#boardCore;
+    const source = boardCore.hitCommitter.source;
+    const counters = boardCore.getObjectIdCounters();
+    const pool = new IncrementalIdPool(source, counters[source] ?? 0);
+    const id = pool.allocate();
+    this.createObject(type, { ...props, id });
+    await this.commitObjects([id]);
+    this.reportObjectIdCounter(source, pool.counter);
+    return id;
+  }
+
+  /**
+   * 查询板概要信息（meta、日志规模、HEAD、对象与 trash 计数）
+   * @returns {Object} 板概要
+   */
+  queryBoardInfo() {
+    const boardCore = this.#boardCore;
+    const meta = boardCore.collectSessionMeta();
+    return {
+      boardConfig: meta.boardConfig,
+      records: boardCore.operationLog.size,
+      head: boardCore.undoTree.head?.shareId ?? null,
+      objects: boardCore.getAllObjects().length,
+      trash: boardCore.trash.size,
+      coreIdCounters: meta.coreIdCounters,
+      objectIdCounters: meta.objectIdCounters,
+    };
+  }
+
+  /**
+   * 列出活动与 trash 对象
+   * @returns {{objects: Array<{id: string, type: string}>, trash: string[]}} 对象清单
+   */
+  queryObjectList() {
+    const boardCore = this.#boardCore;
+    return {
+      objects: boardCore
+        .getAllObjects()
+        .map((obj) => ({ id: obj.id, type: obj.type ?? obj.constructor.name })),
+      trash: [...boardCore.trash.keys()],
+    };
+  }
+
+  /**
+   * 查询单个对象的序列化数据
+   * @param {string} objectId - 对象 id
+   * @returns {Object|null} 序列化数据；对象不存在时为 null
+   */
+  queryObject(objectId) {
+    return this.#boardCore.getObjectById(objectId)?.serialize() ?? null;
   }
 
   /**

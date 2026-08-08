@@ -43,6 +43,38 @@ const BOARD_API_ROUTES = {
   },
 
   /**
+   * 创建并提交一个对象（持板侧原子完成 id 分配）
+   */
+  addObject: {
+    invoke: (api, p) => api.addObject(p.type, p.props),
+    flush: "sync",
+  },
+
+  /**
+   * 查询板概要信息
+   */
+  queryBoardInfo: {
+    invoke: (api) => api.queryBoardInfo(),
+    flush: "none",
+  },
+
+  /**
+   * 列出活动与 trash 对象
+   */
+  queryObjectList: {
+    invoke: (api) => api.queryObjectList(),
+    flush: "none",
+  },
+
+  /**
+   * 查询单个对象的序列化数据
+   */
+  queryObject: {
+    invoke: (api, p) => api.queryObject(p.objectId),
+    flush: "none",
+  },
+
+  /**
    * 修改单个对象的几何/样式属性
    */
   modifyObject: {
