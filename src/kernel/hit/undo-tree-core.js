@@ -136,6 +136,14 @@ class UndoTree {
   }
 
   /**
+   * 重做栈快照（派生自日志：生效撤销压入，新工作清空，重做弹出）
+   * @returns {Array<{ targetId: string, previousHeadId: string }>} 栈项序列（栈底在前）
+   */
+  getRedoStack() {
+    return this.#redoStack.map((entry) => ({ ...entry }));
+  }
+
+  /**
    * 活动链上携带某操作的节点
    * @param {string} shareId - 数据池共享 id（操作 id）
    * @returns {?MolecularNode} 节点；该操作不在活动链上时为 null

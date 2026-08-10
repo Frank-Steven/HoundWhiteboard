@@ -75,6 +75,22 @@ const BOARD_API_ROUTES = {
   },
 
   /**
+   * 查询操作日志记录明细
+   */
+  queryOperations: {
+    invoke: (api, p) => api.queryOperations(p),
+    flush: "none",
+  },
+
+  /**
+   * 查询时间回溯树结构
+   */
+  queryUndoTree: {
+    invoke: (api) => api.queryUndoTree(),
+    flush: "none",
+  },
+
+  /**
    * 修改单个对象的几何/样式属性
    */
   modifyObject: {

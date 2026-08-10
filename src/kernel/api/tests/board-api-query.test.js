@@ -105,4 +105,49 @@ describe("BoardApi 查询面", () => {
     expect(data.position).toEqual({ x: 5, y: 6 });
     expect(api.queryObject("test/999")).toBeNull();
   });
+
+  test("queryOperations 支持来源/类型过滤与 limit 取末尾", async () => {
+    const { api } = createEnd("test");
+    const id = await api.addObject("StrokeObject", { data: { ...STROKE_DATA } });
+    api.deleteObjects([id]);
+
+    const all = api.queryOperations();
+    expect(all.map((r) => r.id)).toEqual(["test/op-1", "test/op-2"]);
+    expect(all[0].type).toBe("add-object");
+    expect(all[1].type).toBe("delete-object");
+    expect(all[0].parentId).toBeNull();
+    expect(all[1].parentId).toBe("test/op-1");
+
+    expect(api.queryOperations({ source: "nobody" })).toEqual([]);
+    expect(api.queryOperations({ type: "delete-object" })).toHaveLength(1);
+    expect(api.queryOperations({ limit: 1 })[0].id).toBe("test/op-2");
+    // 过滤先于 limit：先筛类型再取末尾
+    expect(api.queryOperations({ type: "add-object", limit: 1 })[0].id).toBe(
+      "test/op-1",
+    );
+  });
+
+  test("queryUndoTree 暴露活动链、HEAD、重做栈与已撤销分支", async () => {
+    const { api } = createEnd("test");
+    const empty = api.queryUndoTree();
+    expect(empty.head).toBeNull();
+    expect(empty.nodes).toEqual([]);
+
+    const id1 = await api.addObject("StrokeObject", { data: { ...STROKE_DATA } });
+    const id2 = await api.addObject("StrokeObject", { data: { ...STROKE_DATA } });
+    api.undo("test/op-2");
+
+    const tree = api.queryUndoTree();
+    expect(tree.head).toBe("test/op-1");
+    expect(tree.activeChain).toEqual(["test/op-1"]);
+    expect(tree.redoStack).toHaveLength(1);
+    expect(tree.redoStack[0].targetId).toBe("test/op-2");
+
+    // 被撤销的 op-2 成为活动链外的分支节点
+    expect(tree.nodes).toHaveLength(2);
+    const node1 = tree.nodes.find((n) => n.id === "test/op-1");
+    const node2 = tree.nodes.find((n) => n.id === "test/op-2");
+    expect(node1).toMatchObject({ parentId: null, depth: 1, active: true, isHead: true });
+    expect(node2).toMatchObject({ parentId: "test/op-1", depth: 2, active: false, isHead: false });
+  });
 });

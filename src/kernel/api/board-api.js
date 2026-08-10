@@ -1036,6 +1036,68 @@ class BoardApi {
   }
 
   /**
+   * 查询操作日志记录明细
+   * @description 过滤先于 limit：先按来源/类型筛选，再取末尾 limit 条（最新侧）。
+   * @param {Object} [options] - 查询选项
+   * @param {string} [options.source] - 按记录来源过滤
+   * @param {string} [options.type] - 按分子操作类型过滤
+   * @param {number} [options.limit] - 仅保留末尾 N 条
+   * @returns {Array<Object>} 操作记录数组（含 id、type、source、time、parentId、supraOpId、properties、payload）
+   */
+  queryOperations(options = {}) {
+    let records = this.#boardCore.operationLog.toJSON();
+    if (typeof options.source === "string" && options.source !== "") {
+      records = records.filter((record) => record.source === options.source);
+    }
+    if (typeof options.type === "string" && options.type !== "") {
+      records = records.filter((record) => record.type === options.type);
+    }
+    if (Number.isInteger(options.limit) && options.limit > 0) {
+      records = records.slice(-options.limit);
+    }
+    return records;
+  }
+
+  /**
+   * 查询时间回溯树结构
+   * @description 节点表为扁平先根遍历（子节点按时间标记升序），含活动链外的已撤销分支；
+   * CLI 等前端可凭 parentId/depth 排版缩进树。
+   * @returns {{head: ?string, activeChain: string[], redoStack: Array<{targetId: string, previousHeadId: string}>, nodes: Array<{id: string, parentId: ?string, depth: number, type: ?string, source: ?string, active: boolean, isHead: boolean}>}} 树结构
+   */
+  queryUndoTree() {
+    const boardCore = this.#boardCore;
+    const tree = boardCore.undoTree;
+    const activeChain = tree.getActiveChain().map((node) => node.shareId);
+    const activeIds = new Set(activeChain);
+    const recordById = new Map(
+      boardCore.operationLog.toJSON().map((record) => [record.id, record]),
+    );
+    const nodes = [];
+    const walk = (parent) => {
+      for (const child of parent.children) {
+        const record = recordById.get(child.shareId);
+        nodes.push({
+          id: child.shareId,
+          parentId: parent.shareId ?? null,
+          depth: child.depth,
+          type: record?.type ?? null,
+          source: record?.source ?? null,
+          active: activeIds.has(child.shareId),
+          isHead: child === tree.head,
+        });
+        walk(child);
+      }
+    };
+    walk(tree.root);
+    return {
+      head: tree.head?.shareId ?? null,
+      activeChain,
+      redoStack: tree.getRedoStack(),
+      nodes,
+    };
+  }
+
+  /**
    * 按 id 查询对象摘要
    * @param {string[]} ids - 对象 id 列表
    * @returns {import("../types/types.js").ObjectSummary[]} 对象摘要列表
