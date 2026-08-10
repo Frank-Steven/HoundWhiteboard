@@ -70,7 +70,7 @@
 
 ### 连接生命周期
 
-- `connect()` 在 joined 后兑现；连接失败 reject，宿主（core-worker）捕获后降级离线运行，不阻塞开板。
+- `connect()` 在 joined 后兑现；连接失败或超时（默认 3s，覆盖死地址无响应的挂起场景）reject，宿主（core-worker）捕获后降级离线运行，不阻塞开板。
 - `close()` 清订阅与定时器后关套接字；对连接失败的套接字（undici 不发 close 事件）以短超时兜底。
 
 ## 收敛语义

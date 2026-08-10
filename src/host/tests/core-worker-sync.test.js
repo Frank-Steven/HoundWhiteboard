@@ -208,4 +208,36 @@ describe("CoreWorker 同步接线", () => {
     await createStrokeViaRpc(host, "worker/1");
     await rpc(host, "destroyBoard");
   });
+
+  test("中继地址无响应（挂起无事件）时按连接超时降级", async () => {
+    // 模拟向死地址发 SYN 的挂死套接字：永不触发任何事件
+    class HangingWebSocket {
+      constructor() {
+        this.readyState = 0;
+      }
+      addEventListener() {}
+      send() {}
+      close() {
+        this.readyState = 3;
+      }
+    }
+
+    const boardCore = new BoardCore({
+      width: 800,
+      height: 600,
+      source: "hang-test",
+      aomRenderHooks: createDefaultAomRenderHooks(),
+      persistenceAdapter: createDefaultPersistenceAdapter(),
+    });
+    const coordinator = createNetworkCoordinator({
+      boardCore,
+      boardApi: new BoardApi(boardCore),
+      url: "ws://192.0.2.1:8377", // TEST-NET-1 保留地址，不可达
+      boardId: "test-room",
+      connectTimeoutMs: 100,
+      WebSocketImpl: HangingWebSocket,
+    });
+
+    await expect(coordinator.connect()).rejects.toThrow("中继连接超时");
+  });
 });

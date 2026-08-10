@@ -68,6 +68,7 @@ function compareRecords(a, b) {
  * @param {number} [options.windowMs=500] - 延迟容忍窗长（毫秒）
  * @param {number} [options.maxWindows=3] - 连续容忍窗上限（到期后请求全量）
  * @param {number} [options.digestIntervalMs=30000] - 状态摘要周期（毫秒）
+ * @param {number} [options.connectTimeoutMs=3000] - 连接超时（毫秒）；地址无响应（无 error 事件的挂起）时按超时拒绝
  * @param {Function} [options.WebSocketImpl] - WebSocket 实现（默认全局实现）
  * @param {Function} [options.onAwareness] - awareness 消息回调（{source, data}；peer-left 时 data 为 {kind:"peer-left"}）
  * @returns {Object} 协调器句柄
@@ -85,6 +86,7 @@ function createNetworkCoordinator(options) {
     windowMs = 500,
     maxWindows = 3,
     digestIntervalMs = 30000,
+    connectTimeoutMs = 3000,
     WebSocketImpl = globalThis.WebSocket,
     onAwareness,
   } = options;
@@ -356,6 +358,18 @@ function createNetworkCoordinator(options) {
       });
 
       return new Promise((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          // 对端无响应（如死地址无 RST 的挂起）：主动关套接字并按失败拒绝
+          try {
+            ws?.close();
+          } catch {
+            // 关闭失败不影响拒绝
+          }
+          reject(new Error(`中继连接超时：${url}`));
+        }, connectTimeoutMs);
         ws = new WebSocketImpl(url);
         ws.addEventListener("open", () => {
           send({ type: "join", boardId, source });
@@ -369,11 +383,15 @@ function createNetworkCoordinator(options) {
           }
           handleMessage(message);
           if (message?.type === "joined") {
+            settled = true;
+            clearTimeout(timer);
             resolve();
           }
         });
         ws.addEventListener("error", () => {
-          if (state === "connecting") {
+          if (state === "connecting" && !settled) {
+            settled = true;
+            clearTimeout(timer);
             reject(new Error(`中继连接失败：${url}`));
           }
         });
