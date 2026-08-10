@@ -62,6 +62,65 @@ function intersectsObjects(left, right) {
 }
 
 /**
+ * 匿名选择的名字
+ * @description 未显式命名 choice 的选择（GUI 手势、CLI 单对象自动链）落入的共享匿名桶；
+ * 匿名选择不进日志载荷、不进 choices 查询面。
+ * @type {string}
+ */
+const ANONYMOUS_CHOICE_NAME = "~";
+
+/**
+ * choice 名的最大长度
+ * @type {number}
+ */
+const CHOICE_NAME_MAX_LENGTH = 64;
+
+/**
+ * 判定 choice 名是否合法
+ * @param {*} name - 候选名字
+ * @returns {boolean} 是否合法
+ *
+ * @description
+ * choice 名在线路形态 `"{source}/{choice}"` 中充当分段，故禁止含 `/`；
+ * `~` 前缀保留给匿名桶。合法名为 1 至 64 个字符的字符串。
+ */
+function isValidChoiceName(name) {
+  return (
+    typeof name === "string" &&
+    name.length > 0 &&
+    name.length <= CHOICE_NAME_MAX_LENGTH &&
+    !name.includes("/") &&
+    !name.startsWith(ANONYMOUS_CHOICE_NAME)
+  );
+}
+
+/**
+ * 拼接远程 choice 引用的序列化形态
+ * @param {string} source - 来源标识
+ * @param {string} name - choice 名（匿名为 `~`）
+ * @returns {string} 序列化引用，形如 `"{source}/{choice}"`
+ * @private
+ */
+function serializeChoiceRef(source, name) {
+  return `${source}/${name}`;
+}
+
+/**
+ * 解析远程 choice 引用的序列化形态
+ * @param {string} ref - 序列化引用
+ * @returns {{ source: string, name: string|undefined }} 解析结果（匿名选择的 name 为 undefined）
+ * @private
+ */
+function parseChoiceRef(ref) {
+  const sep = ref.indexOf("/");
+  const name = ref.slice(sep + 1);
+  return {
+    source: ref.slice(0, sep),
+    name: name === ANONYMOUS_CHOICE_NAME ? undefined : name,
+  };
+}
+
+/**
  * 收集某层按 inactive 语义参与计算的对象 id（纯函数）
  * @param {Layer} layer
  * @returns {Set<string>}
@@ -150,11 +209,35 @@ class ActiveObjectManager {
   layerPool;
 
   /**
-   * 远程活动对象登记表
-   * @description 键为对象 id，值为持有方的来源标识；远程 choose 登记，unchoose/commit 与断线清理注销。
+   * 本地命名选择注册表
+   * @description choice 名到成员对象 id 集合的映射；含匿名桶 `~`。
+   * 不变量：注册表只覆盖活动对象——成员关系随 `unregisterTrackedActiveObject` 自动解除。
+   * @type {Map<string, Set<string>>}
+   */
+  #localChoices = new Map();
+
+  /**
+   * 本地 choice 反向索引（对象 id → 所属本地 choice 名）
+   * @description 每个活动对象恰好属于一个本地 choice；匿名选择的名字为 `~`。
    * @type {Map<string, string>}
    */
-  #remoteActive = new Map();
+  #localChoiceIndex = new Map();
+
+  /**
+   * 远程命名选择注册表
+   * @description 来源标识到（choice 名 → 成员对象 id 集合）的映射；远程 choose 登记，
+   * unchoose/commit 与断线清理注销。匿名为 `~` 单桶。
+   * @type {Map<string, Map<string, Set<string>>>}
+   */
+  #remoteChoices = new Map();
+
+  /**
+   * 远程 choice 反向索引（对象 id → 序列化 choice 引用集合）
+   * @description 引用形如 `"{source}/{choice}"`。不同来源可同时选择同一对象（并发 choose），
+   * 各自独立注销；同一来源对同一对象只保留一个 choice（后登记者迁移）。
+   * @type {Map<string, Set<string>>}
+   */
+  #remoteChoiceIndex = new Map();
 
   /**
    * 对象所在的层
@@ -424,6 +507,24 @@ class ActiveObjectManager {
   unregisterTrackedActiveObject(objectId) {
     if (this.activeObjectIndex.has(objectId)) {
       this.activeObjectIndex.delete(objectId);
+    }
+    this.#releaseLocalChoice(objectId);
+  }
+
+  /**
+   * 解除对象的本地 choice 成员关系（活动集注销的跟随动作）
+   * @param {string} objectId - 对象 id
+   * @private
+   */
+  #releaseLocalChoice(objectId) {
+    const name = this.#localChoiceIndex.get(objectId);
+    if (name === undefined) return;
+    this.#localChoiceIndex.delete(objectId);
+    const members = this.#localChoices.get(name);
+    if (members === undefined) return;
+    members.delete(objectId);
+    if (members.size === 0) {
+      this.#localChoices.delete(name);
     }
   }
 
@@ -1700,21 +1801,87 @@ class ActiveObjectManager {
   }
 
   /**
-   * 查询对象是否被远程持有（远程活动）
+   * 查询对象是否被远程选择（远程活动）
    * @param {string} objectId - 对象 id
    * @returns {boolean} 是否远程活动
    */
   isRemoteActive(objectId) {
-    return this.#remoteActive.has(objectId);
+    return (this.#remoteChoiceIndex.get(objectId)?.size ?? 0) > 0;
   }
 
   /**
-   * 查询远程活动对象的持有方来源
+   * 查询远程活动对象的来源
    * @param {string} objectId - 对象 id
-   * @returns {string|undefined} 来源标识
+   * @returns {string|undefined} 来源标识（多来源时返回其中之一）
    */
   remoteActiveSource(objectId) {
-    return this.#remoteActive.get(objectId);
+    const refs = this.#remoteChoiceIndex.get(objectId);
+    if (refs === undefined || refs.size === 0) return undefined;
+    return parseChoiceRef(refs.values().next().value).source;
+  }
+
+  /**
+   * 查询对象的远程 choice 标签列表
+   * @param {string} objectId - 对象 id
+   * @returns {{ source: string, name: string|undefined }[]} choice 引用列表（匿名为 name undefined）
+   */
+  remoteChoicesOf(objectId) {
+    const refs = this.#remoteChoiceIndex.get(objectId);
+    if (refs === undefined) return [];
+    return [...refs].map(parseChoiceRef);
+  }
+
+  /**
+   * 将对象指派进本地命名选择
+   * @param {Iterable<string>} objectIds - 对象 id 集合
+   * @param {string} name - choice 名；`~` 为匿名桶
+   * @returns {void}
+   *
+   * @description
+   * 仅指派当前在活动集中的对象。同一对象只属一个本地 choice：已在其它命名选择中的对象迁入新 choice，
+   * 腾空的 choice 随之删除。匿名指派不覆盖命名 choice（GUI 手势的匿名选择不抢走 CLI 的命名 choice），
+   * 显式命名指派始终覆盖。
+   */
+  assignLocalChoice(objectIds, name) {
+    for (const objectId of objectIds ?? []) {
+      if (!this.activeObjectIndex.has(objectId)) continue;
+      const current = this.#localChoiceIndex.get(objectId);
+      if (current === name) continue;
+      if (name === ANONYMOUS_CHOICE_NAME && current !== undefined) continue;
+      if (current !== undefined) {
+        this.#releaseLocalChoice(objectId);
+      }
+      let members = this.#localChoices.get(name);
+      if (members === undefined) {
+        members = new Set();
+        this.#localChoices.set(name, members);
+      }
+      members.add(objectId);
+      this.#localChoiceIndex.set(objectId, name);
+    }
+  }
+
+  /**
+   * 查询对象所属的本地命名选择
+   * @param {string} objectId - 对象 id
+   * @returns {string|undefined} choice 名（匿名选择或不属于任何 choice 时为 undefined）
+   */
+  choiceOf(objectId) {
+    const name = this.#localChoiceIndex.get(objectId);
+    return name === ANONYMOUS_CHOICE_NAME ? undefined : name;
+  }
+
+  /**
+   * 列出本地命名选择
+   * @returns {{ name: string, ids: string[] }[]} 命名选择列表（不含匿名桶）
+   */
+  queryLocalChoices() {
+    const choices = [];
+    for (const [name, members] of this.#localChoices) {
+      if (name === ANONYMOUS_CHOICE_NAME) continue;
+      choices.push({ name, ids: [...members] });
+    }
+    return choices;
   }
 
   /**
@@ -1723,60 +1890,136 @@ class ActiveObjectManager {
    * @returns {void}
    *
    * @description
-   * 并发 choose 冲突时本地 choose 效果在链上后到者胜出：本地进入动态图即撤销该对象的远程登记，
-   * 两端按同一链序收敛到同一登记状态。
+   * 并发 choose 冲突时本地 choose 效果在链上后到者胜出：本地进入动态图即撤销该对象的
+   * 全部远程 choice 登记，两端按同一链序收敛到同一登记状态。
    */
   revokeRemoteActive(objectId) {
-    this.#remoteActive.delete(objectId);
-  }
-
-  /**
-   * 登记远程活动对象
-   * @param {Iterable<string>} objectIds - 对象 id 集合
-   * @param {string} source - 持有方来源标识
-   * @returns {void}
-   *
-   * @description
-   * 本地活跃中的对象忽略远程登记（并发 choose 冲突：本地进入动态图的效果会撤销远程登记）。
-   */
-  applyRemoteChoose(objectIds, source) {
-    for (const id of objectIds) {
-      if (typeof id !== "string" || this.isActive(id)) continue;
-      this.#remoteActive.set(id, source);
+    const refs = this.#remoteChoiceIndex.get(objectId);
+    if (refs === undefined) return;
+    for (const ref of [...refs]) {
+      this.#removeRemoteChoiceRef(objectId, ref);
     }
   }
 
   /**
-   * 注销远程活动对象
+   * 登记远程命名选择
    * @param {Iterable<string>} objectIds - 对象 id 集合
-   * @param {string} source - 持有方来源标识
+   * @param {string} source - 来源标识
+   * @param {string} [choice] - 来源的 choice 名（缺省为匿名桶）
    * @returns {void}
    *
    * @description
-   * 仅注销确由该来源持有的条目；远程 unchoose/commit 与断线清理共用本路径。
+   * 本地活跃中的对象忽略远程登记（并发 choose 冲突：本地进入动态图的效果会撤销远程登记）。
+   * 同一来源对同一对象只保留一个 choice：重复登记即迁移到新 choice。
+   */
+  applyRemoteChoose(objectIds, source, choice) {
+    const name = choice ?? ANONYMOUS_CHOICE_NAME;
+    for (const id of objectIds) {
+      if (typeof id !== "string" || this.isActive(id)) continue;
+      const refs = this.#remoteChoiceIndex.get(id);
+      if (refs !== undefined) {
+        for (const ref of [...refs]) {
+          if (parseChoiceRef(ref).source === source) {
+            this.#removeRemoteChoiceRef(id, ref);
+          }
+        }
+      }
+      this.#addRemoteChoiceMember(source, name, id);
+    }
+  }
+
+  /**
+   * 注销远程命名选择
+   * @param {Iterable<string>} objectIds - 对象 id 集合
+   * @param {string} source - 来源标识
+   * @returns {void}
+   *
+   * @description
+   * 远程 unchoose/commit 与断线清理共用本路径。同一来源对同一对象只保留一个 choice，
+   * 故按（来源，对象）注销即完备，无需指定 choice。
    */
   applyRemoteUnchoose(objectIds, source) {
     for (const id of objectIds) {
-      if (this.#remoteActive.get(id) === source) {
-        this.#remoteActive.delete(id);
+      const refs = this.#remoteChoiceIndex.get(id);
+      if (refs === undefined) continue;
+      for (const ref of [...refs]) {
+        if (parseChoiceRef(ref).source === source) {
+          this.#removeRemoteChoiceRef(id, ref);
+        }
       }
     }
   }
 
   /**
-   * 清理某来源持有的全部远程活动登记（断线清理）
+   * 清理某来源的全部远程活动登记（断线清理）
    * @param {string} source - 来源标识
    * @returns {string[]} 被清理的对象 id 列表
    */
   clearRemoteActive(source) {
     const removed = [];
-    for (const [id, owner] of this.#remoteActive) {
-      if (owner === source) {
-        this.#remoteActive.delete(id);
+    const choices = this.#remoteChoices.get(source);
+    if (choices === undefined) return removed;
+    for (const [name, members] of [...choices]) {
+      for (const id of [...members]) {
+        this.#removeRemoteChoiceRef(id, serializeChoiceRef(source, name));
         removed.push(id);
       }
     }
     return removed;
+  }
+
+  /**
+   * 登记一条远程 choice 成员关系（写双侧索引）
+   * @param {string} source - 来源标识
+   * @param {string} name - choice 名（含匿名桶）
+   * @param {string} objectId - 对象 id
+   * @private
+   */
+  #addRemoteChoiceMember(source, name, objectId) {
+    let choices = this.#remoteChoices.get(source);
+    if (choices === undefined) {
+      choices = new Map();
+      this.#remoteChoices.set(source, choices);
+    }
+    let members = choices.get(name);
+    if (members === undefined) {
+      members = new Set();
+      choices.set(name, members);
+    }
+    members.add(objectId);
+    let refs = this.#remoteChoiceIndex.get(objectId);
+    if (refs === undefined) {
+      refs = new Set();
+      this.#remoteChoiceIndex.set(objectId, refs);
+    }
+    refs.add(serializeChoiceRef(source, name));
+  }
+
+  /**
+   * 移除一条远程 choice 的序列化引用（清双侧索引）
+   * @param {string} objectId - 对象 id
+   * @param {string} ref - 序列化引用
+   * @private
+   */
+  #removeRemoteChoiceRef(objectId, ref) {
+    const refs = this.#remoteChoiceIndex.get(objectId);
+    if (refs === undefined || !refs.has(ref)) return;
+    refs.delete(ref);
+    if (refs.size === 0) {
+      this.#remoteChoiceIndex.delete(objectId);
+    }
+    const { source, name } = parseChoiceRef(ref);
+    const members = this.#remoteChoices.get(source)?.get(name ?? ANONYMOUS_CHOICE_NAME);
+    if (members !== undefined) {
+      members.delete(objectId);
+      if (members.size === 0) {
+        const choices = this.#remoteChoices.get(source);
+        choices.delete(name ?? ANONYMOUS_CHOICE_NAME);
+        if (choices.size === 0) {
+          this.#remoteChoices.delete(source);
+        }
+      }
+    }
   }
 
   /**
@@ -1838,4 +2081,9 @@ class ActiveObjectManager {
 
 }
 
-export { ActiveObjectManager, Layer };
+export {
+  ActiveObjectManager,
+  Layer,
+  ANONYMOUS_CHOICE_NAME,
+  isValidChoiceName,
+};

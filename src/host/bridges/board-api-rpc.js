@@ -478,6 +478,14 @@ class BoardApiRpc {
   }
 
   /**
+   * 列出本端的命名选择
+   * @returns {Promise<{ name: string, ids: string[] }[]>} 命名选择列表
+   */
+  async queryChoices() {
+    return this.#call("queryChoices", {});
+  }
+
+  /**
    * 上报 UI 侧对象 id 池计数（随板元数据持久化）
    * @param {string} source - 来源标识
    * @param {number} counter - 已分配的最大计数

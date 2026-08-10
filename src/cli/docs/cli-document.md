@@ -60,8 +60,8 @@ yarn cli <命令> [参数] [--path <板目录>] [--标志 值]
 | `undo [<操作id>] [--path <板目录>]` / `redo [--path <板目录>]`    | 撤销 / 重做一步；undo 指定操作 id 时撤销该操作，省略时撤销本端最近操作               |
 | `ops [--source 来源] [--type 类型] [--limit N] [--path <板目录>]` | 打印操作记录明细（id/type/source/time/parentId/supraOpId/properties/payload）        |
 | `tree [--path <板目录>]`                                          | 以缩进树打印时间回溯树（HEAD 与已撤销分支标记、重做栈）                              |
-| `choose <对象id...> --choice <名> [--path <板目录>]`              | 把对象选入命名 choice buffer（同一对象同时只属一个 choice）                          |
-| `choices [--path <板目录>]`                                       | 列出全部 choice buffer 及成员状态（missing/active 标注）                             |
+| `choose <对象id...> --choice <名> [--path <板目录>]`              | 把对象选入命名 choice（AOM 命名选择注册表权威；同一对象同时只属一个 choice）                    |
+| `choices [--path <板目录>]`                                       | 列出全部 choice 及成员状态（daemon 驻留标 active；未恢复种子标 active:false）              |
 | `unchoose <名> (--apply\|--discard) [--path <板目录>]`            | 结束一个 choice：--apply 提交修改 / --discard 放弃修改                               |
 | `modify <对象id> <修改标志> [--path <板目录>]`                    | 修改单对象；未选中时自动 choose→modify→commit 超分子链，一条记录                     |
 | `modify --choice <名> <修改标志> [--path <板目录>]`               | 修改 choice 成员；增量逐对象换算，全量仅单成员 choice 允许                           |
@@ -82,14 +82,18 @@ yarn cli <命令> [参数] [--path <板目录>] [--标志 值]
 
 输出均为 stdout 上的 JSON（`add` 输出单行 id），错误经 stderr 打印并以退出码 1 结束。
 
-## choice buffer 与查改语义
+## choice 与查改语义
 
-choice buffer 是 CLI 侧的命名选择集合（类比 GUI 里多套互不相干的选择），落板目录 `.cli-choices.json`（临时文件 rename 原子写），不进操作日志、不是文档数据。同一对象同时只属一个 choice（choose 新 choice 时自动从旧 choice 摘出）。
+choice 是命名选择（类比 GUI 里多套互不相干的选择）。**AOM 的命名选择注册表是权威状态**：在册成员必然在板上且处于活动状态。同一对象同时只属一个 choice（choose 新 choice 时自动从旧 choice 摘出）。choice 名不可为空、不可含 `/`、不可以 `~` 开头（`~` 是匿名选择的保留名）；不同端的同名 choice 互不相同（内核以 `"{source}/{choice}"` 形态区分）。
+
+choose/unchoose 的日志记录与活动事件均携带 choice 名：全量重建（INIT / 哈希校验兜底）后远程端仍能看到对端的 choice 名。命名迁移（已活动对象改挂别的 choice）只经活动事件传播，不产生新记录。
+
+板目录的 `.cli-choices.json`（临时文件 rename 原子写）是**重启种子**而非运行时真相：daemon 重启后注册表随进程丢失，`choices` 以 `active:false` 标注未恢复的 choice，首次 `modify --choice` 触发自愈重选（携带 choice 名）重建注册表。
 
 modify 的两条路径：
 
 - **choice 路径**：增量标志逐成员换算（读各自当前值计算新值），daemon 模式下修改驻留 AOM 活动对象（GUI 可实时看到选中与变化），`unchoose --apply` 一次性提交为一条 modify-object 记录；文件模式进程不常驻，每次 modify 原子完成 choose→modify→commit（每次一条记录）。
-- **单对象路径**：对象未选中时自动执行 choose→modify→commit 超分子链（三分子简并为一个树节点），两模式行为一致；对象已属某 choice 时按该 choice 语义修改。
+- **单对象路径**：对象未选中时自动执行 choose→modify→commit 超分子链（三分子简并为一个树节点），两模式行为一致；对象已属某 choice 时按该 choice 语义修改（成员归属先查注册表，未驻留回退文件种子）。
 
 choice 全量修改（--position/--transform/--property/--data）仅单成员 choice 允许；多成员 choice 请用增量标志。
 

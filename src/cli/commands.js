@@ -13,6 +13,7 @@ import {
   removeChoice,
   findChoiceOf,
 } from "./choice-buffer.js";
+import { isValidChoiceName } from "../kernel/board/active-object-manager.js";
 
 /**
  * 宽松化 JSON 文本：单引号转双引号、裸属性名补引号、裸字符串值补引号
@@ -360,7 +361,7 @@ function hasFullPatchFlags(flags) {
  * 确保对象在 AOM 活动图中（未选中则补选择），返回其当前状态
  * @param {Object} session - 板会话
  * @param {string[]} ids - 对象 id 列表
- * @param {Object} [options] - 选择选项（如 supraKey，选择分子归入该超分子）
+ * @param {Object} [options] - 选择选项（supraKey 指定超分子；choice 命名选择）
  * @returns {Promise<Object[]>} 对象当前状态（queryObjects 摘要）
  */
 async function ensureActive(session, ids, options) {
@@ -377,7 +378,31 @@ async function ensureActive(session, ids, options) {
 }
 
 /**
- * choose 命令：把对象选入命名 choice buffer（同一对象同时只属一个 choice）
+ * 解析 choice 的成员对象 id 列表
+ * @param {Object} session - 板会话
+ * @param {string} name - choice 名
+ * @returns {Promise<string[]>} 成员对象 id 列表
+ * @throws {Error} choice 不存在时
+ *
+ * @description
+ * daemon 模式优先走 AOM 注册表（权威：在册即在板上且活动）；注册表未命中再回退
+ * buffer 文件（daemon 重启后未恢复的种子）。文件模式选择不跨进程驻留，buffer 文件
+ * 是唯一载体。
+ */
+async function resolveChoiceMembers(session, name) {
+  if (session.mode === "daemon") {
+    const choices = await session.api.queryChoices();
+    const choice = choices.find((h) => h.name === name);
+    if (choice) return choice.ids;
+  }
+  const buffer = await loadChoices(session.rootPath);
+  const ids = buffer.choices[name];
+  if (!ids) throw new Error(`choice 不存在：${name}`);
+  return ids;
+}
+
+/**
+ * choose 命令：把对象选入命名 choice（同一对象同时只属一个 choice）
  * @param {Object} session - 板会话
  * @param {string[]} args - 位置参数（对象 id 列表）
  * @param {Object} flags - 标志（choice）
@@ -386,26 +411,43 @@ async function ensureActive(session, ids, options) {
 async function cmdChoose(session, args, flags) {
   const name = typeof flags.choice === "string" ? flags.choice : null;
   if (!name) throw new Error("choose 需要 --choice <名>。");
+  if (!isValidChoiceName(name)) {
+    throw new Error(`非法 choice 名：${name}（不可为空、含 "/" 或以 "~" 开头）。`);
+  }
   if (args.length === 0) throw new Error("choose 需要至少一个对象 id。");
   const summaries = await session.api.queryObjects(args);
   const missing = args.filter((id, i) => !summaries[i]);
   if (missing.length > 0) {
     throw new Error(`对象不存在：${missing.join(", ")}`);
   }
-  await session.api.addActiveObjects(args);
+  await session.api.addActiveObjects(args, { choice: name });
+  // buffer 文件仍维护：daemon 重启后的自愈种子
   await setChoice(session.rootPath, name, args);
   console.log(`choose ok（${name}：${args.join(", ")}）`);
 }
 
 /**
- * choices 命令：列出全部 choice buffer 及成员状态
+ * choices 命令：列出全部 choice 及成员状态
  * @param {Object} session - 板会话
  * @returns {Promise<void>}
+ *
+ * @description
+ * daemon 模式以 AOM 注册表为权威（在册成员必然在板上且活动，无需 missing/active 标注）；
+ * buffer 文件中未恢复的 choice（daemon 重启后未再操作）以 active:false 标注。
+ * 文件模式选择不跨进程驻留，直接列 buffer 文件并标注。
  */
 async function cmdChoices(session) {
   const buffer = await loadChoices(session.rootPath);
   const out = {};
+  const registered = new Set();
+  if (session.mode === "daemon") {
+    for (const { name, ids } of await session.api.queryChoices()) {
+      registered.add(name);
+      out[name] = ids.map((id) => ({ id, missing: false, active: true }));
+    }
+  }
   for (const [name, ids] of Object.entries(buffer.choices)) {
+    if (registered.has(name)) continue;
     const summaries = await session.api.queryObjects(ids);
     out[name] = ids.map((id, i) => ({
       id,
@@ -435,9 +477,7 @@ async function cmdUnchoose(session, args, flags) {
   if (apply === discard) {
     throw new Error("unchoose 需要且只能传 --apply 或 --discard 之一。");
   }
-  const buffer = await loadChoices(session.rootPath);
-  const ids = buffer.choices[name];
-  if (!ids) throw new Error(`choice 不存在：${name}`);
+  const ids = await resolveChoiceMembers(session, name);
   const summaries = await session.api.queryObjects(ids);
   const alive = ids.filter((id, i) => summaries[i]);
   if (alive.length > 0) {
@@ -479,14 +519,16 @@ async function cmdModify(session, args, flags) {
   }
   const id = args[0];
   if (!id) throw new Error("modify 需要对象 id 或 --choice <名>。");
-  const owner = await findChoiceOf(session.rootPath, id);
+  // 注册表权威（对象摘要携带所属 choice 名）；未驻留时回退 buffer 文件（重启后未恢复的 choice）
+  const summary = await queryOne(session, id);
+  const owner = summary.choice ?? (await findChoiceOf(session.rootPath, id));
   if (owner) {
     await modifyChoice(session, owner, flags, id);
     return;
   }
   // 单对象未选中：choose→modify→commit 超分子链，一条记录原子完成
   // supraKey 显式传给每个分子操作，否则其内部各自开启内层超分子，合并不到一处
-  const patch = await buildModifyPatch(flags, await queryOne(session, id));
+  const patch = await buildModifyPatch(flags, summary);
   const supraKey = `cli-supra/${Date.now()}`;
   await session.api.beginSupra(supraKey);
   try {
@@ -522,9 +564,7 @@ async function queryOne(session, id) {
  * @returns {Promise<void>}
  */
 async function modifyChoice(session, name, flags, onlyId) {
-  const buffer = await loadChoices(session.rootPath);
-  const all = buffer.choices[name];
-  if (!all) throw new Error(`choice 不存在：${name}`);
+  const all = await resolveChoiceMembers(session, name);
   const ids = onlyId ? [onlyId] : all;
   if (hasFullPatchFlags(flags) && ids.length > 1) {
     throw new Error(
@@ -545,8 +585,9 @@ async function modifyChoice(session, name, flags, onlyId) {
     });
   }
   if (session.mode === "daemon") {
-    // daemon 模式：驻留 AOM，修改等 unchoose --apply 一次性提交
-    await ensureActive(session, ids);
+    // daemon 模式：驻留 AOM，修改等 unchoose --apply 一次性提交；
+    // 自愈重选携带 choice，重启后重建注册表
+    await ensureActive(session, ids, { choice: name });
     await session.api.modifyObjects(patches);
     console.log(
       `modify ok（${name}：${ids.join(", ")}，驻留待提交）`,
@@ -557,7 +598,7 @@ async function modifyChoice(session, name, flags, onlyId) {
   const supraKey = `cli-supra/${Date.now()}`;
   await session.api.beginSupra(supraKey);
   try {
-    await ensureActive(session, ids, { supraKey });
+    await ensureActive(session, ids, { supraKey, choice: name });
     await session.api.modifyObjects(patches);
     await session.api.commitObjects(ids, { supraKey });
     await session.api.endSupra(supraKey);

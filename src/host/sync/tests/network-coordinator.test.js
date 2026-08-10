@@ -316,6 +316,36 @@ describe("网络协调器", () => {
     );
   });
 
+  test("命名选择经中继同步：choose 事件携带 choice", async () => {
+    server = createRelayServer({ port: 0 });
+    const a = await connectEnd("a", server.port, "board-1");
+    const b = await connectEnd("b", server.port, "board-1");
+    ends = [a, b];
+
+    await createStroke(a.api, "a/1");
+    await until(
+      () => b.boardCore.getObjectById("a/1") != null,
+      "b 收到 a/1",
+    );
+
+    await a.api.addActiveObjects(["a/1"], { choice: "hold" });
+    await until(
+      () =>
+        b.boardCore.activeObjectManager.remoteChoicesOf("a/1").length > 0,
+      "b 登记远程命名选择",
+    );
+    expect(b.boardCore.activeObjectManager.remoteChoicesOf("a/1")).toEqual([
+      { source: "a", name: "hold" },
+    ]);
+
+    // a 提交后 b 的命名选择注销
+    await a.api.commitObjects(["a/1"]);
+    await until(
+      () => !b.boardCore.activeObjectManager.isRemoteActive("a/1"),
+      "b 注销命名选择",
+    );
+  });
+
   test("摘要分歧触发全量重建请求", async () => {
     server = createRelayServer({ port: 0 });
     const a = await connectEnd("a", server.port, "board-1");

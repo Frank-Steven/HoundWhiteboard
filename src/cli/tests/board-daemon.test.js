@@ -490,4 +490,55 @@ describe("板 daemon", () => {
       await cleanup();
     }
   }, 25000);
+
+  test("daemon 重启后 choice 从文件种子自愈：modify 重选重建注册表", async () => {
+    const { dir, cleanup } = await tempBoard();
+    let daemon = await startBoardDaemon({
+      rootPath: dir,
+      source: "daemon-r",
+    });
+    const run = (argv) =>
+      execFileAsync(process.execPath, [CLI_PATH, ...argv], {
+        env: process.env,
+      });
+    try {
+      const { stdout: idOut } = await run([
+        "add", "--type", "StrokeObject",
+        "--data", "{points:[{x:1,y:1},{x:9,y:9}]}",
+        "--position", "10,10",
+      ]);
+      const id = idOut.trim();
+      await run(["choose", id, "--choice", "c1"]);
+
+      // 注册表权威：驻留中的成员标 active:true
+      const before = JSON.parse((await run(["choices"])).stdout);
+      expect(before.c1).toEqual([{ id, missing: false, active: true }]);
+
+      // 重启 daemon：AOM 注册表随进程丢失，buffer 文件种子仍在
+      await daemon.close();
+      daemon = await startBoardDaemon({
+        rootPath: dir,
+        source: "daemon-r",
+      });
+
+      const unrestored = JSON.parse((await run(["choices"])).stdout);
+      expect(unrestored.c1).toEqual([{ id, missing: false, active: false }]);
+
+      // modify 触发自愈重选：注册表重建，驻留期间修改不入日志
+      await run(["modify", "--choice", "c1", "--displacement", "5,5"]);
+      const healed = JSON.parse((await run(["choices"])).stdout);
+      expect(healed.c1).toEqual([{ id, missing: false, active: true }]);
+      const midOps = JSON.parse(
+        (await run(["ops", "--type", "modify-object"])).stdout,
+      );
+      expect(midOps).toHaveLength(0);
+
+      await run(["unchoose", "c1", "--apply"]);
+      const shown = JSON.parse((await run(["show", id])).stdout);
+      expect(shown.position).toEqual({ x: 15, y: 15 });
+    } finally {
+      await daemon.close();
+      await cleanup();
+    }
+  }, 30000);
 });

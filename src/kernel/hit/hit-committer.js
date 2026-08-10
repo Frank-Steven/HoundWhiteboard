@@ -301,6 +301,7 @@ class HitCommitter {
    * @param {string} effect.chunkId - 区块 id
    * @param {string} effect.objectId - 对象 id
    * @param {string} [effect.supraKey] - 指定进入的超分子 key（缺省独立成录）
+   * @param {string} [effect.choice] - 命名选择名（缺省匿名，不记录）
    * @returns {import("./operation.js").OperationRecord} 分子操作记录（超分子成员为未定稿草稿）
    */
   commitChoose(effect) {
@@ -313,6 +314,7 @@ class HitCommitter {
    * @param {string} effect.chunkId - 区块 id
    * @param {string} effect.objectId - 对象 id
    * @param {string} [effect.supraKey] - 指定进入的超分子 key（缺省独立成录）
+   * @param {string} [effect.choice] - 命名选择名（缺省匿名，不记录）
    * @returns {import("./operation.js").OperationRecord} 分子操作记录（超分子成员为未定稿草稿）
    */
   commitUnchoose(effect) {

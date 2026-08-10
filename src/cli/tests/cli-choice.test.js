@@ -102,4 +102,32 @@ describe("CLI choice/modify 命令", () => {
       cleanup();
     }
   });
+
+  test("choose 非法名字报错；choose 记录携带 choice 名", async () => {
+    const { dir, cleanup } = tempBoardDir();
+    try {
+      await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
+      const { stdout: id1 } = await runCli([
+        "add", "--path", dir, "--type", "StrokeObject", "--data", STROKE_DATA,
+      ]);
+      const id = id1.trim();
+
+      // 非法名字：含 "/" 或以 "~" 开头（与线路形态和匿名桶保留字冲突）
+      await expect(
+        runCli(["choose", id, "--choice", "a/b", "--path", dir]),
+      ).rejects.toMatchObject({ code: 1 });
+      await expect(
+        runCli(["choose", id, "--choice", "~x", "--path", dir]),
+      ).rejects.toMatchObject({ code: 1 });
+
+      // 命名 choose 的日志记录携带 choice
+      await runCli(["choose", id, "--choice", "named", "--path", dir]);
+      await runCli(["unchoose", "named", "--discard", "--path", dir]);
+      const ops = await runCliJson(["ops", "--type", "choose-object", "--path", dir]);
+      const namedRecord = ops.find((r) => r.payload.objectId === id);
+      expect(namedRecord.payload.choice).toBe("named");
+    } finally {
+      cleanup();
+    }
+  });
 });

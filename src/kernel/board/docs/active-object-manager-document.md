@@ -44,6 +44,11 @@ AOM 本身不依赖 DOM，也不直接持有 viewport 列表。它通过 `render
 - `baseObjectSnapshotCoverChunks`
 - `renderHooks`
 
+命名选择（choice）注册表字段：
+
+- `#localChoices` / `#localChoiceIndex`：本地命名选择（choice）到成员对象的映射与其反向索引
+- `#remoteChoices` / `#remoteChoiceIndex`：远程命名选择（来源 → choice → 成员）与其反向索引
+
 ## API 一览
 
 ### 公开方法
@@ -57,6 +62,22 @@ AOM 本身不依赖 DOM，也不直接持有 viewport 列表。它通过 `render
 | `discard`  | `(objects: Iterable<BasicObject>) => void`               | 取消活动态，不提交几何变化回静态图                  |
 | `apply`    | `(objects: Iterable<BasicObject>) => Promise<void>`      | 提交活动态变化回静态图（异步，含 FullLoad 预加载）  |
 | `remove`   | `(objects: Iterable<BasicObject>) => void`               | 从白板彻底删除对象并移出 AOM                        |
+| `assignLocalChoice` | `(objectIds: Iterable<string>, name: string) => void` | 将活动对象指派进本地命名选择（匿名 `~` 不覆盖命名选择） |
+| `choiceOf` | `(objectId: string) => string \| undefined`               | 查询对象所属本地命名选择（匿名/无选择为 undefined）   |
+| `queryLocalChoices` | `() => { name, ids }[]`                             | 列出本地命名选择（不含匿名桶）                        |
+| `isRemoteActive` | `(objectId: string) => boolean`                      | 判断对象是否被远程选择                                |
+| `remoteChoicesOf` | `(objectId: string) => { source, name }[]`             | 查询对象的远程 choice 标签列表（多来源）                |
+| `applyRemoteChoose` | `(objectIds, source, choice?) => void`              | 登记远程命名选择（同一来源对同一对象只保留一个 choice）      |
+| `applyRemoteUnchoose` | `(objectIds, source) => void`                    | 按（来源，对象）注销远程选择                          |
+| `clearRemoteActive` | `(source) => string[]`                             | 断线清理：注销某来源的全部远程选择                    |
+
+### 命名选择（choice）注册表
+
+choice 是活动对象的命名分组维度：每个活动对象恰好属于一个本地 choice（未显式命名时落匿名桶 `~`），命名 choice 即 CLI 的 choice 与协作展示的标签。同一对象在同端只属一个 choice（显式指派迁移、腾空自动删除）；不同端的同名 choice 经 `"{source}/{choice}"` 形态区分。
+
+不变量：注册表只覆盖活动对象。对象退出活动集（apply/discard/remove/dormant 统一经 `unregisterTrackedActiveObject`）时成员关系自动解除，调用方无需感知。
+
+远程选择与本地选择分表：同一对象可被多个远程来源并发选择（各自独立注销）；本地 choose 优先于全部远程选择（`revokeRemoteActive` 一并撤销，并发冲突按链序收敛）。
 
 ### 私有方法
 

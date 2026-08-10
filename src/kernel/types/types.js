@@ -77,6 +77,7 @@
  * @property {string} id - 对象 id
  * @property {string} type - 对象类型名
  * @property {boolean} isActive - 是否在 AOM 动态图中
+ * @property {string | undefined} [choice] - 所属命名选择（本地 choice）名；匿名选择或无选择时缺省
  * @property {Point2D} position - 世界坐标位置
  * @property {TransformMatrix2D | undefined} [transform] - 对象变换矩阵
  * @property {import("../range/rectangle.js").RectangleRange} boundingBox - 外接矩形

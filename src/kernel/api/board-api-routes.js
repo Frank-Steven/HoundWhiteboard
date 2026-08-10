@@ -179,6 +179,14 @@ const BOARD_API_ROUTES = {
   },
 
   /**
+   * 列出本端的命名选择
+   */
+  queryChoices: {
+    invoke: (api) => api.queryChoices(),
+    flush: "none",
+  },
+
+  /**
    * 上报 UI 侧对象 id 池计数
    */
   reportObjectIdCounter: {

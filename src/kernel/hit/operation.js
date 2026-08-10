@@ -251,12 +251,15 @@ function createDeleteObjectOperation(fields) {
  * @param {Object} fields - 公共属性，同 _buildRecord 的 fields
  * @param {string} fields.chunkId - 区块 id
  * @param {string} fields.objectId - 对象 id
+ * @param {string} [fields.choice] - 命名选择名；缺省为匿名选择（不记录）
  * @returns {OperationRecord} 选择对象操作记录
  */
 function createChooseObjectOperation(fields) {
   return _buildRecord({ ...fields, type: OPERATION_TYPES.CHOOSE_OBJECT }, {
     chunkId: fields.chunkId,
     objectId: fields.objectId,
+    // 命名选择名；匿名选择不记录（旧记录无此字段即匿名）
+    ...(fields.choice !== undefined ? { choice: fields.choice } : {}),
   });
 }
 
@@ -265,12 +268,15 @@ function createChooseObjectOperation(fields) {
  * @param {Object} fields - 公共属性，同 _buildRecord 的 fields
  * @param {string} fields.chunkId - 区块 id
  * @param {string} fields.objectId - 对象 id
+ * @param {string} [fields.choice] - 命名选择名；缺省为匿名选择（不记录）
  * @returns {OperationRecord} 取消选择操作记录
  */
 function createUnchooseObjectOperation(fields) {
   return _buildRecord({ ...fields, type: OPERATION_TYPES.UNCHOOSE_OBJECT }, {
     chunkId: fields.chunkId,
     objectId: fields.objectId,
+    // 命名选择名；匿名选择不记录
+    ...(fields.choice !== undefined ? { choice: fields.choice } : {}),
   });
 }
 
@@ -417,6 +423,12 @@ function _validatePayload(record, errors) {
     case OPERATION_TYPES.UNCHOOSE_OBJECT:
       requireString("chunkId");
       requireString("objectId");
+      if (
+        payload.choice !== undefined &&
+        typeof payload.choice !== "string"
+      ) {
+        errors.push(`${type} 载荷的 choice 必须是字符串`);
+      }
       break;
     case OPERATION_TYPES.MOVE_HEAD:
       requireNodeId("targetNodeId");

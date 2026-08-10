@@ -31,7 +31,7 @@
 | 服务器 → 客户端 | `{type:"peer-joined", source}` / `{type:"peer-left", source}` | 成员变动广播                     |
 | 客户端 → 服务器 | `{type:"records", records:[...]}`                             | 操作记录广播（微任务合批）       |
 | 服务器 → 客户端 | `{type:"records", source, records:[...]}`                     | 记录转发（附来源，不回发发送者） |
-| 客户端 → 服务器 | `{type:"aom", event:{kind, ids, ...}}`                        | AOM 活动事件广播                 |
+| 客户端 → 服务器 | `{type:"aom", event:{kind, ids, choice?, ...}}`                | AOM 活动事件广播（choose 携带命名选择名） |
 | 服务器 → 客户端 | `{type:"aom", source, event}`                                 | 活动事件转发                     |
 | 客户端 → 服务器 | `{type:"request-init"}`                                       | 请求全量日志（新成员 / 落后端）  |
 | 服务器 → 客户端 | `{type:"request-init", source}`                               | 转发给其他成员                   |
@@ -53,7 +53,7 @@
 
 - 订阅 `operationLog.onAppend`：仅广播本端 source 的记录（远程应用的记录过滤，防回环放大）。
 - **微任务合批**：超分子成员在 endSupra 时同步连续物化，合批保证成员同批到达——传输中的超分子原子性与日志一致（逐条广播会让接收端部分建节点、后续成员效果丢失）。
-- 订阅 `activityEventBus`：手势内 choose/commit 事件即时广播（超分子闭合前 choose 不入日志，互斥与实时可见依赖此通道）。
+- 订阅 `activityEventBus`：手势内 choose/commit 事件即时广播（超分子闭合前 choose 不入日志，互斥与实时可见依赖此通道）。choose 事件携带 `choice`（命名选择名，匿名缺省）；unchoose/commit 事件按（来源，对象）注销，无需携带。
 
 ### 远端 → 本地
 
@@ -62,7 +62,7 @@
 - **延迟容忍窗**：乱序记录（来源序号空洞 / 父未达）入缓冲，500ms 窗到再整理；连续 3 窗仍未补齐则广播 request-init 请求全量。
 - **INIT**：join 时房间已有成员则 request-init；收到 respond-init 后去重接入全量日志。
 - **周期摘要**：30s 广播 `{logSize, head, objects}`；落后或同长分歧时 request-init（全量重建兜底）。
-- **断线清理**：peer-left 到达时清除该来源的远程活动登记（解锁其持有的对象）。
+- **断线清理**：peer-left 到达时清除该来源的远程活动登记（解锁其选择的对象）。
 
 ### 连接生命周期
 
@@ -71,7 +71,7 @@
 
 ## 收敛语义
 
-- **日志是权威**：choose/unchoose 是日志中的分子操作，随记录同步；`#transitionEffects` 按记录 source 路由——远程 choose 登记远程活动（`isRemoteActive`），不进本地活动集；本地 choose 效果撤销该对象的远程登记（并发冲突按链序收敛）。
+- **日志是权威**：choose/unchoose 是日志中的分子操作，随记录同步；`#transitionEffects` 按记录 source 路由——远程 choose 登记远程活动（`isRemoteActive`），不进本地活动集；本地 choose 效果撤销该对象的远程登记（并发冲突按链序收敛）。choose/unchoose 记录携带 `choice`（命名选择名）：远程端除互斥外还能看到对端的 choice 名，全量重建后标签保留（命名迁移只经活动事件传播，重建后按首次登记呈现）。
 - **trash 一致性**：delete 记录携带对象快照与层位边，接收端凭以重建 trash 条目；「对象在册即无 trash 条目」不变量由 add/restore 效果维护。
 - **状态收敛**：各端日志补齐后树 = f(日志)，根到 HEAD 确定性回放得到同一状态；性质测试以随机种子脚本 + 任意交错投递断言三端摘要全等（`src/kernel/api/tests/sync-convergence.test.js`）。
 
@@ -80,7 +80,7 @@
 - 中继无状态：断线期间的消息不缓存，重连后靠 INIT/摘要补齐（K6 才做离线队列）。
 - 无自动重连：断线后协调器进入 closed，需重建连接。[todo]
 - 同 source 覆盖：中继按 source 唯一定位成员，同 source 并发连接会互相顶替（同机双开需显式区分身份）。
-- 远程活跃对象可见但无视觉指示：锁定感与选中框属 K5 awareness 通道。
+- 远程活跃对象可见但无视觉指示：锁定感与选中框属 K5 awareness 通道（choice 名已经由 choice 字段就位）。
 - 浏览器（无 Tauri）打开 demo 为内存板：同步照常，内容不落盘。
 
 ## 相关文档

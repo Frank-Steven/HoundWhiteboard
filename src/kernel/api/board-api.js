@@ -22,6 +22,10 @@ import { intersectsRanges, RectangleRange } from "../range/index.js";
 import { ChunkObjectManager } from "../chunk/chunk-object-manager.js";
 import { CHUNK_LOAD_EVENTS } from "../chunk/chunk-loader.js";
 import { Chunk } from "../chunk/chunk.js";
+import {
+  ANONYMOUS_CHOICE_NAME,
+  isValidChoiceName,
+} from "../board/active-object-manager.js";
 
 /**
  * 数据擦除粗筛的范围余量（世界单位）
@@ -318,7 +322,7 @@ class BoardApi {
     for (const objectId of ids) {
       const obj = boardCore.getObjectById(objectId);
       if (!obj) continue;
-      // 远程活动对象被持有方锁定，本地不可删除
+      // 远程活动对象被来源锁定，本地不可删除
       if (boardCore.activeObjectManager?.isRemoteActive?.(objectId)) continue;
 
       if (aom?.isActive?.(objectId)) {
@@ -729,6 +733,13 @@ class BoardApi {
     if (committable.length === 0) {
       return objects.map((obj) => obj.id);
     }
+    // 提交前快照各对象的命名选择（apply 后成员关系即解除，取消选择分子凭以留名）
+    const choiceOfObject = new Map(
+      committable.map((obj) => [
+        obj.id,
+        boardCore.activeObjectManager.choiceOf(obj.id),
+      ]),
+    );
     await boardCore.activeObjectManager.apply(new Set(committable));
 
     const committer = boardCore.hitCommitter;
@@ -758,7 +769,12 @@ class BoardApi {
               supraKey,
             });
           }
-          committer.commitUnchoose({ chunkId, objectId: obj.id, supraKey });
+          committer.commitUnchoose({
+            chunkId,
+            objectId: obj.id,
+            supraKey,
+            choice: choiceOfObject.get(obj.id),
+          });
           this.#chooseSnapshots.delete(obj.id);
         } else {
           committer.commitAdd({
@@ -789,15 +805,22 @@ class BoardApi {
    * @param {string[]} objectIds - 对象 id 列表
    * @param {Object} [options] - 选择选项
    * @param {string} [options.supraKey] - 指定进入的超分子 key
+   * @param {string} [options.choice] - 命名选择（choice）；缺省落匿名选择
    * @returns {Promise<void>}
    */
   async addActiveObjects(objectIds, options = {}) {
     const boardCore = this.#boardCore;
+    if (
+      options.choice !== undefined &&
+      !isValidChoiceName(options.choice)
+    ) {
+      throw new Error(`非法 choice 名：${options.choice}`);
+    }
     const ids = Array.isArray(objectIds) ? objectIds : [];
     const objects = ids
       .map((id) => boardCore.getObjectById(id))
       .filter(Boolean)
-      // 远程活动对象被持有方锁定，本地不可选择
+      // 远程活动对象被来源锁定，本地不可选择
       .filter((obj) => !boardCore.activeObjectManager.isRemoteActive(obj.id));
     if (objects.length === 0) {
       return;
@@ -816,6 +839,7 @@ class BoardApi {
           chunkId: this.#resolveObjectChunkId(obj.id),
           objectId: obj.id,
           supraKey,
+          choice: options.choice,
         });
       }
       await boardCore.activeObjectManager.choose(new Set(objects));
@@ -824,10 +848,21 @@ class BoardApi {
         committer.endSupra(internalKey);
       }
     }
-    this.#emitActivity(
-      "choose",
+    boardCore.activeObjectManager.assignLocalChoice(
       objects.map((obj) => obj.id),
+      options.choice ?? ANONYMOUS_CHOICE_NAME,
     );
+    // 按当前命名选择分组广播 choose 活动：命名选择各自带名，匿名合并为一条
+    const chooseIdsByChoice = new Map();
+    for (const obj of objects) {
+      const name = boardCore.activeObjectManager.choiceOf(obj.id);
+      const key = name ?? "";
+      if (!chooseIdsByChoice.has(key)) chooseIdsByChoice.set(key, []);
+      chooseIdsByChoice.get(key).push(obj.id);
+    }
+    for (const [key, ids] of chooseIdsByChoice) {
+      this.#emitActivity("choose", ids, key === "" ? undefined : key);
+    }
   }
 
   /**
@@ -849,6 +884,13 @@ class BoardApi {
       (obj) => !hasStaticBoardObject(boardCore, obj.id),
     );
 
+    // 放弃前快照各对象的命名选择（discard 后成员关系即解除，取消选择分子凭以留名）
+    const choiceOfObject = new Map(
+      objects.map((obj) => [
+        obj.id,
+        boardCore.activeObjectManager.choiceOf(obj.id),
+      ]),
+    );
     boardCore.activeObjectManager.discard(new Set(objects));
 
     const committer = boardCore.hitCommitter;
@@ -872,6 +914,7 @@ class BoardApi {
             chunkId: this.#resolveObjectChunkId(obj.id),
             objectId: obj.id,
             supraKey,
+            choice: choiceOfObject.get(obj.id),
           });
           this.#chooseSnapshots.delete(obj.id);
         }
@@ -895,26 +938,28 @@ class BoardApi {
    * 发射本地 AOM 活动事件（ephemeral）
    * @param {"choose"|"unchoose"|"commit"} kind - 事件种类
    * @param {string[]} ids - 对象 id 列表
+   * @param {string} [choice] - 命名选择名（choose 事件携带；匿名缺省）
    * @returns {void}
    * @private
    *
    * @description
    * 手势内 choose 在超分子闭合前不入日志，互斥与实时可见依赖本即时通道；日志仍是权威路径。
    */
-  #emitActivity(kind, ids) {
+  #emitActivity(kind, ids, choice) {
     if (!Array.isArray(ids) || ids.length === 0) return;
     this.#boardCore.activityEventBus?.emit("activity", {
       kind,
       ids: [...ids],
       source: this.#boardCore.hitCommitter.source,
       time: Date.now(),
+      ...(choice !== undefined ? { choice } : {}),
     });
   }
 
   /**
    * 应用远程 AOM 活动事件（ephemeral 通道入口）
    * @param {Object|Object[]} events - 远程活动事件（{kind, ids}）
-   * @param {string} source - 持有方来源标识
+   * @param {string} source - 来源标识
    * @returns {void}
    */
   applyRemoteActivity(events, source) {
@@ -927,7 +972,7 @@ class BoardApi {
       const ids = Array.isArray(event?.ids) ? event.ids : [];
       if (ids.length === 0) continue;
       if (event.kind === "choose") {
-        aom.applyRemoteChoose(ids, source);
+        aom.applyRemoteChoose(ids, source, event.choice);
       } else if (event.kind === "unchoose" || event.kind === "commit") {
         aom.applyRemoteUnchoose(ids, source);
       }
@@ -1130,6 +1175,7 @@ class BoardApi {
           id: obj.id,
           type: obj.constructor.name,
           isActive,
+          choice: aom?.choiceOf?.(objectId),
           position: { x: obj.position.x, y: obj.position.y },
           transform: obj.transform
             ? {
@@ -1146,6 +1192,17 @@ class BoardApi {
         };
       })
       .filter(Boolean);
+  }
+
+  /**
+   * 列出本端的命名选择
+   * @returns {{ name: string, ids: string[] }[]} 命名选择列表（匿名选择不暴露）
+   *
+   * @description
+   * AOM 注册表是命名选择的权威状态：列出的对象必然在活动集中，不存在与影子状态漂移的问题。
+   */
+  queryChoices() {
+    return this.#boardCore.activeObjectManager.queryLocalChoices();
   }
 
   /**
@@ -1448,10 +1505,19 @@ class BoardApi {
         this.#deleteObjectEffect(payload, affectedChunks);
         break;
       case OPERATION_TYPES.CHOOSE_OBJECT:
-        this.#enterAomEffect(payload.objectId, affectedChunks, record.source);
+        this.#enterAomEffect(
+          payload.objectId,
+          affectedChunks,
+          record.source,
+          payload.choice,
+        );
         break;
       case OPERATION_TYPES.UNCHOOSE_OBJECT:
-        this.#leaveAomEffect(payload.objectId, affectedChunks, record.source);
+        this.#leaveAomEffect(
+          payload.objectId,
+          affectedChunks,
+          record.source,
+        );
         break;
       default:
         break;
@@ -1485,10 +1551,19 @@ class BoardApi {
         this.#restoreDeletedObjectEffect(payload.objectId, affectedChunks);
         break;
       case OPERATION_TYPES.CHOOSE_OBJECT:
-        this.#leaveAomEffect(payload.objectId, affectedChunks, record.source);
+        this.#leaveAomEffect(
+          payload.objectId,
+          affectedChunks,
+          record.source,
+        );
         break;
       case OPERATION_TYPES.UNCHOOSE_OBJECT:
-        this.#enterAomEffect(payload.objectId, affectedChunks, record.source);
+        this.#enterAomEffect(
+          payload.objectId,
+          affectedChunks,
+          record.source,
+          payload.choice,
+        );
         break;
       default:
         break;
@@ -1659,16 +1734,17 @@ class BoardApi {
    * @param {string} objectId - 对象 id
    * @param {Set<import("../chunk/chunk.js").Chunk>} affectedChunks - 受影响区块集合（输出参数）
    * @param {string} [source] - 记录来源；与本端不同则登记远程活动而非本地活动
+   * @param {string} [choice] - 记录携带的命名选择名；缺省为匿名选择
    * @returns {void}
    * @private
    */
-  #enterAomEffect(objectId, affectedChunks, source) {
+  #enterAomEffect(objectId, affectedChunks, source, choice) {
     const boardCore = this.#boardCore;
     const obj = boardCore.getObjectById(objectId);
     const aom = boardCore.activeObjectManager;
     // 远程 choose：登记远程活动（锁定 + 可见），不进本地活动集
     if (source !== undefined && source !== boardCore.hitCommitter.source) {
-      aom.applyRemoteChoose([objectId], source);
+      aom.applyRemoteChoose([objectId], source, choice);
       if (obj) this.#collectObjectChunks(obj, affectedChunks);
       return;
     }
@@ -1677,6 +1753,8 @@ class BoardApi {
     // 本地选择优先：撤销该对象的远程活动登记（并发 choose 冲突按链序收敛）
     aom.revokeRemoteActive(objectId);
     aom.add(new Set([obj]));
+    // 回放恢复本地命名选择标签（匿名选择不记 choice，落匿名桶）
+    aom.assignLocalChoice([objectId], choice ?? ANONYMOUS_CHOICE_NAME);
   }
 
   /**
@@ -1691,7 +1769,7 @@ class BoardApi {
     const boardCore = this.#boardCore;
     const obj = boardCore.getObjectById(objectId);
     const aom = boardCore.activeObjectManager;
-    // 远程 unchoose：注销远程活动登记
+    // 远程 unchoose：注销远程活动登记（按来源与对象完备，无需指定 choice）
     if (source !== undefined && source !== boardCore.hitCommitter.source) {
       aom.applyRemoteUnchoose([objectId], source);
       if (obj) this.#collectObjectChunks(obj, affectedChunks);
