@@ -6,6 +6,7 @@
  */
 
 import fs from "node:fs/promises";
+import { resolveBoardPath } from "./board-path.js";
 
 /**
  * 宽松解析 JSON：先试严格解析；失败则补裸属性名引号、单引号转双引号后重试
@@ -43,7 +44,8 @@ async function parseDataArgument(dataText) {
     throw new Error("add 需要 --data（可用 --data '<json>' 或 --data @文件）。");
   }
   if (dataText.startsWith("@")) {
-    const text = await fs.readFile(dataText.slice(1), "utf-8");
+    const filePath = resolveBoardPath(dataText.slice(1));
+    const text = await fs.readFile(filePath, "utf-8");
     return parseLenientJson(text);
   }
   return parseLenientJson(dataText);
@@ -136,9 +138,14 @@ async function cmdDelete(session, args, flags) {
  * @param {Object} flags - 标志（source）
  * @returns {Promise<void>}
  */
-async function cmdUndo(session, _args, flags) {
-  await session.api.undo();
-  console.log("undo ok");
+async function cmdUndo(session, args, flags) {
+  const targetNodeId = args[0];
+  const result = await session.api.undo(targetNodeId);
+  console.log(
+    result.undone
+      ? `undo ok（撤销 ${result.targetNodeId}）`
+      : `undo：无可撤销目标${targetNodeId ? `（${targetNodeId} 不在活动链上）` : "（无本端操作）"}`,
+  );
 }
 
 /**
@@ -149,8 +156,12 @@ async function cmdUndo(session, _args, flags) {
  * @returns {Promise<void>}
  */
 async function cmdRedo(session, _args, flags) {
-  await session.api.redo();
-  console.log("redo ok");
+  const result = await session.api.redo();
+  console.log(
+    result.redone
+      ? `redo ok（重做 ${result.targetNodeId}）`
+      : "redo：无最近撤销可重做",
+  );
 }
 
 /**

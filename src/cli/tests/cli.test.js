@@ -156,6 +156,47 @@ describe("CLI 第二前端", () => {
     }
   });
 
+  test("undo 带显式操作 id：撤销指定节点，info 输出 chain", async () => {
+    const { dir, cleanup } = tempBoardDir();
+    try {
+      await runCli(["create", dir, "--width", "800", "--height", "600"]);
+      const { stdout: id1 } = await runCli([
+        "add",
+        dir,
+        "--type",
+        "StrokeObject",
+        "--data",
+        STROKE_DATA,
+      ]);
+      const { stdout: id2 } = await runCli([
+        "add",
+        dir,
+        "--type",
+        "StrokeObject",
+        "--data",
+        STROKE_DATA,
+      ]);
+      expect(id1.trim()).toBe("cli/1");
+      expect(id2.trim()).toBe("cli/2");
+
+      // info 输出活动链节点列表
+      const info = await runCliJson(["info", dir]);
+      expect(info.chain).toEqual(["cli/op-1", "cli/op-2"]);
+
+      // 显式撤销 op-1（非本端最近节点也支持）
+      const { stdout: undoOut } = await runCli(["undo", dir, "cli/op-1"]);
+      expect(undoOut).toContain("撤销 cli/op-1");
+      const listed = await runCliJson(["list", dir]);
+      expect(listed.objects.map((o) => o.id)).toEqual(["cli/2"]);
+
+      // 显式撤销不在活动链上的 id 报无可撤销
+      const { stdout: badOut } = await runCli(["undo", dir, "cli/op-999"]);
+      expect(badOut).toContain("无可撤销目标");
+    } finally {
+      cleanup();
+    }
+  });
+
   test("undo 跨进程持久化：撤销后重开对象不复活", async () => {
     const { dir, cleanup } = tempBoardDir();
     try {

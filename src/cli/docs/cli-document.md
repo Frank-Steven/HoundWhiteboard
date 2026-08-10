@@ -26,7 +26,8 @@ CLI 在板目录发现活 daemon 时自动切换为薄客户端：命令语义�
 ## 板路径与数据参数
 
 - **板路径**：CLI 与 daemon 的板目录参数需传全称路径（支持 `~` 家目录展开，如 `~/hound-whiteboard/test-board`）。**daemon 启动后 CLI 可免路径**：板目录写入 `.daemon.json` 的同时，daemon 会把板目录登记到全局引用（`~/.hound-whiteboard/daemon.json`），`yarn cli <命令>` 不带板目录时自动操作当前活动 daemon 的板。
-- **--data**：`add` 的 `--data` 必传（StrokeObject 无默认数据）；传 JSON 字符串（shell 转义麻烦时）或以 `@` 开头传 JSON 文件路径，如 `--data @stroke.json`。
+- **--data**：`add` 的 `--data` 必传（StrokeObject 无默认数据）；传 JSON 字符串（shell 转义麻烦时）或以 `@` 开头传 JSON 文件路径，如 `--data @stroke.json`（PowerShell 中需加引号 `"@stroke.json"`；文件路径支持 `~` 展开）。
+- **undo 目标**：`undo [<操作id>]` 可显式指定撤销目标（`info` 输出的 `chain` 列表，如 `dev-b57m/op-1`）；省略时各撤各的，只撤销本端最近操作。daemon 重启后身份会变，撤销历史操作需显式传操作 id。
 
 ```bash
 # 终端 1：daemon 启动（全称路径）

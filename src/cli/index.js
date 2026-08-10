@@ -25,8 +25,10 @@ const USAGE = `用法：hwb <命令> <板目录> [参数] [--标志 值]
   show <板目录> <对象id>                         打印对象序列化数据
   add <板目录> --type <类型> [--data '<json>'] [--position x,y]   创建并提交对象
   delete <板目录> <对象id...>                    删除对象（可撤销）
-  undo <板目录>                                  撤销一步
+  undo <板目录> [<操作id>]                       撤销一步；指定操作 id 时撤销该操作，省略时撤销本端最近操作
   redo <板目录>                                  重做一步
+
+操作 id：info 输出的 chain 列表（如 dev-b57m/op-1）。daemon 重启后身份变化，撤销历史操作需显式传操作 id。
 
 通用标志：
   --source <来源>   操作作者命名空间（默认 cli），决定新对象 id 前缀

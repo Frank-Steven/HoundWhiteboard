@@ -1002,6 +1002,9 @@ class BoardApi {
       boardConfig: meta.boardConfig,
       records: boardCore.operationLog.size,
       head: boardCore.undoTree.head?.shareId ?? null,
+      chain: boardCore.undoTree
+        .getActiveChain()
+        .map((node) => node.shareId),
       objects: boardCore.getAllObjects().length,
       trash: boardCore.trash.size,
       coreIdCounters: meta.coreIdCounters,
