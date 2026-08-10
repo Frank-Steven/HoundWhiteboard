@@ -808,6 +808,11 @@ class BoardCore {
       return false;
     }
 
+    // chunkUnload 关闭时（CLI / daemon 常驻持板）区块不从内存卸载，仅维护引用计数
+    if (this.#chunkUnloadEnabled === false) {
+      return false;
+    }
+
     if (tempLoadedCount > 0) {
       if (!chunk.isLoad) return false;
       return chunk.isTempLoad ? false : chunk.downgradeToTemp();
@@ -833,6 +838,11 @@ class BoardCore {
     const fullLoadedCount = chunkState?.fullLoadedCount ?? 0;
     const tempLoadedCount = chunkState?.tempLoadedCount ?? 0;
     if (fullLoadedCount > 0 || tempLoadedCount > 0) {
+      return false;
+    }
+
+    // chunkUnload 关闭时（CLI / daemon 常驻持板）区块不从内存卸载
+    if (this.#chunkUnloadEnabled === false) {
       return false;
     }
 
