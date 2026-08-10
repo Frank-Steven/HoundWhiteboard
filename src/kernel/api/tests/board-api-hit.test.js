@@ -43,6 +43,26 @@ async function createStaticStroke(api, id, points = horizontalPoints()) {
 const recordTypes = (boardCore) => boardCore.operationLog.toArray().map((r) => r.type);
 
 describe("活动对象准入", () => {
+  test("discard 放弃修改：用选择前快照还原实例，不产生 modify 分子", async () => {
+    const boardCore = createBoardCore();
+    const api = new BoardApi(boardCore);
+    await createStaticStroke(api, "s1");
+    const before = api.queryObject("s1");
+    expect(before.position).toEqual({ x: 0, y: 0 });
+
+    await api.addActiveObjects(["s1"]);
+    api.modifyObject("s1", { position: { x: 200, y: 200 } });
+    api.discardActiveObjects(["s1"]);
+
+    // 实例已还原到选择前状态，静态图不被修改污染
+    expect(api.queryObject("s1").position).toEqual({ x: 0, y: 0 });
+    const types = boardCore.operationLog
+      .toArray()
+      .map((record) => record.type);
+    expect(types).not.toContain("modify-object");
+    expect(types).toEqual(["add-object", "choose-object", "unchoose-object"]);
+  });
+
   test("静态对象不可更改", async () => {
     const boardCore = createBoardCore();
     const api = new BoardApi(boardCore);

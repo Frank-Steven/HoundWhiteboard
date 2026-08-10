@@ -859,6 +859,15 @@ class BoardApi {
       for (const obj of objects) {
         // 放弃更改仅在对象确经选择时产生取消选择分子
         if (this.#chooseSnapshots.has(obj.id)) {
+          // 用选择前快照还原实例（choose→modify→discard 链的整体回滚），
+          // 否则实例已携带的修改会随失活回到静态层，污染静态图
+          const snapshot = this.#chooseSnapshots.get(obj.id);
+          this.#applyObjectPatch(obj, {
+            position: snapshot.position,
+            transform: snapshot.transform,
+            property: snapshot.property,
+            data: snapshot.data,
+          });
           committer.commitUnchoose({
             chunkId: this.#resolveObjectChunkId(obj.id),
             objectId: obj.id,

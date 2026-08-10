@@ -27,7 +27,7 @@ import {
 function relaxJsonText(text) {
   let relaxed = text.replace(/'/g, '"');
   relaxed = relaxed.replace(
-    /([{]\s*)([a-zA-Z_$][\w$]*)(\s*:)/g,
+    /([{,]\s*)([a-zA-Z_$][\w$]*)(\s*:)/g,
     '$1"$2"$3',
   );
   relaxed = relaxed.replace(

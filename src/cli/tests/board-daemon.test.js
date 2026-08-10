@@ -474,6 +474,17 @@ describe("板 daemon", () => {
       // buffer 已清
       const { stdout: choicesOut } = await run(["choices"]);
       expect(JSON.parse(choicesOut)).toEqual({});
+
+      // discard 放弃：修改还原到选择前状态，不产生 modify 记录
+      const { stdout: beforeOut } = await run(["show", id]);
+      const beforePos = JSON.parse(beforeOut).position;
+      await run(["choose", id, "--choice", "drop"]);
+      await run(["modify", "--choice", "drop", "--displacement", "77,77"]);
+      await run(["unchoose", "drop", "--discard"]);
+      const { stdout: afterOut } = await run(["show", id]);
+      expect(JSON.parse(afterOut).position).toEqual(beforePos);
+      const { stdout: opsAfter } = await run(["ops", "--type", "modify-object"]);
+      expect(JSON.parse(opsAfter)).toHaveLength(1);
     } finally {
       await daemon.close();
       await cleanup();
