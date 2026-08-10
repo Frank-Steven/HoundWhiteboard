@@ -1071,7 +1071,7 @@ class BoardApi {
    * 查询时间回溯树结构
    * @description 节点表为扁平先根遍历（子节点按时间标记升序），含活动链外的已撤销分支；
    * CLI 等前端可凭 parentId/depth 排版缩进树。
-   * @returns {{head: ?string, activeChain: string[], redoStack: Array<{targetId: string, previousHeadId: string}>, nodes: Array<{id: string, parentId: ?string, depth: number, type: ?string, source: ?string, active: boolean, isHead: boolean}>}} 树结构
+   * @returns {{head: ?string, activeChain: string[], redoStack: Array<{targetId: string, previousHeadId: string}>, nodes: Array<{id: string, parentId: ?string, depth: number, type: ?string, memberTypes: ?string[], source: ?string, active: boolean, isHead: boolean}>}} 树结构
    */
   queryUndoTree() {
     const boardCore = this.#boardCore;
@@ -1085,11 +1085,16 @@ class BoardApi {
     const walk = (parent) => {
       for (const child of parent.children) {
         const record = recordById.get(child.shareId);
+        // 超分子节点以首分子为 shareId，成员类型全部列出（choose+modify+unchoose 这类链）
+        const members = boardCore.operationLog.getSupraMembers(child.shareId);
+        const memberTypes =
+          members.length > 1 ? members.map((member) => member.type) : null;
         nodes.push({
           id: child.shareId,
           parentId: parent.shareId ?? null,
           depth: child.depth,
           type: record?.type ?? null,
+          memberTypes,
           source: record?.source ?? null,
           active: activeIds.has(child.shareId),
           isHead: child === tree.head,
@@ -1546,9 +1551,9 @@ class BoardApi {
       const graph = chunk.objectManager?.staticGraph;
       const below = graph
         ? graph.getNodes().filter((nodeId) => {
-            const nodeRect = getObjectWorldRect(boardCore.getObjectById(nodeId));
-            return nodeRect && intersectsRanges(rect, nodeRect);
-          })
+          const nodeRect = getObjectWorldRect(boardCore.getObjectById(nodeId));
+          return nodeRect && intersectsRanges(rect, nodeRect);
+        })
         : [];
       chunk.addObject(obj, below, []);
     }

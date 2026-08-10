@@ -238,7 +238,11 @@ function formatUndoTree(tree) {
       if (node.isHead) marks.push("HEAD");
       if (!node.active) marks.push("已撤销");
       const suffix = marks.length > 0 ? `  [${marks.join(", ")}]` : "";
-      return `${indent}${node.id}  ${node.type ?? "?"}${suffix}`;
+      const type =
+        node.memberTypes != null
+          ? node.memberTypes.map((t) => t.replace(/-object$/, "")).join("+")
+          : (node.type ?? "?");
+      return `${indent}${node.id}  ${type}${suffix}`;
     })
     .join("\n");
 }
@@ -356,9 +360,10 @@ function hasFullPatchFlags(flags) {
  * 确保对象在 AOM 活动图中（未选中则补选择），返回其当前状态
  * @param {Object} session - 板会话
  * @param {string[]} ids - 对象 id 列表
+ * @param {Object} [options] - 选择选项（如 supraKey，选择分子归入该超分子）
  * @returns {Promise<Object[]>} 对象当前状态（queryObjects 摘要）
  */
-async function ensureActive(session, ids) {
+async function ensureActive(session, ids, options) {
   const summaries = await session.api.queryObjects(ids);
   const missing = ids.filter((id, i) => !summaries[i]);
   if (missing.length > 0) {
@@ -366,7 +371,7 @@ async function ensureActive(session, ids) {
   }
   const inactive = ids.filter((id, i) => !summaries[i].isActive);
   if (inactive.length > 0) {
-    await session.api.addActiveObjects(inactive);
+    await session.api.addActiveObjects(inactive, options);
   }
   return summaries;
 }
@@ -480,13 +485,14 @@ async function cmdModify(session, args, flags) {
     return;
   }
   // 单对象未选中：choose→modify→commit 超分子链，一条记录原子完成
+  // supraKey 显式传给每个分子操作，否则其内部各自开启内层超分子，合并不到一处
   const patch = await buildModifyPatch(flags, await queryOne(session, id));
   const supraKey = `cli-supra/${Date.now()}`;
   await session.api.beginSupra(supraKey);
   try {
-    await session.api.addActiveObjects([id]);
+    await session.api.addActiveObjects([id], { supraKey });
     await session.api.modifyObject(id, patch);
-    await session.api.commitObjects([id]);
+    await session.api.commitObjects([id], { supraKey });
     await session.api.endSupra(supraKey);
   } catch (error) {
     await session.api.abortSupra(supraKey);
@@ -547,13 +553,13 @@ async function modifyChoice(session, name, flags, onlyId) {
     );
     return;
   }
-  // 文件模式：choose→modify→commit 超分子链原子完成
+  // 文件模式：choose→modify→commit 超分子链原子完成（supraKey 显式传入，见单对象路径）
   const supraKey = `cli-supra/${Date.now()}`;
   await session.api.beginSupra(supraKey);
   try {
-    await ensureActive(session, ids);
+    await ensureActive(session, ids, { supraKey });
     await session.api.modifyObjects(patches);
-    await session.api.commitObjects(ids);
+    await session.api.commitObjects(ids, { supraKey });
     await session.api.endSupra(supraKey);
   } catch (error) {
     await session.api.abortSupra(supraKey);

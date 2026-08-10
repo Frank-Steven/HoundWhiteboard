@@ -99,10 +99,12 @@ async function connectDaemon(rootPath) {
       queryOperations: (options) => invoke("queryOperations", options ?? {}),
       queryUndoTree: () => invoke("queryUndoTree", {}),
       queryObjects: (ids) => invoke("queryObjects", { ids }),
-      addActiveObjects: (ids) => invoke("addActiveObjects", { objectIds: ids }),
-      discardActiveObjects: (ids) =>
-        invoke("discardActiveObjects", { objectIds: ids }),
-      commitObjects: (ids) => invoke("commitObjects", { objectIds: ids }),
+      addActiveObjects: (ids, options) =>
+        invoke("addActiveObjects", { objectIds: ids, options }),
+      discardActiveObjects: (ids, options) =>
+        invoke("discardActiveObjects", { objectIds: ids, options }),
+      commitObjects: (ids, options) =>
+        invoke("commitObjects", { objectIds: ids, options }),
       modifyObject: (objectId, patch) =>
         invoke("modifyObject", { objectId, patch }),
       modifyObjects: (patches) => invoke("modifyObjects", { patches }),
