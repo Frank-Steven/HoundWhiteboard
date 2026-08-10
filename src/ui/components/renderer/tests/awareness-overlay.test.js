@@ -214,4 +214,53 @@ describe("AwarenessOverlay", () => {
       jest.useRealTimers();
     }
   });
+
+  test("手势中间帧：选择框随预览位置画，远程选择消失后预览裁剪", async () => {
+    const boardApi = createMockBoardApi({
+      choices: [{ source: "dev-b", name: "hold", ids: ["b/1"] }],
+    });
+    const viewport = createMockViewport();
+    const overlay = new AwarenessOverlay({ boardApi, viewport });
+    overlay.start();
+    await overlay.refresh();
+
+    const provider = viewport.registerUiOverlayProvider.mock.calls[0][0];
+    const frameBefore = provider().find((e) => e.objectId === "b/1");
+    expect(frameBefore.geometry.worldRect.left).toBe(10);
+
+    // 中间帧到达：框画到预览位置
+    viewport.emitAwareness({
+      type: "awareness",
+      awarenessType: "subframe",
+      source: "dev-b",
+      data: {
+        kind: "subframe",
+        ops: [{ objectId: "b/1", patch: { position: { x: 99, y: 10 } } }],
+      },
+    });
+    const framePreview = provider().find((e) => e.objectId === "b/1");
+    expect(framePreview.geometry.worldRect.left).toBe(99);
+
+    // 预览来源不符时不接受（互斥语义）：dev-c 的中间帧不动 dev-b 的预览
+    viewport.emitAwareness({
+      type: "awareness",
+      awarenessType: "subframe",
+      source: "dev-c",
+      data: {
+        kind: "subframe",
+        ops: [{ objectId: "b/1", patch: { position: { x: 1, y: 1 } } }],
+      },
+    });
+    expect(provider().find((e) => e.objectId === "b/1").geometry.worldRect.left).toBe(99);
+
+    // 远程选择消失（对端 commit/unchoose 后刷新为空）：预览被裁剪
+    boardApi.queryRemoteChoices.mockResolvedValue([]);
+    viewport.emitAwareness({
+      type: "awareness",
+      awarenessType: "remote-activity",
+    });
+    await overlay.refresh();
+    expect(provider().find((e) => e.objectId === "b/1")).toBeUndefined();
+    overlay.stop();
+  });
 });

@@ -252,6 +252,7 @@ class BoardApi {
    */
   modifyObject(objectId, patch) {
     this.#applyObjectPatch(this.#requireActiveObject(objectId), patch);
+    this.#emitSubframe({ objectId, patch });
   }
 
   /**
@@ -265,6 +266,7 @@ class BoardApi {
     for (const { objectId, patch } of items) {
       if (objectId == null || !patch) continue;
       this.#applyObjectPatch(this.#requireActiveObject(objectId), patch);
+      this.#emitSubframe({ objectId, patch });
     }
   }
 
@@ -279,6 +281,7 @@ class BoardApi {
     const obj = this.#requireActiveObject(objectId);
     obj.appendListItem(key, ...(items ?? []));
     this.#boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
+    this.#emitSubframe({ objectId, append: { key, items: [...(items ?? [])] } });
   }
 
   /**
@@ -293,6 +296,7 @@ class BoardApi {
     const obj = this.#requireActiveObject(objectId);
     obj.replaceListItem(key, index, item);
     this.#boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
+    this.#emitSubframe({ objectId, replace: { key, index, item } });
   }
 
   /**
@@ -940,6 +944,20 @@ class BoardApi {
       "unchoose",
       objects.map((obj) => obj.id),
     );
+  }
+
+  /**
+   * 发射手势中间帧预览事件（volatile，SubFrame）
+   * @param {Object} op - 预览操作（{objectId, patch?} / {objectId, append:{key, items}}）
+   * @returns {void}
+   * @private
+   *
+   * @description
+   * 手势中间帧不进日志；本事件经 host 订阅转发中继供远端实时预览，丢了不补，
+   * 最终分子操作到达时纠正。回放路径不经手势写入口，本事件不会回环。
+   */
+  #emitSubframe(op) {
+    this.#boardCore.activityEventBus?.emit("subframe", op);
   }
 
   /**

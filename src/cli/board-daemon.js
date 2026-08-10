@@ -9,6 +9,7 @@ import { WebSocketServer } from "ws";
 import { openBoardSession } from "./board-session.js";
 import { BOARD_API_ROUTES } from "../kernel/api/board-api-routes.js";
 import { createNetworkCoordinator } from "../host/sync/network-coordinator.js";
+import { createSubframeForwarder } from "../host/sync/subframe-forwarder.js";
 import { resolveDeviceSource } from "../utils/device-identity.js";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -96,6 +97,7 @@ async function startBoardDaemon(options) {
 
   // 可选连中继：失败降级单机并每 3s 自动重试（中继可能后于 daemon 启动）
   let coordinator = null;
+  let subframeForwarder = null;
   let relayRetryTimer = null;
   const connectRelay = async () => {
     const next = createNetworkCoordinator({
@@ -107,6 +109,11 @@ async function startBoardDaemon(options) {
     try {
       await next.connect();
       coordinator = next;
+      subframeForwarder?.close();
+      subframeForwarder = createSubframeForwarder({
+        boardCore: session.boardCore,
+        sendAwareness: (data) => coordinator?.sendAwareness(data),
+      });
       relayRetryTimer = null;
       console.log(
         `[daemon] 已连接中继：${options.relayUrl}（房间 ${options.boardId ?? rootPath}）`,
@@ -124,6 +131,10 @@ async function startBoardDaemon(options) {
     });
     try {
       await coordinator.connect();
+      subframeForwarder = createSubframeForwarder({
+        boardCore: session.boardCore,
+        sendAwareness: (data) => coordinator?.sendAwareness(data),
+      });
     } catch (error) {
       console.warn(
         `[daemon] 中继连接失败（${error?.message ?? error}），按单机模式运行并每 3s 重试`,
@@ -182,6 +193,7 @@ async function startBoardDaemon(options) {
       }
     }
     await new Promise((resolve) => wss.close(resolve));
+    subframeForwarder?.close();
     if (coordinator) {
       await coordinator.close();
     }

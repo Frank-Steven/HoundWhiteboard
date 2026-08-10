@@ -12,6 +12,7 @@ import { createDefaultAomRenderHooks } from "../../../kernel/board/aom-render-ho
 import { createDefaultPersistenceAdapter } from "../../../kernel/board/persistence-adapter.js";
 import { createRelayServer } from "../relay-server.js";
 import { createNetworkCoordinator } from "../network-coordinator.js";
+import { createSubframeForwarder } from "../subframe-forwarder.js";
 
 /**
  * 创建一个端（独立的 BoardCore 与 BoardApi）
@@ -373,6 +374,55 @@ describe("网络协调器", () => {
       () => received.some((m) => m.data?.kind === "peer-left"),
       "b 收到 peer-left 通知",
     );
+  });
+
+  test("手势中间帧经 volatile 通道跨端到达（SubFrame 预览）", async () => {
+    server = createRelayServer({ port: 0 });
+    /** @type {Object[]} */
+    const received = [];
+    const a = await connectEnd("a", server.port, "board-1");
+    const b = await connectEnd("b", server.port, "board-1", {
+      onAwareness: (message) => received.push(message),
+    });
+    ends = [a, b];
+
+    // a 侧挂 SubFrame 转发器（core-worker/daemon 同款接线）
+    const forwarder = createSubframeForwarder({
+      boardCore: a.boardCore,
+      sendAwareness: (data) => a.coordinator.sendAwareness(data),
+      intervalMs: 20,
+    });
+
+    await createStroke(a.api, "a/1");
+    await until(
+      () => b.boardCore.getObjectById("a/1") != null,
+      "b 收到 a/1",
+    );
+
+    // a 侧手势：choose 后连续拖动（中间帧不进日志）
+    const logSizeBefore = a.boardCore.operationLog.size;
+    await a.api.addActiveObjects(["a/1"]);
+    a.api.modifyObject("a/1", { position: { x: 50, y: 0 } });
+    a.api.modifyObject("a/1", { position: { x: 80, y: 0 } });
+
+    await until(
+      () => received.some((m) => m.data?.kind === "subframe"),
+      "b 收到中间帧预览",
+    );
+    const frame = received.find((m) => m.data?.kind === "subframe");
+    expect(frame.source).toBe("a");
+    const op = frame.data.ops.find((o) => o.objectId === "a/1");
+    // 合批后 position 后帧盖前帧
+    expect(op.patch.position).toEqual({ x: 80, y: 0 });
+    // 中间帧不进日志（modify 未提交）
+    expect(
+      a.boardCore.operationLog.toJSON().filter(
+        (r) => r.type === "modify-object",
+      ),
+    ).toHaveLength(0);
+    expect(a.boardCore.operationLog.size).toBeGreaterThan(logSizeBefore);
+
+    forwarder.close();
   });
 
   test("摘要分歧触发全量重建请求", async () => {

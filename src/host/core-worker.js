@@ -24,6 +24,7 @@ import { bindRoot } from "../io/driver/io-driver.js";
 import { createPersistenceAdapter } from "../io/adapter/persistence.js";
 import { createSessionStore } from "../kernel/store/session-store.js";
 import { createNetworkCoordinator } from "./sync/network-coordinator.js";
+import { createSubframeForwarder } from "./sync/subframe-forwarder.js";
 import { createJournaler } from "../kernel/store/journaler.js";
 
 /**
@@ -146,6 +147,12 @@ class CoreWorkerRuntime {
   #unsubscribeRemoteActivity;
 
   /**
+   * SubFrame 转发器（协调器连接成功时非空）
+   * @type {Object | null}
+   */
+  #subframeForwarder;
+
+  /**
    * 等待主线程 io-response 的挂起表
    * @type {Map<string, { resolve: Function, reject: Function }>}
    */
@@ -179,6 +186,7 @@ class CoreWorkerRuntime {
     this.#journaler = null;
     this.#coordinator = null;
     this.#unsubscribeRemoteActivity = null;
+    this.#subframeForwarder = null;
     this.#ioPending = new Map();
     this.#ioMsgSeq = 0;
   }
@@ -505,6 +513,10 @@ class CoreWorkerRuntime {
       });
       try {
         await this.#coordinator.connect();
+        this.#subframeForwarder = createSubframeForwarder({
+          boardCore: this.#boardCore,
+          sendAwareness: (data) => this.#coordinator?.sendAwareness(data),
+        });
         this.#log.info(`已连接同步中继：${options.syncUrl}`);
       } catch (error) {
         this.#log.warn(`同步中继连接失败，离线运行：${error?.message ?? error}`);
@@ -576,6 +588,8 @@ class CoreWorkerRuntime {
    * @returns {Promise<{ ok: boolean }>} 销毁结果
    */
   async destroyBoard() {
+    this.#subframeForwarder?.close();
+    this.#subframeForwarder = null;
     if (this.#coordinator) {
       await this.#coordinator.close();
       this.#coordinator = null;

@@ -141,6 +141,15 @@ class AwarenessOverlay {
   #cursorLatestWorld = null;
 
   /**
+   * 远程手势中间帧预览表（对象 id → 预览状态）
+   * @description 只画不存：position 后帧盖前帧，append 按序累积；
+   * 远程注册表刷新时裁掉不在任何远程选择中的条目，peer-left 按来源清理。
+   * @type {Map<string, { source: string, position?: { x: number, y: number }, transform?: Object, appended?: Map<string, any[]> }>}
+   * @private
+   */
+  #previews = new Map();
+
+  /**
    * @param {Object} options - 选项
    * @param {Object} options.boardApi - BoardApi RPC 面（须含 queryRemoteChoices 与 queryObjects）
    * @param {import("../orchestration/viewport.js").Viewport} options.viewport - 视口实例
@@ -191,6 +200,7 @@ class AwarenessOverlay {
       if (cursor.expiryTimer !== null) clearTimeout(cursor.expiryTimer);
     }
     this.#cursors.clear();
+    this.#previews.clear();
     this.#groups = [];
     this.#viewport.uiRenderer?.invalidateViewport?.();
   }
@@ -209,11 +219,93 @@ class AwarenessOverlay {
       case "cursor":
         this.#applyRemoteCursor(message.source, message.data?.point);
         return;
+      case "subframe":
+        this.#applySubframe(message.source, message.data?.ops);
+        return;
       case "peer-left":
         this.#dropRemoteCursor(message.source);
+        this.#dropSourcePreviews(message.source);
         return;
       default:
         return;
+    }
+  }
+
+  /**
+   * 应用远程手势中间帧（合批预览操作）
+   * @param {string} source - 来源标识
+   * @param {Object[]} ops - 预览操作列表
+   * @returns {void}
+   * @private
+   */
+  #applySubframe(source, ops) {
+    if (typeof source !== "string" || !Array.isArray(ops)) return;
+    let changed = false;
+    for (const op of ops) {
+      if (typeof op?.objectId !== "string") continue;
+      const preview = this.#previews.get(op.objectId) ?? { source };
+      if (preview.source !== source) continue;
+      if (typeof op.patch?.position?.x === "number") {
+        preview.position = {
+          x: op.patch.position.x,
+          y: op.patch.position.y,
+        };
+      }
+      if (op.patch?.transform && typeof op.patch.transform === "object") {
+        preview.transform = { ...op.patch.transform };
+      }
+      if (Array.isArray(op.appends)) {
+        for (const append of op.appends) {
+          if (typeof append?.key !== "string") continue;
+          if (!preview.appended) preview.appended = new Map();
+          const items = preview.appended.get(append.key) ?? [];
+          items.push(...(append.items ?? []));
+          preview.appended.set(append.key, items);
+        }
+      }
+      this.#previews.set(op.objectId, preview);
+      changed = true;
+    }
+    if (changed) {
+      this.#viewport.uiRenderer?.invalidateViewport?.();
+    }
+  }
+
+  /**
+   * 清理某来源的全部预览（对端离开）
+   * @param {string} source - 来源标识
+   * @returns {void}
+   * @private
+   */
+  #dropSourcePreviews(source) {
+    let changed = false;
+    for (const [objectId, preview] of this.#previews) {
+      if (preview.source === source) {
+        this.#previews.delete(objectId);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.#viewport.uiRenderer?.invalidateViewport?.();
+    }
+  }
+
+  /**
+   * 裁掉不在任何远程选择中的预览（手势结束或被撤销后的归位）
+   * @returns {void}
+   * @private
+   */
+  #prunePreviews() {
+    const held = new Set();
+    for (const group of this.#groups) {
+      for (const summary of group.summaries) {
+        held.add(summary.id);
+      }
+    }
+    for (const objectId of [...this.#previews.keys()]) {
+      if (!held.has(objectId)) {
+        this.#previews.delete(objectId);
+      }
     }
   }
 
@@ -347,6 +439,7 @@ class AwarenessOverlay {
             .map((id) => byId.get(id))
             .filter(Boolean),
         }));
+        this.#prunePreviews();
         this.#viewport.uiRenderer?.invalidateViewport?.();
       } catch {
         // RPC 失败（板已销毁等）：保留旧缓存，等待下次通知
@@ -371,7 +464,12 @@ class AwarenessOverlay {
     for (const group of this.#groups) {
       let unionRect;
       for (const summary of group.summaries) {
-        const worldRect = getSummaryWorldRect(summary);
+        // 手势中间帧预览：框随预览位置画（只画不存，commit 到达后按记录归位）
+        const preview = this.#previews.get(summary.id);
+        const effective = preview?.position
+          ? { ...summary, position: preview.position }
+          : summary;
+        const worldRect = getSummaryWorldRect(effective);
         if (!worldRect) continue;
         entries.push({
           source: `awareness-choice:${group.source}`,

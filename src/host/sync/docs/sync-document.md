@@ -57,6 +57,7 @@
 - **微任务合批**：超分子成员在 endSupra 时同步连续物化，合批保证成员同批到达——传输中的超分子原子性与日志一致（逐条广播会让接收端部分建节点、后续成员效果丢失）。
 - 订阅 `activityEventBus`：手势内 choose/commit 事件即时广播（超分子闭合前 choose 不入日志，互斥与实时可见依赖此通道）。choose 事件携带 `choice`（命名选择名，匿名缺省）；unchoose/commit 事件按（来源，对象）注销，无需携带。
 - **awareness（K5）**：光标位置经 `sendAwareness` 走 volatile 通道广播，接收端由 `onAwareness` 回调转发宿主（只画不存）；peer-left 以 `{kind:"peer-left"}` 通知，供接收端清理远程光标。远程选择的装饰走 aom 可靠通道与 remote-activity 通知，不经 volatile 通道。
+- **SubFrame 中间帧预览**：手势写入口（modifyObject / appendListItem 等）在内核事件总线发射 subframe 事件，`subframe-forwarder` 按 33ms 间隔节流合批（position/transform 后帧盖前帧、append 按序累积）后经 volatile 通道广播；接收端只画不存（预览位置画选择框），丢了不补，最终分子操作到达时按记录归位。
 
 ### 远端 → 本地
 
