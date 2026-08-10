@@ -39,6 +39,32 @@ export const createNodeDriver = (rootPath) => {
   /** @type {boolean} 根目录注册状态 */
   let registered = true;
 
+  /** @type {string|null} 根目录 realpath 缓存（macOS 上 /var 是指向 /private/var 的符号链接，字面比较会误判越界） */
+  let realRootCache = null;
+
+  /**
+   * 获取根目录的 realpath（根目录尚不存在时回退字面路径，仅成功时缓存）
+   * @returns {Promise<string>} 根目录真实路径
+   */
+  const getRealRoot = async () => {
+    if (realRootCache !== null) return realRootCache;
+    try {
+      realRootCache = await fsp.realpath(root);
+    } catch {
+      return root;
+    }
+    return realRootCache;
+  };
+
+  /**
+   * 判断真实路径是否位于指定根内
+   * @param {string} real - 真实路径
+   * @param {string} base - 根路径
+   * @returns {boolean} 是否在根内
+   */
+  const inBounds = (real, base) =>
+    real === base || real.startsWith(base + path.sep);
+
   /**
    * 将相对路径解析为边界内的绝对路径
    * @param {string} rel - 相对路径
@@ -60,13 +86,10 @@ export const createNodeDriver = (rootPath) => {
    */
   const checkBoundary = async (abs) => {
     try {
-      if (fs.existsSync(abs)) {
-        const real = await fsp.realpath(abs);
-        return real === root || real.startsWith(root + path.sep);
-      }
-      const parent = path.dirname(abs);
-      const realParent = await fsp.realpath(parent);
-      return realParent === root || realParent.startsWith(root + path.sep);
+      const realRoot = await getRealRoot();
+      const target = fs.existsSync(abs) ? abs : path.dirname(abs);
+      const real = await fsp.realpath(target);
+      return inBounds(real, root) || inBounds(real, realRoot);
     } catch {
       return false;
     }
