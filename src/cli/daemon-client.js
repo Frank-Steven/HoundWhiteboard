@@ -96,6 +96,19 @@ async function connectDaemon(rootPath) {
       queryBoardInfo: () => invoke("queryBoardInfo", {}),
       queryObjectList: () => invoke("queryObjectList", {}),
       queryObject: (objectId) => invoke("queryObject", { objectId }),
+      queryOperations: (options) => invoke("queryOperations", options ?? {}),
+      queryUndoTree: () => invoke("queryUndoTree", {}),
+      queryObjects: (ids) => invoke("queryObjects", { ids }),
+      addActiveObjects: (ids) => invoke("addActiveObjects", { objectIds: ids }),
+      discardActiveObjects: (ids) =>
+        invoke("discardActiveObjects", { objectIds: ids }),
+      commitObjects: (ids) => invoke("commitObjects", { objectIds: ids }),
+      modifyObject: (objectId, patch) =>
+        invoke("modifyObject", { objectId, patch }),
+      modifyObjects: (patches) => invoke("modifyObjects", { patches }),
+      beginSupra: (key) => invoke("beginSupra", { key }),
+      endSupra: (key) => invoke("endSupra", { key }),
+      abortSupra: (key) => invoke("abortSupra", { key }),
     },
     close() {
       try {

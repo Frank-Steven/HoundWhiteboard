@@ -4,7 +4,7 @@
 
 > [!NOTE]
 >
-> **实现状态**：命令行组合根（node driver + 会话存储 + BoardCore + 日志跟随者）、七个命令（create / info / list / show / add / delete / undo / redo）、`--source` 协作身份与子进程端到端测试均已落地。
+> **实现状态**：命令行组合根（node driver + 会话存储 + BoardCore + 日志跟随者）、十四个命令（create / info / list / show / add / delete / undo / redo / ops / tree / choose / choices / unchoose / modify）、daemon 模式、`--source` 协作身份与子进程端到端测试均已落地。
 
 ## 定位
 
@@ -57,6 +57,19 @@ yarn cli <命令> [参数] [--path <板目录>] [--标志 值]
 | `add --type <类型> [--data '<json>'|"@文件"] [--position x,y] [--path <板目录>]` | 创建并提交对象，打印新对象 id                                          |
 | `delete <对象id...> [--path <板目录>]`                                        | 删除对象（移入 trash，可撤销）                                         |
 | `undo [<操作id>] [--path <板目录>]` / `redo [--path <板目录>]`                 | 撤销 / 重做一步；undo 指定操作 id 时撤销该操作，省略时撤销本端最近操作 |
+| `ops [--source 来源] [--type 类型] [--limit N] [--path <板目录>]`              | 打印操作记录明细（id/type/source/time/parentId/supraOpId/properties/payload） |
+| `tree [--path <板目录>]`                                                       | 以缩进树打印时间回溯树（HEAD 与已撤销分支标记、重做栈）                 |
+| `choose <对象id...> --choice <名> [--path <板目录>]`                            | 把对象选入命名 choice buffer（同一对象同时只属一个 choice）             |
+| `choices [--path <板目录>]`                                                    | 列出全部 choice buffer 及成员状态（missing/active 标注）                |
+| `unchoose <名> (--apply\|--discard) [--path <板目录>]`                         | 结束一个 choice：--apply 提交修改 / --discard 放弃修改                  |
+| `modify <对象id> <修改标志> [--path <板目录>]`                                   | 修改单对象；未选中时自动 choose→modify→commit 超分子链，一条记录        |
+| `modify --choice <名> <修改标志> [--path <板目录>]`                              | 修改 choice 成员；增量逐对象换算，全量仅单成员 choice 允许              |
+
+修改标志：
+
+- `--displacement dx,dy`：位置增量（choice/单对象均可）
+- `--transform-delta a,b,c,d`：变换增量，左乘当前变换（choice/单对象均可）
+- `--position x,y` / `--transform a,b,c,d` / `--property '<json>'` / `--data '<json>'|"@文件"`：全量（choice 仅单成员允许）
 
 通用标志：
 
@@ -67,6 +80,17 @@ yarn cli <命令> [参数] [--path <板目录>] [--标志 值]
 `--type` 取对象注册表中的类型名：`StrokeObject`、`CircleObject`、`EllipseObject`、`PolygonObject`。
 
 输出均为 stdout 上的 JSON（`add` 输出单行 id），错误经 stderr 打印并以退出码 1 结束。
+
+## choice buffer 与查改语义
+
+choice buffer 是 CLI 侧的命名选择集合（类比 GUI 里多套互不相干的选择），落板目录 `.cli-choices.json`（临时文件 rename 原子写），不进操作日志、不是文档数据。同一对象同时只属一个 choice（choose 新 choice 时自动从旧 choice 摘出）。
+
+modify 的两条路径：
+
+- **choice 路径**：增量标志逐成员换算（读各自当前值计算新值），daemon 模式下修改驻留 AOM 活动对象（GUI 可实时看到选中与变化），`unchoose --apply` 一次性提交为一条 modify-object 记录；文件模式进程不常驻，每次 modify 原子完成 choose→modify→commit（每次一条记录）。
+- **单对象路径**：对象未选中时自动执行 choose→modify→commit 超分子链（三分子简并为一个树节点），两模式行为一致；对象已属某 choice 时按该 choice 语义修改。
+
+choice 全量修改（--position/--transform/--property/--data）仅单成员 choice 允许；多成员 choice 请用增量标志。
 
 ## 会话生命周期
 

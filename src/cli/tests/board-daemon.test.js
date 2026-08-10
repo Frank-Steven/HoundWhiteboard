@@ -436,4 +436,47 @@ describe("板 daemon", () => {
       await cleanup();
     }
   }, 25000);
+
+  test("daemon 模式 choice 驻留：多次 modify 累积，unchoose --apply 一次提交", async () => {
+    const { dir, cleanup } = await tempBoard();
+    const daemon = await startBoardDaemon({
+      rootPath: dir,
+      source: "daemon-c",
+    });
+    try {
+      const run = (argv) =>
+        execFileAsync(process.execPath, [CLI_PATH, ...argv], {
+          env: process.env,
+        });
+      const { stdout: idOut } = await run([
+        "add", "--type", "StrokeObject",
+        "--data", "{points:[{x:1,y:1},{x:9,y:9}]}",
+        "--position", "10,10",
+      ]);
+      const id = idOut.trim();
+
+      await run(["choose", id, "--choice", "c1"]);
+      await run(["modify", "--choice", "c1", "--displacement", "5,5"]);
+      await run(["modify", "--choice", "c1", "--displacement", "5,5"]);
+
+      // 驻留期间静态图未变（修改在 AOM 活动对象上）
+      const { stdout: listMid } = await run(["ops", "--type", "modify-object"]);
+      expect(JSON.parse(listMid)).toHaveLength(0);
+
+      await run(["unchoose", "c1", "--apply"]);
+      const { stdout: showOut } = await run(["show", id]);
+      expect(JSON.parse(showOut).position).toEqual({ x: 20, y: 20 });
+
+      // 两次 modify 累积为一条 modify-object 记录
+      const { stdout: opsOut } = await run(["ops", "--type", "modify-object"]);
+      expect(JSON.parse(opsOut)).toHaveLength(1);
+
+      // buffer 已清
+      const { stdout: choicesOut } = await run(["choices"]);
+      expect(JSON.parse(choicesOut)).toEqual({});
+    } finally {
+      await daemon.close();
+      await cleanup();
+    }
+  }, 25000);
 });
