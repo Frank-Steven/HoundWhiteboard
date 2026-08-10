@@ -76,6 +76,7 @@ describe("CLI 第二前端", () => {
     try {
       const info = await runCliJson([
         "create",
+        "--path",
         dir,
         "--width",
         "800",
@@ -93,10 +94,11 @@ describe("CLI 第二前端", () => {
   test("add 创建对象并跨进程恢复", async () => {
     const { dir, cleanup } = tempBoardDir();
     try {
-      await runCli(["create", dir, "--width", "800", "--height", "600"]);
+      await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
       const id = (
         await runCli([
           "add",
+          "--path",
           dir,
           "--type",
           "StrokeObject",
@@ -107,7 +109,7 @@ describe("CLI 第二前端", () => {
       expect(id).toBe("cli/1");
 
       // 新进程重开：对象仍在（恢复路径）
-      const listed = await runCliJson(["list", dir]);
+      const listed = await runCliJson(["list", "--path", dir]);
       expect(listed.objects).toEqual([{ id: "cli/1", type: "StrokeObject" }]);
       expect(listed.trash).toEqual([]);
     } finally {
@@ -119,16 +121,16 @@ describe("CLI 第二前端", () => {
     const { dir, cleanup } = tempBoardDir();
     const dataFile = path.join(dir, "stroke.json");
     try {
-      await runCli(["create", dir, "--width", "800", "--height", "600"]);
+      await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
       writeFileSync(dataFile, JSON.stringify(JSON.parse(STROKE_DATA)));
       await expect(
-        runCli(["add", dir, "--type", "StrokeObject"]),
+        runCli(["add", "--path", dir, "--type", "StrokeObject"]),
       ).rejects.toThrow("需要 --data");
       const id = (
-        await runCli(["add", dir, "--type", "StrokeObject", "--data", `@${dataFile}`])
+        await runCli(["add", "--path", dir, "--type", "StrokeObject", "--data", `@${dataFile}`])
       ).stdout.trim();
       expect(id).toBe("cli/1");
-      const listed = await runCliJson(["list", dir]);
+      const listed = await runCliJson(["list", "--path", dir]);
       expect(listed.objects).toEqual([{ id: "cli/1", type: "StrokeObject" }]);
     } finally {
       cleanup();
@@ -138,18 +140,18 @@ describe("CLI 第二前端", () => {
   test("add 宽松解析 --data：裸属性名与单引号可接受", async () => {
     const { dir, cleanup } = tempBoardDir();
     try {
-      await runCli(["create", dir, "--width", "800", "--height", "600"]);
+      await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
       const id = (
-        await runCli(["add", dir, "--type", "CircleObject", "--data", "{radius: 20}"])
+        await runCli(["add", "--path", dir, "--type", "CircleObject", "--data", "{radius: 20}"])
       ).stdout.trim();
       expect(id).toBe("cli/1");
-      const shown = await runCliJson(["show", dir, "cli/1"]);
+      const shown = await runCliJson(["show", "cli/1", "--path", dir]);
       expect(shown.data.radius).toBe(20);
 
       const id2 = (
-        await runCli(["add", dir, "--type", "CircleObject", "--data", "{'radius': 30}"])
+        await runCli(["add", "--path", dir, "--type", "CircleObject", "--data", "{'radius': 30}"])
       ).stdout.trim();
-      const shown2 = await runCliJson(["show", dir, id2]);
+      const shown2 = await runCliJson(["show", id2, "--path", dir]);
       expect(shown2.data.radius).toBe(30);
     } finally {
       cleanup();
@@ -159,9 +161,10 @@ describe("CLI 第二前端", () => {
   test("undo 带显式操作 id：撤销指定节点，info 输出 chain", async () => {
     const { dir, cleanup } = tempBoardDir();
     try {
-      await runCli(["create", dir, "--width", "800", "--height", "600"]);
+      await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
       const { stdout: id1 } = await runCli([
         "add",
+        "--path",
         dir,
         "--type",
         "StrokeObject",
@@ -170,6 +173,7 @@ describe("CLI 第二前端", () => {
       ]);
       const { stdout: id2 } = await runCli([
         "add",
+        "--path",
         dir,
         "--type",
         "StrokeObject",
@@ -180,17 +184,17 @@ describe("CLI 第二前端", () => {
       expect(id2.trim()).toBe("cli/2");
 
       // info 输出活动链节点列表
-      const info = await runCliJson(["info", dir]);
+      const info = await runCliJson(["info", "--path", dir]);
       expect(info.chain).toEqual(["cli/op-1", "cli/op-2"]);
 
       // 显式撤销 op-1（非本端最近节点也支持）
-      const { stdout: undoOut } = await runCli(["undo", dir, "cli/op-1"]);
+      const { stdout: undoOut } = await runCli(["undo", "cli/op-1", "--path", dir]);
       expect(undoOut).toContain("撤销 cli/op-1");
-      const listed = await runCliJson(["list", dir]);
+      const listed = await runCliJson(["list", "--path", dir]);
       expect(listed.objects.map((o) => o.id)).toEqual(["cli/2"]);
 
       // 显式撤销不在活动链上的 id 报无可撤销
-      const { stdout: badOut } = await runCli(["undo", dir, "cli/op-999"]);
+      const { stdout: badOut } = await runCli(["undo", "cli/op-999", "--path", dir]);
       expect(badOut).toContain("无可撤销目标");
     } finally {
       cleanup();
@@ -200,23 +204,24 @@ describe("CLI 第二前端", () => {
   test("undo 跨进程持久化：撤销后重开对象不复活", async () => {
     const { dir, cleanup } = tempBoardDir();
     try {
-      await runCli(["create", dir, "--width", "800", "--height", "600"]);
+      await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
       await runCli([
         "add",
+        "--path",
         dir,
         "--type",
         "StrokeObject",
         "--data",
         STROKE_DATA,
       ]);
-      await runCli(["undo", dir]);
+      await runCli(["undo", "--path", dir]);
 
       // 新进程重开：撤销效果已落盘，对象不复活
-      const listed = await runCliJson(["list", dir]);
+      const listed = await runCliJson(["list", "--path", dir]);
       expect(listed.objects).toEqual([]);
 
-      await runCli(["redo", dir]);
-      const relisted = await runCliJson(["list", dir]);
+      await runCli(["redo", "--path", dir]);
+      const relisted = await runCliJson(["list", "--path", dir]);
       expect(relisted.objects).toEqual([
         { id: "cli/1", type: "StrokeObject" },
       ]);
@@ -228,23 +233,24 @@ describe("CLI 第二前端", () => {
   test("delete 将对象移入 trash 且可撤销恢复", async () => {
     const { dir, cleanup } = tempBoardDir();
     try {
-      await runCli(["create", dir, "--width", "800", "--height", "600"]);
+      await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
       await runCli([
         "add",
+        "--path",
         dir,
         "--type",
         "StrokeObject",
         "--data",
         STROKE_DATA,
       ]);
-      await runCli(["delete", dir, "cli/1"]);
+      await runCli(["delete", "cli/1", "--path", dir]);
 
-      const listed = await runCliJson(["list", dir]);
+      const listed = await runCliJson(["list", "--path", dir]);
       expect(listed.objects).toEqual([]);
       expect(listed.trash).toEqual(["cli/1"]);
 
-      await runCli(["undo", dir]);
-      const relisted = await runCliJson(["list", dir]);
+      await runCli(["undo", "--path", dir]);
+      const relisted = await runCliJson(["list", "--path", dir]);
       expect(relisted.objects).toEqual([
         { id: "cli/1", type: "StrokeObject" },
       ]);
@@ -257,9 +263,10 @@ describe("CLI 第二前端", () => {
   test("对象 id 跨进程续号", async () => {
     const { dir, cleanup } = tempBoardDir();
     try {
-      await runCli(["create", dir, "--width", "800", "--height", "600"]);
+      await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
       await runCli([
         "add",
+        "--path",
         dir,
         "--type",
         "StrokeObject",
@@ -269,6 +276,7 @@ describe("CLI 第二前端", () => {
       const id2 = (
         await runCli([
           "add",
+          "--path",
           dir,
           "--type",
           "StrokeObject",
@@ -285,10 +293,11 @@ describe("CLI 第二前端", () => {
   test("--source 决定记录来源与对象 id 前缀", async () => {
     const { dir, cleanup } = tempBoardDir();
     try {
-      await runCli(["create", dir, "--width", "800", "--height", "600"]);
+      await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
       const id = (
         await runCli([
           "add",
+          "--path",
           dir,
           "--type",
           "StrokeObject",
@@ -300,7 +309,7 @@ describe("CLI 第二前端", () => {
       ).stdout.trim();
       expect(id).toBe("alice/1");
 
-      const info = await runCliJson(["info", dir, "--source", "alice"]);
+      const info = await runCliJson(["info", "--path", dir, "--source", "alice"]);
       expect(info.objectIdCounters).toEqual({ alice: 1 });
     } finally {
       cleanup();
@@ -310,7 +319,7 @@ describe("CLI 第二前端", () => {
   test("打开不存在的板报错退出", async () => {
     const { dir, cleanup } = tempBoardDir();
     try {
-      await expect(runCli(["list", dir])).rejects.toMatchObject({
+      await expect(runCli(["list", "--path", dir])).rejects.toMatchObject({
         code: 1,
       });
     } finally {

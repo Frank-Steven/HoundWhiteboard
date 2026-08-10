@@ -9,58 +9,51 @@
 import { openBoardSession } from "./board-session.js";
 import { connectDaemon } from "./daemon-client.js";
 import { readActiveDaemonRoot } from "./board-daemon.js";
-import { resolveBoardPath, isExistingBoardDir } from "./board-path.js";
+import { resolveBoardPath } from "./board-path.js";
 import { COMMANDS } from "./commands.js";
 
 /**
  * 用法文本
  * @type {string}
  */
-const USAGE = `用法：hwb <命令> <板目录> [参数] [--标志 值]
+const USAGE = `用法：hwb <命令> [参数] [--path <板目录>] [--标志 值]
 
 命令：
-  create <板目录> [--width 800] [--height 600]   创建空板
-  info <板目录>                                  打印板元数据与统计
-  list <板目录>                                  列出活动与 trash 对象
-  show <板目录> <对象id>                         打印对象序列化数据
-  add <板目录> --type <类型> [--data '<json>'] [--position x,y]   创建并提交对象
-  delete <板目录> <对象id...>                    删除对象（可撤销）
-  undo <板目录> [<操作id>]                       撤销一步；指定操作 id 时撤销该操作，省略时撤销本端最近操作
-  redo <板目录>                                  重做一步
-
-操作 id：info 输出的 chain 列表（如 dev-b57m/op-1）。daemon 重启后身份变化，撤销历史操作需显式传操作 id。
+  create --path <板目录> [--width 800] [--height 600]   创建空板
+  info [--path <板目录>]                                打印板元数据与统计（含活动链 chain）
+  list [--path <板目录>]                                列出活动与 trash 对象
+  show <对象id> [--path <板目录>]                       打印对象序列化数据
+  add --type <类型> [--data '<json>'|"@文件"] [--position x,y] [--path <板目录>]   创建并提交对象
+  delete <对象id...> [--path <板目录>]                  删除对象（可撤销）
+  undo [<操作id>] [--path <板目录>]                     撤销；指定操作 id 时撤销该操作，省略时撤销本端最近操作
+  redo [--path <板目录>]                                重做一步
 
 通用标志：
+  --path <板目录>   板目录路径（支持 ~ 展开）；省略时操作当前活动 daemon 持有的板
   --source <来源>   操作作者命名空间（默认 cli），决定新对象 id 前缀
 
 协作模式：
   板目录存在 daemon（.daemon.json）时自动连接，操作经 daemon 执行；
-  daemon 若连了中继，CLI 操作与 GUI 实时互见。启动 daemon 见 yarn daemon。
+  daemon 若连了中继，CLI 操作与 GUI 实时互见。启动 daemon：yarn daemon --path <板目录>
 `;
 
 /**
  * 解析命令行参数
  * @param {string[]} argv - process.argv.slice(2)
- * @returns {{command: string, board: string|undefined, args: string[], flags: Object}} 解析结果
+ * @returns {{command: string, args: string[], flags: Object}} 解析结果
+ *
+ * @description
+ * 板目录经 --path 传入，位置参数全部是命令参数（对象 id / 操作 id），不参与路径。
  */
 function parseArgv(argv) {
-  const [command, maybeBoard, ...rest] = argv;
-  // 板目录缺省：首个位置参数以 -- 开头时视为命令标志而非板路径（免路径模式）
-  const board =
-    maybeBoard !== undefined && maybeBoard.startsWith("--")
-      ? undefined
-      : maybeBoard;
-  const all =
-    maybeBoard !== undefined && board === undefined
-      ? [maybeBoard, ...rest]
-      : rest;
+  const [command, ...rest] = argv;
   const args = [];
   const flags = {};
-  for (let i = 0; i < all.length; i++) {
-    const token = all[i];
+  for (let i = 0; i < rest.length; i++) {
+    const token = rest[i];
     if (token.startsWith("--")) {
       const key = token.slice(2);
-      const next = all[i + 1];
+      const next = rest[i + 1];
       if (next === undefined || next.startsWith("--")) {
         flags[key] = true;
       } else {
@@ -71,7 +64,7 @@ function parseArgv(argv) {
       args.push(token);
     }
   }
-  return { command, board, args, flags };
+  return { command, args, flags };
 }
 
 /**
@@ -80,35 +73,19 @@ function parseArgv(argv) {
  */
 async function main() {
   const parsed = parseArgv(process.argv.slice(2));
-  const { command, flags } = parsed;
-  let board = parsed.board;
-  let args = parsed.args;
+  const { command, args, flags } = parsed;
   const spec = COMMANDS[command];
-  if (board && spec && !spec.create) {
-    const resolved = resolveBoardPath(board);
-    if (await isExistingBoardDir(resolved)) {
-      board = resolved;
-    } else if (spec.positional === true) {
-      // show/delete 等命令的首位置参数是对象 id：非板路径且有活动 daemon 时按对象 id 处理
-      const activeRoot = await readActiveDaemonRoot();
-      if (activeRoot) {
-        args = [board, ...args];
-        board = activeRoot;
-      } else {
-        board = resolved;
-      }
-    } else {
-      board = resolved;
-    }
-  }
-  if (!board && command !== "help" && spec && !spec.create) {
-    // daemon 启动后 CLI 可免路径：从活动 daemon 引用取板目录
+  let board;
+  if (typeof flags.path === "string" && flags.path !== "") {
+    board = resolveBoardPath(flags.path);
+  } else if (spec && !spec.create) {
+    // --path 省略时操作当前活动 daemon 持有的板
     board = (await readActiveDaemonRoot()) ?? undefined;
   }
   if (!spec || !board) {
     console.log(USAGE);
     if (command && command !== "help" && !board) {
-      console.error("缺少板目录；已启动 daemon 时可直接省略，或传板目录路径。");
+      console.error("缺少板目录：传 --path <板目录>，或先启动 daemon 后可省略。");
     }
     process.exit(command === "help" || !command ? 0 : 1);
   }

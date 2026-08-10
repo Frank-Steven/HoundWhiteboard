@@ -72,8 +72,8 @@ yarn build
 
 | 命令                        | 说明                              |
 | --------------------------- | --------------------------------- |
-| `yarn cli <命令> <板目录>`  | 以 CLI 读写板文件                 |
-| `yarn daemon <板目录>`      | 启动板 daemon（持板 + RPC + 可选中继） |
+| `yarn cli <命令> [--path <板目录>]`  | 以 CLI 读写板文件                 |
+| `yarn daemon --path <板目录>`      | 启动板 daemon（持板 + RPC + 可选中继） |
 
 详细命令面与使用说明见 [src/cli/docs/cli-document.md](src/cli/docs/cli-document.md)。
 

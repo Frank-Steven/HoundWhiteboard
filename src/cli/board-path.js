@@ -26,20 +26,4 @@ function resolveBoardPath(input) {
   return path.resolve(text);
 }
 
-/**
- * 判断路径是否为既有板目录（目录存在且含 board.json）
- * @param {string} rootPath - 板路径
- * @returns {Promise<boolean>} 是否为板目录
- */
-async function isExistingBoardDir(rootPath) {
-  try {
-    const stat = await fs.stat(rootPath);
-    if (!stat.isDirectory()) return false;
-    await fs.access(path.join(rootPath, "board.json"));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export { resolveBoardPath, isExistingBoardDir };
+export { resolveBoardPath };

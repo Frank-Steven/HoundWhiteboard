@@ -262,6 +262,7 @@ describe("板 daemon", () => {
       const { stdout: idOut } = await execFileAsync(process.execPath, [
         CLI_PATH,
         "add",
+        "--path",
         dir,
         "--type",
         "StrokeObject",
@@ -273,6 +274,7 @@ describe("板 daemon", () => {
       const { stdout: listOut } = await execFileAsync(process.execPath, [
         CLI_PATH,
         "list",
+        "--path",
         dir,
       ]);
       const listed = JSON.parse(listOut);
@@ -280,10 +282,11 @@ describe("板 daemon", () => {
         { id: "daemon-x/1", type: "StrokeObject" },
       ]);
 
-      await execFileAsync(process.execPath, [CLI_PATH, "undo", dir]);
+      await execFileAsync(process.execPath, [CLI_PATH, "undo", "--path", dir]);
       const { stdout: infoOut } = await execFileAsync(process.execPath, [
         CLI_PATH,
         "info",
+        "--path",
         dir,
       ]);
       expect(JSON.parse(infoOut).objects).toBe(0);
@@ -360,6 +363,22 @@ describe("板 daemon", () => {
         { env: process.env },
       );
       expect(JSON.parse(listOut).trash).toEqual([id]);
+
+      // undo 带显式操作 id：免路径下不误判为板路径；撤销 delete 节点后 trash 清空、对象回 objects
+      const { stdout: undoOut } = await execFileAsync(
+        process.execPath,
+        [CLI_PATH, "undo", "daemon-z/op-2"],
+        { env: process.env },
+      );
+      expect(undoOut).toContain("撤销 daemon-z/op-2");
+      const { stdout: listOut2 } = await execFileAsync(
+        process.execPath,
+        [CLI_PATH, "list"],
+        { env: process.env },
+      );
+      const afterUndo = JSON.parse(listOut2);
+      expect(afterUndo.trash).toEqual([]);
+      expect(afterUndo.objects.map((o) => o.id)).toEqual([id]);
     } finally {
       await daemon.close();
       await cleanup();

@@ -15,19 +15,16 @@ import { resolveBoardPath } from "./board-path.js";
  * @returns {{rootPath: string, source?: string, relayUrl?: string, boardId?: string, port?: number}} 解析结果
  */
 function parseArgs(argv) {
-  const positional = [];
   const flags = {};
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg.startsWith("--")) {
       flags[arg.slice(2)] = argv[i + 1];
       i += 1;
-    } else {
-      positional.push(arg);
     }
   }
   return {
-    rootPath: positional[0],
+    rootPath: flags.path,
     source: flags.source,
     relayUrl: flags.relay,
     boardId: flags["board-id"],
@@ -38,7 +35,7 @@ function parseArgs(argv) {
 const options = parseArgs(process.argv.slice(2));
 if (!options.rootPath) {
   console.error(
-    "用法：yarn daemon <板目录|板名> [--source 身份] [--relay 中继地址] [--board-id 房间] [--port 端口]",
+    "用法：yarn daemon --path <板目录> [--source 身份] [--relay 中继地址] [--board-id 房间] [--port 端口]",
   );
   process.exit(1);
 }

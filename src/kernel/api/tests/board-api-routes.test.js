@@ -135,7 +135,9 @@ describe("BOARD_API_ROUTES", () => {
     expect(api.hitTest).toHaveBeenCalledWith(range, "intersect");
 
     BOARD_API_ROUTES.undo.invoke(api, {});
-    expect(api.undo).toHaveBeenCalledWith();
+    expect(api.undo).toHaveBeenCalledWith(undefined);
+    BOARD_API_ROUTES.undo.invoke(api, { targetNodeId: "a/op-1" });
+    expect(api.undo).toHaveBeenCalledWith("a/op-1");
 
     BOARD_API_ROUTES.redo.invoke(api, {});
     expect(api.redo).toHaveBeenCalledWith();

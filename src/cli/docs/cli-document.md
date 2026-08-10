@@ -14,7 +14,7 @@ CLI 是白板的**第二前端**：不经过 Worker、不经渲染管线，进�
 
 ## daemon 模式
 
-常驻 daemon 进程持有板（`yarn daemon <板目录|板名> [--source 身份] [--relay 中继] [--board-id 房间] [--port 端口]`）：进程内装配与文件模式相同（BoardCore + BoardApi + 日志跟随者落盘），同时起 WebSocket 服务提供 BoardApi RPC，板目录写入 `.daemon.json`（端口/pid/身份）。
+常驻 daemon 进程持有板（`yarn daemon --path <板目录> [--source 身份] [--relay 中继] [--board-id 房间] [--port 端口]`）：进程内装配与文件模式相同（BoardCore + BoardApi + 日志跟随者落盘），同时起 WebSocket 服务提供 BoardApi RPC，板目录写入 `.daemon.json`（端口/pid/身份）。
 
 CLI 在板目录发现活 daemon 时自动切换为薄客户端：命令语义不变，执行从进程内直调换成经 RPC 发操作，与 GUI 调 BoardApi 同一条路。daemon 若连了中继（`--relay`），CLI 操作实时广播到协作端，协作端的操作 CLI 也能查到——「与 GUI 不同步」限制在 daemon 模式下消除。
 
@@ -25,16 +25,16 @@ CLI 在板目录发现活 daemon 时自动切换为薄客户端：命令语义�
 
 ## 板路径与数据参数
 
-- **板路径**：CLI 与 daemon 的板目录参数需传全称路径（支持 `~` 家目录展开，如 `~/hound-whiteboard/test-board`）。**daemon 启动后 CLI 可免路径**：板目录写入 `.daemon.json` 的同时，daemon 会把板目录登记到全局引用（`~/.hound-whiteboard/daemon.json`），`yarn cli <命令>` 不带板目录时自动操作当前活动 daemon 的板。
+- **板路径**：CLI 与 daemon 的板目录一律经 `--path` 传入（支持 `~` 家目录展开，如 `--path ~/hound-whiteboard/test-board`），对象 id 与路径形态相似故不再占用位置参数。**daemon 启动后 CLI 可免路径**：板目录写入 `.daemon.json` 的同时，daemon 会把板目录登记到全局引用（`~/.hound-whiteboard/daemon.json`），`yarn cli <命令>` 不带 `--path` 时自动操作当前活动 daemon 的板。
 - **--data**：`add` 的 `--data` 必传（StrokeObject 无默认数据）；传 JSON 字符串（shell 转义麻烦时）或以 `@` 开头传 JSON 文件路径，如 `--data @stroke.json`（PowerShell 中需加引号 `"@stroke.json"`；文件路径支持 `~` 展开）。
 - **undo 目标**：`undo [<操作id>]` 可显式指定撤销目标（`info` 输出的 `chain` 列表，如 `dev-b57m/op-1`）；省略时各撤各的，只撤销本端最近操作。daemon 重启后身份会变，撤销历史操作需显式传操作 id。
 
 ```bash
-# 终端 1：daemon 启动（全称路径）
-$ yarn daemon ~/hound-whiteboard/test-board --relay ws://127.0.0.1:8377 --board-id demo-board
+# 终端 1：daemon 启动
+$ yarn daemon --path ~/hound-whiteboard/test-board --relay ws://127.0.0.1:8377 --board-id demo-board
 
 # 终端 2：CLI 免路径操作同一板
-$ yarn cli add --type StrokeObject --data @stroke.json
+$ yarn cli add --type StrokeObject --data "@stroke.json"
 $ yarn cli list
 $ yarn cli info
 $ yarn cli undo
@@ -45,21 +45,22 @@ $ yarn cli undo
 ## 命令面
 
 ```text
-yarn cli <命令> <板目录> [参数] [--标志 值]
+yarn cli <命令> [参数] [--path <板目录>] [--标志 值]
 ```
 
-| 命令                                                            | 说明                                                                   |
-| --------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `create <板目录> [--width 800] [--height 600]`                  | 创建空板；板目录已存在时报错                                           |
-| `info <板目录>`                                                 | 打印板元数据与统计（板配置、记录数、HEAD、对象/trash 计数、id 计数器） |
-| `list <板目录>`                                                 | 列出活动对象（id、类型）与 trash 条目                                  |
-| `show <板目录> <对象id>`                                        | 打印单个对象的序列化数据                                               |
-| `add <板目录> --type <类型> [--data '<json>'] [--position x,y]` | 创建并提交对象，打印新对象 id                                          |
-| `delete <板目录> <对象id...>`                                   | 删除对象（移入 trash，可撤销）                                         |
-| `undo <板目录>` / `redo <板目录>`                               | 撤销 / 重做一步                                                        |
+| 命令                                                                          | 说明                                                                   |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `create --path <板目录> [--width 800] [--height 600]`                          | 创建空板；板目录已存在时报错                                           |
+| `info [--path <板目录>]`                                                       | 打印板元数据与统计（板配置、记录数、HEAD、活动链 chain、对象/trash 计数、id 计数器） |
+| `list [--path <板目录>]`                                                       | 列出活动对象（id、类型）与 trash 条目                                  |
+| `show <对象id> [--path <板目录>]`                                             | 打印单个对象的序列化数据                                               |
+| `add --type <类型> [--data '<json>'|"@文件"] [--position x,y] [--path <板目录>]` | 创建并提交对象，打印新对象 id                                          |
+| `delete <对象id...> [--path <板目录>]`                                        | 删除对象（移入 trash，可撤销）                                         |
+| `undo [<操作id>] [--path <板目录>]` / `redo [--path <板目录>]`                 | 撤销 / 重做一步；undo 指定操作 id 时撤销该操作，省略时撤销本端最近操作 |
 
 通用标志：
 
+- `--path <板目录>`：板目录路径（支持 `~` 展开）；省略时操作当前活动 daemon 持有的板
 - `--source <来源>`：协作身份（默认 `cli`），决定操作记录的 source 与新对象 id 前缀（`<source>/<n>`）
 - `--width` / `--height`：仅新建板时生效；重开既有板以盘上板配置为准
 

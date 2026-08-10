@@ -214,7 +214,7 @@ const BOARD_API_ROUTES = {
    * 执行撤销
    */
   undo: {
-    invoke: (api) => api.undo(),
+    invoke: (api, p) => api.undo(p?.targetNodeId ?? undefined),
     flush: "sync",
   },
 

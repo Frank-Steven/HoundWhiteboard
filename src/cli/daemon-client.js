@@ -90,7 +90,8 @@ async function connectDaemon(rootPath) {
     api: {
       addObject: (type, props) => invoke("addObject", { type, props }),
       deleteObjects: (ids) => invoke("deleteObjects", { objectIds: ids }),
-      undo: () => invoke("undo", {}),
+      undo: (targetNodeId) =>
+        invoke("undo", targetNodeId != null ? { targetNodeId } : {}),
       redo: () => invoke("redo", {}),
       queryBoardInfo: () => invoke("queryBoardInfo", {}),
       queryObjectList: () => invoke("queryObjectList", {}),
