@@ -23,7 +23,7 @@ const USAGE = `用法：hwb <命令> [参数] [--path <板目录>] [--标志 值
   info [--path <板目录>]                                打印板元数据与统计（含活动链 chain）
   list [--path <板目录>]                                列出活动与 trash 对象
   show <对象id> [--path <板目录>]                       打印对象序列化数据
-  add --type <类型> [--data '<json>'|"@文件"] [--position x,y] [--path <板目录>]   创建并提交对象
+  add --type <类型> [--data '<json>'|"@文件"] [--property '<json>'] [--position x,y] [--path <板目录>]   创建并提交对象
   delete <对象id...> [--path <板目录>]                  删除对象（可撤销）
   undo [<操作id>] [--path <板目录>]                     撤销；指定操作 id 时撤销该操作，省略时撤销本端最近操作
   redo [--path <板目录>]                                重做一步

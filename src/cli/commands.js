@@ -15,23 +15,48 @@ import {
 } from "./choice-buffer.js";
 
 /**
- * 宽松解析 JSON：先试严格解析；失败则补裸属性名引号、单引号转双引号后重试
+ * 宽松化 JSON 文本：单引号转双引号、裸属性名补引号、裸字符串值补引号
+ * @param {string} text - 原始文本
+ * @returns {string} 宽松化后的文本
+ *
+ * @description
+ * PowerShell 传参会吃掉内嵌双引号（如 `"#000"` 变成裸 token `#000`），故值位置上
+ * 的裸 token（`#` 开头或字母开头，非 true/false/null）也补引号；数字、布尔、null、
+ * 已带引号的字符串与嵌套结构不受影响。
+ */
+function relaxJsonText(text) {
+  let relaxed = text.replace(/'/g, '"');
+  relaxed = relaxed.replace(
+    /([{]\s*)([a-zA-Z_$][\w$]*)(\s*:)/g,
+    '$1"$2"$3',
+  );
+  relaxed = relaxed.replace(
+    /([:\[,]\s*)(#[0-9a-fA-F]{3,8}|[a-zA-Z_$][\w$-]*)(\s*[,}\]])/g,
+    (match, prefix, value, suffix) => {
+      if (value === "true" || value === "false" || value === "null") {
+        return match;
+      }
+      return `${prefix}"${value}"${suffix}`;
+    },
+  );
+  return relaxed;
+}
+
+/**
+ * 宽松解析 JSON：先试严格解析；失败则宽松化后重试
  * @param {string} text - 待解析文本
  * @returns {Object} 解析结果
  *
  * @description
- * PowerShell/cmd 手写 JSON 转义繁琐，宽松模式兼容 `'{radius: 20}'`、`{'a':1}` 这类写法。
- * 复杂结构仍建议写标准 JSON 或用 --data @文件。
+ * PowerShell/cmd 手写 JSON 转义繁琐，宽松模式兼容 `'{radius: 20}'`、`{'a':1}`、
+ * `{color: #000}`（引号被 shell 吃掉）这类写法。复杂结构仍建议写标准 JSON 或用 --data @文件。
  */
 function parseLenientJson(text) {
   try {
     return JSON.parse(text);
   } catch {
-    const relaxed = text
-      .replace(/'/g, '"')
-      .replace(/([{,]\s*)([a-zA-Z_$][\w$]*)(\s*:)/g, '$1"$2"$3');
     try {
-      return JSON.parse(relaxed);
+      return JSON.parse(relaxJsonText(text));
     } catch (error) {
       throw new Error(
         `--data 不是合法 JSON：${error.message}（复杂数据建议写标准 JSON 或用 --data @文件）`,
@@ -120,7 +145,11 @@ async function cmdAdd(session, _args, flags) {
   if (!type) throw new Error("add 需要 --type。");
   const data = await parseDataArgument(flags.data);
   const position = parsePosition(flags.position);
-  const id = await session.api.addObject(type, { position, data });
+  const props = { position, data };
+  if (typeof flags.property === "string") {
+    props.property = parseLenientJson(flags.property);
+  }
+  const id = await session.api.addObject(type, props);
   console.log(id);
 }
 

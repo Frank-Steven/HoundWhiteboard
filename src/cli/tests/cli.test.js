@@ -468,6 +468,42 @@ describe("CLI 第二前端", () => {
     }
   });
 
+  test("add 支持 --property；宽松 JSON 兼容 shell 吃掉引号的裸值", async () => {
+    const { dir, cleanup } = tempBoardDir();
+    try {
+      await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
+      // PowerShell 会吃掉内嵌双引号：{color: "#f00"} 到达进程时已成 {color: #f00}
+      const { stdout: id } = await runCli([
+        "add",
+        "--path",
+        dir,
+        "--type",
+        "StrokeObject",
+        "--data",
+        "{points: [{x: 1, y: 1}, {x: 9, y: 9}]}",
+        "--property",
+        "{color: #f00, width: 3}",
+      ]);
+      const shown = await runCliJson(["show", id.trim(), "--path", dir]);
+      expect(shown.property.color).toBe("#f00");
+      expect(shown.property.width).toBe(3);
+      // 布尔与 null 裸值不补引号
+      const { stdout: id2 } = await runCli([
+        "add",
+        "--path",
+        dir,
+        "--type",
+        "StrokeObject",
+        "--data",
+        "{points: [{x: 1, y: 1}], closed: false}",
+      ]);
+      const shown2 = await runCliJson(["show", id2.trim(), "--path", dir]);
+      expect(shown2.data.closed).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
   test("打开不存在的板报错退出", async () => {
     const { dir, cleanup } = tempBoardDir();
     try {
