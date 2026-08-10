@@ -99,6 +99,14 @@ class BoardApi {
   #chooseSnapshots = new Map();
 
   /**
+   * 远程选择注册表变更脏标记
+   * @description 远程 choose/unchoose 效果应用时置位，合批为一次 remote-activity 事件。
+   * @type {boolean}
+   * @private
+   */
+  #remoteChoicesDirty = false;
+
+  /**
    * @param {import("../board/board-core.js").BoardCore} boardCore - BoardCore 实例
    */
   constructor(boardCore) {
@@ -984,6 +992,10 @@ class BoardApi {
     if (instances.length > 0) {
       aom.requestActiveRender(instances);
     }
+    if (changedIds.size > 0) {
+      this.#remoteChoicesDirty = true;
+      this.#flushRemoteChoicesNotification();
+    }
   }
 
   /**
@@ -998,6 +1010,10 @@ class BoardApi {
       .filter(Boolean);
     if (instances.length > 0) {
       this.#boardCore.activeObjectManager.requestActiveRender(instances);
+    }
+    if (removed.length > 0) {
+      this.#remoteChoicesDirty = true;
+      this.#flushRemoteChoicesNotification();
     }
     return removed;
   }
@@ -1203,6 +1219,34 @@ class BoardApi {
    */
   queryChoices() {
     return this.#boardCore.activeObjectManager.queryLocalChoices();
+  }
+
+  /**
+   * 列出全部远程命名选择（awareness 查询面）
+   * @returns {{ source: string, name: string|undefined, ids: string[] }[]} 远程选择列表（匿名为 name undefined）
+   *
+   * @description
+   * 远程注册表经 ephemeral 活动事件、日志回放与断线清理三路维护；UI 选中装饰据此按来源着色。
+   */
+  queryRemoteChoices() {
+    return this.#boardCore.activeObjectManager.queryRemoteChoices();
+  }
+
+  /**
+   * 冲刷远程选择变更通知（awareness 缝）
+   * @returns {void}
+   * @private
+   *
+   * @description
+   * 远程注册表的全部变更路径（ephemeral 活动、日志回放、断线清理）合批为一次 remote-activity
+   * 事件；UI 经 host 桥接收后重新拉取 queryRemoteChoices 刷新选中装饰。
+   */
+  #flushRemoteChoicesNotification() {
+    if (!this.#remoteChoicesDirty) return;
+    this.#remoteChoicesDirty = false;
+    this.#boardCore.activityEventBus?.emit("remote-activity", {
+      time: Date.now(),
+    });
   }
 
   /**
@@ -1745,6 +1789,7 @@ class BoardApi {
     // 远程 choose：登记远程活动（锁定 + 可见），不进本地活动集
     if (source !== undefined && source !== boardCore.hitCommitter.source) {
       aom.applyRemoteChoose([objectId], source, choice);
+      this.#remoteChoicesDirty = true;
       if (obj) this.#collectObjectChunks(obj, affectedChunks);
       return;
     }
@@ -1772,6 +1817,7 @@ class BoardApi {
     // 远程 unchoose：注销远程活动登记（按来源与对象完备，无需指定 choice）
     if (source !== undefined && source !== boardCore.hitCommitter.source) {
       aom.applyRemoteUnchoose([objectId], source);
+      this.#remoteChoicesDirty = true;
       if (obj) this.#collectObjectChunks(obj, affectedChunks);
       return;
     }
@@ -1852,6 +1898,8 @@ class BoardApi {
       }
       this.#transitionEffects(beforeChain, tree.getActiveChain());
     }
+    // 链过渡可能含远程 choose/unchoose 效果：合批冲刷一次变更通知
+    this.#flushRemoteChoicesNotification();
     return { applied: list.length };
   }
 

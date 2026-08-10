@@ -7,6 +7,7 @@
 
 import { Vector } from "../kernel/utils/math.js";
 import { Board } from "../ui/components/orchestration/board.js";
+import { AwarenessOverlay } from "../ui/components/renderer/awareness-overlay.js";
 import { createConsolePrinter, logBus } from "../utils/log/index.js";
 import {
   configureWhiteboardDemo,
@@ -112,6 +113,13 @@ async function bootstrapWhiteboard() {
   });
 
   const demoResults = configureWhiteboardDemo(board, viewport, { viewportTool });
+
+  // 协作感知装饰：远程命名选择的着色框与来源标签
+  const awarenessOverlay = new AwarenessOverlay({
+    boardApi: board.getBoardApi(),
+    viewport,
+  });
+  awarenessOverlay.start();
 
   const toolbar = attachToolbarAdapter(board, viewport);
   if (toolbar) {

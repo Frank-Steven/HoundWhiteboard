@@ -69,6 +69,7 @@ function compareRecords(a, b) {
  * @param {number} [options.maxWindows=3] - 连续容忍窗上限（到期后请求全量）
  * @param {number} [options.digestIntervalMs=30000] - 状态摘要周期（毫秒）
  * @param {Function} [options.WebSocketImpl] - WebSocket 实现（默认全局实现）
+ * @param {Function} [options.onAwareness] - awareness 消息回调（{source, data}；peer-left 时 data 为 {kind:"peer-left"}）
  * @returns {Object} 协调器句柄
  *
  * @description
@@ -85,6 +86,7 @@ function createNetworkCoordinator(options) {
     maxWindows = 3,
     digestIntervalMs = 30000,
     WebSocketImpl = globalThis.WebSocket,
+    onAwareness,
   } = options;
   const source = boardCore.hitCommitter.source;
   const log = boardCore.operationLog;
@@ -286,12 +288,17 @@ function createNetworkCoordinator(options) {
         return;
       case "peer-left":
         boardApi.clearRemoteActivity(message.source);
+        onAwareness?.({ source: message.source, data: { kind: "peer-left" } });
         return;
       case "records":
         ingestRecords(message.records);
         return;
       case "aom":
         boardApi.applyRemoteActivity(message.event, message.source);
+        return;
+      case "awareness":
+        // volatile 通道：转发给宿主，不进日志不参与收敛
+        onAwareness?.({ source: message.source, data: message.data });
         return;
       case "request-init":
         send({
@@ -374,6 +381,15 @@ function createNetworkCoordinator(options) {
           state = "closed";
         });
       });
+    },
+
+    /**
+     * 发送 awareness 消息（volatile：可丢、不进日志不参与收敛）
+     * @param {Object} data - awareness 负载（如 {kind:"cursor", point}）
+     * @returns {void}
+     */
+    sendAwareness(data) {
+      send({ type: "awareness", data });
     },
 
     /**

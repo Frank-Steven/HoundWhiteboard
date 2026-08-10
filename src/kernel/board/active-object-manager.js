@@ -1885,6 +1885,24 @@ class ActiveObjectManager {
   }
 
   /**
+   * 列出全部远程命名选择（awareness 查询面）
+   * @returns {{ source: string, name: string|undefined, ids: string[] }[]} 远程选择列表（按来源与 choice 名展开；匿名为 name undefined）
+   */
+  queryRemoteChoices() {
+    const choices = [];
+    for (const [source, byName] of this.#remoteChoices) {
+      for (const [name, members] of byName) {
+        choices.push({
+          source,
+          name: name === ANONYMOUS_CHOICE_NAME ? undefined : name,
+          ids: [...members],
+        });
+      }
+    }
+    return choices;
+  }
+
+  /**
    * 撤销对象的远程活动登记（本地选择优先）
    * @param {string} objectId - 对象 id
    * @returns {void}

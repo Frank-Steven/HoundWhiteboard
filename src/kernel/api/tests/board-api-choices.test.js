@@ -366,3 +366,67 @@ describe("活动事件携带 choice", () => {
     expect(events[0]).toMatchObject({ kind: "choose", choice: "hold" });
   });
 });
+
+describe("awareness 查询面与变更通知", () => {
+  test("queryRemoteChoices 汇总远程注册表", async () => {
+    const { api } = createEnd("a");
+    await createStroke(api, "a/1");
+    await createStroke(api, "a/2");
+    await createStroke(api, "a/3");
+
+    api.applyRemoteActivity(
+      { kind: "choose", ids: ["a/1", "a/2"], choice: "hold" },
+      "b",
+    );
+    api.applyRemoteActivity({ kind: "choose", ids: ["a/3"] }, "c");
+
+    const remote = api.queryRemoteChoices();
+    expect(remote).toHaveLength(2);
+    const hold = remote.find((r) => r.source === "b");
+    expect(hold).toMatchObject({ name: "hold" });
+    expect(hold.ids).toEqual(expect.arrayContaining(["a/1", "a/2"]));
+    expect(remote.find((r) => r.source === "c")).toMatchObject({
+      name: undefined,
+      ids: ["a/3"],
+    });
+  });
+
+  test("remote-activity 事件：ephemeral 与断线清理路径各发一次", async () => {
+    const { boardCore, api } = createEnd("a");
+    await createStroke(api, "a/1");
+
+    /** @type {Object[]} */
+    const notices = [];
+    boardCore.activityEventBus.on("remote-activity", (e) => notices.push(e));
+
+    api.applyRemoteActivity(
+      { kind: "choose", ids: ["a/1"], choice: "hold" },
+      "b",
+    );
+    expect(notices).toHaveLength(1);
+
+    api.clearRemoteActivity("b");
+    expect(notices).toHaveLength(2);
+  });
+
+  test("remote-activity 事件：日志回放路径合批为一次", async () => {
+    const a = createEnd("a");
+    const b = createEnd("b");
+
+    await createStroke(a.api, "a/1");
+    await createStroke(a.api, "a/2");
+    b.api.applyRemoteOperations(a.boardCore.operationLog.toJSON());
+
+    /** @type {Object[]} */
+    const notices = [];
+    b.boardCore.activityEventBus.on("remote-activity", (e) => notices.push(e));
+
+    // 两条 choose 记录（不同 choice）同批到达：回放后合批为一次通知
+    await a.api.addActiveObjects(["a/1"], { choice: "x" });
+    await a.api.addActiveObjects(["a/2"], { choice: "y" });
+    b.api.applyRemoteOperations(a.boardCore.operationLog.toJSON().slice(2));
+
+    expect(notices).toHaveLength(1);
+    expect(b.api.queryRemoteChoices()).toHaveLength(2);
+  });
+});

@@ -486,6 +486,14 @@ class BoardApiRpc {
   }
 
   /**
+   * 列出全部远程命名选择（awareness 查询面）
+   * @returns {Promise<{ source: string, name: string|undefined, ids: string[] }[]>} 远程选择列表
+   */
+  async queryRemoteChoices() {
+    return this.#call("queryRemoteChoices", {});
+  }
+
+  /**
    * 上报 UI 侧对象 id 池计数（随板元数据持久化）
    * @param {string} source - 来源标识
    * @param {number} counter - 已分配的最大计数

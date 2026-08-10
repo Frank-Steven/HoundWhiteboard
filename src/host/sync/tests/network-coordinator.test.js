@@ -346,6 +346,35 @@ describe("网络协调器", () => {
     );
   });
 
+  test("awareness 消息经中继 volatile 转发，不进日志", async () => {
+    server = createRelayServer({ port: 0 });
+    /** @type {Object[]} */
+    const received = [];
+    const a = await connectEnd("a", server.port, "board-1");
+    const b = await connectEnd("b", server.port, "board-1", {
+      onAwareness: (message) => received.push(message),
+    });
+    ends = [a, b];
+
+    const logSizeBefore = b.boardCore.operationLog.size;
+    a.coordinator.sendAwareness({ kind: "cursor", point: { x: 3, y: 4 } });
+
+    await until(() => received.length > 0, "b 收到 awareness");
+    expect(received[0]).toEqual({
+      source: "a",
+      data: { kind: "cursor", point: { x: 3, y: 4 } },
+    });
+    // volatile：不写日志、不参与收敛
+    expect(b.boardCore.operationLog.size).toBe(logSizeBefore);
+
+    // peer-left 也以 awareness 形式通知（光标清场用）
+    await a.coordinator.close();
+    await until(
+      () => received.some((m) => m.data?.kind === "peer-left"),
+      "b 收到 peer-left 通知",
+    );
+  });
+
   test("摘要分歧触发全量重建请求", async () => {
     server = createRelayServer({ port: 0 });
     const a = await connectEnd("a", server.port, "board-1");

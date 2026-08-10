@@ -140,6 +140,12 @@ class CoreWorkerRuntime {
   #coordinator;
 
   /**
+   * remote-activity 事件订阅的退订函数
+   * @type {Function | null}
+   */
+  #unsubscribeRemoteActivity;
+
+  /**
    * 等待主线程 io-response 的挂起表
    * @type {Map<string, { resolve: Function, reject: Function }>}
    */
@@ -172,6 +178,7 @@ class CoreWorkerRuntime {
     this.#flushScheduled = false;
     this.#journaler = null;
     this.#coordinator = null;
+    this.#unsubscribeRemoteActivity = null;
     this.#ioPending = new Map();
     this.#ioMsgSeq = 0;
   }
@@ -284,6 +291,10 @@ class CoreWorkerRuntime {
         return;
       case "io-response":
         this.#handleIoResponse(message);
+        return;
+      case "awareness-send":
+        // UI 上报的 awareness（光标等）：经协调器 volatile 广播
+        this.#coordinator?.sendAwareness(message.data);
         return;
       default:
         return;
@@ -447,6 +458,14 @@ class CoreWorkerRuntime {
     this.#boardCore.aomRenderHooks = renderHooks;
     this.#boardCore.activeObjectManager.renderHooks = renderHooks;
 
+    // awareness 下行：远程选择注册表变更合批通知 UI（选中装饰刷新触发）
+    this.#unsubscribeRemoteActivity = this.#boardCore.activityEventBus.on(
+      "remote-activity",
+      () => {
+        this.#postMessage({ type: "awareness", awarenessType: "remote-activity" });
+      },
+    );
+
     if (persistence) {
       this.#boardCore.restoreSession(persistence.session);
       this.#journaler = createJournaler({
@@ -474,6 +493,15 @@ class CoreWorkerRuntime {
           typeof options.boardId === "string" && options.boardId !== ""
             ? options.boardId
             : options.rootPath,
+        // awareness 下行：volatile 消息（光标等）与成员离开转发 UI
+        onAwareness: ({ source, data }) => {
+          this.#postMessage({
+            type: "awareness",
+            awarenessType: data?.kind,
+            source,
+            data,
+          });
+        },
       });
       try {
         await this.#coordinator.connect();
@@ -552,6 +580,8 @@ class CoreWorkerRuntime {
       await this.#coordinator.close();
       this.#coordinator = null;
     }
+    this.#unsubscribeRemoteActivity?.();
+    this.#unsubscribeRemoteActivity = null;
     if (this.#journaler) {
       await this.#journaler.detach();
       this.#journaler = null;

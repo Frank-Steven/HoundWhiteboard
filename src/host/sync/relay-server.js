@@ -14,6 +14,7 @@ import { WebSocketServer } from "ws";
  * - `{type:"join", boardId, source}` 加入房间
  * - `{type:"records", records:[]}` 操作记录广播
  * - `{type:"aom", event:{}}` AOM 活动事件广播
+ * - `{type:"awareness", data:{}}` awareness 广播（volatile：可丢、不进日志不参与收敛）
  * - `{type:"request-init"}` 请求全量日志
  * - `{type:"respond-init", to, records, meta}` 定向全量响应
  * - `{type:"digest", digest}` 周期状态摘要
@@ -23,6 +24,7 @@ import { WebSocketServer } from "ws";
  * - `{type:"peer-joined", source}` / `{type:"peer-left", source}` 成员变动
  * - `{type:"records", source, records:[]}` 记录转发（附来源）
  * - `{type:"aom", source, event:{}}` AOM 事件转发
+ * - `{type:"awareness", source, data:{}}` awareness 转发
  * - `{type:"request-init", source}` 全量请求转发
  * - `{type:"respond-init", source, records, meta}` 全量响应转发（定向）
  * - `{type:"digest", source, digest}` 摘要转发
@@ -123,6 +125,15 @@ function createRelayServer(options = {}) {
           type: "aom",
           source: ws.source,
           event: message.event,
+        });
+        return;
+      case "awareness":
+        // volatile 通道：纯转发，无确认无重发无缓存
+        if (message.data === undefined || message.data === null) return;
+        broadcast(room, ws.source, {
+          type: "awareness",
+          source: ws.source,
+          data: message.data,
         });
         return;
       case "request-init":

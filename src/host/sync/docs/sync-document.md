@@ -33,6 +33,8 @@
 | 服务器 → 客户端 | `{type:"records", source, records:[...]}`                     | 记录转发（附来源，不回发发送者） |
 | 客户端 → 服务器 | `{type:"aom", event:{kind, ids, choice?, ...}}`                | AOM 活动事件广播（choose 携带命名选择名） |
 | 服务器 → 客户端 | `{type:"aom", source, event}`                                 | 活动事件转发                     |
+| 客户端 → 服务器 | `{type:"awareness", data}`                                       | awareness 广播（volatile） |
+| 服务器 → 客户端 | `{type:"awareness", source, data}`                              | awareness 转发（可丢、不进日志） |
 | 客户端 → 服务器 | `{type:"request-init"}`                                       | 请求全量日志（新成员 / 落后端）  |
 | 服务器 → 客户端 | `{type:"request-init", source}`                               | 转发给其他成员                   |
 | 客户端 → 服务器 | `{type:"respond-init", to, records, meta}`                    | 定向全量响应                     |
@@ -43,7 +45,7 @@
 ## 中继服务器
 
 - **无状态纯转发**：不缓存任何记录，离线与迟到合并由 K6 负责；房间成员表是唯一状态。
-- **广播语义**：records/aom/digest 广播给房间内除发送者外全部成员；request-init 同广播；respond-init 定向。
+- **广播语义**：records/aom/awareness/digest 广播给房间内除发送者外全部成员；request-init 同广播；respond-init 定向。awareness 是 volatile 通道：不经 operationLog / applyRemoteOperations，无持久化、无确认重发、不参与哈希校验。
 - **连接生命周期**：close/error 移出房间并广播 peer-left；房间空则销毁。
 - **非法消息**：join 前非 join 消息、格式非法消息一律忽略。
 
@@ -54,6 +56,7 @@
 - 订阅 `operationLog.onAppend`：仅广播本端 source 的记录（远程应用的记录过滤，防回环放大）。
 - **微任务合批**：超分子成员在 endSupra 时同步连续物化，合批保证成员同批到达——传输中的超分子原子性与日志一致（逐条广播会让接收端部分建节点、后续成员效果丢失）。
 - 订阅 `activityEventBus`：手势内 choose/commit 事件即时广播（超分子闭合前 choose 不入日志，互斥与实时可见依赖此通道）。choose 事件携带 `choice`（命名选择名，匿名缺省）；unchoose/commit 事件按（来源，对象）注销，无需携带。
+- **awareness（K5）**：光标位置经 `sendAwareness` 走 volatile 通道广播，接收端由 `onAwareness` 回调转发宿主（只画不存）；peer-left 以 `{kind:"peer-left"}` 通知，供接收端清理远程光标。远程选择的装饰走 aom 可靠通道与 remote-activity 通知，不经 volatile 通道。
 
 ### 远端 → 本地
 

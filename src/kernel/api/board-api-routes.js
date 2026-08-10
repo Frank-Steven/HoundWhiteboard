@@ -187,6 +187,14 @@ const BOARD_API_ROUTES = {
   },
 
   /**
+   * 列出全部远程命名选择（awareness 查询面）
+   */
+  queryRemoteChoices: {
+    invoke: (api) => api.queryRemoteChoices(),
+    flush: "none",
+  },
+
+  /**
    * 上报 UI 侧对象 id 池计数
    */
   reportObjectIdCounter: {

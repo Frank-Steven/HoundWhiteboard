@@ -120,6 +120,13 @@ class Viewport {
   #worker;
 
   /**
+   * awareness 消息监听集合（worker 下行的协作感知通知）
+   * @type {Set<Function>}
+   * @private
+   */
+  #awarenessListeners = new Set();
+
+  /**
    * 显示层 DOM canvas
    * @type {HTMLCanvasElement | null}
    * @private
@@ -674,6 +681,7 @@ class Viewport {
     }
 
     this.#worker.removeEventListener("message", this.#workerMessageListener);
+    this.#awarenessListeners.clear();
     this.#canvasCtx?.clearRect?.(0, 0, this.width, this.height);
   }
 
@@ -705,10 +713,47 @@ class Viewport {
   #handleWorkerMessage(event) {
     const message = event?.data;
     if (!message || typeof message !== "object") return;
+    if (message.type === "awareness") {
+      for (const listener of this.#awarenessListeners) {
+        try {
+          listener(message);
+        } catch {
+          // 单个监听器异常不阻断其余监听器
+        }
+      }
+      return;
+    }
     if (message.type !== "render-frame") return;
     if (String(message.viewportId) !== String(this.viewportId)) return;
 
     this.onRenderFrame(message);
+  }
+
+  /**
+   * 注册 awareness 消息监听（worker 下行的协作感知通知）
+   * @param {Function} listener - 监听函数
+   * @returns {void}
+   */
+  addAwarenessListener(listener) {
+    this.#awarenessListeners.add(listener);
+  }
+
+  /**
+   * 注销 awareness 消息监听
+   * @param {Function} listener - 监听函数
+   * @returns {boolean} 是否存在并被移除
+   */
+  removeAwarenessListener(listener) {
+    return this.#awarenessListeners.delete(listener);
+  }
+
+  /**
+   * 发送 awareness 消息到 worker（经协调器 volatile 广播）
+   * @param {Object} data - awareness 负载（如 {kind:"cursor", point}）
+   * @returns {void}
+   */
+  sendAwareness(data) {
+    this.#worker.postMessage({ type: "awareness-send", data });
   }
 
   /**
