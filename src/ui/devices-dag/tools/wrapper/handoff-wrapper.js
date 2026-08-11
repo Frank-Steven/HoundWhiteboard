@@ -250,11 +250,17 @@ class HandoffWrapperTool extends WrapperTool {
       return;
     }
 
+    // 选择完成：先闭合会话超分子，使选择物化为独立可撤销节点——
+    // 未闭合时 choose 停在草稿缓冲，undo 摸不到它，会误撤到更早的创建；
+    // 随后为第二阶段的修改开启新会话（「撤销选择」与「撤销修改」分离）。
+    this.#closeSessionSupra();
+
     if (this.#autoBridgeObjects) {
       this.#second.receiveHandoffObjects?.(objects, eventContext ?? {});
     }
 
     this.#setPhase("second");
+    this.#openSessionSupra(eventContext ?? {});
   }
 
   /**

@@ -301,6 +301,54 @@ describe("HandoffWrapperTool", () => {
     expect(modifier._handoffObjects).toEqual([selectedSummary]);
   });
 
+  test("first 完成时闭合会话超分子并重开：选择独立物化", async () => {
+    const chooser = new RectangleObjectChooserTool();
+    const modifier = createMockModifier();
+    const wrapper = new HandoffWrapperTool({ first: chooser, second: modifier });
+
+    const selectedSummary = {
+      id: "199",
+      type: "CircleObject",
+      position: { x: 12, y: 12 },
+      range: new RectangleRange(-8, -8, 16, 16),
+      boundingBox: new RectangleRange(-8, -8, 16, 16),
+      property: {},
+      data: { radius: 8 },
+    };
+    const supraCalls = [];
+    const boardApi = {
+      hitTest: jest.fn(async () => ["199"]),
+      queryObjects: jest.fn(async () => [selectedSummary]),
+      addActiveObjects: jest.fn(),
+      discardActiveObjects: jest.fn(),
+      beginSupra: jest.fn((key) => supraCalls.push(["begin", key])),
+      endSupra: jest.fn((key) => supraCalls.push(["end", key])),
+      abortSupra: jest.fn(),
+    };
+    const { dag } = mountHandoff(wrapper, { board: {}, boardApi });
+
+    dispatchToHandoff(dag, [
+      { type: "position", context: { value: { x: 0, y: 0 } } },
+    ]);
+    dispatchToHandoff(dag, [
+      { type: "position", context: { value: { x: 30, y: 30 } } },
+    ]);
+    dispatchToHandoff(dag, [{ type: "end", context: {} }]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(wrapper.getDebugInfo().phase).toBe("second");
+    // first 完成：闭合第一个会话超分子（选择物化），为 second 重开新会话
+    const begins = supraCalls.filter(([op]) => op === "begin").length;
+    const ends = supraCalls.filter(([op]) => op === "end").length;
+    expect(begins).toBe(2);
+    expect(ends).toBe(1);
+    // 闭合与重开的 key 不同（会话分割）
+    expect(supraCalls[0][0]).toBe("begin");
+    expect(supraCalls[1][0]).toBe("end");
+    expect(supraCalls[2][0]).toBe("begin");
+    expect(supraCalls[1][1]).not.toBe(supraCalls[2][1]);
+  });
+
   test("endAction 传播到当前相位工具并完成其动作", () => {
     const stroke = new StrokeCreatorTool();
     const modifier = new CommonObjectModifierTool({ processor: new DragGestureProcessor() });
@@ -380,5 +428,87 @@ describe("HandoffWrapperTool", () => {
     expect(firstShell.state.objects).toBeUndefined();
     // wrapper 真实节点不被子工具的状态读写污染
     expect(dag.getNodeState("/viewport/handoff").objects).toBeUndefined();
+  });
+
+  test("会话分割后撤销选择：目标为 choose 而非更早的创建（真实内核）", async () => {
+    const { BoardApi } = await import("../../../../../kernel/api/board-api.js");
+    const { BoardCore } = await import("../../../../../kernel/board/board-core.js");
+    const { createDefaultAomRenderHooks } = await import(
+      "../../../../../kernel/board/aom-render-hooks.js"
+    );
+    const { createDefaultPersistenceAdapter } = await import(
+      "../../../../../kernel/board/persistence-adapter.js"
+    );
+    const boardCore = new BoardCore({
+      width: 800,
+      height: 600,
+      source: "demo",
+      aomRenderHooks: createDefaultAomRenderHooks(),
+      persistenceAdapter: createDefaultPersistenceAdapter(),
+    });
+    const api = new BoardApi(boardCore);
+
+    // 画 X 并提交（左键笔画）
+    api.createObject("StrokeObject", {
+      id: "demo/1",
+      position: { x: 0, y: 0 },
+      property: { width: 2 },
+      data: { points: [{ x: 0, y: 0 }, { x: 10, y: 0 }] },
+    });
+    await api.commitObjects(["demo/1"]);
+
+    // 右键框选：会话超分子开启 → 选择完成时闭合（选择物化）→ second 新会话
+    api.beginSupra("handoff/1");
+    await api.addActiveObjects(["demo/1"], { supraKey: "handoff/1" });
+    api.endSupra("handoff/1");
+    api.beginSupra("handoff/2");
+
+    // Ctrl+Z（各撤各的）：目标应为 choose，而非更早的 add
+    const result = api.undo();
+    const record = boardCore.operationLog.get(result.targetNodeId);
+    expect(record.type).toBe("choose-object");
+    expect(record.payload.objectId).toBe("demo/1");
+    // 对象留在板上、退出活动层（撤销的是选择而非创建）
+    expect(api.queryObjects(["demo/1"])[0].isActive).toBe(false);
+    expect(boardCore.getObjectById("demo/1")).not.toBeNull();
+
+    api.abortSupra("handoff/2");
+  });
+
+  test("会话未闭合时撤销落到更早的创建（回归护栏）", async () => {
+    const { BoardApi } = await import("../../../../../kernel/api/board-api.js");
+    const { BoardCore } = await import("../../../../../kernel/board/board-core.js");
+    const { createDefaultAomRenderHooks } = await import(
+      "../../../../../kernel/board/aom-render-hooks.js"
+    );
+    const { createDefaultPersistenceAdapter } = await import(
+      "../../../../../kernel/board/persistence-adapter.js"
+    );
+    const boardCore = new BoardCore({
+      width: 800,
+      height: 600,
+      source: "demo",
+      aomRenderHooks: createDefaultAomRenderHooks(),
+      persistenceAdapter: createDefaultPersistenceAdapter(),
+    });
+    const api = new BoardApi(boardCore);
+
+    api.createObject("StrokeObject", {
+      id: "demo/1",
+      position: { x: 0, y: 0 },
+      property: { width: 2 },
+      data: { points: [{ x: 0, y: 0 }, { x: 10, y: 0 }] },
+    });
+    await api.commitObjects(["demo/1"]);
+
+    // 未闭合会话（修复前的真实行为）：choose 是草稿，undo 摸不到，误撤到 add
+    api.beginSupra("handoff/1");
+    await api.addActiveObjects(["demo/1"], { supraKey: "handoff/1" });
+
+    const result = api.undo();
+    const record = boardCore.operationLog.get(result.targetNodeId);
+    expect(record.type).toBe("add-object");
+
+    api.abortSupra("handoff/1");
   });
 });
