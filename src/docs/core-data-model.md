@@ -48,7 +48,7 @@ UI 与 Worker 共用：
 - 持有 `signalsEventBus`
 - 管理 `viewports`
 - 通过 `BoardApiRpc` 与 Worker 通信
-- 通过本地 `CounterPool` 同步分配 `objectId`
+- 通过本地 `IncrementalIdPool` 分配来源命名空间字符串 `objectId`
 
 ### `BoardCore`
 
@@ -57,6 +57,10 @@ UI 与 Worker 共用：
 - `width` / `height`
 - `rootPath`
 - `undoTree`
+- `operationLog`
+- `hitCommitter`
+- `trash`
+- `activityEventBus`
 - `chunkLoaded`
 - `objectLoaded`
 - `chunkLoadEventBus`
@@ -65,23 +69,24 @@ UI 与 Worker 共用：
 - `aomRenderHooks`
 - `activeObjectManager`
 - `#objectCoverChunks`
+- `#objectIdCounters`
 
 在当前实现里，真正的对象、区块与提交关系都以 Worker 中的 `BoardCore` 为准。
 
 ## objectId 模型
 
-当前 `objectId` 分配规则：
+对象 id 是携带来源命名空间的字符串（如 `demo/1`），由 `IncrementalIdPool`（包装 `CounterPool`）分配。当前 `objectId` 分配规则：
 
 1. UI 工具通过 `Board.allocateObjectId()` 申请 id
-2. `Board` 使用本地 `CounterPool` 同步递增
+2. `Board` 使用本地 `IncrementalIdPool` 递增分配字符串 id，并经 `reportObjectIdCounter` 上报计数
 3. `BoardApiRpc.createObject(type, { id, ... })` 把显式 id 发往 Worker
-4. Worker 校验重复 id 后创建对象并加入 AOM
+4. Worker 校验重复 id 后创建对象并加入 AOM；已上报的 id 池计数随会话元数据持久化，重开时续种防碰撞
 
 这意味着：
 
 - UI 线程是 **id 分配者**
 - Worker 线程是 **id 校验者与使用者**
-- `BoardCore` 当前不负责自动分配 id
+- `BoardCore.allocateObjectId(source)` 负责 Core 内部创建对象（如数据擦除分裂）的 id 分配；`BoardApi.addObject` 在持板侧串行完成分配与提交，供非本地前端（CLI / daemon 客户端）使用
 
 ## 区块级模型
 
@@ -141,9 +146,10 @@ Map<chunkId, {
 
 ```js
 {
-  id: number,
+  id: string,
   type: string,
   position: Vector | { x, y },
+  transform?: TransformMatrix2D,
   boundingBox?: RectangleRange,
   range?: Range,
   property: Record<string, any>,
@@ -167,6 +173,7 @@ Map<chunkId, {
 - `id`
 - `type`
 - `isActive`
+- `choice`（所属命名选择名；匿名选择或无选择时缺省）
 - `position`
 - `transform`
 - `boundingBox`
@@ -192,8 +199,11 @@ AOM 内部关键结构包括：
 
 - `activeObjects`
 - `activeObjectIndex`
+- `inactiveGraph`（三态模型的非活动层成员：被 pickup 一并纳入 AOM 的层成员，仍在 AOM 中）
 - `layerOrder`
+- `layerIndex`
 - `onLayer`
+- `#localChoices` / `#remoteChoices`（命名选择注册表，本地与远端分表）
 - `baseObjectSnapshotWorldRanges`
 - `baseObjectSnapshotCoverChunks`
 

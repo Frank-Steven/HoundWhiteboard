@@ -38,7 +38,9 @@
   "formatVersion": 1,
   "lastTime": 1786009532137,
   "nextSegmentSeq": 5,
-  "coreIdCounters": { "demo": 2 }
+  "coreIdCounters": { "demo": 2 },
+  "objectIdCounters": { "demo": 17 },
+  "boardConfig": { "width": 4096, "height": 4096 }
 }
 ```
 
@@ -48,6 +50,8 @@
 - `lastTime`：已落盘记录的最晚时间标记，重开时续给 commit 边界
 - `nextSegmentSeq`：下一个可用日志段序号
 - `coreIdCounters`：各来源的 Core 侧对象 id 已分配最大计数（如擦除分裂段 id），重开时续号防碰撞
+- `objectIdCounters`：各来源的 UI 侧对象 id 池已分配最大计数（UI 经 `reportObjectIdCounter` 上报），重开时续种防碰撞
+- `boardConfig`：板宽高；板尺寸是文档数据（决定区块划分），恢复时以盘上配置为准
 
 ### `objects/{objectId}.json`
 

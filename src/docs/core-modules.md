@@ -10,7 +10,7 @@
 | --------------- | ----------------------- | --------------------------------------------------------------------- |
 | `kernel/`       | 内核层（零 canvas/DOM） | 对象模型、range、BoardCore、chunk、AOM、hit、api、store               |
 | `renderers/`    | 渲染插件                | canvas 渲染器、绘制策略注册表                                         |
-| `host/`         | 组合根与通道            | core-worker、bridges（RPC、IO 转发）                                  |
+| `host/`         | 组合根与通道            | core-worker、bridges（RPC、IO 转发）、sync（协作同步）              |
 | `io/`           | 安全文件操作            | 路径 DSL 与权限策略、driver 三实现、PersistenceAdapter 实现、对外 api |
 | `cli/`          | 命令行第二前端          | node 直读直写板文件，全程经 BoardApi 契约                             |
 | `ui/`           | UI 线程运行时           | Board、Viewport、DevicesDAG、UiRenderer                               |
@@ -34,6 +34,7 @@
 
 - `ui-renderer.js`：UI overlay 渲染器
 - `ui-overlay-factory.js`：UI overlay 条目工厂
+- `awareness-overlay.js`：协作感知装饰层（远程命名选择按来源着色框与来源标签、远程光标、远程手势中间帧预览，只画不存）
 
 ### `ui/devices-dag/`
 
@@ -98,6 +99,13 @@
 - `board-api-rpc.js`：UI 侧 RPC 客户端（`rpc` / `rpc-batch` / `rpc-response`）
 - `io-invoke-forwarder.js`：worker 内驱动的文件操作转发到主线程 Tauri invoke
 
+### `host/sync/`
+
+- `network-coordinator.js`：BoardApi 的同步宿主薄包装——本地操作经中继广播，远程记录经延迟容忍窗接入 `applyRemoteOperations`；周期 digest（`{logSize, head, objects, stateHash, openMols}`）比对、openMols 对账，stateHash 分歧经 `repairStateFromLog` 自愈
+- `relay-server.js`：按板房间组织的 WebSocket 无状态中继（成员管理、消息转发、INIT 定向），不缓存任何记录
+- `amend-forwarder.js`：订阅内核分子生命周期 amend 事件，begin/end/abort 即时转发，中间帧节流合批后经协调器 volatile 通道广播
+- `start-relay.js`：中继启动入口（`node src/host/sync/start-relay.js [端口]`）
+
 ## `io/`
 
 `io/` 是安全文件操作框架（safe-io v4），分层为 core（路径 DSL 与权限策略，纯 JS 零依赖）、driver（IoDriver 契约与 memory / node / tauri 三实现）、adapter（PersistenceAdapter 实现）、api（registerRoot → open → handle）。Tauri 模式下安全判断下沉 Rust 可信执行面（`src-tauri/src/commands/`）。详见 [../io/README.md](../io/README.md)。
@@ -140,7 +148,7 @@
 
 ### `kernel/hit/`
 
-- `operation.js`：八类分子操作记录模型（载荷、校验、id 构造、时钟环比较）
+- `operation.js`：九类分子操作记录模型（载荷、校验、id 构造、时钟环比较；含 `close-supra`，触发超分子折叠）
 - `operation-log.js`：append-only 操作日志（序号连续与时间单调把关、追加事件订阅、序列化往返）
 - `undo-tree-core.js`：时间回溯树（f(日志) 派生、统一撤销三形态与截断、重做栈派生投影、超分子节点）
 - `hit-committer.js`：commit 边界单管线（记录构造、时间标记、指定式超分子与简并）
@@ -149,7 +157,7 @@
 
 ### `kernel/api/`
 
-- `board-api.js`：BoardApi 契约面（对象操作、AOM 控制、擦除、撤销/重做、远端应用入口、会话元数据）
+- `board-api.js`：BoardApi 契约面（对象操作、AOM 控制、擦除、撤销/重做、远端应用入口、会话元数据；分子面 `beginMol` / `amendMol` / `endMol` / `abortMol` 与超分子面 `beginSupra` / `endSupra` / `abortSupra`；digest 面 `queryOpenMols` / `queryMolAmendSince` / `queryStateHash` / `repairStateFromLog`）
 - `board-api-routes.js`：RPC 路由表（方法名到契约面方法的分发与 flush 策略）
 
 ### `kernel/store/`
@@ -181,4 +189,5 @@
 - `math.js`、`math3d.js`、`math-algorithm.js`
 - `directed-graph.js`、`path.js`、`chain.js`
 - `event-bus.js`、`deque.js`、`queue.js`
-- `counter-pool.js`、`random.js`
+- `counter-pool.js`、`incremental-id-pool.js`（来源命名空间字符串 id 分配）、`random.js`
+- `hash.js`（FNV-1a 字符串哈希，状态摘要比对用）、`shared-state-store.js`（跨信道共享状态存储）

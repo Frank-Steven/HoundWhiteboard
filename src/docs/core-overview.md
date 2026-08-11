@@ -23,6 +23,7 @@ UI 线程负责：
 - `Viewport`：DOM canvas、overlay、坐标换算、Worker 同步
 - `devices-dag/`：设备子图、prefix、tool 与输入路由
 - `UiRenderer`：UI overlay 渲染
+- `AwarenessOverlay`：协作感知装饰层（远程选择按来源着色框与来源标签、远程光标、远程手势中间帧预览）
 - `BoardApiRpc`：把 UI 侧读写请求转成 Worker RPC
 
 ### Worker 层
@@ -37,6 +38,7 @@ Worker 层负责真正的数据与渲染权威：
 - `kernel/hit/`：操作日志与时间回溯树（撤销/重做权威）
 - `kernel/store/`：会话存储（日志跟随者增量落盘与会话恢复）
 - `renderers/canvas/`：`ViewportRenderer` 与 Worker 侧脏区绘制
+- `host/sync/`：协作同步（`network-coordinator` 协调器、`relay-server` 无状态中继、`amend-forwarder` amend 转发）；周期 digest（`{logSize, head, objects, stateHash, openMols}`）与 openMols 对账，stateHash 分歧经 `repairStateFromLog` 效果层自愈
 
 ### Kernel 层
 
@@ -72,7 +74,7 @@ Kernel 不依赖 DOM，也不依赖 Worker 宿主：
 
 ### 渲染
 
-1. tool 通过 `BoardApiRpc` 调用 RPC（`createObject` / `modifyObject` / `commitObjects` 等）
+1. tool 通过 `BoardApiRpc` 调用 RPC（手势高频写主路径为 `beginMol` / `amendMol` / `endMol`，`beginSupra` / `endSupra` 负责会话归组）
 2. Worker 侧 `BoardCore` / `ActiveObjectManager` 按操作类型选择性地触发 render hooks：
    - `createObject` / `modifyObject` 不涉及静态图变化，只触发 `requestActiveRender`
    - `commitObjects`（apply 到静态图）才同时触发 `requestStaticRenderForObjects` + `requestActiveRender`
@@ -116,7 +118,7 @@ Kernel 不依赖 DOM，也不依赖 Worker 宿主：
 - `hitTest`、`queryObjects`、`queryChunkObjects` 已接到 Worker 权威状态
 - `undo` / `redo` 已接通（含侧栏按钮与快捷键）
 - 持久化已接通：demo 以 `~/hound-whiteboard/demo-board` 为板目录运行，撤销历史穿越重开
-- CLI 前端已接通：`yarn cli` 直读直写板文件（`src/cli/`；与 GUI 不同步，GUI 运行期间勿操作同一板目录）
+- CLI 前端已接通：`yarn cli` 直读直写板文件（`src/cli/`）；daemon 模式下经中继与协作端实时同步，「与 GUI 不同步」仅限文件直读直写回退路径（回退路径下 GUI 运行期间勿操作同一板目录，详见 cli-document.md daemon 章节）
 
 ## 关键术语
 

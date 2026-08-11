@@ -20,8 +20,11 @@
 | `ui/components/orchestration/viewport.js`           | UI       | DOM canvas、overlay、Worker 同步、workflow 挂载代理             |
 | `ui/components/orchestration/board-render-hooks.js` | UI       | 本地渲染路径用的 render hook 辅助                               |
 | `ui/components/renderer/ui-renderer.js`             | UI       | UI overlay 渲染                                                 |
+| `ui/components/renderer/awareness-overlay.js`       | UI       | 协作感知装饰层（远程选择着色框与来源标签、远程光标、手势预览）   |
 | `ui/devices-dag/**`                                 | UI       | 设备图、设备子图、prefix、tool 全部在 UI 线程                   |
 | `host/core-worker.js`                                    | Worker   | Worker 入口与 `CoreWorkerRuntime`                               |
+| `host/sync/network-coordinator.js` / `amend-forwarder.js` | Worker   | 同步协调器（digest/openMols 对账与自愈）与 amend 转发           |
+| `host/sync/relay-server.js` / `start-relay.js`           | Host     | 无状态 WebSocket 中继（板即房间），独立 Node 进程               |
 | `kernel/board/board-core.js`                       | Worker   | 对象、区块、AOM、UndoTree、持久化协调                           |
 | `renderers/canvas/viewport-core.js`                    | Worker   | Worker 视口状态、区块缓冲、渲染帧输出                           |
 | `kernel/board/active-object-manager.js`            | Worker   | 动态图与交互态对象生命周期                                      |
@@ -91,7 +94,7 @@ Worker 不解析 DOM 事件，也不持有 DevicesDAG。
 
 ### objectId 分配
 
-- `Board.allocateObjectId()` 在 UI 侧通过本地 `CounterPool` 同步分配
+- `Board.allocateObjectId()` 在 UI 侧通过本地 `IncrementalIdPool` 分配来源命名空间字符串 id
 - Worker 侧 `createObject` 要求显式传入 `props.id`
 - Worker 若收到重复 id，会抛错并通过 RPC 返回错误
 
