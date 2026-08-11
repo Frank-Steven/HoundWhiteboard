@@ -118,7 +118,8 @@ class BoardApi {
 
   /**
    * 远程选择注册表变更脏标记
-   * @description 远程 choose/unchoose 效果应用时置位，合批为一次 remote-activity 事件。
+   * @description 远程 choose/unchoose 效果应用时置位（远程活动对象的修改效果亦置位，
+   * 装饰需按新几何重绘），合批为一次 remote-activity 事件。
    * @type {boolean}
    * @private
    */
@@ -1531,6 +1532,21 @@ class BoardApi {
   }
 
   /**
+   * 远程活动对象几何变化时标记选择装饰待刷新
+   * @description 远程 choose/unchoose 之外的变更缝：远程活动对象的修改效果（应用或逆放）
+   * 改变对象几何，装饰层须凭 remote-activity 通知重拉对象摘要，对端选中框随记录归位；
+   * 非远程活动对象不标记（空操作）。
+   * @param {string} objectId - 对象 id
+   * @returns {void}
+   * @private
+   */
+  #markRemoteChoicesDirtyIfRemoteActive(objectId) {
+    if (!this.#boardCore.activeObjectManager.isRemoteActive(objectId)) return;
+    this.#remoteChoicesDirty = true;
+    this.#remoteChoicesDirtyIds.add(objectId);
+  }
+
+  /**
    * 冲刷远程选择变更通知（awareness 缝）
    * @returns {void}
    * @private
@@ -1819,6 +1835,8 @@ class BoardApi {
     const beforeChain = tree.getActiveChain();
     boardCore.hitCommitter.commitUndo({ targetNodeId: targetId });
     this.#transitionEffects(beforeChain, tree.getActiveChain());
+    // 过渡可能逆放远端 modify（远程活动对象几何变化）：冲刷选择装饰刷新通知
+    this.#flushRemoteChoicesNotification();
     return { undone: true, targetNodeId: targetId };
   }
 
@@ -1879,6 +1897,7 @@ class BoardApi {
           this.#collectObjectChunks(obj, affectedChunks);
           this.#applyObjectPatch(obj, payload.after);
           this.#collectObjectChunks(obj, affectedChunks);
+          this.#markRemoteChoicesDirtyIfRemoteActive(payload.objectId);
         } else {
           // 对象在 trash 中：快照随链上修改滚动，恢复时拿到的是当前状态
           this.#patchTrashSnapshot(payload.objectId, payload.after);
@@ -1936,6 +1955,7 @@ class BoardApi {
           this.#collectObjectChunks(obj, affectedChunks);
           this.#applyObjectPatch(obj, payload.before);
           this.#collectObjectChunks(obj, affectedChunks);
+          this.#markRemoteChoicesDirtyIfRemoteActive(payload.objectId);
         } else {
           this.#patchTrashSnapshot(payload.objectId, payload.before);
         }
@@ -2201,6 +2221,8 @@ class BoardApi {
     this.#boardCore.hitCommitter.commitRedo();
     const afterChain = tree.getActiveChain();
     const changed = this.#transitionEffects(beforeChain, afterChain);
+    // 过渡可能正放远端 modify（远程活动对象几何变化）：冲刷选择装饰刷新通知
+    this.#flushRemoteChoicesNotification();
     return { redone: changed, targetNodeId: changed ? (afterChain.at(-1)?.shareId ?? null) : null };
   }
 

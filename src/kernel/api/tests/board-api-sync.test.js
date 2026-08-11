@@ -292,16 +292,24 @@ describe("远端会话全序列应用（实时双端驱动）", () => {
     await A.api.commitObjects(["a/1"]);
     pump(A, B);
 
+    // remote-activity 通知计数：装饰层凭它重拉对象摘要（选中框归位的触发缝）
+    const notices = [];
+    B.boardCore.activityEventBus.on("remote-activity", (e) => notices.push(e));
+
     A.api.beginSupra("S");
     await A.api.addActiveObjects(["a/1"], { supraKey: "S" });
     pump(A, B);
     expect(B.api.queryRemoteChoices()).toEqual([{ source: "a", ids: ["a/1"] }]);
+    expect(notices).toHaveLength(1);
 
     const molId = A.api.beginMol(["a/1"], { supraKey: "S" });
     A.api.amendMol(molId, { "a/1": { position: { x: 200, y: 200 } } });
     A.api.endMol(molId);
     pump(A, B);
     expect(B.api.queryObject("a/1").position).toEqual({ x: 200, y: 200 });
+    // 远程活动对象的修改效果同样触发装饰刷新通知（否则选中框停留在选择前缓存）
+    expect(notices).toHaveLength(2);
+    expect(notices[1].ids).toContain("a/1");
 
     // Enter：提交与闭合同批到达；折叠是纯树操作，远端效果零回滚
     await A.api.commitObjects(["a/1"], { supraKey: "S" });
@@ -310,6 +318,7 @@ describe("远端会话全序列应用（实时双端驱动）", () => {
     expect(B.api.queryObject("a/1").position).toEqual({ x: 200, y: 200 });
     expect(B.api.queryRemoteChoices()).toEqual([]);
     expect(B.boardCore.activeObjectManager.has("a/1")).toBe(false);
+    expect(notices).toHaveLength(3);
 
     // 远端撤销聚合：对端同步回选择前
     A.api.undo();
