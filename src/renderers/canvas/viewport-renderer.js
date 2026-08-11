@@ -693,7 +693,19 @@ class ViewportRenderer extends Renderer {
 
     for (const entry of drawableEntries) {
       if (!OBJECT_DRAW_STRATEGIES.has(entry.object.constructor)) continue;
-      drawObject(viewportContext, entry.object);
+      // 远程手势预览坐标：渲染时临时覆盖 position，画完还原（只影响渲染视图，不改数据）
+      const preview = this._getPreviewPosition(entry.object.id);
+      if (preview) {
+        const originalX = entry.object.position.x;
+        const originalY = entry.object.position.y;
+        entry.object.position.x = preview.x;
+        entry.object.position.y = preview.y;
+        drawObject(viewportContext, entry.object);
+        entry.object.position.x = originalX;
+        entry.object.position.y = originalY;
+      } else {
+        drawObject(viewportContext, entry.object);
+      }
     }
 
     this.#cacheDirty = false;

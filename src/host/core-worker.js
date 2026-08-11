@@ -147,6 +147,12 @@ class CoreWorkerRuntime {
   #unsubscribeRemoteActivity;
 
   /**
+   * hit-changed 事件订阅的退订函数
+   * @type {Function | null}
+   */
+  #unsubscribeHitChanged;
+
+  /**
    * SubFrame 转发器（协调器连接成功时非空）
    * @type {Object | null}
    */
@@ -204,6 +210,7 @@ class CoreWorkerRuntime {
     this.#journaler = null;
     this.#coordinator = null;
     this.#unsubscribeRemoteActivity = null;
+    this.#unsubscribeHitChanged = null;
     this.#subframeForwarder = null;
     this.#syncUrl = null;
     this.#syncBoardId = null;
@@ -487,11 +494,22 @@ class CoreWorkerRuntime {
     this.#boardCore.aomRenderHooks = renderHooks;
     this.#boardCore.activeObjectManager.renderHooks = renderHooks;
 
-    // awareness 下行：远程选择注册表变更合批通知 UI（选中装饰刷新触发）
+    // awareness 下行：远程选择注册表变更合批通知 UI（选中装饰刷新与预览清理触发）
     this.#unsubscribeRemoteActivity = this.#boardCore.activityEventBus.on(
       "remote-activity",
+      (event) => {
+        this.#postMessage({
+          type: "awareness",
+          awarenessType: "remote-activity",
+          data: event,
+        });
+      },
+    );
+    // hit 变更下行：远程文档变化通知 UI（工具清理失效选中）
+    this.#unsubscribeHitChanged = this.#boardCore.activityEventBus.on(
+      "hit-changed",
       () => {
-        this.#postMessage({ type: "awareness", awarenessType: "remote-activity" });
+        this.#postMessage({ type: "awareness", awarenessType: "hit-changed" });
       },
     );
 
@@ -549,10 +567,18 @@ class CoreWorkerRuntime {
           source,
           data,
         });
+        // 渲染侧预览：远程手势中间帧按预览坐标画对象本体（只影响渲染视图）
+        if (data?.kind === "subframe" && Array.isArray(data.ops)) {
+          this.#applySubframePreviews(data.ops);
+        }
       },
       onDisconnect: () => {
         // 断线瞬间对端手势状态不可信：通知 UI 清空全部预览与光标，重连后重建
         this.#postMessage({ type: "awareness", awarenessType: "disconnect" });
+        for (const viewportCore of this.#viewportCores.values()) {
+          viewportCore.renderer?.clearAllPreviewPositions?.();
+        }
+        this.#requestStaticRender();
         this.#scheduleCoordinatorReconnect();
       },
     });
@@ -569,6 +595,53 @@ class CoreWorkerRuntime {
       this.#log.warn(`同步中继连接失败，离线运行：${error?.message ?? error}`);
       await coordinator.close();
       this.#scheduleCoordinatorReconnect();
+    }
+  }
+
+  /**
+   * 应用远程手势中间帧到渲染侧预览坐标
+   * @param {Object[]} ops - 预览操作列表
+   * @returns {void}
+   * @private
+   *
+   * @description
+   * patch.position 覆盖对象渲染位置（对象本体随远程手势移动）；end 终点帧清除预览。
+   * 预览只存在于渲染器视图，对象数据在记录到达时归位。
+   */
+  #applySubframePreviews(ops) {
+    if (this.#viewportCores.size === 0) return;
+    let changed = false;
+    for (const op of ops) {
+      if (typeof op?.objectId !== "string") continue;
+      const position = op.patch?.position;
+      if (typeof position?.x === "number" && typeof position?.y === "number") {
+        for (const viewportCore of this.#viewportCores.values()) {
+          viewportCore.renderer?.setPreviewPosition?.(op.objectId, position);
+        }
+        changed = true;
+      }
+      if (op.end === true) {
+        for (const viewportCore of this.#viewportCores.values()) {
+          viewportCore.renderer?.clearPreviewPosition?.(op.objectId);
+        }
+        changed = true;
+      }
+    }
+    if (changed) {
+      // 全量缓存重画（预览位置变化后静态缓存按新位置重建）
+      this.#requestStaticRender();
+    }
+  }
+
+  /**
+   * 调度一次静态层全量刷新（预览坐标变化后缓存按新位置重建）
+   * @returns {void}
+   * @private
+   */
+  #requestStaticRender() {
+    for (const viewportCore of this.#viewportCores.values()) {
+      viewportCore.renderer?.invalidateCachedObjects?.();
+      viewportCore.markFrameDirty();
     }
   }
 
@@ -660,6 +733,8 @@ class CoreWorkerRuntime {
     this.#syncBoardId = null;
     this.#unsubscribeRemoteActivity?.();
     this.#unsubscribeRemoteActivity = null;
+    this.#unsubscribeHitChanged?.();
+    this.#unsubscribeHitChanged = null;
     if (this.#journaler) {
       await this.#journaler.detach();
       this.#journaler = null;

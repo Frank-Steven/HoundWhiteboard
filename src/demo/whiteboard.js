@@ -12,6 +12,7 @@ import { createConsolePrinter, logBus } from "../utils/log/index.js";
 import {
   configureWhiteboardDemo,
   mountToolSwitcher,
+  DEMO_WORKFLOW_NAMES,
 } from "./config/whiteboard-demo.js";
 import { resolveDeviceSource } from "../utils/device-identity.js";
 import { installSyncConsole } from "./config/sync-console.js";
@@ -120,6 +121,21 @@ async function bootstrapWhiteboard() {
     viewport,
   });
   awarenessOverlay.start();
+
+  // 远程文档变化：广播 hit:changed 让工具清理失效选中（幽灵选择）
+  viewport.addAwarenessListener((message) => {
+    if (message?.awarenessType !== "hit-changed") return;
+    const workflows = [
+      DEMO_WORKFLOW_NAMES.TOOL_SWITCHER,
+      DEMO_WORKFLOW_NAMES.SECONDARY_CHOOSER,
+    ];
+    for (const wf of workflows) {
+      board.signalsEventBus.emit("input", {
+        to: `/${viewport.viewportId}/workflows/${wf}`,
+        signals: [{ type: "hit:changed", context: {} }],
+      });
+    }
+  });
 
   const toolbar = attachToolbarAdapter(board, viewport);
   if (toolbar) {

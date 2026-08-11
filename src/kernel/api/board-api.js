@@ -1951,7 +1951,14 @@ class BoardApi {
     }
     // 链过渡可能含远程 choose/unchoose 效果：合批冲刷一次变更通知
     this.#flushRemoteChoicesNotification();
-    return { applied: list.length };
+    const applied = list.length;
+    if (applied > 0) {
+      // 远程文档变化：UI 工具凭此清理本地失效选中（幽灵选择）
+      this.#boardCore.activityEventBus?.emit("hit-changed", {
+        time: Date.now(),
+      });
+    }
+    return { applied };
   }
 
   /**

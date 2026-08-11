@@ -55,11 +55,59 @@ function normalizeDirtyRectsForScreenUpdate(dirtyRects = []) {
  */
 class Renderer extends CanvasHost {
   /**
+   * 远程手势预览坐标覆盖表（对象 id → 预览位置）
+   * @description 只影响渲染视图，不改对象数据；渲染时临时覆盖 position 后还原。
+   * @type {Map<string, { x: number, y: number }>}
+   * @private
+   */
+  #previewPositions = new Map();
+
+  /**
    * @param {import("../../kernel/types/types.js").ViewportLike} viewport - 目标视口
    * @param {{ canvas?: HTMLCanvasElement | null }} [options = {}] - 初始化选项
    */
   constructor(viewport, options = {}) {
     super(viewport, options);
+  }
+
+  /**
+   * 设置对象的预览坐标（远程手势中间帧；渲染时覆盖 position）
+   * @param {string} objectId - 对象 id
+   * @param {{ x: number, y: number }} position - 预览位置
+   * @returns {void}
+   */
+  setPreviewPosition(objectId, position) {
+    if (typeof position?.x !== "number" || typeof position?.y !== "number") {
+      return;
+    }
+    this.#previewPositions.set(objectId, { x: position.x, y: position.y });
+  }
+
+  /**
+   * 清除对象的预览坐标（手势终点或记录归位后）
+   * @param {string} objectId - 对象 id
+   * @returns {void}
+   */
+  clearPreviewPosition(objectId) {
+    this.#previewPositions.delete(objectId);
+  }
+
+  /**
+   * 清空全部预览坐标（断线时对端手势状态不可信）
+   * @returns {void}
+   */
+  clearAllPreviewPositions() {
+    this.#previewPositions.clear();
+  }
+
+  /**
+   * 取对象的预览坐标（渲染覆盖用）
+   * @param {string} objectId - 对象 id
+   * @returns {{ x: number, y: number } | undefined} 预览位置
+   * @protected
+   */
+  _getPreviewPosition(objectId) {
+    return this.#previewPositions.get(objectId);
   }
 
   /**
