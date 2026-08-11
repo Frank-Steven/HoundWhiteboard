@@ -99,7 +99,10 @@ async function startBoardDaemon(options) {
   let coordinator = null;
   let subframeForwarder = null;
   let relayRetryTimer = null;
+  /** @type {boolean} daemon 已关闭：关闭后到达的 onDisconnect 不得再调度重试 */
+  let closed = false;
   const scheduleRelayRetry = () => {
+    if (closed) return;
     if (relayRetryTimer !== null) return;
     relayRetryTimer = setTimeout(() => {
       relayRetryTimer = null;
@@ -107,6 +110,7 @@ async function startBoardDaemon(options) {
     }, 3000);
   };
   const connectRelay = async () => {
+    if (closed) return;
     const next = createNetworkCoordinator({
       boardCore: session.boardCore,
       boardApi: session.api,
@@ -127,6 +131,8 @@ async function startBoardDaemon(options) {
         `[daemon] 已连接中继：${options.relayUrl}（房间 ${options.boardId ?? rootPath}）`,
       );
     } catch {
+      // 失败实例的日志订阅已挂上：清理后再调度重试，避免累积空转订阅
+      await next.close();
       scheduleRelayRetry();
     }
   };
@@ -180,6 +186,7 @@ async function startBoardDaemon(options) {
   );
 
   const close = async () => {
+    closed = true;
     if (relayRetryTimer !== null) {
       clearTimeout(relayRetryTimer);
       relayRetryTimer = null;
