@@ -35,10 +35,22 @@ class OperationLog {
   #byId = new Map();
 
   /**
-   * 超分子索引（supraOpId -> 成员记录，按追加序）
+   * 超分子索引（supraOpId -> 成员记录，按追加序；旧日志形态）
    * @type {Map<string, import("./operation.js").OperationRecord[]>}
    */
   #bySupra = new Map();
+
+  /**
+   * 超分子 id 索引（supraId -> 成员记录，按追加序；三级容器模型形态）
+   * @type {Map<string, import("./operation.js").OperationRecord[]>}
+   */
+  #bySupraId = new Map();
+
+  /**
+   * 分子 id 索引（molId -> 成员记录，按追加序；多对象手势的分子含多条记录）
+   * @type {Map<string, import("./operation.js").OperationRecord[]>}
+   */
+  #byMol = new Map();
 
   /**
    * 各 source 的下一个操作序号
@@ -109,12 +121,26 @@ class OperationLog {
     if (lastTime !== undefined && record.time < lastTime) {
       return [`时间标记回拨：${record.source} 的已追加记录最晚为 ${lastTime}，实际 ${record.time}`];
     }
+    // 三级容器模型字段归一：旧记录（无 molId/supraId/discard 字段）读入后等价于即时分子、独立成录、非放弃型
+    record.molId ??= null;
+    record.supraId ??= null;
+    record.discard ??= false;
     this.#records.push(record);
     this.#byId.set(record.id, record);
     if (record.supraOpId !== null) {
       const members = this.#bySupra.get(record.supraOpId) ?? [];
       members.push(record);
       this.#bySupra.set(record.supraOpId, members);
+    }
+    if (record.supraId !== null) {
+      const members = this.#bySupraId.get(record.supraId) ?? [];
+      members.push(record);
+      this.#bySupraId.set(record.supraId, members);
+    }
+    if (record.molId !== null) {
+      const members = this.#byMol.get(record.molId) ?? [];
+      members.push(record);
+      this.#byMol.set(record.molId, members);
     }
     this.#nextSeq.set(record.source, expected + 1);
     this.#lastTime.set(record.source, record.time);
@@ -164,6 +190,24 @@ class OperationLog {
    */
   getSupraMembers(supraOpId) {
     return [...(this.#bySupra.get(supraOpId) ?? [])];
+  }
+
+  /**
+   * 取三级容器超分子的成员记录组（按 supraId）
+   * @param {string} supraId - 超分子 id，形如 `"{source}/supra-{n}"`
+   * @returns {import("./operation.js").OperationRecord[]} 成员记录数组的副本
+   */
+  getSupraIdMembers(supraId) {
+    return [...(this.#bySupraId.get(supraId) ?? [])];
+  }
+
+  /**
+   * 取增量式分子的成员记录组（按 molId；多对象手势的分子含多条记录）
+   * @param {string} molId - 分子 id，形如 `"{source}/mol-{n}"`
+   * @returns {import("./operation.js").OperationRecord[]} 成员记录数组的副本
+   */
+  getMoleculeMembers(molId) {
+    return [...(this.#byMol.get(molId) ?? [])];
   }
 
   /**

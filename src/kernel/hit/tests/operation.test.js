@@ -65,9 +65,9 @@ describe("时间标记比较（时钟环）", () => {
 });
 
 describe("操作类型分类", () => {
-  test("对象级与树级覆盖全部八种类型", () => {
+  test("对象级与树级覆盖全部九种类型", () => {
     expect(WHITEBOARD_OPERATION_TYPES).toHaveLength(5);
-    expect(TREE_OPERATION_TYPES).toHaveLength(3);
+    expect(TREE_OPERATION_TYPES).toHaveLength(4);
     expect([...WHITEBOARD_OPERATION_TYPES, ...TREE_OPERATION_TYPES].sort()).toEqual(
       Object.values(OPERATION_TYPES).sort(),
     );
@@ -82,6 +82,7 @@ describe("操作类型分类", () => {
     expect(getOperationEffectKind(OPERATION_TYPES.MOVE_HEAD)).toBe(OPERATION_EFFECT_KINDS.MOVE_HEAD);
     expect(getOperationEffectKind(OPERATION_TYPES.REDO)).toBe(OPERATION_EFFECT_KINDS.MOVE_HEAD);
     expect(getOperationEffectKind(OPERATION_TYPES.UNDO)).toBe(OPERATION_EFFECT_KINDS.REATTACH);
+    expect(getOperationEffectKind(OPERATION_TYPES.CLOSE_SUPRA)).toBe(OPERATION_EFFECT_KINDS.FOLD);
     expect(getOperationEffectKind("nope")).toBeNull();
   });
 });

@@ -475,7 +475,7 @@ describe("HandoffWrapperTool", () => {
     api.abortSupra("handoff/2");
   });
 
-  test("会话未闭合时撤销落到更早的创建（回归护栏）", async () => {
+  test("会话未闭合时撤销落到 choose（撤销粒度缺陷的内核修复）", async () => {
     const { BoardApi } = await import("../../../../../kernel/api/board-api.js");
     const { BoardCore } = await import("../../../../../kernel/board/board-core.js");
     const { createDefaultAomRenderHooks } = await import(
@@ -501,14 +501,16 @@ describe("HandoffWrapperTool", () => {
     });
     await api.commitObjects(["demo/1"]);
 
-    // 未闭合会话（修复前的真实行为）：choose 是草稿，undo 摸不到，误撤到 add
+    // 三级容器模型：choose 即时物化（不再是草稿），未闭合会话内 undo 命中 choose 而非误撤创建
     api.beginSupra("handoff/1");
     await api.addActiveObjects(["demo/1"], { supraKey: "handoff/1" });
 
     const result = api.undo();
     const record = boardCore.operationLog.get(result.targetNodeId);
-    expect(record.type).toBe("add-object");
+    expect(record.type).toBe("choose-object");
 
+    // choose 已撤（成员在已撤销分支），abortSupra 退化为纯句柄清理
     api.abortSupra("handoff/1");
+    expect(boardCore.operationLog.toArray().filter((r) => r.type === "undo")).toHaveLength(1);
   });
 });

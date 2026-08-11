@@ -595,12 +595,81 @@ class BoardApiRpc {
   }
 
   /**
-   * 中止一个超分子（丢弃全部缓冲草稿）
+   * 中止一个超分子（丢弃未闭合分子并逐个撤销已物化成员）
    * @param {string} key - 超分子 key
    * @returns {Promise<void>}
    */
   async abortSupra(key) {
     return this.#call("abortSupra", { key });
+  }
+
+  /**
+   * 开启一个增量式分子（手势 begin）
+   * @param {string[]} objectIds - 分子覆盖的对象 id 列表
+   * @param {Object} [options] - 选项（supraKey 指定归属超分子；create 标记创建型分子）
+   * @returns {Promise<string>} 分子 id
+   */
+  async beginMol(objectIds, options) {
+    return this.#call("beginMol", { objectIds, options });
+  }
+
+  /**
+   * 对进行中的分子施加增量修正（手势的每帧）
+   * @description
+   * fire-and-forget 批写：同帧同分子合并入队即 resolve，不代表 Core 已应用；
+   * Core 侧失败经 onBatchError 旁路上报。确认式调用（endMol 等）发出前会先 flush 保序。
+   * @param {string} molId - 分子 id
+   * @param {Object<string, import("../../kernel/types/board-api-types.js").ObjectPatch>} patchesByObject - 对象 id -> 修改 patch
+   * @returns {Promise<void>} 入队后 resolve
+   */
+  async amendMol(molId, patchesByObject) {
+    const batchKey = `amendMol:${molId}`;
+    const existing = this.#batchBuffer.get(batchKey);
+    if (existing) {
+      for (const [objectId, patch] of Object.entries(patchesByObject ?? {})) {
+        existing.patchesByObject[objectId] = existing.patchesByObject[objectId]
+          ? this.#mergePatches(existing.patchesByObject[objectId], patch)
+          : { ...patch };
+      }
+    } else {
+      const merged = {};
+      for (const [objectId, patch] of Object.entries(patchesByObject ?? {})) {
+        merged[objectId] = { ...patch };
+      }
+      this.#batchBuffer.set(batchKey, {
+        method: "amendMol",
+        molId,
+        patchesByObject: merged,
+      });
+    }
+    this.#scheduleBatchFlush();
+    return Promise.resolve();
+  }
+
+  /**
+   * 定稿一个增量式分子（end-amend 物化上链）
+   * @param {string} molId - 分子 id
+   * @returns {Promise<boolean>} 分子是否曾在进行中
+   */
+  async endMol(molId) {
+    return this.#call("endMol", { molId });
+  }
+
+  /**
+   * 中止一个增量式分子（丢弃 amend 流，实例还原到手势起点）
+   * @param {string} molId - 分子 id
+   * @returns {Promise<boolean>} 分子是否曾在进行中
+   */
+  async abortMol(molId) {
+    return this.#call("abortMol", { molId });
+  }
+
+  /**
+   * 查询本端未闭合的增量式分子清单（断线重连对账用）
+   * @returns {Promise<Array<Object>>} 未闭合分子清单
+   */
+  async queryOpenMols() {
+    return this.#call("queryOpenMols", {});
   }
 
   /**
@@ -749,6 +818,12 @@ class BoardApiRpc {
             objectId: entry.objectId,
             key: entry.key,
             index: entry.index,
+          };
+        case "amendMol":
+          return {
+            method: entry.method,
+            molId: entry.molId,
+            patchesByObject: entry.patchesByObject,
           };
         default:
           return entry;

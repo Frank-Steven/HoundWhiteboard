@@ -112,6 +112,13 @@ async function connectDaemon(rootPath) {
       beginSupra: (key) => invoke("beginSupra", { key }),
       endSupra: (key) => invoke("endSupra", { key }),
       abortSupra: (key) => invoke("abortSupra", { key }),
+      beginMol: (objectIds, options) =>
+        invoke("beginMol", { objectIds, options }),
+      amendMol: (molId, patchesByObject) =>
+        invoke("amendMol", { molId, patchesByObject }),
+      endMol: (molId) => invoke("endMol", { molId }),
+      abortMol: (molId) => invoke("abortMol", { molId }),
+      queryOpenMols: () => invoke("queryOpenMols", {}),
     },
     close() {
       try {

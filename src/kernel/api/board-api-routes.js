@@ -283,10 +283,50 @@ const BOARD_API_ROUTES = {
   },
 
   /**
-   * 中止一个超分子（丢弃全部缓冲草稿）
+   * 中止一个超分子（丢弃未闭合分子并逐个撤销已物化成员）
    */
   abortSupra: {
     invoke: (api, p) => api.abortSupra(p.key),
+    flush: "none",
+  },
+
+  /**
+   * 开启一个增量式分子（手势 begin，捕获 before 快照）
+   */
+  beginMol: {
+    invoke: (api, p) => api.beginMol(p.objectIds, p.options),
+    flush: "none",
+  },
+
+  /**
+   * 对进行中的分子施加增量修正（手势的每帧）
+   */
+  amendMol: {
+    invoke: (api, p) => api.amendMol(p.molId, p.patchesByObject),
+    flush: "sync",
+  },
+
+  /**
+   * 定稿一个增量式分子（end-amend 物化上链）
+   */
+  endMol: {
+    invoke: (api, p) => api.endMol(p.molId),
+    flush: "sync",
+  },
+
+  /**
+   * 中止一个增量式分子（丢弃 amend 流，实例还原到手势起点）
+   */
+  abortMol: {
+    invoke: (api, p) => api.abortMol(p.molId),
+    flush: "sync",
+  },
+
+  /**
+   * 查询本端未闭合的增量式分子清单（断线重连对账用）
+   */
+  queryOpenMols: {
+    invoke: (api) => api.queryOpenMols(),
     flush: "none",
   },
 };

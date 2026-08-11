@@ -96,13 +96,14 @@ describe("Journaler", () => {
     const objects = await store.readAllObjects();
     expect(objects).toHaveLength(1);
     expect(objects[0].position.x).toBe(42);
-    // choose/modify/unchoose 三条记录依次入段
+    // choose/modify/unchoose/close-supra 四条记录依次入段
     const types = (await readRecords(store)).map((r) => r.type);
     expect(types).toEqual([
       "add-object",
       "choose-object",
       "modify-object",
       "unchoose-object",
+      "close-supra",
     ]);
   });
 
@@ -250,7 +251,7 @@ describe("Journaler", () => {
     expect(await store.readAllTrash()).toEqual([]);
   });
 
-  test("超分子物化后一段含全部成员", async () => {
+  test("超分子成员即时物化逐条入段，闭合追加 close-supra 记录", async () => {
     const { boardCore, api, store } = setup();
     await store.create();
     const journaler = createJournaler({ boardCore, store });
@@ -275,9 +276,12 @@ describe("Journaler", () => {
     await journaler.flush();
 
     const records = await readRecords(store);
-    expect(records).toHaveLength(2);
-    expect(records[0].supraOpId).toBe(records[0].id);
-    expect(records[1].supraOpId).toBe(records[0].id);
+    expect(records).toHaveLength(3);
+    // 三级容器模型：成员即时物化并携带 supraId，闭合记录收束折叠
+    expect(records[0].supraId).toMatch(/^core\/supra-\d+$/);
+    expect(records[1].supraId).toBe(records[0].supraId);
+    expect(records[2].type).toBe("close-supra");
+    expect(records[2].payload.supraId).toBe(records[0].supraId);
     expect((await store.readAllObjects()).map((o) => o.id).sort()).toEqual([
       "s1",
       "s2",

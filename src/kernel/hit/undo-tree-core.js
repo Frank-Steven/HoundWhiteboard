@@ -1,6 +1,6 @@
 /**
  * @file 时间回溯树的核心模块
- * @description 单一共享树与共享 HEAD：分子节点结构、追加与时间插入、活动链解析、视图查询与从日志派生重建。
+ * @description 单一共享树与共享 HEAD：分子节点结构、追加与时间插入、三级容器归并折叠、活动链解析、视图查询与从日志派生重建。
  * @module kernel/hit/undo-tree-core
  * @author Zhou Chenyu
  * SPDX-License-Identifier: MIT
@@ -17,13 +17,15 @@ import {
  * 分子节点
  * @description
  * 树状结构记在节点上：父链、子节点（按时间标记有序）、深度与所属操作的 share id。
- * 节点不存时间（时间随所属操作），数据不自带，放在数据池（操作日志）中凭 share id 获取。
+ * 节点不存时间（时间随所属操作），数据不自带，放在数据池（操作日志）中凭 id 获取。
+ * 三级容器模型下节点有三种形态：独立分子（单记录）、增量式分子节点（同 molId 的记录组）、
+ * 聚合节点（超分子闭合时连续段折叠产物）；成员记录 id 序列记在 memberIds 上。
  * @class
  * @author Zhou Chenyu
  */
 class MolecularNode {
   /**
-   * 数据池共享 id，即所属操作的 id；多个节点可凭同一 share id 共享数据
+   * 数据池共享 id，即节点首条所属操作的 id；多个节点可凭同一 share id 共享数据
    * @type {?string}
    */
   shareId;
@@ -47,14 +49,40 @@ class MolecularNode {
   depth;
 
   /**
+   * 节点承载的记录 id 序列（按追加序）
+   * @description 独立节点为单元素；增量式分子节点为同 molId 的记录组；聚合节点为折叠段全部成员。
+   * @type {string[]}
+   */
+  memberIds;
+
+  /**
+   * 增量式分子 id；非增量式分子节点为 null
+   * @type {?string}
+   */
+  molId;
+
+  /**
+   * 归属超分子 id（三级容器模型）；不属于超分子为 null
+   * @type {?string}
+   */
+  supraId;
+
+  /**
    * 构造分子节点
    * @param {?string} shareId - 数据池共享 id
    * @param {?MolecularNode} parent - 父节点
+   * @param {Object} [info] - 节点承载信息
+   * @param {string[]} [info.memberIds] - 成员记录 id 序列（缺省为 [shareId]）
+   * @param {?string} [info.molId] - 增量式分子 id
+   * @param {?string} [info.supraId] - 归属超分子 id
    */
-  constructor(shareId, parent) {
+  constructor(shareId, parent, info = {}) {
     this.shareId = shareId;
     this.parent = parent;
     this.depth = parent === null ? 0 : parent.depth + 1;
+    this.memberIds = info.memberIds ?? (shareId === null ? [] : [shareId]);
+    this.molId = info.molId ?? null;
+    this.supraId = info.supraId ?? null;
   }
 }
 
@@ -162,6 +190,15 @@ class UndoTree {
   }
 
   /**
+   * 活动链上归属某超分子的节点序列（链序）
+   * @param {string} supraId - 超分子 id，形如 `"{source}/supra-{n}"`
+   * @returns {MolecularNode[]} 归属该超分子的活动链节点（不含已撤销分支）
+   */
+  getActiveSupraNodes(supraId) {
+    return this.getActiveChain().filter((node) => node.supraId === supraId);
+  }
+
+  /**
    * 整棵树中查找携带某操作的节点（含分支，深度优先取先见者）
    * @param {string} shareId - 数据池共享 id（操作 id）
    * @returns {?MolecularNode} 节点；不存在时为 null
@@ -184,9 +221,10 @@ class UndoTree {
    * @description
    * 增加节点类按时间标记落位：晚于 HEAD（时钟环）时在 HEAD 之后追加并推进 HEAD，否则插入活动链的
    * 对应位置、插入点之后的节点改挂。撤销按目标在活动链上的位置呈现退化/分叉改挂/被吸收形态。
-   * 更改 HEAD 与重做的应用随重做落地补全。
+   * 增量式分子成员（同 molId）到达活动链末端时并入末端节点，一个分子始终是链上一个节点。
+   * 闭合超分子记录触发折叠：活动链上同 supraId 的连续节点段合并为聚合节点，自身不产生节点。
    * @param {import("./operation.js").OperationRecord} record - 分子操作记录
-   * @returns {?MolecularNode} 记录产生的新节点；撤销不产生节点返回 null
+   * @returns {?MolecularNode} 记录产生（或并入）的节点；撤销与闭合超分子不产生新节点返回 null
    * @throws {Error} 记录未入数据池（日志），或类型暂不支持时抛出
    */
   applyRecord(record) {
@@ -199,21 +237,36 @@ class UndoTree {
     if (record.type === OPERATION_TYPES.REDO) {
       return this.#applyRedo(record);
     }
+    if (record.type === OPERATION_TYPES.CLOSE_SUPRA) {
+      return this.#applyCloseSupra(record);
+    }
     if (getOperationEffectKind(record.type) !== OPERATION_EFFECT_KINDS.APPEND_NODE) {
       throw new Error(`树级操作的应用随更改 HEAD 落地补全：${record.type}`);
     }
     if (record.supraOpId !== null) {
-      throw new Error(`超分子成员不产生独立节点，经 applySupraNode 应用：${record.id}`);
+      throw new Error(`旧形态超分子成员不产生独立节点，经 applySupraNode 应用：${record.id}`);
     }
-    if (this.#head === this.#root || this.#compareRecords(record, this.#timeRecordOf(this.#head.shareId)) > 0) {
+    // 增量式分子归并：活动链末端节点与本记录同分子（同 molId 且同 supraId）时并入；
+    // 乱序到达或分子被并发操作分隔时各自独立成节点（退化，语义安全）
+    if (
+      record.molId !== null &&
+      this.#head !== this.#root &&
+      this.#head.molId === record.molId &&
+      this.#head.supraId === record.supraId &&
+      this.#compareRecords(record, this.#timeRecordOfNode(this.#head)) > 0
+    ) {
+      this.#head.memberIds.push(record.id);
+      return this.#head;
+    }
+    if (this.#head === this.#root || this.#compareRecords(record, this.#timeRecordOfNode(this.#head)) > 0) {
       return this.appendRecord(record);
     }
     return this.insertRecordByTimeMark(record);
   }
 
   /**
-   * 应用一个超分子操作（全部成员凝聚为一个节点）
-   * @description 节点 shareId 为超分子 id（首分子 id），时间标记取末分子（完成时刻）；
+   * 应用一个旧形态超分子操作（全部成员凝聚为一个节点）
+   * @description 兼容 K1.5 日志形态：节点 shareId 为超分子 id（首分子 id），时间标记取末分子（完成时刻）；
    * 晚于 HEAD 时追加并推进 HEAD，否则插入活动链对应位置。空成员组不产生节点。
    * @param {import("./operation.js").OperationRecord[]} members - 超分子成员记录（按追加序）
    * @returns {?MolecularNode} 超分子节点；空组返回 null
@@ -228,11 +281,12 @@ class UndoTree {
     if (existing !== null) {
       return existing;
     }
+    const info = { memberIds: members.map((member) => member.id) };
     const last = members[members.length - 1];
-    if (this.#head === this.#root || this.#compareRecords(last, this.#timeRecordOf(this.#head.shareId)) > 0) {
-      return this.#appendNode(shareId);
+    if (this.#head === this.#root || this.#compareRecords(last, this.#timeRecordOfNode(this.#head)) > 0) {
+      return this.#appendNode(shareId, info);
     }
-    return this.#insertNodeByTime(shareId, last);
+    return this.#insertNodeByTime(shareId, last, info);
   }
 
   /**
@@ -270,7 +324,7 @@ class UndoTree {
     let keepCount = 0;
     while (
       keepCount < chain.length &&
-      this.#compareRecords(this.#log.get(chain[keepCount].shareId), record) <= 0
+      this.#compareRecords(this.#timeRecordOfNode(chain[keepCount]), record) <= 0
     ) {
       keepCount++;
     }
@@ -278,10 +332,14 @@ class UndoTree {
       const dropped = chain[keepCount];
       dropped.parent.children = dropped.parent.children.filter((child) => child !== dropped);
     }
-    // 改挂：分叉点下新建链，节点凭同一 share id 共享数据
+    // 改挂：分叉点下新建链，节点凭同一 share id 与成员序列共享数据
     let parent = forkPoint;
     for (const old of chain) {
-      const copy = new MolecularNode(old.shareId, parent);
+      const copy = new MolecularNode(old.shareId, parent, {
+        memberIds: [...old.memberIds],
+        molId: old.molId,
+        supraId: old.supraId,
+      });
       this.#insertChildSorted(parent, copy);
       parent = copy;
     }
@@ -291,12 +349,83 @@ class UndoTree {
   }
 
   /**
+   * 应用闭合超分子操作记录（折叠）
+   * @description 在活动链上找同 supraId 的连续节点段，逐段折叠为一个聚合节点；
+   * 已撤销分支上的成员不参与折叠（保持独立，可重做）；单节点段保持独立（退化规则，
+   * 撤销粒度退回分子级，功能不丢）。重复闭合幂等（聚合节点自成单节点段，不再折叠）。
+   * @param {import("./operation.js").OperationRecord} record - 闭合超分子操作记录
+   * @returns {null}
+   * @private
+   */
+  #applyCloseSupra(record) {
+    const supraId = record.payload.supraId;
+    const chain = this.getActiveChain();
+    const segments = [];
+    let current = null;
+    for (const node of chain) {
+      if (node.supraId === supraId) {
+        if (current === null) {
+          current = [];
+          segments.push(current);
+        }
+        current.push(node);
+      } else {
+        current = null;
+      }
+    }
+    for (const segment of segments) {
+      if (segment.length >= 2) {
+        this.#foldSegment(segment);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 折叠活动链上一段连续节点为聚合节点
+   * @description 聚合节点 shareId 取段首节点，memberIds 为段内全部节点的成员记录扁平序列（链序）；
+   * 段内节点携带的分支子节点转挂到聚合节点（保持分支可达，重做目标不丢）；
+   * HEAD 落在段内时移到聚合节点（同一逻辑位置）。
+   * @param {MolecularNode[]} segment - 活动链上的连续节点段（链序，长度 ≥ 2）
+   * @returns {MolecularNode} 聚合节点
+   * @private
+   */
+  #foldSegment(segment) {
+    const first = segment[0];
+    const members = new Set(segment);
+    const aggregate = new MolecularNode(first.shareId, first.parent, {
+      memberIds: segment.flatMap((node) => node.memberIds),
+      supraId: first.supraId,
+    });
+    // 段首位置替换：父节点的子节点数组中摘出段首、按时间序插入聚合节点
+    const parent = first.parent;
+    parent.children = parent.children.filter((child) => child !== first);
+    this.#insertChildSorted(parent, aggregate);
+    // 段内节点的链外子节点（活动链后继与分支）全部转挂聚合节点
+    for (const node of segment) {
+      for (const child of [...node.children]) {
+        if (members.has(child)) {
+          continue;
+        }
+        child.parent = aggregate;
+        this.#insertChildSorted(aggregate, child);
+        this.#shiftDepth(child, aggregate.depth + 1 - child.depth);
+      }
+    }
+    if (members.has(this.#head)) {
+      this.#head = aggregate;
+    }
+    this.#rebuildActiveIndex();
+    return aggregate;
+  }
+
+  /**
    * 在 HEAD 之后追加节点并推进 HEAD
    * @param {import("./operation.js").OperationRecord} record - 分子操作记录
    * @returns {MolecularNode} 新节点
    */
   appendRecord(record) {
-    return this.#appendNode(record.id);
+    return this.#appendNode(record.id, this.#nodeInfoOf(record));
   }
 
   /**
@@ -305,17 +434,28 @@ class UndoTree {
    * @returns {MolecularNode} 新节点
    */
   insertRecordByTimeMark(record) {
-    return this.#insertNodeByTime(record.id, record);
+    return this.#insertNodeByTime(record.id, record, this.#nodeInfoOf(record));
+  }
+
+  /**
+   * 取记录对应的节点承载信息
+   * @param {import("./operation.js").OperationRecord} record - 分子操作记录
+   * @returns {{ memberIds: string[], molId: ?string, supraId: ?string }} 节点承载信息
+   * @private
+   */
+  #nodeInfoOf(record) {
+    return { memberIds: [record.id], molId: record.molId, supraId: record.supraId };
   }
 
   /**
    * 在 HEAD 之后追加节点并推进 HEAD
    * @param {string} shareId - 数据池共享 id
+   * @param {Object} [info] - 节点承载信息（见 MolecularNode 构造）
    * @returns {MolecularNode} 新节点
    * @private
    */
-  #appendNode(shareId) {
-    const node = new MolecularNode(shareId, this.#head);
+  #appendNode(shareId, info = {}) {
+    const node = new MolecularNode(shareId, this.#head, info);
     this.#insertChildSorted(this.#head, node);
     this.#head = node;
     // 推进 HEAD 的新工作洗掉可重做的撤销
@@ -328,19 +468,20 @@ class UndoTree {
    * 按时间标记插入活动链的对应位置，插入点之后的节点改挂；HEAD 不变
    * @param {string} shareId - 数据池共享 id
    * @param {import("./operation.js").OperationRecord} timeRecord - 时间标记的来源记录
+   * @param {Object} [info] - 节点承载信息（见 MolecularNode 构造）
    * @returns {MolecularNode} 新节点
    * @private
    */
-  #insertNodeByTime(shareId, timeRecord) {
+  #insertNodeByTime(shareId, timeRecord, info = {}) {
     const chain = this.getActiveChain();
     const successor = chain.find(
-      (node) => this.#compareRecords(timeRecord, this.#timeRecordOf(node.shareId)) < 0,
+      (node) => this.#compareRecords(timeRecord, this.#timeRecordOfNode(node)) < 0,
     ) ?? null;
     if (successor === null) {
-      return this.#appendNode(shareId);
+      return this.#appendNode(shareId, info);
     }
     const parent = successor.parent;
-    const node = new MolecularNode(shareId, parent);
+    const node = new MolecularNode(shareId, parent, info);
     this.#replaceChild(parent, successor, node);
     node.children = [successor];
     const delta = node.depth + 1 - successor.depth;
@@ -443,13 +584,11 @@ class UndoTree {
   }
 
   /**
-   * 从操作日志派生重建树（f(日志)：按时间标记全序逐条应用）
-   * @param {import("./operation-log.js").OperationLog} log - 操作日志
-   * @returns {UndoTree} 重建的树
-   */
-  /**
    * 从数据池（操作日志）原地派生重建（f(日志)）
-   * @description 清空结构状态后按分组定序逐条应用；超分子成员组凝聚为单节点。
+   * @description 清空结构状态后按单元定序逐条应用。派生单元：旧日志形态（supraOpId）成员
+   * 并入其超分子组，凝聚为单节点；其余记录各自独立应用——三级容器模型的分子归并
+   * （同 molId 相邻并入）与超分子折叠（close-supra 触发）在应用时发生。两种日志形态
+   * 混合同一棵树收敛。
    * @returns {void}
    */
   rebuild() {
@@ -457,29 +596,32 @@ class UndoTree {
     this.#head = this.#root;
     this.#activeByShareId = new Map();
     this.#redoStack = [];
-    // 分组：独立分子各自成组，超分子成员并入其超分子组
-    const groups = [];
-    const supraGroups = new Map();
+    const units = [];
+    const legacyGroups = new Map();
     for (const record of this.#log.toArray()) {
       if (record.supraOpId === null) {
-        groups.push([record]);
+        units.push(record);
       } else {
-        let group = supraGroups.get(record.supraOpId);
+        let group = legacyGroups.get(record.supraOpId);
         if (group === undefined) {
           group = [];
-          supraGroups.set(record.supraOpId, group);
-          groups.push(group);
+          legacyGroups.set(record.supraOpId, group);
+          units.push(group);
         }
         group.push(record);
       }
     }
-    // 组序取末分子时间标记（完成时刻），保证确定性全序
-    groups.sort((a, b) => compareRecords(a[a.length - 1], b[b.length - 1]));
-    for (const group of groups) {
-      if (group[0].supraOpId === null) {
-        this.applyRecord(group[0]);
+    // 单元定序：旧超分子组取末分子时间标记（完成时刻），单条记录取自身，保证确定性全序
+    units.sort((a, b) => {
+      const reprA = Array.isArray(a) ? a[a.length - 1] : a;
+      const reprB = Array.isArray(b) ? b[b.length - 1] : b;
+      return compareRecords(reprA, reprB);
+    });
+    for (const unit of units) {
+      if (Array.isArray(unit)) {
+        this.applySupraNode(unit);
       } else {
-        this.applySupraNode(group);
+        this.applyRecord(unit);
       }
     }
   }
@@ -496,13 +638,13 @@ class UndoTree {
   }
 
   /**
-   * 取节点的代表记录（时间标记的来源）
-   * @param {string} shareId - 数据池共享 id
+   * 取节点的代表记录（时间标记的来源：成员序列的末条记录）
+   * @param {MolecularNode} node - 分子节点
    * @returns {import("./operation.js").OperationRecord} 代表记录
    * @private
    */
-  #timeRecordOf(shareId) {
-    return this.#log.getLastMember(shareId);
+  #timeRecordOfNode(node) {
+    return this.#log.get(node.memberIds[node.memberIds.length - 1] ?? node.shareId);
   }
 
   /**
@@ -523,9 +665,9 @@ class UndoTree {
    * @private
    */
   #insertChildSorted(parent, child) {
-    const childRecord = this.#timeRecordOf(child.shareId);
+    const childRecord = this.#timeRecordOfNode(child);
     const index = parent.children.findIndex(
-      (sibling) => this.#compareRecords(childRecord, this.#timeRecordOf(sibling.shareId)) < 0,
+      (sibling) => this.#compareRecords(childRecord, this.#timeRecordOfNode(sibling)) < 0,
     );
     if (index === -1) {
       parent.children.push(child);

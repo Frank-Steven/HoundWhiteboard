@@ -125,7 +125,7 @@ describe("hit commit 边界", () => {
     expect(boardCore.undoTree.head.shareId).toBe(add.id);
   });
 
-  test("选择 → 修改 → 提交凝聚为选择、修改、取消选择三个分子", async () => {
+  test("选择 → 修改 → 提交物化为选择、修改、取消选择分子与闭合记录", async () => {
     const boardCore = createBoardCore();
     const api = new BoardApi(boardCore);
     await createStaticStroke(api, "s1");
@@ -139,11 +139,15 @@ describe("hit commit 边界", () => {
       "choose-object",
       "modify-object",
       "unchoose-object",
+      "close-supra",
     ]);
     const [, , modify] = boardCore.operationLog.toArray();
     expect(modify.payload.before.position).toEqual({ x: 0, y: 0 });
     expect(modify.payload.after.position).toEqual({ x: 50, y: 50 });
     expect(modify.properties).toContain("position");
+    // modify+unchoose 同属内部匿名超分子，闭合折叠为一个聚合节点
+    expect(modify.supraId).toMatch(/^core\/supra-\d+$/);
+    expect(boardCore.undoTree.getActiveChain()).toHaveLength(3);
   });
 
   test("放弃更改只产生选择与取消选择，不产生修改", async () => {
@@ -172,6 +176,7 @@ describe("hit commit 边界", () => {
       "choose-object",
       "modify-object",
       "unchoose-object",
+      "close-supra",
     ]);
     const [, , modify] = boardCore.operationLog.toArray();
     expect(modify.payload.before.position).toEqual({ x: 0, y: 0 });
@@ -226,10 +231,11 @@ describe("hit commit 边界", () => {
       "choose-object",
       "modify-object",
       "unchoose-object",
+      "close-supra",
     ]);
   });
 
-  test("一笔擦短：修改分子携切割前后快照，且各记录同属一个超分子", async () => {
+  test("一笔擦短：修改分子携切割前后快照，且携带内部超分子 supraId", async () => {
     const boardCore = createBoardCore();
     const api = new BoardApi(boardCore);
     await createStaticStroke(api, "s1");
@@ -245,10 +251,11 @@ describe("hit commit 边界", () => {
     const [, modify] = records;
     expect(modify.payload.before.data.points).toHaveLength(5);
     expect(modify.payload.after.data.points).toHaveLength(4);
-    expect(modify.supraOpId).toBe(modify.id);
+    expect(modify.supraOpId).toBeNull();
+    expect(modify.supraId).toMatch(/^core\/supra-\d+$/);
   });
 
-  test("一笔擦成两笔：修改与增加分子同属一个超分子", async () => {
+  test("一笔擦成两笔：修改与增加分子同属一个超分子并折叠为一个节点", async () => {
     const boardCore = createBoardCore();
     const api = new BoardApi(boardCore);
     await createStaticStroke(api, "s1");
@@ -261,14 +268,17 @@ describe("hit commit 边界", () => {
 
     const types = recordTypes(boardCore);
     expect(types[0]).toBe("add-object");
-    expect(types.slice(1).sort()).toEqual(["add-object", "modify-object"]);
+    expect(types.slice(1).sort()).toEqual(["add-object", "close-supra", "modify-object"]);
     const records = boardCore.operationLog.toArray();
-    const supraIds = new Set(records.slice(1).map((r) => r.supraOpId));
+    const supraIds = new Set(records.slice(1, 3).map((r) => r.supraId));
     expect(supraIds.size).toBe(1);
-    expect([...supraIds][0]).toBe(records[1].id);
+    // 闭合折叠：擦除成员凝聚为一个聚合节点（一次撤销回退整次擦除）
+    const chain = boardCore.undoTree.getActiveChain();
+    expect(chain).toHaveLength(2);
+    expect(chain[1].memberIds).toHaveLength(2);
   });
 
-  test("整笔擦没：删除分子记录于超分子", async () => {
+  test("整笔擦没：删除分子记录携带内部超分子 supraId", async () => {
     const boardCore = createBoardCore();
     const api = new BoardApi(boardCore);
     await createStaticStroke(api, "s1");
@@ -283,7 +293,8 @@ describe("hit commit 边界", () => {
     expect(types[0]).toBe("add-object");
     expect(types.slice(1)).toEqual(["delete-object"]);
     const [, del] = boardCore.operationLog.toArray();
-    expect(del.supraOpId).toBe(del.id);
+    expect(del.supraOpId).toBeNull();
+    expect(del.supraId).toMatch(/^core\/supra-\d+$/);
   });
 
   test("活动链与日志同序，HEAD 指向最新记录", async () => {
@@ -311,7 +322,7 @@ describe("撤销", () => {
 
   test("无可撤销时返回 undone false", () => {
     const api = new BoardApi(createBoardCore());
-    expect(api.undo()).toEqual({ undone: false, targetNodeId: null });
+    expect(api.undo()).toEqual({ undone: false, targetNodeId: null, forcedEndMolIds: [] });
   });
 
   test("撤销增加对象：对象从白板移除，HEAD 回退", async () => {
@@ -319,7 +330,7 @@ describe("撤销", () => {
     const api = new BoardApi(boardCore);
     await createStaticStroke(api, "s1");
 
-    expect(api.undo()).toEqual({ undone: true, targetNodeId: "core/op-1" });
+    expect(api.undo()).toEqual({ undone: true, targetNodeId: "core/op-1", forcedEndMolIds: [] });
     expect(boardCore.getObjectById("s1")).toBeUndefined();
     expect(boardCore.undoTree.head).toBe(boardCore.undoTree.root);
     expect(boardCore.operationLog.toArray().at(-1).type).toBe("undo");
@@ -367,27 +378,32 @@ describe("撤销", () => {
     expect(api.undo().undone).toBe(false);
   });
 
-  test("指定同一会话 key：选择+修改+提交凝聚为一个节点", async () => {
+  test("指定同一会话 key：成员即时物化，闭合后折叠为一个聚合节点", async () => {
     const boardCore = createBoardCore();
     const api = new BoardApi(boardCore);
     await createStaticStroke(api, "s1");
 
     api.beginSupra("session/1");
     await api.addActiveObjects(["s1"], { supraKey: "session/1" });
+    // 三级容器模型：成员即时物化上链（不再是草稿），会话期间 choose 已在链上
+    expect(boardCore.undoTree.getActiveChain()).toHaveLength(2);
     api.modifyObject("s1", { position: { x: 50, y: 50 } });
     await api.commitObjects(["s1"], { supraKey: "session/1" });
-    // 会话期间尚无节点（成员缓冲中）
-    expect(boardCore.undoTree.getActiveChain()).toHaveLength(1);
+    // modify 与 unchoose 即时物化，各自是链上独立节点
+    expect(boardCore.undoTree.getActiveChain()).toHaveLength(4);
     api.endSupra("session/1");
 
-    // 物化后：add、（choose+modify+unchoose）超分子节点——整次会话一步撤销
+    // 闭合折叠：add、（choose+modify+unchoose）聚合节点——整次会话一步撤销
     expect(boardCore.undoTree.getActiveChain()).toHaveLength(2);
-    const members = boardCore.operationLog.getSupraMembers(boardCore.undoTree.head.shareId);
+    const head = boardCore.undoTree.head;
+    expect(head.memberIds).toHaveLength(3);
+    const members = head.memberIds.map((id) => boardCore.operationLog.get(id));
     expect(members.map((r) => r.type)).toEqual([
       "choose-object",
       "modify-object",
       "unchoose-object",
     ]);
+    expect(members.every((r) => r.supraId === "core/supra-2")).toBe(true);
     api.undo();
     expect(boardCore.getObjectById("s1").position.x).toBe(0);
     expect(boardCore.activeObjectManager.has("s1")).toBe(false);
@@ -408,7 +424,7 @@ describe("撤销", () => {
       radius: 1,
       source: "test",
     });
-    expect(boardCore.operationLog.size).toBe(3);
+    expect(boardCore.operationLog.size).toBe(4);
     expect(boardCore.undoTree.getActiveChain()).toHaveLength(2);
     const splitId = "test/core/1";
     expect(boardCore.getObjectById(splitId)).toBeDefined();
@@ -419,7 +435,7 @@ describe("撤销", () => {
     expect(boardCore.undoTree.getActiveChain()).toHaveLength(1);
   });
 
-  test("一次拖拽凝聚为一个节点：会话内逐帧修改简并，一次撤销回退整次拖拽", async () => {
+  test("一次拖拽折叠为一个节点：会话内逐帧修改各自物化，一次撤销回退整次拖拽", async () => {
     const boardCore = createBoardCore();
     const api = new BoardApi(boardCore);
     await createStaticStroke(api, "s1");
@@ -433,17 +449,16 @@ describe("撤销", () => {
     }
     api.endSupra("drag/1");
 
-    // 整次拖拽 = 一个超分子节点，成员简并为 选择+修改+取消选择 三条
+    // 三级容器模型不再简并：三帧各自物化为 choose+modify+unchoose，闭合时整体折叠为一个聚合节点
     expect(recordTypes(boardCore)).toEqual([
       "add-object",
-      "choose-object",
-      "modify-object",
-      "unchoose-object",
+      "choose-object", "modify-object", "unchoose-object",
+      "choose-object", "modify-object", "unchoose-object",
+      "choose-object", "modify-object", "unchoose-object",
+      "close-supra",
     ]);
-    const modify = boardCore.operationLog.toArray()[2];
-    expect(modify.payload.before.position).toEqual({ x: 0, y: 0 });
-    expect(modify.payload.after.position).toEqual({ x: 30, y: 100 });
     expect(boardCore.undoTree.getActiveChain()).toHaveLength(2);
+    expect(boardCore.undoTree.head.memberIds).toHaveLength(9);
 
     // 一次撤销回退整次拖拽
     expect(api.undo().undone).toBe(true);
@@ -462,7 +477,7 @@ describe("撤销", () => {
     const chain = boardCore.undoTree.getActiveChain();
     expect(chain).toHaveLength(3);
     const chooseNode = chain[2];
-    const members = boardCore.operationLog.getSupraMembers(chooseNode.shareId);
+    const members = chooseNode.memberIds.map((id) => boardCore.operationLog.get(id));
     expect(members.map((r) => r.type)).toEqual(["choose-object", "choose-object"]);
   });
 

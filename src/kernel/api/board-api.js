@@ -99,6 +99,24 @@ class BoardApi {
   #chooseSnapshots = new Map();
 
   /**
+   * 进行中的增量式分子表
+   * @description molId -> 分子状态（supraKey 归属、逐对象 before 快照与序列水位）；
+   * amend 流的唯一载体，endMol 物化或 abortMol 丢弃后移除。原子（帧增量）永不落盘。
+   * @type {Map<string, { supraKey: ?string, create: boolean, objects: Map<string, { before: ?Object }>, seq: number }>}
+   * @private
+   */
+  #mols = new Map();
+
+  /**
+   * 已物化水位表
+   * @description 对象 id 出现即表示「实例当前状态 == 最近一次 endMol 物化记录的 after」，
+   * commitObjects 凭此跳过重复的修改分子；任何后续实例改动（amendMol/modifyObject 等）使水位失效。
+   * @type {Set<string>}
+   * @private
+   */
+  #materializedMarks = new Set();
+
+  /**
    * 远程选择注册表变更脏标记
    * @description 远程 choose/unchoose 效果应用时置位，合批为一次 remote-activity 事件。
    * @type {boolean}
@@ -271,6 +289,7 @@ class BoardApi {
    */
   modifyObject(objectId, patch) {
     this.#applyObjectPatch(this.#requireActiveObject(objectId), patch);
+    this.#materializedMarks.delete(objectId);
     this.#emitSubframe({ objectId, patch });
   }
 
@@ -285,6 +304,7 @@ class BoardApi {
     for (const { objectId, patch } of items) {
       if (objectId == null || !patch) continue;
       this.#applyObjectPatch(this.#requireActiveObject(objectId), patch);
+      this.#materializedMarks.delete(objectId);
       this.#emitSubframe({ objectId, patch });
     }
   }
@@ -299,6 +319,7 @@ class BoardApi {
   appendListItem(objectId, key, items) {
     const obj = this.#requireActiveObject(objectId);
     obj.appendListItem(key, ...(items ?? []));
+    this.#materializedMarks.delete(objectId);
     this.#boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
     this.#emitSubframe({ objectId, append: { key, items: [...(items ?? [])] } });
   }
@@ -314,8 +335,196 @@ class BoardApi {
   replaceListItem(objectId, key, index, item) {
     const obj = this.#requireActiveObject(objectId);
     obj.replaceListItem(key, index, item);
+    this.#materializedMarks.delete(objectId);
     this.#boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
     this.#emitSubframe({ objectId, replace: { key, index, item } });
+  }
+
+  /**
+   * 开启一个增量式分子（手势 begin）
+   * @description 逐对象捕获 before 快照并分配 molId；分子进行中只产生 amend 流（原子，永不落盘），
+   * endMol 时折叠物化为分子记录。对象须在活动层（准入不变式）。
+   * @param {string[]} objectIds - 分子覆盖的对象 id 列表
+   * @param {Object} [options] - 选项
+   * @param {string} [options.supraKey] - 归属的超分子 key（须已开启）
+   * @param {boolean} [options.create] - 创建型分子（before 为 null，endMol 物化为 add-object 记录）
+   * @returns {string} 分子 id
+   * @throws {Error} 对象不是活动对象、对象列表为空或指定的超分子未开启时抛出
+   */
+  beginMol(objectIds, options = {}) {
+    const ids = Array.isArray(objectIds) ? objectIds : [];
+    if (ids.length === 0) {
+      throw new Error("beginMol 需要至少一个对象");
+    }
+    const boardCore = this.#boardCore;
+    if (
+      options.supraKey !== undefined &&
+      !boardCore.hitCommitter.hasSupra(options.supraKey)
+    ) {
+      throw new Error(`超分子 ${options.supraKey} 未开启（分子无法指定进入）`);
+    }
+    const objects = new Map();
+    for (const objectId of ids) {
+      const obj = this.#requireActiveObject(objectId);
+      objects.set(objectId, { before: options.create === true ? null : obj.serialize() });
+    }
+    const molId = boardCore.hitCommitter.allocateMolId();
+    this.#mols.set(molId, {
+      supraKey: options.supraKey ?? null,
+      create: options.create === true,
+      objects,
+      seq: 0,
+    });
+    this.#emitAmend({
+      kind: "begin-mol",
+      molId,
+      entries: [...objects].map(([objectId, state]) => ({ objectId, before: state.before })),
+    });
+    return molId;
+  }
+
+  /**
+   * 对进行中的分子施加增量修正（原子载体；手势的每帧）
+   * @description 补丁即时应用到活动层实例（本地渲染与 amend 流的数据源），不产生记录；
+   * 对已关闭的分子幂等空操作（RPC 竞态防护）。
+   * @param {string} molId - 分子 id
+   * @param {Object<string, import("../types/board-api-types.js").ObjectPatch>} patchesByObject - 对象 id -> 修改 patch
+   * @returns {boolean} 分子是否仍在进行中
+   */
+  amendMol(molId, patchesByObject) {
+    const mol = this.#mols.get(molId);
+    if (mol === undefined) {
+      return false;
+    }
+    const entries = [];
+    for (const [objectId, patch] of Object.entries(patchesByObject ?? {})) {
+      if (!mol.objects.has(objectId) || !patch) continue;
+      this.#applyObjectPatch(this.#requireActiveObject(objectId), patch);
+      this.#materializedMarks.delete(objectId);
+      entries.push({ objectId, patch });
+      // P2 前保留 SubFrame 预览发射，amend 通道上线后移除
+      this.#emitSubframe({ objectId, patch });
+    }
+    if (entries.length > 0) {
+      mol.seq += 1;
+      this.#emitAmend({ kind: "amend", molId, seq: mol.seq, entries });
+    }
+    return true;
+  }
+
+  /**
+   * 定稿一个增量式分子（end-amend）：折叠为分子记录，即时物化上链
+   * @description 逐对象取当前实例快照为 after，生成 modify-object（创建型为 add-object）记录：
+   * 每对象一条、同 molId、带 supraId；多对象手势在树上归并为一个分子节点。
+   * 无实际差异的对象不产生记录。对已关闭的分子幂等空操作。
+   * @param {string} molId - 分子 id
+   * @returns {boolean} 分子是否仍在进行中（false 表示本就未开启或已关闭）
+   */
+  endMol(molId) {
+    const mol = this.#mols.get(molId);
+    if (mol === undefined) {
+      return false;
+    }
+    this.#mols.delete(molId);
+    const boardCore = this.#boardCore;
+    const committer = boardCore.hitCommitter;
+    for (const [objectId, state] of mol.objects) {
+      const obj = boardCore.getObjectById(objectId);
+      if (!obj) continue;
+      const chunkId = this.#resolveObjectChunkId(objectId);
+      const after = obj.serialize();
+      const layerStackSnapshot = this.#captureLayerStackSnapshot(chunkId);
+      if (state.before === null) {
+        committer.commitAdd({
+          chunkId,
+          objectId,
+          data: after,
+          layerStackSnapshot,
+          supraKey: mol.supraKey ?? undefined,
+          molId,
+        });
+        continue;
+      }
+      const properties = this.#diffProperties(state.before, after);
+      if (properties.length === 0) continue;
+      committer.commitModify({
+        chunkId,
+        objectId,
+        properties,
+        before: state.before,
+        after,
+        layerStackSnapshot,
+        supraKey: mol.supraKey ?? undefined,
+        molId,
+      });
+      this.#materializedMarks.add(objectId);
+    }
+    this.#emitAmend({ kind: "end-mol", molId });
+    return true;
+  }
+
+  /**
+   * 中止一个增量式分子：丢弃 amend 流，实例还原到手势起点，不产生记录
+   * @description 创建型分子的中止移除暂存对象。对已关闭的分子幂等空操作。
+   * @param {string} molId - 分子 id
+   * @returns {boolean} 分子是否曾在进行中
+   */
+  abortMol(molId) {
+    const mol = this.#mols.get(molId);
+    if (mol === undefined) {
+      return false;
+    }
+    this.#mols.delete(molId);
+    const boardCore = this.#boardCore;
+    for (const [objectId, state] of mol.objects) {
+      const obj = boardCore.getObjectById(objectId);
+      if (!obj) continue;
+      if (state.before === null) {
+        // 创建型中止：暂存对象随分子一并移除（尚未物化，无需记录）
+        boardCore.activeObjectManager.discard(new Set([obj]));
+        boardCore.objectLoaded.delete(objectId);
+        continue;
+      }
+      this.#applyObjectPatch(obj, {
+        position: state.before.position,
+        transform: state.before.transform,
+        property: state.before.property,
+        data: state.before.data,
+      });
+    }
+    this.#emitAmend({ kind: "abort-mol", molId });
+    return true;
+  }
+
+  /**
+   * 查询本端未闭合的增量式分子清单（断线重连对账用）
+   * @returns {Array<{ molId: string, supraKey: ?string, create: boolean, seq: number, entries: Array<{ objectId: string, before: ?Object }> }>} 未闭合分子清单
+   */
+  queryOpenMols() {
+    const list = [];
+    for (const [molId, mol] of this.#mols) {
+      list.push({
+        molId,
+        supraKey: mol.supraKey,
+        create: mol.create,
+        seq: mol.seq,
+        entries: [...mol.objects].map(([objectId, state]) => ({
+          objectId,
+          before: state.before,
+        })),
+      });
+    }
+    return list;
+  }
+
+  /**
+   * 发射 amend 事件（分子生命周期：begin-mol / amend / end-mol / abort-mol）
+   * @param {Object} message - amend 消息
+   * @returns {void}
+   * @private
+   */
+  #emitAmend(message) {
+    this.#boardCore.activityEventBus?.emit("amend", message);
   }
 
   /**
@@ -789,7 +998,8 @@ class BoardApi {
           }
           const properties = this.#diffProperties(before, after);
           // 无实际差异时不产生修改分子；层位调整（置顶/置底等）不经 serialize 差异表达，落地时需另行保证不被跳过
-          if (properties.length > 0) {
+          // 已被 endMol 物化覆盖（已物化水位）的对象不重复产生修改分子，只产取消选择分子
+          if (properties.length > 0 && !this.#materializedMarks.has(obj.id)) {
             committer.commitModify({
               chunkId,
               objectId: obj.id,
@@ -807,6 +1017,7 @@ class BoardApi {
             choice: choiceOfObject.get(obj.id),
           });
           this.#chooseSnapshots.delete(obj.id);
+          this.#materializedMarks.delete(obj.id);
         } else {
           committer.commitAdd({
             chunkId,
@@ -950,8 +1161,18 @@ class BoardApi {
             objectId: obj.id,
             supraKey,
             choice: choiceOfObject.get(obj.id),
+            // 放弃型闭合标志：对象退出活动层且状态回选择前快照；
+            // restore 快照供重放/重做/远端还原（实例的本地还原本路径上方已完成）
+            discard: true,
+            restore: {
+              position: snapshot.position,
+              transform: snapshot.transform,
+              property: snapshot.property,
+              data: snapshot.data,
+            },
           });
           this.#chooseSnapshots.delete(obj.id);
+          this.#materializedMarks.delete(obj.id);
         }
       }
     } finally {
@@ -995,7 +1216,8 @@ class BoardApi {
    * @private
    *
    * @description
-   * 手势内 choose 在超分子闭合前不入日志，互斥与实时可见依赖本即时通道；日志仍是权威路径。
+   * choose/unchoose/commit 记录即时物化入日志（权威路径）；本通道是 ephemeral 的
+   * 实时可见与互斥依据，远端凭它即时登记远程活动，日志记录到达后收敛。
    */
   #emitActivity(kind, ids, choice) {
     if (!Array.isArray(ids) || ids.length === 0) return;
@@ -1158,7 +1380,7 @@ class BoardApi {
    * @param {string} [options.source] - 按记录来源过滤
    * @param {string} [options.type] - 按分子操作类型过滤
    * @param {number} [options.limit] - 仅保留末尾 N 条
-   * @returns {Array<Object>} 操作记录数组（含 id、type、source、time、parentId、supraOpId、properties、payload）
+   * @returns {Array<Object>} 操作记录数组（含 id、type、source、time、parentId、supraOpId、molId、supraId、discard、properties、payload）
    */
   queryOperations(options = {}) {
     let records = this.#boardCore.operationLog.toJSON();
@@ -1177,8 +1399,8 @@ class BoardApi {
   /**
    * 查询时间回溯树结构
    * @description 节点表为扁平先根遍历（子节点按时间标记升序），含活动链外的已撤销分支；
-   * CLI 等前端可凭 parentId/depth 排版缩进树。
-   * @returns {{head: ?string, activeChain: string[], redoStack: Array<{targetId: string, previousHeadId: string}>, nodes: Array<{id: string, parentId: ?string, depth: number, type: ?string, memberTypes: ?string[], source: ?string, active: boolean, isHead: boolean}>}} 树结构
+   * CLI 等前端可凭 parentId/depth 排版缩进树。多记录节点（增量式分子/聚合节点）以 memberTypes 列出成员类型。
+   * @returns {{head: ?string, activeChain: string[], redoStack: Array<{targetId: string, previousHeadId: string}>, nodes: Array<{id: string, parentId: ?string, depth: number, type: ?string, memberTypes: ?string[], molId: ?string, supraId: ?string, source: ?string, active: boolean, isHead: boolean}>}} 树结构
    */
   queryUndoTree() {
     const boardCore = this.#boardCore;
@@ -1192,16 +1414,21 @@ class BoardApi {
     const walk = (parent) => {
       for (const child of parent.children) {
         const record = recordById.get(child.shareId);
-        // 超分子节点以首分子为 shareId，成员类型全部列出（choose+modify+unchoose 这类链）
-        const members = boardCore.operationLog.getSupraMembers(child.shareId);
+        // 多记录节点（增量式分子/聚合节点）以节点 memberIds 为准展开成员类型
         const memberTypes =
-          members.length > 1 ? members.map((member) => member.type) : null;
+          child.memberIds.length > 1
+            ? child.memberIds
+              .map((id) => recordById.get(id)?.type ?? null)
+              .filter((type) => type !== null)
+            : null;
         nodes.push({
           id: child.shareId,
           parentId: parent.shareId ?? null,
           depth: child.depth,
           type: record?.type ?? null,
           memberTypes,
+          molId: child.molId,
+          supraId: child.supraId,
           source: record?.source ?? null,
           active: activeIds.has(child.shareId),
           isHead: child === tree.head,
@@ -1451,8 +1678,9 @@ class BoardApi {
 
   /**
    * 开启一个超分子
-   * @description 开启期间指定该 key 的增加节点类提交缓冲为草稿，endSupra(key) 时简并定稿、
-   * 整体入日志并凝聚为单节点。未指定 key 的提交永远独立成录。谁开启谁关闭。
+   * @description 开启期间指定该 key 的增加节点类提交即时物化上链（记录携带 supraId）；
+   * endSupra(key) 追加 close-supra 记录，树构建把活动链上同 supraId 的连续节点段折叠为聚合节点。
+   * 未指定 key 的提交永远独立成录。谁开启谁关闭。
    * @param {string} key - 超分子 key（调用方提供的会话标识，可跨通道序列化）
    * @returns {void}
    */
@@ -1461,21 +1689,40 @@ class BoardApi {
   }
 
   /**
-   * 闭合一个超分子（简并定稿、物化节点）
+   * 闭合一个超分子：先闭合其下未闭合的分子（endMol 物化），再追加 close-supra 记录
    * @param {string} key - 超分子 key
    * @returns {void}
    */
   endSupra(key) {
+    // 防御 RPC 乱序：amend 流先于闭合记录定稿
+    for (const [molId, mol] of [...this.#mols]) {
+      if (mol.supraKey === key) {
+        this.endMol(molId);
+      }
+    }
     this.#boardCore.hitCommitter.endSupra(key);
   }
 
   /**
-   * 中止一个超分子（丢弃全部缓冲草稿）
+   * 中止一个超分子：丢弃其下未闭合分子（还原实例），并逐个撤销仍在活动链上的已物化成员
+   * @description 异常路径语义（组件卸载等）：产生撤销动作；成员已不在活动链上时
+   * （如会话已被撤销到 choose 终止）退化为纯句柄清理，不产生任何记录。
    * @param {string} key - 超分子 key
    * @returns {void}
    */
   abortSupra(key) {
-    this.#boardCore.hitCommitter.abortSupra(key);
+    for (const [molId, mol] of [...this.#mols]) {
+      if (mol.supraKey === key) {
+        this.abortMol(molId);
+      }
+    }
+    const supraId = this.#boardCore.hitCommitter.abortSupra(key);
+    const tree = this.#boardCore.undoTree;
+    for (;;) {
+      const nodes = tree.getActiveSupraNodes(supraId);
+      if (nodes.length === 0) break;
+      this.#undoCore(nodes[nodes.length - 1].shareId);
+    }
   }
 
   /**
@@ -1500,20 +1747,35 @@ class BoardApi {
 
   /**
    * 执行撤销
-   * @param {string} [targetNodeId] - 显式撤销目标（活动链节点 shareId）；缺省时取本端来源最近的活动链节点（各撤各的）
-   * @returns {{ undone: boolean, targetNodeId: ?string }} 撤销结果
-   *
-   * @description
+   * @description 拖动中撤销先闭合本端全部未闭合分子（endMol 物化后再撤，所有操作都有记录）；
    * 记录撤销并应用树（退化/分叉改挂/被吸收在应用时确定），再经链过渡对齐白板效果。
+   * @param {string} [targetNodeId] - 显式撤销目标（活动链节点 shareId）；缺省时取本端来源最近的活动链节点（各撤各的）
+   * @returns {{ undone: boolean, targetNodeId: ?string, forcedEndMolIds: string[] }} 撤销结果（含被强制闭合的分子 id 列表）
    */
   undo(targetNodeId) {
+    const forcedEndMolIds = [];
+    for (const molId of [...this.#mols.keys()]) {
+      if (this.endMol(molId)) {
+        forcedEndMolIds.push(molId);
+      }
+    }
+    return { ...this.#undoCore(targetNodeId), forcedEndMolIds };
+  }
+
+  /**
+   * 撤销核心：记录撤销并应用树，经链过渡对齐白板效果
+   * @description 缺省各撤各的：目标为本端来源最近的活动链节点，而非链末端——
+   * 协作下链末端可能是远端操作。显式传 targetNodeId 可撤任意活动链节点。
+   * @param {string} [targetNodeId] - 显式撤销目标（活动链节点 shareId）
+   * @returns {{ undone: boolean, targetNodeId: ?string }} 撤销结果
+   * @private
+   */
+  #undoCore(targetNodeId) {
     const boardCore = this.#boardCore;
     const tree = boardCore.undoTree;
     if (tree.head === tree.root) {
       return { undone: false, targetNodeId: null };
     }
-    // 缺省各撤各的：目标为本端来源最近的活动链节点，而非链末端——
-    // 协作下链末端可能是远端操作。显式传 targetNodeId 可撤任意活动链节点。
     let targetId = targetNodeId ?? null;
     if (targetId === null) {
       const source = boardCore.hitCommitter.source;
@@ -1605,13 +1867,23 @@ class BoardApi {
           payload.choice,
         );
         break;
-      case OPERATION_TYPES.UNCHOOSE_OBJECT:
+      case OPERATION_TYPES.UNCHOOSE_OBJECT: {
+        // discard 型闭合：先凭 restore 快照还原实例状态（回选择前），再退出活动层
+        if (record.discard === true && payload.restore !== undefined) {
+          const obj = boardCore.getObjectById(payload.objectId);
+          if (obj) {
+            this.#collectObjectChunks(obj, affectedChunks);
+            this.#applyObjectPatch(obj, payload.restore);
+            this.#collectObjectChunks(obj, affectedChunks);
+          }
+        }
         this.#leaveAomEffect(
           payload.objectId,
           affectedChunks,
           record.source,
         );
         break;
+      }
       default:
         break;
     }
@@ -1880,13 +2152,12 @@ class BoardApi {
   /**
    * 取节点的成员记录
    * @param {import("../hit/undo-tree-core.js").MolecularNode} node - 树节点
-   * @returns {import("../hit/operation.js").OperationRecord[]} 成员记录数组（独立分子为单件，超分子为全组）
+   * @returns {import("../hit/operation.js").OperationRecord[]} 成员记录数组（独立分子为单件，增量式分子为同 molId 记录组，聚合节点为折叠段全组）
    * @private
    */
   #recordsOfNode(node) {
     const log = this.#boardCore.operationLog;
-    const record = log.get(node.shareId);
-    return record.supraOpId === null ? [record] : log.getSupraMembers(record.supraOpId);
+    return node.memberIds.map((id) => log.get(id)).filter(Boolean);
   }
 
   /**

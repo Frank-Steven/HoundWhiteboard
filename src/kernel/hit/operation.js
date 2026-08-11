@@ -1,6 +1,6 @@
 /**
  * @file 操作记录定义
- * @description 定义 hit 的分子操作记录模型：八种分子类型、公共属性与载荷结构、校验与排序辅助。
+ * @description 定义 hit 的分子操作记录模型：八种分子类型与闭合超分子记录、三级容器字段（molId/supraId/discard）、公共属性与载荷结构、校验与排序辅助。
  * @module kernel/hit/operation
  * @author Zhou Chenyu
  * SPDX-License-Identifier: MIT
@@ -8,12 +8,12 @@
 
 /**
  * 分子操作类型
- * @typedef {"add-object" | "modify-object" | "delete-object" | "choose-object" | "unchoose-object" | "move-head" | "undo" | "redo"} OperationType
+ * @typedef {"add-object" | "modify-object" | "delete-object" | "choose-object" | "unchoose-object" | "move-head" | "undo" | "redo" | "close-supra"} OperationType
  */
 
 /**
  * 分子操作按对 hit 的作用分类
- * @typedef {"append-node" | "move-head" | "reattach"} OperationEffectKind
+ * @typedef {"append-node" | "move-head" | "reattach" | "fold"} OperationEffectKind
  */
 
 /**
@@ -30,6 +30,7 @@ const OPERATION_TYPES = Object.freeze({
   MOVE_HEAD: "move-head",
   UNDO: "undo",
   REDO: "redo",
+  CLOSE_SUPRA: "close-supra",
 });
 
 /**
@@ -41,6 +42,7 @@ const OPERATION_EFFECT_KINDS = Object.freeze({
   APPEND_NODE: "append-node",
   MOVE_HEAD: "move-head",
   REATTACH: "reattach",
+  FOLD: "fold",
 });
 
 /**
@@ -63,6 +65,7 @@ const TREE_OPERATION_TYPES = Object.freeze([
   OPERATION_TYPES.MOVE_HEAD,
   OPERATION_TYPES.UNDO,
   OPERATION_TYPES.REDO,
+  OPERATION_TYPES.CLOSE_SUPRA,
 ]);
 
 /**
@@ -78,6 +81,7 @@ const EFFECT_KIND_OF_TYPE = Object.freeze({
   [OPERATION_TYPES.MOVE_HEAD]: OPERATION_EFFECT_KINDS.MOVE_HEAD,
   [OPERATION_TYPES.UNDO]: OPERATION_EFFECT_KINDS.REATTACH,
   [OPERATION_TYPES.REDO]: OPERATION_EFFECT_KINDS.MOVE_HEAD,
+  [OPERATION_TYPES.CLOSE_SUPRA]: OPERATION_EFFECT_KINDS.FOLD,
 });
 
 /**
@@ -88,7 +92,10 @@ const EFFECT_KIND_OF_TYPE = Object.freeze({
  * @property {string} source - 发起者标识，即 hit 节点的 author
  * @property {number} time - 毫秒时间标记（unix 纪元），操作级 CRDT 重建的排序依据
  * @property {?string} parentId - 记录时刻本地视角的父节点 id；首个操作为 null
- * @property {?string} supraOpId - 所属超分子操作的 id；独立分子操作为 null
+ * @property {?string} supraOpId - 旧日志形态（K1.5 草稿凝聚）的超分子关联；三级容器模型新记录不写，恒为 null
+ * @property {?string} molId - 增量式分子标识，形如 `"{source}/mol-{n}"`；即时分子与 choose/unchoose 为 null
+ * @property {?string} supraId - 归属超分子 id，形如 `"{source}/supra-{n}"`；独立分子为 null
+ * @property {boolean} discard - 放弃型闭合标志（仅 unchoose-object 有意义：true 表示放弃修改回选择前快照）
  * @property {string[]} properties - 涉及属性的集合（如 `position`、`property`、`data.points`），冲突合并的判定粒度
  * @property {Object} payload - 类型载荷，结构由 type 决定
  */
@@ -122,6 +129,58 @@ function parseOperationId(id) {
     return null;
   }
   const match = /^(.+)\/op-(\d+)$/.exec(id);
+  if (match === null) {
+    return null;
+  }
+  return { source: match[1], n: Number(match[2]) };
+}
+
+/**
+ * 构造分子 id
+ * @param {string} source - 发起者标识
+ * @param {number} n - 该发起者的分子序号
+ * @returns {string} 分子 id，形如 `"{source}/mol-{n}"`
+ */
+function makeMoleculeId(source, n) {
+  return `${source}/mol-${n}`;
+}
+
+/**
+ * 解析分子 id
+ * @param {string} id - 分子 id
+ * @returns {?{ source: string, n: number }} 解析结果；id 形如 `"{source}/mol-{n}"` 以外时返回 null
+ */
+function parseMoleculeId(id) {
+  if (typeof id !== "string") {
+    return null;
+  }
+  const match = /^(.+)\/mol-(\d+)$/.exec(id);
+  if (match === null) {
+    return null;
+  }
+  return { source: match[1], n: Number(match[2]) };
+}
+
+/**
+ * 构造超分子 id
+ * @param {string} source - 发起者标识
+ * @param {number} n - 该发起者的超分子序号
+ * @returns {string} 超分子 id，形如 `"{source}/supra-{n}"`
+ */
+function makeSupraId(source, n) {
+  return `${source}/supra-${n}`;
+}
+
+/**
+ * 解析超分子 id
+ * @param {string} id - 超分子 id
+ * @returns {?{ source: string, n: number }} 解析结果；id 形如 `"{source}/supra-{n}"` 以外时返回 null
+ */
+function parseSupraId(id) {
+  if (typeof id !== "string") {
+    return null;
+  }
+  const match = /^(.+)\/supra-(\d+)$/.exec(id);
   if (match === null) {
     return null;
   }
@@ -166,7 +225,10 @@ function compareRecords(a, b) {
  * @param {string} fields.source - 发起者标识
  * @param {number} fields.time - 毫秒时间标记
  * @param {?string} [fields.parentId] - 记录时刻本地视角的父节点 id
- * @param {?string} [fields.supraOpId] - 所属超分子操作的 id
+ * @param {?string} [fields.supraOpId] - 旧日志形态的超分子关联（新记录不传）
+ * @param {?string} [fields.molId] - 增量式分子标识（仅增量式分子记录携带）
+ * @param {?string} [fields.supraId] - 归属超分子 id（挂入超分子时携带）
+ * @param {boolean} [fields.discard] - 放弃型闭合标志（仅 unchoose-object）
  * @param {string[]} [fields.properties] - 涉及属性的集合
  * @param {Object} payload - 类型载荷
  * @returns {OperationRecord} 分子操作记录
@@ -180,6 +242,9 @@ function _buildRecord(fields, payload) {
     time: fields.time,
     parentId: fields.parentId ?? null,
     supraOpId: fields.supraOpId ?? null,
+    molId: fields.molId ?? null,
+    supraId: fields.supraId ?? null,
+    discard: fields.discard ?? false,
     properties: fields.properties ?? [],
     payload,
   };
@@ -269,6 +334,7 @@ function createChooseObjectOperation(fields) {
  * @param {string} fields.chunkId - 区块 id
  * @param {string} fields.objectId - 对象 id
  * @param {string} [fields.choice] - 命名选择名；缺省为匿名选择（不记录）
+ * @param {Object} [fields.restore] - discard 型闭合的选择前快照（重放/重做时凭以还原实例）
  * @returns {OperationRecord} 取消选择操作记录
  */
 function createUnchooseObjectOperation(fields) {
@@ -277,6 +343,8 @@ function createUnchooseObjectOperation(fields) {
     objectId: fields.objectId,
     // 命名选择名；匿名选择不记录
     ...(fields.choice !== undefined ? { choice: fields.choice } : {}),
+    // discard 型闭合的还原点：选择前快照（仅 discard 时携带）
+    ...(fields.restore !== undefined ? { restore: fields.restore } : {}),
   });
 }
 
@@ -317,6 +385,21 @@ function createRedoOperation(fields) {
 }
 
 /**
+ * 构造闭合超分子操作记录
+ * @description 超分子闭合信号：树构建见到本记录时，把活动链上同 supraId 的连续节点段折叠为聚合节点。
+ * 树级操作，无白板效果，自身不产生节点、不作为超分子成员。
+ * @param {Object} fields - 公共属性，同 _buildRecord 的 fields
+ * @param {string} fields.supraId - 待闭合的超分子 id
+ * @returns {OperationRecord} 闭合超分子操作记录
+ */
+function createCloseSupraOperation(fields) {
+  // 顶层 supraId 固定为 null（本记录不是超分子成员），待闭合的超分子 id 只在载荷中
+  return _buildRecord({ ...fields, supraId: null, type: OPERATION_TYPES.CLOSE_SUPRA }, {
+    supraId: fields.supraId,
+  });
+}
+
+/**
  * 校验分子操作记录
  * @param {*} record - 待校验的记录
  * @returns {string[]} 错误列表；空数组表示记录合法
@@ -352,6 +435,38 @@ function validateOperation(record) {
     getOperationEffectKind(record.type) !== OPERATION_EFFECT_KINDS.APPEND_NODE
   ) {
     errors.push("仅增加节点类操作可属于超分子操作");
+  }
+  // molId/supraId/discard 为三级容器模型新增字段：旧记录无此字段（undefined），读入侧归一为 null/false
+  if (record.molId !== null && record.molId !== undefined) {
+    const molParts = parseMoleculeId(record.molId);
+    if (molParts === null) {
+      errors.push(`molId 非法：${String(record.molId)}`);
+    } else if (molParts.source !== record.source) {
+      errors.push(`molId 的 source 段（${molParts.source}）与 source（${record.source}）不一致`);
+    }
+    if (
+      record.type !== OPERATION_TYPES.ADD_OBJECT &&
+      record.type !== OPERATION_TYPES.MODIFY_OBJECT
+    ) {
+      errors.push("仅增加/修改对象操作可携带 molId");
+    }
+  }
+  if (record.supraId !== null && record.supraId !== undefined) {
+    const supraParts = parseSupraId(record.supraId);
+    if (supraParts === null) {
+      errors.push(`supraId 非法：${String(record.supraId)}`);
+    } else if (supraParts.source !== record.source) {
+      errors.push(`supraId 的 source 段（${supraParts.source}）与 source（${record.source}）不一致`);
+    }
+    if (getOperationEffectKind(record.type) !== OPERATION_EFFECT_KINDS.APPEND_NODE) {
+      errors.push("仅增加节点类操作可携带 supraId");
+    }
+  }
+  if (record.discard !== undefined && typeof record.discard !== "boolean") {
+    errors.push("discard 必须是布尔值");
+  }
+  if (record.discard === true && record.type !== OPERATION_TYPES.UNCHOOSE_OBJECT) {
+    errors.push("仅 unchoose-object 可携带 discard 标志");
   }
   if (!Array.isArray(record.properties) || record.properties.some((p) => typeof p !== "string")) {
     errors.push("properties 必须是字符串数组");
@@ -439,6 +554,11 @@ function _validatePayload(record, errors) {
       break;
     case OPERATION_TYPES.REDO:
       break;
+    case OPERATION_TYPES.CLOSE_SUPRA:
+      if (parseSupraId(payload.supraId) === null) {
+        errors.push(`close-supra 载荷的 supraId 非法：${String(payload.supraId)}`);
+      }
+      break;
     default:
       break;
   }
@@ -464,6 +584,10 @@ export {
   getOperationEffectKind,
   makeOperationId,
   parseOperationId,
+  makeMoleculeId,
+  parseMoleculeId,
+  makeSupraId,
+  parseSupraId,
   compareTimeMarks,
   compareRecords,
   createAddObjectOperation,
@@ -474,5 +598,6 @@ export {
   createMoveHeadOperation,
   createUndoOperation,
   createRedoOperation,
+  createCloseSupraOperation,
   validateOperation,
 };
