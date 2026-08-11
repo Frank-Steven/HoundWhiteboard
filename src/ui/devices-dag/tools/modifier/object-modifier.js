@@ -857,11 +857,32 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
   }
 
   /**
+   * 按内核查询摘要同步本地持有条目的位置并刷新 overlay
+   * @param {import("../../../../kernel/types/types.js").LightweightObjectEntry[]} held - 本地持有条目
+   * @param {Map<string, Object>} byId - 内核摘要索引（id → summary）
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @returns {void}
+   * @private
+   */
+  #syncHeldEntryPositions(held, byId, context) {
+    for (const obj of held) {
+      const summary = byId.get(String(this.resolveObjectId(obj)));
+      const position = Vector.parse(summary?.position);
+      if (position) {
+        obj.position = position;
+      }
+    }
+    this.requestUiOverlayRefresh(context);
+  }
+
+  /**
    * hit 变更后的失效清理：持有对象已被撤销移除时丢弃当前动作
    * @description 撤销/重做可能移除工具仍持有的对象（幽灵选择）；收到 hit:changed 时按
    * queryObjects 校验，存在已移除对象则丢弃动作（dead 对象由 discardActiveObjects 过滤）。
    * 信号 context 携带 forcedEndMolIds（内核 undo 自动闭合的在途分子）且命中当前手势分子时，
    * 结束手势复位：分子已被内核物化并撤销，本地条目按内核位置同步，对象仍活跃则保持选中。
+   * 非手势期间的 hit 变更（松手后 undo/redo、对端同步）同样按内核对齐本地条目，
+   * 防止选中框停留在手势终值与对象错位。
    * @param {SignalPacket|Object} signalPacket - 输入信号包
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
    * @returns {?Promise<void>} 校验 Promise（测试可等待）
@@ -919,14 +940,13 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
           this._molBeginPositions = null;
           this.isGestureActive = false;
           this.processor.reset();
-          for (const obj of held) {
-            const summary = byId.get(String(this.resolveObjectId(obj)));
-            const position = Vector.parse(summary?.position);
-            if (position) {
-              obj.position = position;
-            }
-          }
-          this.requestUiOverlayRefresh(context);
+          this.#syncHeldEntryPositions(held, byId, context);
+          return;
+        }
+        if (!this.isGestureActive) {
+          // 非手势期间的 hit 变更（松手后 undo/redo、对端同步）：
+          // 内核实例已回退或重放，本地条目按内核对齐（选中框跟随对象）
+          this.#syncHeldEntryPositions(held, byId, context);
         }
       })
       .catch(() => { });

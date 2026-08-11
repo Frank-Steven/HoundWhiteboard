@@ -1736,6 +1736,48 @@ describe("CommonObjectModifierTool", () => {
       expect(tool.isGestureActive).toBe(true);
     });
 
+    test("松手后 undo（forcedEndMolIds 为空）：本地条目按内核位置对齐（选中框跟随对象）", async () => {
+      const object = { id: "1", position: new Vector(10, 20) };
+      const boardApi = createMolBoardApi({
+        queryObjects: jest.fn(async () => [
+          { id: "1", position: { x: 10, y: 20 }, isActive: true },
+        ]),
+      });
+      const tool = new CommonObjectModifierTool({
+        processor: new DragGestureProcessor(),
+      });
+      const context = aomCtx(tool, object, { boardApi });
+
+      // 拖动并松手（分子已闭合）
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 12, y: 20 } } }] },
+        context,
+      );
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 14, y: 22 } } }] },
+        context,
+      );
+      tool.process({ signals: [{ type: "end", context: {} }] }, context);
+      expect(object.position).toEqual(new Vector(12, 22));
+
+      // 松手后 undo：forcedEndMolIds 为空（分子松手时已闭合），内核实例回 (10,20)
+      tool.process(
+        {
+          signals: [
+            { type: "hit:changed", context: { forcedEndMolIds: [] } },
+          ],
+        },
+        context,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // 本地条目按内核对齐（选中框跟随对象）；手势状态不受影响、不丢弃不提交
+      expect(object.position).toEqual(new Vector(10, 20));
+      expect(tool._overlayModifiedObjects).toHaveLength(1);
+      expect(boardApi.discardActiveObjects).not.toHaveBeenCalled();
+      expect(boardApi.commitObjects).not.toHaveBeenCalled();
+    });
+
     test("Worker 挂起：molId 确认前补丁只落本地，确认后补发最新位置并执行延迟闭合", async () => {
       const object = { id: "1", position: new Vector(10, 20) };
       let resolveBegin;
