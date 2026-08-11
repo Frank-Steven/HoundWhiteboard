@@ -1,6 +1,6 @@
 /**
  * @file 网络协调器测试
- * @description 真实中继与双端内核下验证操作同步、并发收敛、迟到 INIT、乱序容忍窗与 AOM 远程互斥。
+ * @description 真实中继与双端内核下验证操作同步、并发收敛、迟到 INIT、乱序容忍窗、AOM 远程互斥与在途分子对账重放。
  * @module host/sync/tests/network-coordinator.test
  * @author Zhou Chenyu
  */
@@ -12,7 +12,7 @@ import { createDefaultAomRenderHooks } from "../../../kernel/board/aom-render-ho
 import { createDefaultPersistenceAdapter } from "../../../kernel/board/persistence-adapter.js";
 import { createRelayServer } from "../relay-server.js";
 import { createNetworkCoordinator } from "../network-coordinator.js";
-import { createSubframeForwarder } from "../subframe-forwarder.js";
+import { createAmendForwarder } from "../amend-forwarder.js";
 
 /**
  * 创建一个端（独立的 BoardCore 与 BoardApi）
@@ -396,7 +396,7 @@ describe("网络协调器", () => {
     );
   });
 
-  test("手势中间帧经 volatile 通道跨端到达（SubFrame 预览）", async () => {
+  test("手势 amend 流经 volatile 通道跨端到达（mol 预览）", async () => {
     server = createRelayServer({ port: 0 });
     /** @type {Object[]} */
     const received = [];
@@ -406,8 +406,8 @@ describe("网络协调器", () => {
     });
     ends = [a, b];
 
-    // a 侧挂 SubFrame 转发器（core-worker/daemon 同款接线）
-    const forwarder = createSubframeForwarder({
+    // a 侧挂 amend 转发器（core-worker/daemon 同款接线）
+    const forwarder = createAmendForwarder({
       boardCore: a.boardCore,
       sendAwareness: (data) => a.coordinator.sendAwareness(data),
       intervalMs: 20,
@@ -419,33 +419,47 @@ describe("网络协调器", () => {
       "b 收到 a/1",
     );
 
-    // a 侧手势：choose 后连续拖动（中间帧不进日志）
-    const logSizeBefore = a.boardCore.operationLog.size;
+    // a 侧手势：beginMol 后连续 amend（原子流不进日志）
     await a.api.addActiveObjects(["a/1"]);
-    a.api.modifyObject("a/1", { position: { x: 50, y: 0 } });
-    a.api.modifyObject("a/1", { position: { x: 80, y: 0 } });
+    const logSizeBefore = a.boardCore.operationLog.size;
+    const molId = a.api.beginMol(["a/1"]);
+    a.api.amendMol(molId, { "a/1": { position: { x: 50, y: 0 } } });
+    a.api.amendMol(molId, { "a/1": { position: { x: 80, y: 0 } } });
 
     await until(
-      () => received.some((m) => m.data?.kind === "subframe"),
-      "b 收到中间帧预览",
+      () => received.some((m) => m.data?.kind === "mol-amend"),
+      "b 收到 amend 流",
     );
-    const frame = received.find((m) => m.data?.kind === "subframe");
-    expect(frame.source).toBe("a");
-    const op = frame.data.ops.find((o) => o.objectId === "a/1");
-    // 合批后 position 后帧盖前帧
-    expect(op.patch.position).toEqual({ x: 80, y: 0 });
-    // 中间帧不进日志（modify 未提交）
-    expect(
-      a.boardCore.operationLog.toJSON().filter(
-        (r) => r.type === "modify-object",
-      ),
-    ).toHaveLength(0);
-    expect(a.boardCore.operationLog.size).toBeGreaterThan(logSizeBefore);
+    const beginMsg = received.find((m) => m.data?.kind === "mol-begin");
+    expect(beginMsg.source).toBe("a");
+    expect(beginMsg.data.molId).toBe(molId);
+    expect(beginMsg.data.entries[0].objectId).toBe("a/1");
+    const amendFrames = received
+      .filter((m) => m.data?.kind === "mol-amend")
+      .flatMap((m) => m.data.mols)
+      .filter((frame) => frame.molId === molId);
+    // 同步两帧合批为一段：seq 取批内最大，position 后帧盖前帧
+    expect(amendFrames).toHaveLength(1);
+    expect(amendFrames[0].seq).toBe(2);
+    expect(amendFrames[0].entries[0].patch.position).toEqual({ x: 80, y: 0 });
+    // amend 流不进日志（手势未定稿）
+    expect(a.boardCore.operationLog.size).toBe(logSizeBefore);
+
+    // endMol 物化后 b 经日志收敛到最终位置
+    a.api.endMol(molId);
+    await until(
+      () => received.some((m) => m.data?.kind === "mol-end"),
+      "b 收到 mol-end",
+    );
+    await until(
+      () => b.boardCore.getObjectById("a/1").position.x === 80,
+      "b 收敛定稿位置",
+    );
 
     forwarder.close();
   });
 
-  test("创建中对象的中间帧跨端到达（创建预览）", async () => {
+  test("创建中对象的 amend 流跨端到达（创建预览）", async () => {
     server = createRelayServer({ port: 0 });
     /** @type {Object[]} */
     const received = [];
@@ -455,38 +469,55 @@ describe("网络协调器", () => {
     });
     ends = [a, b];
 
-    const forwarder = createSubframeForwarder({
+    const forwarder = createAmendForwarder({
       boardCore: a.boardCore,
       sendAwareness: (data) => a.coordinator.sendAwareness(data),
       intervalMs: 20,
     });
 
-    // a 侧创建笔画并追点（对象尚未提交，b 端日志无此对象）
+    // a 侧创建笔画并开创建型分子追点（对象尚未提交，b 端日志无此对象）
     a.api.createObject("StrokeObject", {
       id: "a/9",
       position: { x: 100, y: 100 },
       property: { width: 2 },
       data: { points: [{ x: 0, y: 0 }] },
     });
-    a.api.appendListItem("a/9", "data.points", [{ x: 10, y: 0 }]);
+    const molId = a.api.beginMol(["a/9"], { create: true });
+    a.api.amendMol(molId, {
+      "a/9": { data: { points: [{ x: 0, y: 0 }, { x: 10, y: 0 }] } },
+    });
 
     await until(
-      () => received.some((m) => m.data?.kind === "subframe"),
-      "b 收到创建中间帧",
+      () => received.some((m) => m.data?.kind === "mol-amend"),
+      "b 收到创建 amend 流",
     );
-    const frame = received.find((m) => m.data?.kind === "subframe");
-    const op = frame.data.ops.find((o) => o.objectId === "a/9");
-    expect(op.create).toMatchObject({
+    const beginMsg = received.find((m) => m.data?.kind === "mol-begin");
+    const entry = beginMsg.data.entries.find((e) => e.objectId === "a/9");
+    // 创建型分子：before 为 null，create 快照供对端画创建中形态
+    expect(entry.before).toBeNull();
+    expect(entry.create).toMatchObject({
       type: "StrokeObject",
       position: { x: 100, y: 100 },
     });
-    expect(op.appends).toHaveLength(1);
+    const amendFrame = received
+      .filter((m) => m.data?.kind === "mol-amend")
+      .flatMap((m) => m.data.mols)
+      .find((frame) => frame.molId === molId);
+    expect(amendFrame.entries[0].patch.data.points).toHaveLength(2);
     // b 端日志无此对象（创建未提交，预览不进日志）
     expect(
       b.boardCore.operationLog
         .toJSON()
         .filter((r) => r.payload?.objectId === "a/9"),
     ).toHaveLength(0);
+
+    // 中止：暂存对象随分子移除，b 收到 mol-abort
+    a.api.abortMol(molId);
+    await until(
+      () => received.some((m) => m.data?.kind === "mol-abort"),
+      "b 收到 mol-abort",
+    );
+    expect(a.boardCore.getObjectById("a/9")).toBeUndefined();
 
     forwarder.close();
   });
@@ -677,6 +708,92 @@ describe("网络协调器", () => {
     );
     const respond = raw.messages.find((m) => m.type === "respond-init");
     expect(respond.records.map((r) => r.id)).toEqual(["a/op-3"]);
+    await raw.close();
+  });
+
+  test("未闭合分子清单对账 + amend 重放重建进行时视图", async () => {
+    server = createRelayServer({ port: 0 });
+    const a = await connectEnd("a", server.port, "board-1");
+    ends = [a];
+
+    // a 在 b 缺席期间开分子并 amend 若干（无 forwarder，无实时广播）
+    await createStroke(a.api, "a/1");
+    await a.api.addActiveObjects(["a/1"]);
+    const molId = a.api.beginMol(["a/1"]);
+    a.api.amendMol(molId, { "a/1": { position: { x: 30, y: 0 } } });
+    a.api.amendMol(molId, { "a/1": { position: { x: 60, y: 0 } } });
+
+    // b 迟到加入：握手互换清单，a 对账发现 b 无此分子 → 重放 begin + 全部 amend 段
+    /** @type {Object[]} */
+    const received = [];
+    const b = await connectEnd("b", server.port, "board-1", {
+      onAwareness: (message) => received.push(message),
+    });
+    ends.push(b);
+
+    await until(
+      () => received.some((m) => m.data?.kind === "mol-amend"),
+      "b 收到对账重放的 amend 段",
+    );
+    const beginMsg = received.find((m) => m.data?.kind === "mol-begin");
+    expect(beginMsg.source).toBe("a");
+    expect(beginMsg.data.molId).toBe(molId);
+    expect(beginMsg.data.entries).toHaveLength(1);
+    expect(beginMsg.data.entries[0].objectId).toBe("a/1");
+    expect(beginMsg.data.entries[0].before).not.toBeNull();
+    const amendFrames = received
+      .filter((m) => m.data?.kind === "mol-amend")
+      .flatMap((m) => m.data.mols)
+      .filter((frame) => frame.molId === molId);
+    expect(amendFrames.map((frame) => frame.seq)).toEqual([1, 2]);
+    expect(amendFrames[1].entries[0].patch.position).toEqual({ x: 60, y: 0 });
+  });
+
+  test("对账只补对端 seq 之后的 amend 段（已持 begin 不重发）", async () => {
+    server = createRelayServer({ port: 0 });
+    const a = await connectEnd("a", server.port, "board-1");
+    ends = [a];
+
+    await createStroke(a.api, "a/1");
+    await a.api.addActiveObjects(["a/1"]);
+    const molId = a.api.beginMol(["a/1"]);
+    a.api.amendMol(molId, { "a/1": { position: { x: 10, y: 0 } } });
+    a.api.amendMol(molId, { "a/1": { position: { x: 20, y: 0 } } });
+    a.api.amendMol(molId, { "a/1": { position: { x: 30, y: 0 } } });
+
+    // 对端清单声明已持该分子且 seq=1：只应收到 2、3 段，不重发 mol-begin
+    const raw = await connectRawClient(server.port, "board-1", "watcher");
+    raw.send({
+      type: "request-init",
+      lastSeen: { a: 1 },
+      openMols: [
+        {
+          molId,
+          supraKey: null,
+          create: false,
+          seq: 1,
+          entries: [{ objectId: "a/1", before: null }],
+        },
+      ],
+    });
+    await until(
+      () =>
+        raw.messages.some(
+          (m) => m.type === "awareness" && m.data?.kind === "mol-amend",
+        ),
+      "watcher 收到缺失 amend 段",
+    );
+    const amendMsg = raw.messages.find(
+      (m) => m.type === "awareness" && m.data?.kind === "mol-amend",
+    );
+    const frames = amendMsg.data.mols.filter((frame) => frame.molId === molId);
+    expect(frames.map((frame) => frame.seq)).toEqual([2, 3]);
+    expect(
+      raw.messages.some(
+        (m) => m.type === "awareness" && m.data?.kind === "mol-begin",
+      ),
+    ).toBe(false);
+
     await raw.close();
   });
 });

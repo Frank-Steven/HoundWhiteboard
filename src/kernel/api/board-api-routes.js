@@ -329,6 +329,14 @@ const BOARD_API_ROUTES = {
     invoke: (api) => api.queryOpenMols(),
     flush: "none",
   },
+
+  /**
+   * 取指定分子在给定 seq 水位之后的 amend 段（断线重连对账重发用）
+   */
+  queryMolAmendSince: {
+    invoke: (api, p) => api.queryMolAmendSince(p.molId, p.sinceSeq),
+    flush: "none",
+  },
 };
 
 export { BOARD_API_ROUTES };

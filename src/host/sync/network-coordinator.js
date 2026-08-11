@@ -26,23 +26,42 @@ function maxSeqBySource(records) {
 /**
  * 按超分子分组记录
  * @param {Map<string, Object>} pending - 待接入记录表（id → 记录）
- * @returns {Object[][]} 分组结果（独立记录单条成组，超分子成员同组）
+ * @returns {Object[][]} 分组结果（独立记录单条成组，超分子成员按来源序号连续段同组）
+ *
+ * @description
+ * 分组键为三级容器模型的 supraId（旧 supraOpId 不再作为分组依据）；旧记录无此字段时按独立记录处理。
+ * 成员本就独立有效、分组只为同批美观：同 supraId 成员按来源序号排序后拆成连续段，
+ * 段间空洞（超分子存续期间夹入其他提交）不阻塞成员各自接入。
  */
 function groupPending(pending) {
   const groups = [];
   const bySupra = new Map();
   for (const record of pending.values()) {
-    if (record.supraOpId === null) {
+    const supraId = record.supraId ?? null;
+    if (supraId === null) {
       groups.push([record]);
       continue;
     }
-    let group = bySupra.get(record.supraOpId);
+    let group = bySupra.get(supraId);
     if (group === undefined) {
       group = [];
-      bySupra.set(record.supraOpId, group);
-      groups.push(group);
+      bySupra.set(supraId, group);
     }
     group.push(record);
+  }
+  for (const group of bySupra.values()) {
+    group.sort((a, b) => parseOperationId(a.id).n - parseOperationId(b.id).n);
+    let run = [group[0]];
+    groups.push(run);
+    for (let i = 1; i < group.length; i += 1) {
+      const prev = parseOperationId(group[i - 1].id).n;
+      const curr = parseOperationId(group[i].id).n;
+      if (curr !== prev + 1) {
+        run = [];
+        groups.push(run);
+      }
+      run.push(group[i]);
+    }
   }
   return groups;
 }
@@ -77,6 +96,8 @@ function compareRecords(a, b) {
  * @description
  * 本地 commit 与 AOM 活动即时广播；远程记录按来源序号连续性与父在日志判定预检后接入，
  * 乱序记录攒批经容忍窗整理；周期摘要校验落后或分歧时请求全量重建。
+ * INIT 握手（request-init/respond-init）互换未闭合分子清单，对端缺失的在途分子
+ * 经 awareness 重放 mol-begin/mol-amend 段（对账只依据 request-init 上的清单）。
  */
 function createNetworkCoordinator(options) {
   const {
@@ -189,6 +210,15 @@ function createNetworkCoordinator(options) {
   };
 
   /**
+   * 发送 awareness 消息（volatile：可丢、不进日志不参与收敛）
+   * @param {Object} data - awareness 负载（如 {kind:"cursor", point}、mol-begin/mol-amend 重放）
+   * @returns {void}
+   */
+  const sendAwareness = (data) => {
+    send({ type: "awareness", data });
+  };
+
+  /**
    * 判定分组是否可接入（父在日志、来源序号连续）
    * @param {Object[]} group - 记录分组
    * @returns {boolean} 是否可接入
@@ -254,7 +284,7 @@ function createNetworkCoordinator(options) {
     windowsElapsed += 1;
     if (windowsElapsed >= maxWindows) {
       windowsElapsed = 0;
-      send({ type: "request-init" });
+      sendRequestInit();
     }
     scheduleWindow();
   };
@@ -307,11 +337,11 @@ function createNetworkCoordinator(options) {
     if (!digest || typeof digest.logSize !== "number") return;
     const local = localDigest();
     if (digest.logSize > local.logSize) {
-      send({ type: "request-init" });
+      sendRequestInit();
       return;
     }
     if (digest.logSize === local.logSize && digest.head !== local.head) {
-      send({ type: "request-init" });
+      sendRequestInit();
     }
   };
 
@@ -320,6 +350,61 @@ function createNetworkCoordinator(options) {
    * @returns {Object<string, number>} 来源到最大序号的映射
    */
   const localLastSeen = () => Object.fromEntries(maxSeqBySource(log.toJSON()));
+
+  /**
+   * 发送 request-init：携带 lastSeen 增量摘要与本端未闭合分子清单（供对端对账重放）
+   * @param {Object<string, number>} [lastSeen] - 本端各来源最大序号（缺省为全量请求）
+   * @returns {void}
+   */
+  const sendRequestInit = (lastSeen) => {
+    send({
+      type: "request-init",
+      ...(lastSeen === undefined ? {} : { lastSeen }),
+      openMols: boardApi.queryOpenMols(),
+    });
+  };
+
+  /**
+   * 按对端未闭合分子清单对账：经 awareness 重放对端缺失的在途分子 begin/amend 段
+   * @param {Object[]} [peerMols] - 对端未闭合分子清单（queryOpenMols 形态）
+   * @returns {void}
+   *
+   * @description
+   * 对端清单无此 molId：重发 mol-begin（entries 取 queryMolAmendSince 的返回，含 create 快照）
+   * 与全部 amend 段；对端 seq 落后：只补 seq 之后的 amend 段（对端已持 begin，不重发）。
+   * 重放经 sendAwareness（与 forwarder 同一发送面），对端走正常 mol-begin/mol-amend 路径消费。
+   */
+  const reconcileOpenMols = (peerMols) => {
+    if (!Array.isArray(peerMols)) return;
+    const peerSeqByMol = new Map();
+    for (const item of peerMols) {
+      if (typeof item?.molId === "string" && typeof item?.seq === "number") {
+        peerSeqByMol.set(item.molId, item.seq);
+      }
+    }
+    for (const local of boardApi.queryOpenMols()) {
+      const peerSeq = peerSeqByMol.get(local.molId);
+      const payload = boardApi.queryMolAmendSince(local.molId, peerSeq ?? 0);
+      if (payload === null) continue;
+      if (peerSeq === undefined) {
+        sendAwareness({
+          kind: "mol-begin",
+          molId: payload.molId,
+          entries: payload.entries,
+        });
+      }
+      if (payload.amends.length > 0) {
+        sendAwareness({
+          kind: "mol-amend",
+          mols: payload.amends.map((frame) => ({
+            molId: payload.molId,
+            seq: frame.seq,
+            entries: frame.entries,
+          })),
+        });
+      }
+    }
+  };
 
   /**
    * 按请求方的 lastSeen 过滤缺口记录（无 lastSeen 为全量，向后兼容 INIT）
@@ -369,7 +454,7 @@ function createNetworkCoordinator(options) {
       case "joined":
         state = "joined";
         if (Array.isArray(message.peers) && message.peers.length > 0) {
-          send({ type: "request-init", lastSeen: localLastSeen() });
+          sendRequestInit(localLastSeen());
           rebroadcastLocalActivity();
         }
         digestTimer = setInterval(() => {
@@ -378,7 +463,7 @@ function createNetworkCoordinator(options) {
         return;
       case "peer-joined":
         // 对端（重）加入：告知我方缺口并同步当前互斥状态
-        send({ type: "request-init", lastSeen: localLastSeen() });
+        sendRequestInit(localLastSeen());
         rebroadcastLocalActivity();
         return;
       case "peer-left":
@@ -396,6 +481,10 @@ function createNetworkCoordinator(options) {
         onAwareness?.({ source: message.source, data: message.data });
         return;
       case "request-init": {
+        // 对账先于缺口响应：增量请求无缺口时的降噪早退不能跳过 amend 重放。
+        // 只在 request-init 上对账：握手双方都会发 request-init（joined/peer-joined），
+        // 单向覆盖已完备；respond-init 的 openMols 仅供协议完备，不再对账（避免同一清单触发重复重放）。
+        reconcileOpenMols(message.openMols);
         const records = filterGapRecords(message.lastSeen);
         // 增量请求无缺口时不回应（降噪）；全量请求（无 lastSeen）总是回应（meta 供 id 续种）
         if (message.lastSeen && records.length === 0) return;
@@ -404,6 +493,7 @@ function createNetworkCoordinator(options) {
           to: message.source,
           records,
           meta: boardCore.collectSessionMeta(),
+          openMols: boardApi.queryOpenMols(),
         });
         return;
       }
@@ -504,7 +594,7 @@ function createNetworkCoordinator(options) {
      * @returns {void}
      */
     sendAwareness(data) {
-      send({ type: "awareness", data });
+      sendAwareness(data);
     },
 
     /**

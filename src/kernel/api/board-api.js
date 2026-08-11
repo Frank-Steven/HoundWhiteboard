@@ -220,18 +220,6 @@ class BoardApi {
     boardCore.registerObjectInstance(obj);
     boardCore.activeObjectManager.add(new Set([obj]));
 
-    // 创建中预览：远端凭类型与初始数据画临时形态，后续 append/patch 中间帧滚动更新
-    this.#emitSubframe({
-      objectId,
-      create: {
-        type,
-        position: obj.position.serialize(),
-        transform: obj.transform.serialize(),
-        property: { ...(obj.property ?? {}) },
-        data: { ...(obj.data ?? {}) },
-      },
-    });
-
     return objectId;
   }
 
@@ -277,6 +265,10 @@ class BoardApi {
     if (patch.data != null) {
       obj.setData(patch.data);
     }
+    if (typeof patch.append?.key === "string") {
+      // 列表增量追加（创建手势逐点追点走 amend 的载体）
+      obj.appendListItem(patch.append.key, ...(patch.append.items ?? []));
+    }
     boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
   }
 
@@ -290,7 +282,6 @@ class BoardApi {
   modifyObject(objectId, patch) {
     this.#applyObjectPatch(this.#requireActiveObject(objectId), patch);
     this.#materializedMarks.delete(objectId);
-    this.#emitSubframe({ objectId, patch });
   }
 
   /**
@@ -305,7 +296,6 @@ class BoardApi {
       if (objectId == null || !patch) continue;
       this.#applyObjectPatch(this.#requireActiveObject(objectId), patch);
       this.#materializedMarks.delete(objectId);
-      this.#emitSubframe({ objectId, patch });
     }
   }
 
@@ -321,7 +311,6 @@ class BoardApi {
     obj.appendListItem(key, ...(items ?? []));
     this.#materializedMarks.delete(objectId);
     this.#boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
-    this.#emitSubframe({ objectId, append: { key, items: [...(items ?? [])] } });
   }
 
   /**
@@ -337,7 +326,6 @@ class BoardApi {
     obj.replaceListItem(key, index, item);
     this.#materializedMarks.delete(objectId);
     this.#boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
-    this.#emitSubframe({ objectId, replace: { key, index, item } });
   }
 
   /**
@@ -374,11 +362,19 @@ class BoardApi {
       create: options.create === true,
       objects,
       seq: 0,
+      history: [],
     });
     this.#emitAmend({
       kind: "begin-mol",
       molId,
-      entries: [...objects].map(([objectId, state]) => ({ objectId, before: state.before })),
+      entries: [...objects].map(([objectId, state]) => {
+        const entry = { objectId, before: state.before };
+        if (state.before === null) {
+          // 创建型分子：对端凭初始快照画创建中形态（类型/属性/初始数据）
+          entry.create = boardCore.getObjectById(objectId)?.serialize() ?? null;
+        }
+        return entry;
+      }),
     });
     return molId;
   }
@@ -402,11 +398,11 @@ class BoardApi {
       this.#applyObjectPatch(this.#requireActiveObject(objectId), patch);
       this.#materializedMarks.delete(objectId);
       entries.push({ objectId, patch });
-      // P2 前保留 SubFrame 预览发射，amend 通道上线后移除
-      this.#emitSubframe({ objectId, patch });
     }
     if (entries.length > 0) {
       mol.seq += 1;
+      // 保留全量 amend 历史（断线重连对账重放用），endMol/abortMol 时随分子清理
+      mol.history.push({ seq: mol.seq, entries });
       this.#emitAmend({ kind: "amend", molId, seq: mol.seq, entries });
     }
     return true;
@@ -443,6 +439,8 @@ class BoardApi {
           supraKey: mol.supraKey ?? undefined,
           molId,
         });
+        // 创建型物化水位：后续 commitObjects 凭此跳过重复的增加对象分子
+        this.#materializedMarks.add(objectId);
         continue;
       }
       const properties = this.#diffProperties(state.before, after);
@@ -515,6 +513,33 @@ class BoardApi {
       });
     }
     return list;
+  }
+
+  /**
+   * 取指定分子在给定 seq 水位之后的 amend 段（断线重连对账重发用）
+   * @param {string} molId - 分子 id
+   * @param {number} [sinceSeq=0] - 对端已持有的 seq 水位
+   * @returns {?{ molId: string, supraKey: ?string, create: boolean, seq: number, entries: Array<{ objectId: string, before: ?Object }>, amends: Array<{ seq: number, entries: Array<{ objectId: string, patch: Object }> }> }} 重发载荷；分子不存在时为 null
+   */
+  queryMolAmendSince(molId, sinceSeq = 0) {
+    const mol = this.#mols.get(molId);
+    if (mol === undefined) {
+      return null;
+    }
+    return {
+      molId,
+      supraKey: mol.supraKey,
+      create: mol.create,
+      seq: mol.seq,
+      entries: [...mol.objects].map(([objectId, state]) => {
+        const entry = { objectId, before: state.before };
+        if (state.before === null) {
+          entry.create = this.#boardCore.getObjectById(objectId)?.serialize() ?? null;
+        }
+        return entry;
+      }),
+      amends: mol.history.filter((frame) => frame.seq > sinceSeq),
+    };
   }
 
   /**
@@ -1018,6 +1043,8 @@ class BoardApi {
           this.#chooseSnapshots.delete(obj.id);
           this.#materializedMarks.delete(obj.id);
         } else {
+          // 已被 endMol 物化覆盖（已物化水位）的创建不重复产生增加对象分子
+          if (this.#materializedMarks.has(obj.id)) continue;
           committer.commitAdd({
             chunkId,
             objectId: obj.id,
@@ -1036,10 +1063,6 @@ class BoardApi {
       "commit",
       committable.map((obj) => obj.id),
     );
-    // 手势终点帧：预览流中的确定性终点，接收端见到即删预览（尾随采样点必然先到）
-    for (const obj of committable) {
-      this.#emitSubframe({ objectId: obj.id, end: true });
-    }
     return objects.map((obj) => obj.id);
   }
 
@@ -1187,23 +1210,6 @@ class BoardApi {
       "unchoose",
       objects.map((obj) => obj.id),
     );
-    for (const obj of objects) {
-      this.#emitSubframe({ objectId: obj.id, end: true });
-    }
-  }
-
-  /**
-   * 发射手势中间帧预览事件（volatile，SubFrame）
-   * @param {Object} op - 预览操作（{objectId, patch?} / {objectId, append:{key, items}}）
-   * @returns {void}
-   * @private
-   *
-   * @description
-   * 手势中间帧不进日志；本事件经 host 订阅转发中继供远端实时预览，丢了不补，
-   * 最终分子操作到达时纠正。回放路径不经手势写入口，本事件不会回环。
-   */
-  #emitSubframe(op) {
-    this.#boardCore.activityEventBus?.emit("subframe", op);
   }
 
   /**

@@ -153,6 +153,14 @@ class AwarenessOverlay {
   #previews = new Map();
 
   /**
+   * 分子预览索引（molId → 该分子涉及的对象 id 集）
+   * @description mol-end / mol-abort 按分子清理预览；peer-left 与断线时同步清空。
+   * @type {Map<string, Set<string>>}
+   * @private
+   */
+  #molIndex = new Map();
+
+  /**
    * @param {Object} options - 选项
    * @param {Object} options.boardApi - BoardApi RPC 面（须含 queryRemoteChoices 与 queryObjects）
    * @param {import("../orchestration/viewport.js").Viewport} options.viewport - 视口实例
@@ -204,6 +212,7 @@ class AwarenessOverlay {
     }
     this.#cursors.clear();
     this.#previews.clear();
+    this.#molIndex.clear();
     this.#groups = [];
     this.#viewport.uiRenderer?.invalidateViewport?.();
   }
@@ -223,8 +232,11 @@ class AwarenessOverlay {
       case "cursor":
         this.#applyRemoteCursor(message.source, message.data?.point);
         return;
-      case "subframe":
-        this.#applySubframe(message.source, message.data?.ops);
+      case "mol-begin":
+      case "mol-amend":
+      case "mol-end":
+      case "mol-abort":
+        this.#applyMolMessage(message.source, message.data);
         return;
       case "peer-left":
         this.#dropRemoteCursor(message.source);
@@ -250,6 +262,7 @@ class AwarenessOverlay {
     }
     this.#cursors.clear();
     this.#previews.clear();
+    this.#molIndex.clear();
     this.#viewport.uiRenderer?.invalidateViewport?.();
   }
 
@@ -273,70 +286,130 @@ class AwarenessOverlay {
   }
 
   /**
-   * 应用远程手势中间帧（合批预览操作）
+   * 应用 amend 通道的分子消息（mol-begin / mol-amend / mol-end / mol-abort）
    * @param {string} source - 来源标识
-   * @param {Object[]} ops - 预览操作列表
+   * @param {Object} data - 分子消息数据
    * @returns {void}
    * @private
+   *
+   * @description
+   * mol-begin 建预览条目（创建型取 create 快照，修改型取 before 的 position）；
+   * mol-amend 滚动更新（position 绝对覆盖、transform 覆盖、data 按键合并、append 累积）；
+   * mol-end / mol-abort 按 #molIndex 清除该分子全部预览。
    */
-  #applySubframe(source, ops) {
-    if (typeof source !== "string" || !Array.isArray(ops)) return;
+  #applyMolMessage(source, data) {
+    if (typeof source !== "string") return;
     let changed = false;
-    for (const op of ops) {
-      if (typeof op?.objectId !== "string") continue;
-      const preview = this.#previews.get(op.objectId) ?? { source };
-      if (preview.source !== source) continue;
-      if (op.create && typeof op.create === "object") {
-        // 创建中预览：类型与初始数据到位，后续中间帧滚动更新
-        preview.type = op.create.type;
-        preview.property = { ...(op.create.property ?? {}) };
-        preview.data = { ...(op.create.data ?? {}) };
-        if (op.create.transform) preview.transform = { ...op.create.transform };
-        if (typeof op.create.position?.x === "number") {
-          preview.position = {
-            x: op.create.position.x,
-            y: op.create.position.y,
-          };
+    switch (data?.kind) {
+      case "mol-begin": {
+        if (typeof data.molId !== "string" || !Array.isArray(data.entries)) {
+          return;
         }
-      }
-      if (typeof op.patch?.position?.x === "number") {
-        preview.position = {
-          x: op.patch.position.x,
-          y: op.patch.position.y,
-        };
-      }
-      if (op.patch?.transform && typeof op.patch.transform === "object") {
-        preview.transform = { ...op.patch.transform };
-      }
-      if (op.patch?.data && typeof op.patch.data === "object") {
-        // data 补丁按键合并（如圆的 radius 随手势更新）
-        preview.data = { ...preview.data, ...op.patch.data };
-      }
-      if (Array.isArray(op.appends)) {
-        for (const append of op.appends) {
-          if (typeof append?.key !== "string") continue;
-          if (!preview.appended) preview.appended = new Map();
-          const items = preview.appended.get(append.key) ?? [];
-          items.push(...(append.items ?? []));
-          preview.appended.set(append.key, items);
+        for (const entry of data.entries) {
+          if (typeof entry?.objectId !== "string") continue;
+          const preview = this.#previews.get(entry.objectId) ?? { source };
+          if (preview.source !== source) continue;
+          if (entry.create && typeof entry.create === "object") {
+            // 创建中预览：类型与初始数据到位，后续 amend 滚动更新
+            preview.type = entry.create.type;
+            preview.property = { ...(entry.create.property ?? {}) };
+            preview.data = { ...(entry.create.data ?? {}) };
+            if (entry.create.transform) {
+              preview.transform = { ...entry.create.transform };
+            }
+            this.#applyPreviewPosition(preview, entry.create.position);
+          } else {
+            // 修改型预览：以 before 快照的 position 起步
+            this.#applyPreviewPosition(preview, entry.before?.position);
+          }
+          this.#previews.set(entry.objectId, preview);
+          this.#indexMolObject(data.molId, entry.objectId);
+          changed = true;
         }
+        break;
       }
-      if (op.replace && typeof op.replace.key === "string") {
-        if (!preview.replacements) preview.replacements = [];
-        preview.replacements.push({ ...op.replace });
+      case "mol-amend": {
+        if (!Array.isArray(data.mols)) return;
+        for (const mol of data.mols) {
+          if (typeof mol?.molId !== "string" || !Array.isArray(mol.entries)) {
+            continue;
+          }
+          for (const entry of mol.entries) {
+            if (typeof entry?.objectId !== "string") continue;
+            const preview = this.#previews.get(entry.objectId);
+            // amend 不建条目：无 begin 的尾随批次不得复活已清理的预览
+            if (!preview || preview.source !== source) continue;
+            const patch = entry.patch;
+            if (patch && typeof patch === "object") {
+              this.#applyPreviewPosition(preview, patch.position);
+              if (patch.transform && typeof patch.transform === "object") {
+                preview.transform = { ...patch.transform };
+              }
+              if (patch.data && typeof patch.data === "object") {
+                // data 补丁按键合并（如圆的 radius 随手势更新）
+                preview.data = { ...preview.data, ...patch.data };
+              }
+              if (typeof patch.append?.key === "string") {
+                if (!preview.appended) preview.appended = new Map();
+                const items = preview.appended.get(patch.append.key) ?? [];
+                items.push(...(patch.append.items ?? []));
+                preview.appended.set(patch.append.key, items);
+              }
+            }
+            this.#indexMolObject(mol.molId, entry.objectId);
+            changed = true;
+          }
+        }
+        break;
       }
-      if (op.end === true) {
-        // 手势终点：本批字段应用完毕后删除预览（提交/放弃后按记录呈现）
-        this.#previews.delete(op.objectId);
-        changed = true;
-        continue;
+      case "mol-end":
+      case "mol-abort": {
+        if (typeof data.molId !== "string") return;
+        const ids = this.#molIndex.get(data.molId);
+        if (ids !== undefined) {
+          this.#molIndex.delete(data.molId);
+          for (const objectId of ids) {
+            // 分子物化完成 / 中止：预览使命结束（提交后按记录呈现）
+            if (this.#previews.delete(objectId)) changed = true;
+          }
+        }
+        break;
       }
-      this.#previews.set(op.objectId, preview);
-      changed = true;
+      default:
+        return;
     }
     if (changed) {
       this.#viewport.uiRenderer?.invalidateViewport?.();
     }
+  }
+
+  /**
+   * 覆盖预览条目的位置（坐标无效时不动）
+   * @param {Object} preview - 预览条目
+   * @param {*} position - 候选世界坐标（patch.position 为绝对坐标，直接覆盖）
+   * @returns {void}
+   * @private
+   */
+  #applyPreviewPosition(preview, position) {
+    if (typeof position?.x === "number" && typeof position?.y === "number") {
+      preview.position = { x: position.x, y: position.y };
+    }
+  }
+
+  /**
+   * 登记分子涉及的对象 id（mol-end / mol-abort 按分子清理用）
+   * @param {string} molId - 分子 id
+   * @param {string} objectId - 对象 id
+   * @returns {void}
+   * @private
+   */
+  #indexMolObject(molId, objectId) {
+    let ids = this.#molIndex.get(molId);
+    if (ids === undefined) {
+      ids = new Set();
+      this.#molIndex.set(molId, ids);
+    }
+    ids.add(objectId);
   }
 
   /**
@@ -354,6 +427,13 @@ class AwarenessOverlay {
       }
     }
     if (changed) {
+      // 分子索引同步剔除已删对象，避免残留悬空 id
+      for (const [molId, ids] of this.#molIndex) {
+        for (const objectId of [...ids]) {
+          if (!this.#previews.has(objectId)) ids.delete(objectId);
+        }
+        if (ids.size === 0) this.#molIndex.delete(molId);
+      }
       this.#viewport.uiRenderer?.invalidateViewport?.();
     }
   }
@@ -365,7 +445,7 @@ class AwarenessOverlay {
    *
    * @description
    * 创建中预览（含创建上下文）不在此裁剪：其对象从未进入远程注册表，
-   * 清理由 remote-activity 通知的 ids 与 peer-left 承担。
+   * 清理由 mol-end / mol-abort、remote-activity 通知的 ids 与 peer-left 承担。
    */
   #prunePreviews() {
     const held = new Set();

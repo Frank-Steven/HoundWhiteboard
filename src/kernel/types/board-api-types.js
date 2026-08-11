@@ -76,6 +76,7 @@
  * @property {(molId: string) => boolean} endMol - 定稿增量式分子（物化上链）
  * @property {(molId: string) => boolean} abortMol - 中止增量式分子（丢弃 amend 流并还原实例）
  * @property {() => Array<Object>} queryOpenMols - 查询本端未闭合的增量式分子清单
+ * @property {(molId: string, sinceSeq?: number) => ?Object} queryMolAmendSince - 取分子在 seq 水位后的 amend 段（重连对账重发用）
  */
 
 export { };

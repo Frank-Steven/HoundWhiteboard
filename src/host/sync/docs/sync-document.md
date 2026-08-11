@@ -35,10 +35,10 @@
 | 服务器 → 客户端 | `{type:"aom", source, event}`                                 | 活动事件转发                     |
 | 客户端 → 服务器 | `{type:"awareness", data}`                                       | awareness 广播（volatile） |
 | 服务器 → 客户端 | `{type:"awareness", source, data}`                              | awareness 转发（可丢、不进日志） |
-| 客户端 → 服务器 | `{type:"request-init", lastSeen?}`                          | 请求增量日志（无 lastSeen 为全量） |
-| 服务器 → 客户端 | `{type:"request-init", source, lastSeen?}`                  | 增量请求转发                     |
-| 客户端 → 服务器 | `{type:"respond-init", to, records, meta}`                    | 定向全量响应                     |
-| 服务器 → 客户端 | `{type:"respond-init", source, records, meta}`                | 定向转发（仅目标收到）           |
+| 客户端 → 服务器 | `{type:"request-init", lastSeen?, openMols?}`             | 请求增量日志（无 lastSeen 为全量；openMols 供对账） |
+| 服务器 → 客户端 | `{type:"request-init", source, lastSeen?, openMols?}`   | 增量请求转发                     |
+| 客户端 → 服务器 | `{type:"respond-init", to, records, meta, openMols?}`     | 定向全量响应                     |
+| 服务器 → 客户端 | `{type:"respond-init", source, records, meta, openMols?}` | 定向转发（仅目标收到）           |
 | 客户端 → 服务器 | `{type:"digest", digest}`                                     | 周期状态摘要（默认 30s）         |
 | 服务器 → 客户端 | `{type:"digest", source, digest}`                             | 摘要转发                         |
 
@@ -57,14 +57,15 @@
 - **微任务合批**：超分子成员在 endSupra 时同步连续物化，合批保证成员同批到达——传输中的超分子原子性与日志一致（逐条广播会让接收端部分建节点、后续成员效果丢失）。
 - 订阅 `activityEventBus`：手势内 choose/commit 事件即时广播（超分子闭合前 choose 不入日志，互斥与实时可见依赖此通道）。choose 事件携带 `choice`（命名选择名，匿名缺省）；unchoose/commit 事件按（来源，对象）注销，无需携带。
 - **awareness（K5）**：光标位置经 `sendAwareness` 走 volatile 通道广播，接收端由 `onAwareness` 回调转发宿主（只画不存）；peer-left 以 `{kind:"peer-left"}` 通知，供接收端清理远程光标。远程选择的装饰走 aom 可靠通道与 remote-activity 通知，不经 volatile 通道。
-- **SubFrame 中间帧预览**：手势写入口（createObject / modifyObject / appendListItem 等）在内核事件总线发射 subframe 事件，`subframe-forwarder` 按 33ms 间隔节流合批（create 与 position/transform 后帧盖前帧、append 按序累积）后经 volatile 通道广播；接收端只画不存（预览位置画选择框、创建中对象按类型画半透明轮廓），丢了不补，最终分子操作到达时按记录归位。commit/discard 发射 `end:true` 终点帧：同一连接上消息有序，终点帧必然在尾随采样点之后到达，接收端见到即删预览，提交竞态从结构上消除。本端断线时协调器经 `onDisconnect` 通知 UI 清空全部预览与光标（对端手势状态不可信），重连后各自重建。
+- **分子中间帧预览**：分子写入口在内核事件总线发射 amend 事件（begin-mol / amend / end-mol / abort-mol），`amend-forwarder` 负责转发：begin-mol 即时发出（不合批）；amend 按 33ms 间隔节流合批（position/transform/data 绝对值后帧盖前帧、append items 按序累积、seq 取批内最大）打包为 mol-amend 发出；end-mol 先冲出残余缓冲再即时发 mol-end，abort-mol 丢弃该分子缓冲后即时发 mol-abort。均经 volatile 通道广播；接收端只画不存，丢了不补，分子记录经可靠通道到达后按记录定格归位。本端断线时协调器经 `onDisconnect` 通知 UI 清空全部预览与光标（对端手势状态不可信），重连后各自重建。
 
 ### 远端 → 本地
 
 - **去重**：按记录 id 跳过日志中已有的与缓冲中待接入的。
-- **预检接入**：按来源序号连续性与父在日志判定，通过后整组交给 `applyRemoteOperations`；超分子成员按 supraOpId 成组，组内同批应用。
+- **预检接入**：按来源序号连续性与父在日志判定，通过后整组交给 `applyRemoteOperations`；超分子成员按 supraId 成组（成员本就独立有效，分组只为同批美观），同来源序号连续段同批应用，段间空洞不阻塞成员各自接入。
 - **延迟容忍窗**：乱序记录（来源序号空洞 / 父未达）入缓冲，500ms 窗到再整理；连续 3 窗仍未补齐则广播 request-init 请求全量。
 - **增量 INIT（lastSeen 握手）**：join 与 peer-joined 时互发 request-init 携带各来源最大序号（lastSeen）；respond-init 仅携带缺口记录（增量请求无缺口时不回应，无 lastSeen 时全量回应供新成员与 id 续种）。离线期间的操作是本地日志的未同步段，重连后双向补发缺口即收敛，增量 anti-entropy 之外的兜底仍是周期摘要。
+- **在途分子对账**：request-init 与 respond-init 各携带本端未闭合分子清单（openMols，queryOpenMols 形态）；收到 request-init 时按对方清单对账——对方缺此 molId 则经 sendAwareness 重发 mol-begin（entries 含 create 快照）与全部 amend 段，对方 seq 落后则只补其后的 amend 段（不重发 begin）；只在 request-init 上对账，respond-init 的清单仅供协议完备（避免同一清单触发重复重放）。重放走 volatile 通道，对端经 mol-begin/mol-amend 正常路径消费。
 - **重连与 AOM 重同步**：socket 断开（非主动）时协调器自清理（订阅、定时器）并回调 onDisconnect，宿主每 3s 自动重连；断线即清空远程选择登记，重连后各端按 hold 重广播 choose 活动，互斥状态重建。
 - **周期摘要**：30s 广播 `{logSize, head, objects}`；落后或同长分歧时 request-init（全量重建兜底）。
 - **断线清理**：peer-left 到达时清除该来源的远程活动登记（解锁其选择的对象）。

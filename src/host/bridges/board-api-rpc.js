@@ -757,6 +757,20 @@ class BoardApiRpc {
     if (next.data != null) {
       merged.data = { ...(merged.data ?? {}), ...next.data };
     }
+    if (next.append != null) {
+      // append 是增量：同 key 合并 items 按序累积（后帧覆盖会永久丢点）
+      const existingAppend = merged.append;
+      merged.append =
+        existingAppend != null && existingAppend.key === next.append.key
+          ? {
+            key: next.append.key,
+            items: [
+              ...(existingAppend.items ?? []),
+              ...(next.append.items ?? []),
+            ],
+          }
+          : { key: next.append.key, items: [...(next.append.items ?? [])] };
+    }
 
     return merged;
   }

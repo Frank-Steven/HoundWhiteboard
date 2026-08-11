@@ -9,7 +9,7 @@ import { WebSocketServer } from "ws";
 import { openBoardSession } from "./board-session.js";
 import { BOARD_API_ROUTES } from "../kernel/api/board-api-routes.js";
 import { createNetworkCoordinator } from "../host/sync/network-coordinator.js";
-import { createSubframeForwarder } from "../host/sync/subframe-forwarder.js";
+import { createAmendForwarder } from "../host/sync/amend-forwarder.js";
 import { resolveDeviceSource } from "../utils/device-identity.js";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -97,7 +97,7 @@ async function startBoardDaemon(options) {
 
   // 可选连中继：失败降级单机并每 3s 自动重试（中继可能后于 daemon 启动）；断线后同周期自动重连
   let coordinator = null;
-  let subframeForwarder = null;
+  let amendForwarder = null;
   let relayRetryTimer = null;
   /** @type {boolean} daemon 已关闭：关闭后到达的 onDisconnect 不得再调度重试 */
   let closed = false;
@@ -121,8 +121,8 @@ async function startBoardDaemon(options) {
     try {
       await next.connect();
       coordinator = next;
-      subframeForwarder?.close();
-      subframeForwarder = createSubframeForwarder({
+      amendForwarder?.close();
+      amendForwarder = createAmendForwarder({
         boardCore: session.boardCore,
         sendAwareness: (data) => coordinator?.sendAwareness(data),
       });
@@ -199,7 +199,7 @@ async function startBoardDaemon(options) {
       }
     }
     await new Promise((resolve) => wss.close(resolve));
-    subframeForwarder?.close();
+    amendForwarder?.close();
     if (coordinator) {
       await coordinator.close();
     }

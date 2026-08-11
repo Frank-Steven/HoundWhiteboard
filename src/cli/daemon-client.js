@@ -119,6 +119,8 @@ async function connectDaemon(rootPath) {
       endMol: (molId) => invoke("endMol", { molId }),
       abortMol: (molId) => invoke("abortMol", { molId }),
       queryOpenMols: () => invoke("queryOpenMols", {}),
+      queryMolAmendSince: (molId, sinceSeq) =>
+        invoke("queryMolAmendSince", { molId, sinceSeq }),
     },
     close() {
       try {

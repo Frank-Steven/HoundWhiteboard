@@ -13,7 +13,6 @@ import { createDefaultAomRenderHooks } from "../../kernel/board/aom-render-hooks
 import { createDefaultPersistenceAdapter } from "../../kernel/board/persistence-adapter.js";
 import { createRelayServer } from "../sync/relay-server.js";
 import { createNetworkCoordinator } from "../sync/network-coordinator.js";
-import { createSubframeForwarder } from "../sync/subframe-forwarder.js";
 import { installNoopOffscreenCanvas } from "../../test-support/noop-canvas.js";
 
 /**
@@ -284,7 +283,7 @@ describe("CoreWorker 同步接线", () => {
     await expect(coordinator.connect()).rejects.toThrow("中继连接超时");
   });
 
-  test("远程中间帧驱动渲染器预览坐标，commit 后清除", async () => {
+  test("远程分子消息驱动渲染器预览坐标，mol-end 后清除", async () => {
     const restoreCanvas = installNoopOffscreenCanvas();
     try {
       server = createRelayServer({ port: 0 });
@@ -322,50 +321,71 @@ describe("CoreWorker 同步接线", () => {
         "worker 看到 peer/1",
       );
 
-      // peer 选择并拖动：中间帧经 volatile 通道到达 worker
+      // peer 发出 mol-begin（修改型：before 快照含 position）
       // （渲染侧预览应用由 renderer 单测覆盖；此处验证集成链路收到并转发）
-      const peerForwarder = createSubframeForwarder({
-        boardCore: peer.boardCore,
-        sendAwareness: (data) => peer.coordinator.sendAwareness(data),
-        intervalMs: 20,
+      peer.coordinator.sendAwareness({
+        kind: "mol-begin",
+        molId: "peer/mol-1",
+        entries: [
+          { objectId: "peer/1", before: { position: { x: 10, y: 10 } } },
+        ],
       });
-      await peer.api.addActiveObjects(["peer/1"]);
-      peer.api.modifyObject("peer/1", { position: { x: 60, y: 0 } });
       await until(
-        () => {
-          const message = host.postedMessages.find(
+        () =>
+          host.postedMessages.some(
             (m) =>
               m.type === "awareness" &&
-              m.awarenessType === "subframe" &&
-              Array.isArray(m.data?.ops),
-          );
-          return (
-            message?.data?.ops?.some(
-              (o) =>
-                o.objectId === "peer/1" && o.patch?.position?.x === 60,
-            ) === true
-          );
-        },
-        "worker 收到并转发 subframe 中间帧",
+              m.awarenessType === "mol-begin" &&
+              m.data?.molId === "peer/mol-1" &&
+              m.data?.entries?.some((e) => e.objectId === "peer/1"),
+          ),
+        "worker 收到并转发 mol-begin",
       );
 
-      // peer 提交：终点帧到达 worker（预览清理的触发信号）
-      await peer.api.commitObjects(["peer/1"]);
+      // 中间帧经 volatile 通道到达 worker（patch.position 为绝对坐标）
+      peer.coordinator.sendAwareness({
+        kind: "mol-amend",
+        mols: [
+          {
+            molId: "peer/mol-1",
+            seq: 1,
+            entries: [
+              { objectId: "peer/1", patch: { position: { x: 60, y: 0 } } },
+            ],
+          },
+        ],
+      });
       await until(
-        () => {
-          const message = host.postedMessages
-            .filter((m) => m.type === "awareness" && m.awarenessType === "subframe")
-            .at(-1);
-          return (
-            message?.data?.ops?.some(
-              (o) => o.objectId === "peer/1" && o.end === true,
-            ) === true
-          );
-        },
-        "worker 收到手势终点帧",
+        () =>
+          host.postedMessages.some(
+            (m) =>
+              m.type === "awareness" &&
+              m.awarenessType === "mol-amend" &&
+              m.data?.mols?.some(
+                (mol) =>
+                  mol.molId === "peer/mol-1" &&
+                  mol.entries?.some(
+                    (e) =>
+                      e.objectId === "peer/1" && e.patch?.position?.x === 60,
+                  ),
+              ),
+          ),
+        "worker 收到并转发 mol-amend 中间帧",
+      );
+
+      // 分子物化完成：mol-end 到达 worker（预览清理的触发信号）
+      peer.coordinator.sendAwareness({ kind: "mol-end", molId: "peer/mol-1" });
+      await until(
+        () =>
+          host.postedMessages.some(
+            (m) =>
+              m.type === "awareness" &&
+              m.awarenessType === "mol-end" &&
+              m.data?.molId === "peer/mol-1",
+          ),
+        "worker 收到 mol-end",
       );
       await rpc(host, "destroyBoard");
-      peerForwarder.close();
     } finally {
       restoreCanvas();
     }

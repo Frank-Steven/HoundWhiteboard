@@ -24,7 +24,7 @@ import { bindRoot } from "../io/driver/io-driver.js";
 import { createPersistenceAdapter } from "../io/adapter/persistence.js";
 import { createSessionStore } from "../kernel/store/session-store.js";
 import { createNetworkCoordinator } from "./sync/network-coordinator.js";
-import { createSubframeForwarder } from "./sync/subframe-forwarder.js";
+import { createAmendForwarder } from "./sync/amend-forwarder.js";
 import { createJournaler } from "../kernel/store/journaler.js";
 
 /**
@@ -61,6 +61,12 @@ function isWorkerGlobalScopeInstance(value) {
 function normalizeViewportKey(viewportId) {
   return String(viewportId ?? "");
 }
+
+/**
+ * 分子预览的超时时长（毫秒，无 mol 消息即判定分子失联并清预览）
+ * @type {number}
+ */
+const MOL_PREVIEW_TIMEOUT_MS = 3000;
 
 /**
  * Core Worker 运行时
@@ -153,10 +159,22 @@ class CoreWorkerRuntime {
   #unsubscribeHitChanged;
 
   /**
-   * SubFrame 转发器（协调器连接成功时非空）
+   * amend 转发器（协调器连接成功时非空）
    * @type {Object | null}
    */
-  #subframeForwarder;
+  #amendForwarder;
+
+  /**
+   * 分子预览登记表（molId → 预览中的对象 id 集）
+   * @type {Map<string, Set<string>>}
+   */
+  #molPreviews;
+
+  /**
+   * 分子预览超时定时器表（molId → 定时器，3s 无分子消息即按失联清预览）
+   * @type {Map<string, ReturnType<typeof setTimeout>>}
+   */
+  #molPreviewTimers;
 
   /**
    * 同步中继地址（createBoard 时记录，供断线重连）
@@ -211,7 +229,9 @@ class CoreWorkerRuntime {
     this.#coordinator = null;
     this.#unsubscribeRemoteActivity = null;
     this.#unsubscribeHitChanged = null;
-    this.#subframeForwarder = null;
+    this.#amendForwarder = null;
+    this.#molPreviews = new Map();
+    this.#molPreviewTimers = new Map();
     this.#syncUrl = null;
     this.#syncBoardId = null;
     this.#coordinatorRetryTimer = null;
@@ -549,7 +569,7 @@ class CoreWorkerRuntime {
    * @private
    *
    * @description
-   * 每次尝试使用新的协调器实例（断线后旧实例已自清理）；成功时挂接 SubFrame 转发器，
+   * 每次尝试使用新的协调器实例（断线后旧实例已自清理）；成功时挂接 amend 转发器，
    * 失败起每 3s 自动重试（板存活期间中继后启动也能连上）。
    */
   async #connectCoordinator() {
@@ -567,9 +587,14 @@ class CoreWorkerRuntime {
           source,
           data,
         });
-        // 渲染侧预览：远程手势中间帧按预览坐标画对象本体（只影响渲染视图）
-        if (data?.kind === "subframe" && Array.isArray(data.ops)) {
-          this.#applySubframePreviews(data.ops);
+        // 渲染侧预览：amend 通道的分子中间帧按预览坐标画对象本体（只影响渲染视图）
+        if (
+          data?.kind === "mol-begin" ||
+          data?.kind === "mol-amend" ||
+          data?.kind === "mol-end" ||
+          data?.kind === "mol-abort"
+        ) {
+          this.#applyMolMessages(data);
         }
       },
       onDisconnect: () => {
@@ -578,6 +603,7 @@ class CoreWorkerRuntime {
         for (const viewportCore of this.#viewportCores.values()) {
           viewportCore.renderer?.clearAllPreviewPositions?.();
         }
+        this.#clearAllMolPreviews();
         this.#requestStaticRender();
         this.#scheduleCoordinatorReconnect();
       },
@@ -585,8 +611,8 @@ class CoreWorkerRuntime {
     try {
       await coordinator.connect();
       this.#coordinator = coordinator;
-      this.#subframeForwarder?.close();
-      this.#subframeForwarder = createSubframeForwarder({
+      this.#amendForwarder?.close();
+      this.#amendForwarder = createAmendForwarder({
         boardCore: this.#boardCore,
         sendAwareness: (data) => this.#coordinator?.sendAwareness(data),
       });
@@ -599,38 +625,164 @@ class CoreWorkerRuntime {
   }
 
   /**
-   * 应用远程手势中间帧到渲染侧预览坐标
-   * @param {Object[]} ops - 预览操作列表
+   * 应用 amend 通道的分子消息到渲染侧预览坐标
+   * @param {Object} data - 分子消息数据（mol-begin / mol-amend / mol-end / mol-abort）
    * @returns {void}
    * @private
    *
    * @description
-   * patch.position 覆盖对象渲染位置（对象本体随远程手势移动）；end 终点帧清除预览。
-   * 预览只存在于渲染器视图，对象数据在记录到达时归位。
+   * mol-begin 按 before/create 快照的 position 起预览，mol-amend 的 patch.position 以绝对坐标覆盖；
+   * mol-end / mol-abort 清除该分子全部预览。预览只存在于渲染器视图，对象数据在分子记录到达时归位；
+   * 每个分子挂 3s 超时兜底，消息中断时预览不残留。
    */
-  #applySubframePreviews(ops) {
+  #applyMolMessages(data) {
     if (this.#viewportCores.size === 0) return;
     let changed = false;
-    for (const op of ops) {
-      if (typeof op?.objectId !== "string") continue;
-      const position = op.patch?.position;
-      if (typeof position?.x === "number" && typeof position?.y === "number") {
-        for (const viewportCore of this.#viewportCores.values()) {
-          viewportCore.renderer?.setPreviewPosition?.(op.objectId, position);
+    switch (data?.kind) {
+      case "mol-begin": {
+        if (typeof data.molId !== "string" || !Array.isArray(data.entries)) {
+          return;
         }
-        changed = true;
-      }
-      if (op.end === true) {
-        for (const viewportCore of this.#viewportCores.values()) {
-          viewportCore.renderer?.clearPreviewPosition?.(op.objectId);
+        const ids = this.#molPreviewIds(data.molId);
+        for (const entry of data.entries) {
+          if (typeof entry?.objectId !== "string") continue;
+          // 修改型取 before 快照，创建型取 create 初始快照
+          const position = entry.before?.position ?? entry.create?.position;
+          if (
+            typeof position?.x !== "number" ||
+            typeof position?.y !== "number"
+          ) {
+            continue;
+          }
+          this.#setPreviewPosition(entry.objectId, position);
+          ids.add(entry.objectId);
+          changed = true;
         }
-        changed = true;
+        this.#resetMolPreviewTimer(data.molId);
+        break;
       }
+      case "mol-amend": {
+        if (!Array.isArray(data.mols)) return;
+        for (const mol of data.mols) {
+          if (typeof mol?.molId !== "string" || !Array.isArray(mol.entries)) {
+            continue;
+          }
+          const ids = this.#molPreviewIds(mol.molId);
+          for (const entry of mol.entries) {
+            if (typeof entry?.objectId !== "string") continue;
+            const position = entry.patch?.position;
+            if (
+              typeof position?.x !== "number" ||
+              typeof position?.y !== "number"
+            ) {
+              continue;
+            }
+            // patch.position 为绝对坐标：直接覆盖，不是增量
+            this.#setPreviewPosition(entry.objectId, position);
+            ids.add(entry.objectId);
+            changed = true;
+          }
+          this.#resetMolPreviewTimer(mol.molId);
+        }
+        break;
+      }
+      case "mol-end":
+      case "mol-abort": {
+        if (typeof data.molId !== "string") return;
+        changed = this.#dropMolPreview(data.molId);
+        break;
+      }
+      default:
+        return;
     }
     if (changed) {
       // 全量缓存重画（预览位置变化后静态缓存按新位置重建）
       this.#requestStaticRender();
     }
+  }
+
+  /**
+   * 取分子的预览对象 id 集（无则创建）
+   * @param {string} molId - 分子 id
+   * @returns {Set<string>} 预览对象 id 集
+   * @private
+   */
+  #molPreviewIds(molId) {
+    let ids = this.#molPreviews.get(molId);
+    if (ids === undefined) {
+      ids = new Set();
+      this.#molPreviews.set(molId, ids);
+    }
+    return ids;
+  }
+
+  /**
+   * 覆盖对象的渲染预览坐标（全部视口）
+   * @param {string} objectId - 对象 id
+   * @param {{ x: number, y: number }} position - 世界坐标
+   * @returns {void}
+   * @private
+   */
+  #setPreviewPosition(objectId, position) {
+    for (const viewportCore of this.#viewportCores.values()) {
+      viewportCore.renderer?.setPreviewPosition?.(objectId, position);
+    }
+  }
+
+  /**
+   * 重置分子预览的超时定时器（到期按分子失联清预览）
+   * @param {string} molId - 分子 id
+   * @returns {void}
+   * @private
+   */
+  #resetMolPreviewTimer(molId) {
+    const existing = this.#molPreviewTimers.get(molId);
+    if (existing !== undefined) clearTimeout(existing);
+    this.#molPreviewTimers.set(
+      molId,
+      setTimeout(() => {
+        this.#molPreviewTimers.delete(molId);
+        if (this.#dropMolPreview(molId)) {
+          this.#requestStaticRender();
+        }
+      }, MOL_PREVIEW_TIMEOUT_MS),
+    );
+  }
+
+  /**
+   * 清除分子的全部渲染预览（mol-end / mol-abort / 超时）
+   * @param {string} molId - 分子 id
+   * @returns {boolean} 是否有预览被清除
+   * @private
+   */
+  #dropMolPreview(molId) {
+    const timer = this.#molPreviewTimers.get(molId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.#molPreviewTimers.delete(molId);
+    }
+    const ids = this.#molPreviews.get(molId);
+    if (ids === undefined) return false;
+    this.#molPreviews.delete(molId);
+    for (const objectId of ids) {
+      for (const viewportCore of this.#viewportCores.values()) {
+        viewportCore.renderer?.clearPreviewPosition?.(objectId);
+      }
+    }
+    return true;
+  }
+
+  /**
+   * 清空全部分子预览登记与超时定时器（断线 / 销毁时调用）
+   * @returns {void}
+   * @private
+   */
+  #clearAllMolPreviews() {
+    for (const timer of this.#molPreviewTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.#molPreviewTimers.clear();
+    this.#molPreviews.clear();
   }
 
   /**
@@ -726,8 +878,9 @@ class CoreWorkerRuntime {
       clearTimeout(this.#coordinatorRetryTimer);
       this.#coordinatorRetryTimer = null;
     }
-    this.#subframeForwarder?.close();
-    this.#subframeForwarder = null;
+    this.#amendForwarder?.close();
+    this.#amendForwarder = null;
+    this.#clearAllMolPreviews();
     if (this.#coordinator) {
       await this.#coordinator.close();
       this.#coordinator = null;

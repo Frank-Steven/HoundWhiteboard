@@ -594,3 +594,196 @@ describe("ObjectCreatorTool — property 信号", () => {
     });
   });
 });
+
+describe("ObjectCreatorTool — 分子管线", () => {
+  /**
+   * 构造具备分子能力的 boardApi 测试上下文
+   * @param {string} objectId - 分配的对象 id
+   * @param {{ boardApiOverrides?: Object }} [options={}] - 选项（覆盖 boardApi 方法）
+   * @returns {{ board: Object, boardApi: Object, deviceContext: Object }} 测试上下文
+   */
+  function createMolBoardDeviceContext(objectId, { boardApiOverrides = {} } = {}) {
+    const board = {
+      allocateObjectId: jest.fn(() => objectId),
+      getObjectById: jest.fn(() => undefined),
+    };
+    const boardApi = {
+      createObject: jest.fn(async () => objectId),
+      beginMol: jest.fn(() => "demo/mol-1"),
+      amendMol: jest.fn(() => true),
+      endMol: jest.fn(() => true),
+      abortMol: jest.fn(() => true),
+      appendListItem: jest.fn(),
+      replaceListItem: jest.fn(),
+      modifyObject: jest.fn(),
+      commitObjects: jest.fn(async () => [objectId]),
+      discardActiveObjects: jest.fn(),
+      ...boardApiOverrides,
+    };
+
+    const _nodeState = {};
+    const deviceContext = {
+      path: "/test",
+      getNodeState: () => ({ ..._nodeState }),
+      setNodeState: (_pathOrId, state) => {
+        Object.assign(_nodeState, state);
+        return { ..._nodeState };
+      },
+      _nodeState,
+      services: {
+        board,
+        boardApi,
+      },
+    };
+
+    return { board, boardApi, deviceContext };
+  }
+
+  test("两点创建（圆）：分子在途时补丁经 amendMol，end 后 endMol → commitObjects", () => {
+    const calls = [];
+    const { boardApi, deviceContext } = createMolBoardDeviceContext("201", {
+      boardApiOverrides: {
+        createObject: jest.fn(() => {
+          calls.push("createObject");
+          return Promise.resolve("201");
+        }),
+        beginMol: jest.fn(() => {
+          calls.push("beginMol");
+          return "demo/mol-1";
+        }),
+        amendMol: jest.fn(() => {
+          calls.push("amendMol");
+          return true;
+        }),
+        endMol: jest.fn(() => {
+          calls.push("endMol");
+          return true;
+        }),
+        commitObjects: jest.fn(() => {
+          calls.push("commitObjects");
+          return Promise.resolve(["201"]);
+        }),
+      },
+    });
+    const tool = new CircleDataCreatorTool({
+      processor: createCircleRadiusProcessor(),
+    });
+
+    tool.process(
+      {
+        signals: [{ type: "position", context: { value: new Vector(0, 0) } }],
+      },
+      deviceContext,
+    );
+    tool.process(
+      {
+        signals: [{ type: "position", context: { value: new Vector(6, 8) } }],
+      },
+      deviceContext,
+    );
+    tool.process(
+      {
+        signals: [
+          { type: "position", context: { value: new Vector(6, 8) } },
+          { type: "end", context: {} },
+        ],
+      },
+      deviceContext,
+    );
+
+    expect(boardApi.beginMol).toHaveBeenCalledWith(["201"], {
+      create: true,
+      supraKey: undefined,
+    });
+    // 手势补丁（绝对量）入 amend 流，不再逐帧 modifyObject
+    expect(boardApi.modifyObject).not.toHaveBeenCalled();
+    expect(boardApi.amendMol).toHaveBeenLastCalledWith("demo/mol-1", {
+      "201": { data: { radius: 10 } },
+    });
+    expect(boardApi.endMol).toHaveBeenCalledWith("demo/mol-1");
+    expect(boardApi.commitObjects).toHaveBeenCalledWith(["201"]);
+    expect(calls).toEqual([
+      "createObject",
+      "beginMol",
+      "amendMol",
+      "amendMol",
+      "amendMol",
+      "amendMol",
+      "endMol",
+      "commitObjects",
+    ]);
+    expect(tool._entry.data.radius).toBe(10);
+  });
+
+  test("Worker 挂起：绝对量补丁覆盖合并，确认后仅补发最新值再延迟闭合", async () => {
+    const calls = [];
+    let resolveBegin;
+    const beginPromise = new Promise((resolve) => {
+      resolveBegin = resolve;
+    });
+    const { boardApi, deviceContext } = createMolBoardDeviceContext("202", {
+      boardApiOverrides: {
+        beginMol: jest.fn(() => {
+          calls.push("beginMol");
+          return beginPromise;
+        }),
+        amendMol: jest.fn(() => {
+          calls.push("amendMol");
+          return true;
+        }),
+        endMol: jest.fn(() => {
+          calls.push("endMol");
+          return true;
+        }),
+        commitObjects: jest.fn(() => {
+          calls.push("commitObjects");
+          return Promise.resolve(["202"]);
+        }),
+      },
+    });
+    const tool = new CircleDataCreatorTool({
+      processor: createCircleRadiusProcessor(),
+    });
+
+    tool.process(
+      {
+        signals: [{ type: "position", context: { value: new Vector(0, 0) } }],
+      },
+      deviceContext,
+    );
+    tool.process(
+      {
+        signals: [{ type: "position", context: { value: new Vector(3, 4) } }],
+      },
+      deviceContext,
+    );
+    tool.process(
+      {
+        signals: [
+          { type: "position", context: { value: new Vector(6, 8) } },
+          { type: "end", context: {} },
+        ],
+      },
+      deviceContext,
+    );
+    expect(boardApi.amendMol).not.toHaveBeenCalled();
+    expect(boardApi.modifyObject).not.toHaveBeenCalled();
+    expect(boardApi.endMol).not.toHaveBeenCalled();
+
+    // molId 到达：挂起期间的中间帧被最新补丁覆盖，仅补发一条 amend
+    resolveBegin("demo/mol-1");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(boardApi.amendMol).toHaveBeenCalledTimes(1);
+    expect(boardApi.amendMol).toHaveBeenCalledWith("demo/mol-1", {
+      "202": { data: { radius: 10 } },
+    });
+    expect(boardApi.endMol).toHaveBeenCalledWith("demo/mol-1");
+    expect(boardApi.commitObjects).toHaveBeenCalledWith(["202"]);
+    expect(calls).toEqual([
+      "beginMol",
+      "amendMol",
+      "endMol",
+      "commitObjects",
+    ]);
+  });
+});

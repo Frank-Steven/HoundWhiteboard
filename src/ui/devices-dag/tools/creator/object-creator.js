@@ -83,6 +83,30 @@ class ObjectCreatorTool extends GestureTool {
   _hasCreationFailed;
 
   /**
+   * 当前创建手势的增量式分子 id
+   * @description
+   * 创建 RPC 发出后经 `boardApi.beginMol`（create 型）分配；手势期间追点/补丁改经
+   * `amendMol` 流入 amend 流（不产生记录），`completeCreatedObject` 时 `endMol`
+   * 折叠物化为 add-object 记录（commitObjects 凭物化水位跳过重复 add），
+   * 取消路径 `abortMol` 丢弃 amend 流并移除暂存对象。
+   * `null` 表示无在途分子（旧 appendListItem/modifyObject 直调路径）。
+   * @type {?string}
+   * @protected
+   */
+  _molId;
+
+  /**
+   * 分子 id 确认中的挂起状态
+   * @description
+   * Worker 模式下 beginMol 经 RPC 确认异步返回 molId；挂起期间 append 条目按序
+   * 入 `queue` 缓冲（增量必须保序），绝对量补丁合并入 `patch`（覆盖即最新），
+   * molId 到达后由 `_resolveCreateMol` 按序补发并执行延迟的闭合/中止/提交。
+   * @type {?{ closing: "end"|"abort"|null, context: Object, objectId: number|string, queue: Array<Object>, patch: Object|null, commit: boolean }}
+   * @protected
+   */
+  _molPending;
+
+  /**
    * 动作完成时是否自动将对象提交到静态图
    * @description wrapper 嵌入场景（如 HandoffWrapperTool）由 wrapper 置为 false，
    * 阻止对象提前进入静态图，使其留在 AOM 动态图等待 modifier 最终提交。
@@ -104,6 +128,8 @@ class ObjectCreatorTool extends GestureTool {
     this._pendingProperty = null;
     this._pendingActionInteraction = null;
     this._hasCreationFailed = false;
+    this._molId = null;
+    this._molPending = null;
   }
 
   /**
@@ -269,6 +295,7 @@ class ObjectCreatorTool extends GestureTool {
 
     this.objectId = interaction.objectId;
     this._entry = createdObject;
+    this._beginCreateMol(interaction?.context);
     return true;
   }
 
@@ -364,7 +391,9 @@ class ObjectCreatorTool extends GestureTool {
    * @description
    * 手势 processor 的唯一写入口：先更新本地 `_entry`
    * （position 规整为 Vector、data 合并、transform 存 `{a,b,c,d}` 纯对象），
-   * 再通过 RPC fire-and-forget 平行维护 Worker 侧对象。
+   * 再平行维护 Worker 侧对象——分子在途时经 `amendMol` 入 amend 流，
+   * molId 确认中合并入挂起缓冲（绝对量补丁覆盖即最新），无在途分子时
+   * `modifyObject` fire-and-forget 直调。
    * patch 形状与 `boardApi.modifyObject(objectId, patch)` 的补丁契约一致。
    * @param {import("./gesture/two-point-processor.js").GesturePatch} patch - 手势补丁
    * @param {Object} interaction - 当前交互上下文
@@ -389,16 +418,33 @@ class ObjectCreatorTool extends GestureTool {
 
     const boardApi = interaction?.context?.services?.boardApi;
     if (boardApi && this.objectId != null) {
-      boardApi.modifyObject(this.objectId, patch);
+      if (this._molId !== null) {
+        // 分子在途：补丁入 amend 流（不产生记录），endMol 时折叠物化
+        boardApi.amendMol?.(this._molId, { [this.objectId]: patch });
+      } else if (this._molPending !== null) {
+        // molId 确认中：绝对量补丁可覆盖合并，确认后由 _resolveCreateMol 补发最新值
+        this._molPending.patch = {
+          ...(this._molPending.patch ?? {}),
+          ...patch,
+        };
+      } else {
+        boardApi.modifyObject(this.objectId, patch);
+      }
     }
   }
 
   /**
    * 卸载或结束 workflow 时撤销未提交对象
+   * @description
+   * 在途创建分子优先经 `abortMol` 中止：amend 流丢弃，暂存对象随分子移除，
+   * 无需再走 discardActiveObjects；无在途分子时回退旧 discard 路径。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void}
    */
   discardCreatedObjects(context = {}) {
+    if (this._abortCreatedMol(context)) {
+      return;
+    }
     const boardApi = context?.services?.boardApi;
     if (boardApi && this.objectId != null) {
       boardApi.discardActiveObjects([this.objectId]);
@@ -563,9 +609,8 @@ class ObjectCreatorTool extends GestureTool {
    * @description
    * 仅当 {@link beforeCommitCreatedObject} 返回 true 时由
    * {@link completeCreatedObject} 调用。
-   * 提交回执（Worker 返回的实际提交 id 列表）用于对账：
-   * 期望 id 缺失时告警——正常路径已被创建失败兜底拦截，
-   * 此处是防止对象静默丢失的最后一张网。
+   * molId 确认中（Worker 模式）时提交延迟到补发与 endMol 之后，
+   * 保持 amend → endMol → commitObjects 的内核侧顺序。
    * @param {Object} interaction - 当前交互上下文
    * @protected
    */
@@ -574,24 +619,308 @@ class ObjectCreatorTool extends GestureTool {
     const boardApi = context.services?.boardApi;
 
     if (boardApi && this.objectId != null) {
-      const objectId = this.objectId;
-      Promise.resolve(boardApi.commitObjects([objectId]))
-        .then((committedIds) => {
-          if (Array.isArray(committedIds) && !committedIds.includes(objectId)) {
-            console.error(
-              `[Creator] Object ${objectId} was lost: commitObjects did not report it as committed.`,
-            );
-          }
-        })
-        .catch((error) => {
-          console.error(
-            `[Creator] Failed to commit object ${objectId}:`,
-            error,
-          );
-        });
+      if (this._molPending !== null) {
+        this._molPending.commit = true;
+      } else {
+        this._commitObjectsViaApi(boardApi, this.objectId);
+      }
     }
 
     this.clearContextObjects(context);
+  }
+
+  /**
+   * 经 boardApi 提交对象并对账回执
+   * @description
+   * 提交回执（Worker 返回的实际提交 id 列表）用于对账：
+   * 期望 id 缺失时告警——正常路径已被创建失败兜底拦截，
+   * 此处是防止对象静默丢失的最后一张网。
+   * @param {Object} boardApi - 白板 API
+   * @param {number|string} objectId - 待提交的对象 id
+   * @returns {void}
+   * @protected
+   */
+  _commitObjectsViaApi(boardApi, objectId) {
+    Promise.resolve(boardApi.commitObjects([objectId]))
+      .then((committedIds) => {
+        if (Array.isArray(committedIds) && !committedIds.includes(objectId)) {
+          console.error(
+            `[Creator] Object ${objectId} was lost: commitObjects did not report it as committed.`,
+          );
+        }
+      })
+      .catch((error) => {
+        console.error(
+          `[Creator] Failed to commit object ${objectId}:`,
+          error,
+        );
+      });
+  }
+
+  /**
+   * 为当前创建对象开启 create 型增量式分子（幂等）
+   * @description
+   * boardApi 具备分子能力（beginMol/amendMol）时在 createObject 之后立即分配 molId；
+   * 无分子能力或 beginMol 同步抛错时保持 `_molId = null`，后续追点回退旧
+   * appendListItem/modifyObject 直调路径。Worker 模式 beginMol 异步返回（Promise），
+   * 进入挂起状态由 `_resolveCreateMol` 收尾。
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @returns {void}
+   * @protected
+   */
+  _beginCreateMol(context = {}) {
+    if (this._molId !== null || this._molPending !== null) return;
+    const boardApi = context?.services?.boardApi;
+    if (
+      typeof boardApi?.beginMol !== "function" ||
+      typeof boardApi?.amendMol !== "function"
+    ) {
+      return;
+    }
+    if (this.objectId == null) return;
+
+    let allocated;
+    try {
+      allocated = boardApi.beginMol([this.objectId], {
+        create: true,
+        supraKey: context?.services?.supraKey,
+      });
+    } catch {
+      // 同步抛错（如超分子未开启）：回退旧直调路径
+      return;
+    }
+
+    if (typeof allocated?.then === "function") {
+      // Worker 模式：molId 经 RPC 确认异步到达；确认前 append 按序缓冲
+      const pending = {
+        closing: null,
+        context,
+        objectId: this.objectId,
+        queue: [],
+        patch: null,
+        commit: false,
+      };
+      this._molPending = pending;
+      Promise.resolve(allocated).then(
+        (molId) => this._resolveCreateMol(pending, molId),
+        () => {
+          if (this._molPending === pending) {
+            this._molPending = null;
+            this._flushPendingMolLegacy(pending);
+          }
+        },
+      );
+      return;
+    }
+
+    if (typeof allocated === "string" && allocated !== "") {
+      this._molId = allocated;
+    }
+  }
+
+  /**
+   * molId 确认到达：按序补发挂起缓冲并执行延迟的闭合/中止/提交
+   * @param {Object} pending - 挂起状态
+   * @param {*} molId - beginMol 确认的分子 id（非字符串时视为分配失败，回退旧路径补发）
+   * @returns {void}
+   * @protected
+   */
+  _resolveCreateMol(pending, molId) {
+    if (this._molPending !== pending) return;
+    this._molPending = null;
+    const boardApi = pending.context?.services?.boardApi;
+    if (typeof molId !== "string" || molId === "") {
+      this._flushPendingMolLegacy(pending);
+      return;
+    }
+    if (pending.closing === "abort") {
+      // 挂起期间无 amend 到达内核，abort 直接移除暂存对象（缓冲无需补发）
+      boardApi?.abortMol?.(molId);
+      return;
+    }
+    this._molId = molId;
+    this._replayPendingMol(pending, boardApi, molId);
+    if (pending.closing === "end") {
+      this._molId = null;
+      boardApi?.endMol?.(molId);
+      if (pending.commit && pending.objectId != null) {
+        this._commitObjectsViaApi(boardApi, pending.objectId);
+      }
+    }
+  }
+
+  /**
+   * 按序补发挂起期间缓冲的内核写
+   * @description
+   * 绝对量补丁合并为单条 amend；append 条目按到达顺序补发，
+   * 同 key 的连续 append 折叠为一条 amend（增量保序，且避免 RPC 同帧批合并丢点）；
+   * amend patch 无 replace 语义，replace 走 replaceListItem 直调并保持相对次序。
+   * @param {Object} pending - 挂起状态
+   * @param {Object} boardApi - 白板 API
+   * @param {string} molId - 已确认的分子 id
+   * @returns {void}
+   * @protected
+   */
+  _replayPendingMol(pending, boardApi, molId) {
+    if (!boardApi || pending.objectId == null) return;
+    const objectId = pending.objectId;
+
+    if (pending.patch && Object.keys(pending.patch).length > 0) {
+      boardApi.amendMol?.(molId, { [objectId]: pending.patch });
+    }
+
+    let runKey = null;
+    let runItems = [];
+    const flushAppendRun = () => {
+      if (runKey === null || runItems.length === 0) return;
+      boardApi.amendMol?.(molId, {
+        [objectId]: { append: { key: runKey, items: runItems } },
+      });
+      runKey = null;
+      runItems = [];
+    };
+
+    for (const entry of pending.queue) {
+      if (entry.items) {
+        if (runKey !== null && runKey !== entry.key) {
+          flushAppendRun();
+        }
+        runKey = entry.key;
+        runItems.push(...entry.items);
+      } else {
+        flushAppendRun();
+        boardApi.replaceListItem?.(objectId, entry.key, entry.index, entry.item);
+      }
+    }
+    flushAppendRun();
+  }
+
+  /**
+   * beginMol 失败后的旧路径补发
+   * @description
+   * 分子未建立（RPC 拒绝或返回非法 molId）时，挂起缓冲改走旧直调路径补发，
+   * 避免挂起窗口内的追点在内核侧丢失；延迟中止/提交同样按旧路径兑现。
+   * @param {Object} pending - 挂起状态
+   * @returns {void}
+   * @protected
+   */
+  _flushPendingMolLegacy(pending) {
+    const boardApi = pending.context?.services?.boardApi;
+    if (!boardApi || pending.objectId == null) return;
+    const objectId = pending.objectId;
+
+    if (pending.closing === "abort") {
+      boardApi.discardActiveObjects?.([objectId]);
+      return;
+    }
+    if (pending.patch && Object.keys(pending.patch).length > 0) {
+      boardApi.modifyObject?.(objectId, pending.patch);
+    }
+    for (const entry of pending.queue) {
+      if (entry.items) {
+        boardApi.appendListItem?.(objectId, entry.key, entry.items);
+      } else {
+        boardApi.replaceListItem?.(objectId, entry.key, entry.index, entry.item);
+      }
+    }
+    if (pending.closing === "end" && pending.commit) {
+      this._commitObjectsViaApi(boardApi, objectId);
+    }
+  }
+
+  /**
+   * 向当前创建对象的列表字段追加元素（分子感知的统一写入口）
+   * @description
+   * 分子在途时经 `amendMol` 的 append patch 入 amend 流；molId 确认中按序缓冲；
+   * 无在途分子时回退 `appendListItem` 直调。本地 `_entry` 的更新由子类自行承担。
+   * @param {Object} interaction - 当前交互上下文
+   * @param {string} key - 列表字段名（如 stroke/polygon 的 "points"）
+   * @param {any[]} items - 追加的元素集合
+   * @returns {void}
+   * @protected
+   */
+  _appendCreatedObjectItems(interaction, key, items) {
+    const boardApi = interaction?.context?.services?.boardApi;
+    if (!boardApi || this.objectId == null) return;
+
+    if (this._molId !== null) {
+      boardApi.amendMol?.(this._molId, {
+        [this.objectId]: { append: { key, items } },
+      });
+      return;
+    }
+    if (this._molPending !== null) {
+      // append 为增量必须保序：缓冲待 molId 确认后按序补发
+      this._molPending.queue.push({ key, items: [...items] });
+      return;
+    }
+    boardApi.appendListItem(this.objectId, key, items);
+  }
+
+  /**
+   * 替换当前创建对象列表字段中指定索引的元素（分子感知的统一写入口）
+   * @description
+   * amend patch 无 replace 语义：分子在途时仍 `replaceListItem` 直调
+   * （实例快照由 endMol 收取）；molId 确认中按序缓冲，避免先于未补发的
+   * append 到达内核（索引越界会被内核静默丢弃）。
+   * @param {Object} interaction - 当前交互上下文
+   * @param {string} key - 列表字段名
+   * @param {number} index - 目标索引
+   * @param {*} item - 新元素
+   * @returns {void}
+   * @protected
+   */
+  _replaceCreatedObjectItem(interaction, key, index, item) {
+    const boardApi = interaction?.context?.services?.boardApi;
+    if (!boardApi || this.objectId == null) return;
+
+    if (this._molPending !== null) {
+      this._molPending.queue.push({ key, index, item });
+      return;
+    }
+    boardApi.replaceListItem(this.objectId, key, index, item);
+  }
+
+  /**
+   * 定稿当前创建分子：amend 流折叠物化为 add-object 记录
+   * @description
+   * 无在途分子时为空操作；molId 确认中（Worker 模式）时标记延迟闭合，
+   * 确认后由 `_resolveCreateMol` 补发缓冲并执行 endMol。
+   * 与 autoCommit 无关：handoff 场景同样物化，后续 commitObjects 凭水位跳过重复 add。
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @returns {void}
+   * @protected
+   */
+  _endCreatedMol(context = {}) {
+    if (this._molPending !== null) {
+      this._molPending.closing = "end";
+      return;
+    }
+    if (this._molId === null) return;
+    const molId = this._molId;
+    this._molId = null;
+    context?.services?.boardApi?.endMol?.(molId);
+  }
+
+  /**
+   * 中止当前创建分子：丢弃 amend 流，暂存对象随分子移除
+   * @description
+   * 无在途分子时返回 false（调用方走旧 discardActiveObjects 路径）；
+   * molId 确认中（Worker 模式）时标记延迟中止，确认后由 `_resolveCreateMol` 执行。
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @returns {boolean} 是否有在途分子接管了本次丢弃
+   * @protected
+   */
+  _abortCreatedMol(context = {}) {
+    if (this._molPending !== null) {
+      this._molPending.closing = "abort";
+      return true;
+    }
+    if (this._molId === null) return false;
+    const molId = this._molId;
+    this._molId = null;
+    context?.services?.boardApi?.abortMol?.(molId);
+    return true;
   }
 
   /**
@@ -641,6 +970,9 @@ class ObjectCreatorTool extends GestureTool {
 
     // finalize 总是执行
     this.finalizeCreatedObject(interaction);
+
+    // 物化创建分子（add-object 记录）；commitObjects 凭物化水位跳过重复 add
+    this._endCreatedMol(interaction?.context ?? context);
 
     // handoff wrapper 通过将 autoCommit 置为 false 阻止提前 commit
     // 除此之外通过 beforeCommitCreatedObject 判断
