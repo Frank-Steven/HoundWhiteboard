@@ -85,7 +85,7 @@
 
 - 中继无状态：断线期间的消息不缓存，重连后靠 lastSeen 增量握手补齐，周期摘要全量重建兜底。
 - 同 source 覆盖：中继按 source 唯一定位成员，同 source 并发连接会互相顶替（同机双开需显式区分身份）。
-- 远程活跃对象可见但无视觉指示：锁定感与选中框属 K5 awareness 通道（choice 名已经由 choice 字段就位）。
+- 远程选择经 awareness overlay 呈现：按来源着色的选中框与来源标签，装饰刷新由 remote-activity 通知驱动（不经 volatile 通道）。
 - 浏览器（无 Tauri）打开 demo 为内存板：同步照常，内容不落盘。
 
 ## 相关文档

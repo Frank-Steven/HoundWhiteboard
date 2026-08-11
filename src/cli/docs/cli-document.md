@@ -50,12 +50,12 @@ yarn cli <命令> [参数] [--path <板目录>] [--标志 值]
 ```
 
 | 命令                                                              | 说明                                                                                 |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------- |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `create --path <板目录> [--width 800] [--height 600]`             | 创建空板；板目录已存在时报错                                                         |
 | `info [--path <板目录>]`                                          | 打印板元数据与统计（板配置、记录数、HEAD、活动链 chain、对象/trash 计数、id 计数器） |
 | `list [--path <板目录>]`                                          | 列出活动对象（id、类型）与 trash 条目                                                |
 | `show <对象id> [--path <板目录>]`                                 | 打印单个对象的序列化数据                                                             |
-| `add --type <类型> [--data '<json>'                               | "@文件"] [--property '<json>'] [--position x,y] [--path <板目录>]`                   | 创建并提交对象，打印新对象 id |
+| `add --type <类型> [--data '<json>' \| "@文件"] [--property '<json>'] [--position x,y] [--path <板目录>]` | 创建并提交对象，打印新对象 id |
 | `delete <对象id...> [--path <板目录>]`                            | 删除对象（移入 trash，可撤销）                                                       |
 | `undo [<操作id>] [--path <板目录>]` / `redo [--path <板目录>]`    | 撤销 / 重做一步；undo 指定操作 id 时撤销该操作，省略时撤销本端最近操作               |
 | `ops [--source 来源] [--type 类型] [--limit N] [--path <板目录>]` | 打印操作记录明细（id/type/source/time/parentId/supraOpId/molId/supraId/discard/properties/payload） |
@@ -86,7 +86,7 @@ yarn cli <命令> [参数] [--path <板目录>] [--标志 值]
 
 choice 是命名选择（类比 GUI 里多套互不相干的选择）。**AOM 的命名选择注册表是权威状态**：在册成员必然在板上且处于活动状态。同一对象同时只属一个 choice（choose 新 choice 时自动从旧 choice 摘出）。choice 名不可为空、不可含 `/`、不可以 `~` 开头（`~` 是匿名选择的保留名）；不同端的同名 choice 互不相同（内核以 `"{source}/{choice}"` 形态区分）。
 
-choose/unchoose 的日志记录与活动事件均携带 choice 名：全量重建（INIT / 哈希校验兜底）后远程端仍能看到对端的 choice 名。命名迁移（已活动对象改挂别的 choice）只经活动事件传播，不产生新记录。
+choose/unchoose 的日志记录均携带 choice 名，活动事件仅 choose 携带（unchoose/commit 按来源与对象注销）：全量重建（INIT / 哈希校验兜底）后远程端仍能看到对端的 choice 名。命名迁移（已活动对象改挂别的 choice）只经活动事件传播，不产生新记录。
 
 板目录的 `.cli-choices.json`（临时文件 rename 原子写）是**重启种子**而非运行时真相：daemon 重启后注册表随进程丢失，`choices` 以 `active:false` 标注未恢复的 choice，首次 `modify --choice` 触发自愈重选（携带 choice 名）重建注册表。
 

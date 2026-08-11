@@ -51,6 +51,8 @@ sequenceDiagram
 
 所有方法返回 `Promise`。参数格式见 [board-api-types.js](../../../kernel/types/board-api-types.js)。
 
+Worker 侧分发由路由表 [board-api-routes.js](../../../kernel/api/board-api-routes.js) 承担。路由表是更全集：`queryStateHash` / `repairStateFromLog` / `queryMolAmendSince` / `applyRemoteOperations` 等方法不经 `BoardApiRpc` 客户端封装，仅经路由分发（CoreWorkerRuntime 与 CLI daemon 复用同表）。
+
 ### 板面生命周期
 
 | 方法                   | 说明                                                               |
@@ -84,7 +86,7 @@ sequenceDiagram
 | `replaceListItem(objectId, key, index, item)` | 替换列表属性指定索引元素。同帧覆盖                                        |
 | `removeListItem(objectId, key, index)`        | 删除列表属性指定索引元素                                                  |
 
-所有高频写入方法同帧内合并为单条 `rpc-batch` 消息发送，减少 Worker 侧消息处理开销。
+所有高频写入方法（含增量式分子的 `amendMol`）同帧内合并为单条 `rpc-batch` 消息发送，减少 Worker 侧消息处理开销。
 
 ### 批处理控制
 
@@ -95,10 +97,10 @@ sequenceDiagram
 
 ### AOM 控制
 
-| 方法                              | 说明                            |
-| --------------------------------- | ------------------------------- |
-| `addActiveObjects(objectIds)`     | 将对象从静态图检出到 AOM 动态图 |
-| `discardActiveObjects(objectIds)` | 将对象从 AOM 丢弃，不修改静态图 |
+| 方法                                        | 说明                                                                                      |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `addActiveObjects(objectIds, options?)`     | 将对象从静态图检出到 AOM 动态图；`options.supraKey` 指定超分子、`options.choice` 命名选择 |
+| `discardActiveObjects(objectIds, options?)` | 将对象从 AOM 丢弃，不修改静态图；`options.supraKey` 指定超分子                            |
 
 ### 查询
 
@@ -107,6 +109,8 @@ sequenceDiagram
 | `queryObjects(ids)`           | 按 id 查询对象摘要（类型、位置、变换、边界、属性） |
 | `queryChunkObjects(chunkIds)` | 按区块 id 查询归属该区块的所有对象 id              |
 | `hitTest(range, mode)`        | 执行命中检测，返回与指定范围相交的对象 id 列表     |
+| `queryChoices()`              | 列出本端的命名选择（choice）                       |
+| `queryRemoteChoices()`        | 列出全部远程命名选择（awareness 查询面）           |
 
 ### 撤销 / 重做
 
@@ -115,13 +119,23 @@ sequenceDiagram
 | `undo()` | 撤销（目标节点语义，含截断形态）   |
 | `redo()` | 重做（重做栈为派生投影，条件应用） |
 
+### 增量式分子
+
+| 方法                               | 说明                                                                         |
+| ---------------------------------- | ---------------------------------------------------------------------------- |
+| `beginMol(objectIds, options?)`    | 开启增量式分子（手势 begin，捕获 before 快照），返回分子 id                  |
+| `amendMol(molId, patchesByObject)` | 对进行中的分子施加增量修正（手势每帧）。fire-and-forget 批写，同帧同分子合并 |
+| `endMol(molId)`                    | 定稿分子（end-amend 物化上链）                                               |
+| `abortMol(molId)`                  | 中止分子（丢弃 amend 流，实例还原到手势起点）                                |
+| `queryOpenMols()`                  | 查询本端未闭合分子清单（断线重连对账用）                                     |
+
 ### 超分子会话
 
-| 方法              | 说明                                         |
-| ----------------- | -------------------------------------------- |
-| `beginSupra(key)` | 按 key 开启超分子（成员缓冲为草稿）          |
-| `endSupra(key)`   | 闭合并简并定稿，成员整体入日志、凝聚为单节点 |
-| `abortSupra(key)` | 中止并丢弃缓冲成员                           |
+| 方法              | 说明                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------- |
+| `beginSupra(key)` | 按 key 开启超分子：成员记录即时物化上链（携带 supraId），不缓冲草稿                               |
+| `endSupra(key)`   | 先强制闭合在途分子，再追加 close-supra 记录；活动链上同 supraId 连续段（≥2 成员）折叠为聚合节点   |
+| `abortSupra(key)` | 丢弃未闭合分子，并逐个撤销已物化成员                                                              |
 
 ### 会话元数据
 
@@ -138,16 +152,16 @@ sequenceDiagram
 
 ## 批处理机制
 
-`modifyObject`、`appendListItem`、`replaceListItem`、`removeListItem` 使用微任务级批处理：
+`modifyObject`、`appendListItem`、`replaceListItem`、`removeListItem`、`amendMol` 使用微任务级批处理：
 
-1. 调用时，参数存入 `#batchBuffer`（map key 为 `method:objectId:key:index`）
-2. 同 key 的后续调用自动合并（`modifyObject` 的 patch 逐字段合入，`appendListItem` 的 items 合并为数组）
+1. 调用时，参数存入 `#batchBuffer`（map key 为 `method:objectId:key:index`；`amendMol` 为 `amendMol:{molId}`）
+2. 同 key 的后续调用自动合并（`modifyObject` 的 patch 逐字段合入，`appendListItem` 的 items 合并为数组，`amendMol` 的 patchesByObject 逐对象合并 patch）
 3. 在下一个微任务中执行 `#flushBatchNow`，将所有缓冲条目打包为单条 `rpc-batch` 消息发送（携带递增 batchId）
-4. 发送前若有非批处理方法调用（如 `createObject`），会自动触发 `#flushBatchNow` 确保时序正确
+4. 发送前若有非批处理方法调用（如 `createObject`、`endMol`），会自动触发 `#flushBatchNow` 确保时序正确
 
 ### 写路径的两层语义
 
-- **fire-and-forget 批写**（`modifyObject` / `appendListItem` / `replaceListItem` / `removeListItem`）：入队即 resolve，不代表 Core 已应用。Worker 侧单条目失败不影响其余条目执行，失败条目以 `rpc-batch-error` 回传，经 `onBatchError` 订阅者接收；`Board.enableWorkerMode` 默认挂 WARN 级日志订阅
+- **fire-and-forget 批写**（`modifyObject` / `appendListItem` / `replaceListItem` / `removeListItem` / `amendMol`）：入队即 resolve，不代表 Core 已应用。Worker 侧单条目失败不影响其余条目执行，失败条目以 `rpc-batch-error` 回传，经 `onBatchError` 订阅者接收；`Board.enableWorkerMode` 默认挂 WARN 级日志订阅
 - **确认式写**（`createObject` / `modifyObjects` / `deleteObjects` / `commitObjects` / `eraseData` 等）：走完整 RPC 往返，resolve 即 Core 已处理，返回值与错误可信
 
 选择规约：逐帧高频写（拖动、绘制过程）用批写方法；需要对账或依赖写结果的场景用确认式方法。
@@ -183,7 +197,6 @@ sequenceDiagram
 - `BoardApiRpc` 不依赖 DOM 或特定 Worker 实现，只要求端点满足 `postMessage` / `addEventListener` / `removeEventListener` 接口
 - `createObject` 需要显式传入 `id` 字段（当前由 UI 侧 `Board.allocateObjectId()` 分配）
 - 同线程实现（`BoardApiLocal`）已移除，当前仅保留 RPC 实现
-- undo / redo 的实现尚未落地
 
 ## 相关文档
 
