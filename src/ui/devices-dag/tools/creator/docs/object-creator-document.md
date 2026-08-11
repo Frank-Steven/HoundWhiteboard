@@ -67,7 +67,7 @@ creator 不再持有本地 `BasicObject` 实例。
 
 ```js
 {
-  id: number,
+  id: string,                        // 来源命名空间字符串（如 "ui/42"）
   type: string,                      // 对象类型名（如 "StrokeObject"）
   position: Vector | { x, y },
   transform?: { a, b, c, d },        // 由手势补丁写入（对象变换）
@@ -111,7 +111,9 @@ creator 在 `ensureObject(interaction)` 中按需分配 `objectId`：
 
 1. 若输入上下文已携带 `interaction.objectId`，直接复用
 2. 否则调用 `board.allocateObjectId()`
-3. `Board` 在 UI 线程用本地 `CounterPool` 同步分配新 id
+3. `Board.#idPool` 为 `IncrementalIdPool`：分配出来的是 `idSource` 命名空间的
+   字符串 id（`{source}/{n}`）；分配即 `reportObjectIdCounter` 上报，计数随板元数据
+   持久化，`enableWorkerMode` 后按 `getObjectIdCounters` 续种，重开不发生分配碰撞
 4. 后续 `boardApi.createObject(type, { id, ... })` 必须显式携带该 id
 
 Worker 侧若发现重复 id，会通过 RPC 抛错返回。

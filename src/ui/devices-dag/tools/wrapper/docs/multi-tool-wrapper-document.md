@@ -142,12 +142,15 @@ new MultiToolWrapper((touchId) => {
 });
 ```
 
-挂载到设备图：
+挂载到设备图（Viewport 只暴露 `inputScope` 接线入口，`mountWorkflow` 与 `addEdge`
+分两步完成）：
 
 ```js
-viewport.mountWorkflow("touch-stroke", multiStroke, [
-  { from: "touchscreen/contacts", edge: "default" },
-]);
+viewport.inputScope.mountWorkflow("touch-stroke", multiStroke);
+viewport.inputScope.addEdge({
+  from: "touchscreen/contacts",
+  to: "workflows/touch-stroke",
+});
 ```
 
 ## 设计约束

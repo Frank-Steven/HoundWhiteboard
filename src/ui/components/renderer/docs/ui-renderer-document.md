@@ -109,6 +109,17 @@ createCompatSelectionEntriesForSummaries(objects, "modifier", viewport);
 
 这演示了如何用 `type: "point"` 和 `type: "path"` 为创建工具添加可视辅助。
 
+### awareness（远程协作装饰）
+
+`AwarenessOverlay`（`awareness-overlay.js`）以 overlay provider 注册远程协作装饰：
+
+- 远程命名选择的按来源着色虚线框与来源标签（`awareness-choice:{source}`）
+- 远程光标
+- 远程创建中对象的预览（手势中间帧框随预览位置画）
+
+数据经 `queryRemoteChoices` / `queryObjects` 拉取，由 awareness 消息驱动刷新；
+只画不存——条目不进任何本地状态，commit 记录到达后按记录归位。
+
 ## overlay 条目格式
 
 条目分三层结构：

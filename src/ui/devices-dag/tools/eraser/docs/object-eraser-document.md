@@ -207,7 +207,7 @@ FD 已实现：几何原语（`range/segment-math.js` 的距离判定）、`Stro
 - 各对象 `render()` 硬编码 `source-over`
 - `ViewportRenderer` 采用 `#cache` 静态层 + `#output` 合成的两层结构，AOM 对象叠画在静态内容之上
 - `ActiveObjectManager.pickup()` 会把选中对象在静态图下游（z-order 之上）的相交对象一并纳入 AOM
-- 分子操作模型见操作文档，当前 `hit/operation.js` 只有骨架定义
+- 分子操作模型见操作文档；`hit/operation.js` 已落地完整的分子操作记录模型——九类操作记录（八种分子类型 + close-supra 折叠记录），含三级容器字段（`molId` / `supraId` / `discard`）、校验与排序辅助
 
 ## 相关文档
 

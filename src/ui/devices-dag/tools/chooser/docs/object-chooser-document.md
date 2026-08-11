@@ -35,7 +35,7 @@ chooser 统一使用 `ObjectSummary` 纯数据条目，通过以下方法处理�
 - `resolveSelectedObjectReference()` — 条目透传
 - `resolveSelectedObjectReferences()` — 批量归一化
 - `resolveObjectSelectionWorldRange()` — 世界范围解析
-- `resolveObjectIds()` — 提取数字 ID
+- `resolveObjectIds()` — 提取对象 id（字符串）
 
 ## process 调度
 
@@ -117,6 +117,10 @@ getSelectionRegion(context)
 4. 激活新对象（`boardApi.addActiveObjects`）
 5. 写入 `_selectedObjects` 并同步发布 objects 投影（`setContextObjects`）
 
+discard / add 调用均携带 handoff 注入槽位上下文的 `supraKey`
+（`context.services.supraKey`），挂入会话超分子；`discardAction` / `umount`
+中的 discard 同理。
+
 选择集的唯一真相源是实例字段 `_selectedObjects`；`node.state.objects` 只是它同步发布的只读投影，工具逻辑禁止读回。
 
 ## 选择生命周期
@@ -142,6 +146,12 @@ sequenceDiagram
 ```
 
 `_applySelection` 总是在 end 手势后执行一次 `replaceSelection`，即使命中结果为空——空选择同样会清理上一轮选择。`afterChoose` 和 `confirmSelection` 只在有选中对象时触发。
+
+## hit 变更后的幽灵选择清理
+
+`process()` 收到 `hit:changed` 信号时先经 `#pruneStaleSelection` 做失效清理：
+按 `queryObjects` 校验选择集中各对象的 `isActive`，对象不存在或已被移出活动层
+（如选择被撤销的幽灵选择）则移出选择集并同步 objects 投影，选中框随之消失。
 
 ## overlay
 

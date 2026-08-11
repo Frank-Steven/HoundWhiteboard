@@ -93,6 +93,25 @@
 不会产生拉丝残留。`invalidateCachedObjects()` 在对象离开 AOM（commit / delete）时
 同样并入其 `drawnRects`，关闭最后一帧活动绘制溢出静态提交清除集的窗口。
 
+## 远程手势预览
+
+`Renderer` 基类（`renderer.js`）维护一张预览坐标表（对象 id → 预览位置）：
+
+- `setPreviewPosition(objectId, position)` — 写入预览坐标
+- `clearPreviewPosition(objectId)` — 清除单个对象的预览（手势终点或记录归位后）
+- `clearAllPreviewPositions()` — 清空全部预览（断线时对端手势状态不可信）
+
+`ViewportRenderer` 重画静态缓存时按预览坐标临时覆盖对象的 `position`，画完还原——只影响渲染视图，不改对象数据。
+
+预览由 amend volatile 通道的分子消息驱动（`core-worker.js` 的 `#applyMolMessages`）：
+
+- `mol-begin` 按 before/create 快照的 `position` 起预览
+- `mol-amend` 的 `patch.position` 以绝对坐标覆盖（不是增量）
+- `mol-end` / `mol-abort` 清除该分子的全部预览
+- 每个分子挂 3s 超时兜底，消息中断时预览不残留；断线时清空全部预览并全量重画
+
+预览变化后触发全量缓存重画（`#requestStaticRender`），对象数据在分子记录到达时归位。
+
 ## 调试 API
 
 - `getStaticCache()`：返回内部的静态缓存 `OffscreenCanvas`，供调试面板读取

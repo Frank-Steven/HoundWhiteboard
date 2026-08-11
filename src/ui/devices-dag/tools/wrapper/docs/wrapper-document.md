@@ -47,7 +47,7 @@ shell 节点不在真实 DAG 中，子图结构可观察性由镜像机制替代
 ### 生命周期
 
 - `endAction(context)` / `cancelAction(context)`：由子类传播到当前活跃槽位的子工具
-- `umount(context)`：取消活跃动作并 dispose 全部槽位（`processor.dispose`）
+- `umount(context)`：取消活跃动作并 dispose 全部槽位（`_teardownSlot`：依次 `processor.dispose` + `tool.umount`（槽位上下文））
 - `reset()`：重置组合状态（相位 / 路由目标），**不销毁槽位**
 
 ## HandoffWrapperTool
@@ -73,6 +73,19 @@ scope.mountWorkflow("secondary-chooser", handoff);
 - second 阶段收到 `cancel` 信号且相位未被完成回调改变 → wrapper 调用 `second.discardAction()` 丢弃活动对象，切回 `first`
 
 相位镜像键：`phase` / `activeChild`。
+
+### 会话超分子
+
+一次「选择 → 修改 → 提交」会话共用一个 supraId（`#sessionKey`）：
+
+- first 相位信号到达即 `beginSupra(sessionKey)` 开启会话超分子；
+  key 取模块级单调序号（`handoff/{seq}`），跨 wrapper 实例唯一
+- second 完成、second 相位 cancel（Esc = discard 型 unchoose 闭合）、
+  `endAction` / `cancelAction` / `umount` 均 `endSupra` 闭合：
+  会话期间成员即时物化上链，闭合时追加 close-supra 把 ≥2 成员的连续段
+  折叠为聚合节点（成员不足两条时纯清理句柄）
+- 会话期间 `supraKey` 经 services 注入槽位上下文（`_dispatchToSlot` /
+  `_buildSlotContext`），子工具的 commit / discard 随之挂入同一超分子
 
 ### 构造期语义适配
 
@@ -133,12 +146,12 @@ wrapper 是信号驱动的，信号载荷即权威——它不读共享状态。
 | 建槽方法 | `_addSlot(scopeId, tool)`                 | `_addNodeSlot(scopeId, node)`                  |
 | 槽位内容 | Tool 实例 + 基座创建的 shell 节点         | 外部工厂预构建的子图入口节点（`tool=null`）    |
 | 生命周期 | 与 wrapper 一致（构造/首次激活时建槽）    | 随触点动态创建销毁（per-touch）                |
-| 清理方式 | 默认 `_teardownSlot`：`processor.dispose` | 覆写 `_teardownSlot`：沿 outEdges 递归 dispose |
+| 清理方式 | 默认 `_teardownSlot`：依次 `processor.dispose` + `tool.umount` | 覆写 `_teardownSlot`：沿 outEdges 递归 dispose |
 
 基座为此提供两个扩展点：
 
 - `_addNodeSlot(scopeId, node)`：登记已构建好的多节点子图入口，槽位形状 `{ node, tool: null, processor: node.handler ?? null }`，信号转发仍走 `_dispatchToSlot`
-- `_teardownSlot(slot, context)`：槽位清理钩子，`_disposeSlot` 先调用它再删除槽位；默认实现只 dispose `slot.processor`，子类可覆写为递归清理整棵子图
+- `_teardownSlot(slot, context)`：槽位清理钩子，`_disposeSlot` 先调用它再删除槽位；默认实现依次 dispose `slot.processor` 并调用 `slot.tool.umount`（槽位上下文），子类可覆写为递归清理整棵子图
 
 `MultiToolWrapper` 把 `touchId` 作为 scopeId，触点按下建槽、抬起销槽；活跃触点数经 `context.patchState` 以 `activeTouchCount` 键镜像到 wrapper 自己的节点 state。
 
