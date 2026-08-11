@@ -543,6 +543,35 @@ describe("网络协调器", () => {
     await raw.close();
   });
 
+  test("效果层分歧经 digest 校验和发现并自愈", async () => {
+    server = createRelayServer({ port: 0 });
+    const a = await connectEnd("a", server.port, "board-1", {
+      digestIntervalMs: 50,
+    });
+    const b = await connectEnd("b", server.port, "board-1", {
+      digestIntervalMs: 50,
+    });
+    ends = [a, b];
+
+    await createStroke(a.api, "a/1", 5);
+    await until(() => b.boardCore.getObjectById("a/1") != null, "b 收到 a/1");
+    await until(
+      () => a.api.queryStateHash() === b.api.queryStateHash(),
+      "两端校验和一致",
+    );
+
+    // 注入效果层分歧（绕过记录直接改实例）：日志逐字节一致但效果未放全的形态
+    b.boardCore.getObjectById("a/1").position.x = 999;
+    expect(a.api.queryStateHash()).not.toBe(b.api.queryStateHash());
+
+    // digest 往返后 b 端从日志重放自愈：校验和与对象数据重新一致
+    await until(
+      () => a.api.queryStateHash() === b.api.queryStateHash(),
+      "b 端自愈后校验和重新一致",
+    );
+    expect(b.boardCore.getObjectById("a/1").position.x).toBe(5);
+  });
+
   test("断线触发 onDisconnect 且清理订阅，主动 close 不触发", async () => {
     server = createRelayServer({ port: 0 });
     let disconnects = 0;

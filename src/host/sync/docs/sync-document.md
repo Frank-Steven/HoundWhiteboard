@@ -67,7 +67,7 @@
 - **增量 INIT（lastSeen 握手）**：join 与 peer-joined 时互发 request-init 携带各来源最大序号（lastSeen）；respond-init 仅携带缺口记录（增量请求无缺口时不回应，无 lastSeen 时全量回应供新成员与 id 续种）。离线期间的操作是本地日志的未同步段，重连后双向补发缺口即收敛，增量 anti-entropy 之外的兜底仍是周期摘要。
 - **在途分子对账**：request-init 与 respond-init 各携带本端未闭合分子清单（openMols，queryOpenMols 形态）；收到 request-init 时按对方清单对账——对方缺此 molId 则经 sendAwareness 重发 mol-begin（entries 含 create 快照）与全部 amend 段，对方 seq 落后则只补其后的 amend 段（不重发 begin）；只在 request-init 上对账，respond-init 的清单仅供协议完备（避免同一清单触发重复重放）。重放走 volatile 通道，对端经 mol-begin/mol-amend 正常路径消费。
 - **重连与 AOM 重同步**：socket 断开（非主动）时协调器自清理（订阅、定时器）并回调 onDisconnect，宿主每 3s 自动重连；断线即清空远程选择登记，重连后各端按 hold 重广播 choose 活动，互斥状态重建。
-- **周期摘要**：30s 广播 `{logSize, head, objects}`；落后或同长分歧时 request-init（全量重建兜底）。
+- **周期摘要**：30s 广播 `{logSize, head, objects, stateHash, openMols}`；落后或同长分歧时 request-init（全量重建兜底）。日志与 HEAD 一致但 stateHash 分歧为效果层分歧（记录都在但效果未放全）：f(日志) 确定，分歧端经 `repairStateFromLog` 本地重放日志对齐活体（remove+add 按派生态重落座，trash 全量对齐），无需额外传输通道；任一端 openMols > 0（手势在途，活体合法偏离派生态）时跳过本轮比对。校验和口径为对象数据与 trash，不含区块层序（各端已载区块集随视口懒加载不同，纳入会误报）。
 - **断线清理**：peer-left 到达时清除该来源的远程活动登记（解锁其选择的对象）。
 
 ### 连接生命周期

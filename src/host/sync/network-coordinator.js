@@ -321,16 +321,18 @@ function createNetworkCoordinator(options) {
 
   /**
    * 计算本端状态摘要
-   * @returns {{logSize: number, head: ?string, objects: number}} 摘要
+   * @returns {{logSize: number, head: ?string, objects: number, stateHash: string, openMols: number}} 摘要
    */
   const localDigest = () => ({
     logSize: log.size,
     head: boardCore.undoTree.head?.shareId ?? null,
     objects: boardCore.getAllObjects().length,
+    stateHash: boardApi.queryStateHash(),
+    openMols: boardApi.queryOpenMols().length,
   });
 
   /**
-   * 处理远程摘要：落后或同长分歧时请求全量重建
+   * 处理远程摘要：落后或同长分歧时请求全量重建；日志与 HEAD 一致但状态校验和分歧时本地自愈
    * @param {Object} digest - 远程摘要
    * @returns {void}
    */
@@ -343,6 +345,24 @@ function createNetworkCoordinator(options) {
     }
     if (digest.logSize === local.logSize && digest.head !== local.head) {
       sendRequestInit();
+      return;
+    }
+    // 效果层分歧（日志逐字节一致但效果未放全）：f(日志) 确定，本地重放即得正确状态；
+    // 任一端有未闭合分子时活体合法偏离派生态，跳过本轮比对
+    if (
+      typeof digest.stateHash === "string" &&
+      digest.logSize === local.logSize &&
+      digest.head === local.head &&
+      digest.stateHash !== local.stateHash &&
+      digest.openMols === 0 &&
+      boardApi.queryOpenMols().length === 0
+    ) {
+      const result = boardApi.repairStateFromLog();
+      if (result.repaired) {
+        console.warn(
+          `[sync] 检测到效果层分歧，已从日志重放自愈（对象 ${result.fixedIds.join(", ")}）`,
+        );
+      }
     }
   };
 
