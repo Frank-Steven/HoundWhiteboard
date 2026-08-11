@@ -635,12 +635,15 @@ class CoreWorkerRuntime {
 
   /**
    * 调度一次静态层全量刷新（预览坐标变化后缓存按新位置重建）
+   * @description invalidateCachedObjects 置缓存脏，invalidateViewport 经调度器安排 rAF flush，
+   * markFrameDirty 标记帧回传；三者缺一不可。
    * @returns {void}
    * @private
    */
   #requestStaticRender() {
     for (const viewportCore of this.#viewportCores.values()) {
       viewportCore.renderer?.invalidateCachedObjects?.();
+      viewportCore.renderer?.invalidateViewport?.();
       viewportCore.markFrameDirty();
     }
   }

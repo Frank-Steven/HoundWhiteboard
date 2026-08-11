@@ -585,4 +585,59 @@ describe("ObjectChooserTool", () => {
       expect(stateAccess.getState()).toEqual({});
     });
   });
+
+  test("hit:changed 后仍存在但已非活动的对象应移出选择（撤销选择的幽灵清理）", async () => {
+    const chosenObject = { id: "7" };
+    const boardApi = {
+      addActiveObjects: jest.fn(),
+      discardActiveObjects: jest.fn(),
+      queryObjects: jest.fn(async () => [
+        { id: "7", isActive: false }, // 对象存在但已被撤销选择
+      ]),
+    };
+    const stateAccess = createStateAccess();
+    const deviceContext = {
+      services: { boardApi },
+      path: "/viewport/chooser/tool",
+      getNodeState: stateAccess.getState,
+      setNodeState: stateAccess.setState,
+    };
+    const tool = new TestChooserTool();
+    tool._selectedObjects = [chosenObject];
+    tool.setContextObjects(deviceContext, [chosenObject]);
+
+    await tool.process(
+      { signals: [{ type: "hit:changed", context: {} }] },
+      deviceContext,
+    );
+
+    expect(tool._selectedObjects).toEqual([]);
+    expect(stateAccess.getState().objects).toBeUndefined();
+  });
+
+  test("hit:changed 后仍活动的对象保留在选中集", async () => {
+    const chosenObject = { id: "8" };
+    const boardApi = {
+      addActiveObjects: jest.fn(),
+      discardActiveObjects: jest.fn(),
+      queryObjects: jest.fn(async () => [{ id: "8", isActive: true }]),
+    };
+    const stateAccess = createStateAccess();
+    const deviceContext = {
+      services: { boardApi },
+      path: "/viewport/chooser/tool",
+      getNodeState: stateAccess.getState,
+      setNodeState: stateAccess.setState,
+    };
+    const tool = new TestChooserTool();
+    tool._selectedObjects = [chosenObject];
+    tool.setContextObjects(deviceContext, [chosenObject]);
+
+    await tool.process(
+      { signals: [{ type: "hit:changed", context: {} }] },
+      deviceContext,
+    );
+
+    expect(tool._selectedObjects).toEqual([chosenObject]);
+  });
 });

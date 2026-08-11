@@ -652,10 +652,24 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
     if (ids.length === 0) return null;
     return Promise.resolve(boardApi.queryObjects(ids))
       .then((summaries) => {
-        const alive = new Set((summaries ?? []).map((s) => String(s?.id)));
-        if (ids.some((id) => !alive.has(String(id)))) {
+        const byId = new Map(
+          (summaries ?? []).map((s) => [String(s?.id), s]),
+        );
+        // 失效 = 对象不存在或已被移出活动层（如撤销了选择）：
+        // 存在但非活动的对象不能继续持有（幽灵选择）
+        const stale = ids.some((id) => {
+          const summary = byId.get(String(id));
+          return !summary || summary.isActive !== true;
+        });
+        if (!stale) return;
+        if (this.isGestureActive) {
+          // 手势进行中：回滚几何
           this.discardAction(context);
+          return;
         }
+        // 无手势：结束动作让 wrapper 复位相位（再次框选才能生效）
+        // 对已失效对象 commitObjects 为幂等空操作，无副作用
+        this.completeAction(context);
       })
       .catch(() => { });
   }

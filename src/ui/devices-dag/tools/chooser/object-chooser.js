@@ -497,8 +497,14 @@ class ObjectChooserTool extends GestureTool {
     if (ids.length === 0) return null;
     return Promise.resolve(boardApi.queryObjects(ids))
       .then((summaries) => {
-        const alive = new Set((summaries ?? []).map((s) => String(s?.id)));
-        const kept = held.filter((obj, index) => alive.has(String(ids[index])));
+        const byId = new Map(
+          (summaries ?? []).map((s) => [String(s?.id), s]),
+        );
+        // 失效 = 对象不存在或已非活动（如撤销了选择）：存在但非活动不能算有效选择
+        const kept = held.filter((obj, index) => {
+          const summary = byId.get(String(ids[index]));
+          return summary?.isActive === true;
+        });
         if (kept.length !== held.length) {
           this._selectedObjects = kept;
           this.setContextObjects(context, kept);

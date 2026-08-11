@@ -1502,4 +1502,54 @@ describe("CommonObjectModifierTool", () => {
       expect(object.position).toEqual(new Vector(40, 45));
     });
   });
+
+  test("hit:changed 后持有对象已非活动：结束动作并触发 complete（相位复位）", async () => {
+    const object = { id: "1", position: new Vector(10, 20) };
+    const boardApi = {
+      modifyObject: jest.fn(),
+      commitObjects: jest.fn(async () => ["1"]),
+      queryObjects: jest.fn(async () => [
+        { id: "1", isActive: false }, // 对象存在但已被撤销选择
+      ]),
+    };
+    const completed = [];
+    const tool = new CommonObjectModifierTool({
+      processor: new DragGestureProcessor(),
+    });
+    tool.on("action:complete", (context, result) => completed.push(result));
+    const context = aomCtx(tool, object, { boardApi });
+
+    await tool.process(
+      { signals: [{ type: "hit:changed", context: {} }] },
+      context,
+    );
+
+    // 结束动作：提交（对失效对象幂等）并触发 action:complete（wrapper 据此复位相位）
+    expect(boardApi.commitObjects).toHaveBeenCalledWith(["1"], {
+      supraKey: undefined,
+    });
+    expect(completed).toHaveLength(1);
+    expect(tool._overlayModifiedObjects).toEqual([]);
+  });
+
+  test("hit:changed 后持有对象仍活动：不结束动作", async () => {
+    const object = { id: "1", position: new Vector(10, 20) };
+    const boardApi = {
+      modifyObject: jest.fn(),
+      commitObjects: jest.fn(async () => ["1"]),
+      queryObjects: jest.fn(async () => [{ id: "1", isActive: true }]),
+    };
+    const tool = new CommonObjectModifierTool({
+      processor: new DragGestureProcessor(),
+    });
+    const context = aomCtx(tool, object, { boardApi });
+
+    await tool.process(
+      { signals: [{ type: "hit:changed", context: {} }] },
+      context,
+    );
+
+    expect(boardApi.commitObjects).not.toHaveBeenCalled();
+    expect(tool._overlayModifiedObjects).toHaveLength(1);
+  });
 });
