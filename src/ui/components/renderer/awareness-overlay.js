@@ -6,7 +6,10 @@
  */
 
 import { RectangleRange } from "../../../kernel/range/index.js";
-import { getSummaryWorldRect } from "./ui-overlay-factory.js";
+import {
+  getSummaryWorldRect,
+  worldToScreenPoint,
+} from "./ui-overlay-factory.js";
 
 /**
  * awareness 标签的屏幕高度（像素）
@@ -214,6 +217,7 @@ class AwarenessOverlay {
   #handleAwarenessMessage(message) {
     switch (message?.awarenessType) {
       case "remote-activity":
+        this.#dropPreviewsByIds(message.data?.ids);
         void this.refresh();
         return;
       case "cursor":
@@ -232,6 +236,25 @@ class AwarenessOverlay {
   }
 
   /**
+   * 清理通知涉及的对象预览（手势 commit/discard 后预览使命结束）
+   * @param {string[]} [ids] - 远程选择变更涉及的对象 id 列表
+   * @returns {void}
+   * @private
+   */
+  #dropPreviewsByIds(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    let changed = false;
+    for (const id of ids) {
+      if (this.#previews.delete(id)) {
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.#viewport.uiRenderer?.invalidateViewport?.();
+    }
+  }
+
+  /**
    * 应用远程手势中间帧（合批预览操作）
    * @param {string} source - 来源标识
    * @param {Object[]} ops - 预览操作列表
@@ -245,6 +268,19 @@ class AwarenessOverlay {
       if (typeof op?.objectId !== "string") continue;
       const preview = this.#previews.get(op.objectId) ?? { source };
       if (preview.source !== source) continue;
+      if (op.create && typeof op.create === "object") {
+        // 创建中预览：类型与初始数据到位，后续中间帧滚动更新
+        preview.type = op.create.type;
+        preview.property = { ...(op.create.property ?? {}) };
+        preview.data = { ...(op.create.data ?? {}) };
+        if (op.create.transform) preview.transform = { ...op.create.transform };
+        if (typeof op.create.position?.x === "number") {
+          preview.position = {
+            x: op.create.position.x,
+            y: op.create.position.y,
+          };
+        }
+      }
       if (typeof op.patch?.position?.x === "number") {
         preview.position = {
           x: op.patch.position.x,
@@ -254,6 +290,10 @@ class AwarenessOverlay {
       if (op.patch?.transform && typeof op.patch.transform === "object") {
         preview.transform = { ...op.patch.transform };
       }
+      if (op.patch?.data && typeof op.patch.data === "object") {
+        // data 补丁按键合并（如圆的 radius 随手势更新）
+        preview.data = { ...preview.data, ...op.patch.data };
+      }
       if (Array.isArray(op.appends)) {
         for (const append of op.appends) {
           if (typeof append?.key !== "string") continue;
@@ -262,6 +302,10 @@ class AwarenessOverlay {
           items.push(...(append.items ?? []));
           preview.appended.set(append.key, items);
         }
+      }
+      if (op.replace && typeof op.replace.key === "string") {
+        if (!preview.replacements) preview.replacements = [];
+        preview.replacements.push({ ...op.replace });
       }
       this.#previews.set(op.objectId, preview);
       changed = true;
@@ -294,6 +338,10 @@ class AwarenessOverlay {
    * 裁掉不在任何远程选择中的预览（手势结束或被撤销后的归位）
    * @returns {void}
    * @private
+   *
+   * @description
+   * 创建中预览（含创建上下文）不在此裁剪：其对象从未进入远程注册表，
+   * 清理由 remote-activity 通知的 ids 与 peer-left 承担。
    */
   #prunePreviews() {
     const held = new Set();
@@ -302,7 +350,8 @@ class AwarenessOverlay {
         held.add(summary.id);
       }
     }
-    for (const objectId of [...this.#previews.keys()]) {
+    for (const [objectId, preview] of [...this.#previews]) {
+      if (preview.type !== undefined) continue;
       if (!held.has(objectId)) {
         this.#previews.delete(objectId);
       }
@@ -492,7 +541,151 @@ class AwarenessOverlay {
     for (const [source, cursor] of this.#cursors) {
       entries.push(this.#createCursorEntry(source, cursor));
     }
+    for (const [objectId, preview] of this.#previews) {
+      if (preview.type === undefined) continue;
+      const entry = this.#createCreationEntry(objectId, preview);
+      if (entry) entries.push(entry);
+    }
     return entries;
+  }
+
+  /**
+   * 计算预览的列表属性有效值（初始 data + 追加 + 替换）
+   * @param {Object} preview - 预览状态
+   * @param {string} key - 列表属性名（如 points）
+   * @returns {any[]} 有效列表
+   * @private
+   */
+  #effectiveListItems(preview, key) {
+    const base = Array.isArray(preview.data?.[key]) ? preview.data[key] : [];
+    const appended = preview.appended?.get(key) ?? [];
+    const combined = [...base, ...appended];
+    for (const replacement of preview.replacements ?? []) {
+      if (
+        replacement.key === key &&
+        Number.isInteger(replacement.index) &&
+        replacement.index >= 0 &&
+        replacement.index < combined.length
+      ) {
+        combined[replacement.index] = replacement.item;
+      }
+    }
+    return combined;
+  }
+
+  /**
+   * 生成创建中对象的预览条目（只画不存）
+   * @param {string} objectId - 对象 id
+   * @param {Object} preview - 预览状态（含创建上下文与中间帧）
+   * @returns {import("./ui-overlay-factory.js").UiOverlayEntry | undefined}
+   * @private
+   *
+   * @description
+   * 笔/多边形按有效 points 画路径，圆/椭圆按半径画轮廓；统一按来源着色半透明，
+   * 与 commit 后的正式渲染区分。
+   */
+  #createCreationEntry(objectId, preview) {
+    const color = this.#resolveColor(preview.source);
+    const position = preview.position ?? { x: 0, y: 0 };
+
+    if (preview.type === "StrokeObject" || preview.type === "PolygonObject") {
+      const worldPoints = this.#effectiveListItems(preview, "points")
+        .filter((p) => typeof p?.x === "number" && typeof p?.y === "number")
+        .map((p) => ({ x: position.x + p.x, y: position.y + p.y }));
+      if (worldPoints.length === 0) return undefined;
+      const xs = worldPoints.map((p) => p.x);
+      const ys = worldPoints.map((p) => p.y);
+      const minX = Math.min(...xs);
+      const minY = Math.min(...ys);
+      const worldRect = new RectangleRange(
+        minX,
+        minY,
+        Math.max(...xs) - minX,
+        Math.max(...ys) - minY,
+      );
+      const closed = preview.type === "PolygonObject";
+      const lineWidth = Number.isFinite(preview.property?.width)
+        ? preview.property.width
+        : 2;
+      return {
+        source: `awareness-creation:${preview.source}`,
+        objectId,
+        type: "rect",
+        geometry: { worldRect },
+        draw: (context, runtime) => {
+          const pts = worldPoints
+            .map((p) => worldToScreenPoint(p, runtime?.viewport))
+            .filter(Boolean);
+          if (pts.length === 0 || !context) return;
+          context.save?.();
+          context.globalAlpha = 0.6;
+          if (typeof context.strokeStyle !== "undefined") {
+            context.strokeStyle = color;
+          }
+          context.lineWidth = lineWidth;
+          context.lineJoin = "round";
+          context.lineCap = "round";
+          context.beginPath?.();
+          context.moveTo?.(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i += 1) {
+            context.lineTo?.(pts[i].x, pts[i].y);
+          }
+          if (closed && pts.length > 2) context.closePath?.();
+          context.stroke?.();
+          context.restore?.();
+        },
+      };
+    }
+
+    if (preview.type === "CircleObject" || preview.type === "EllipseObject") {
+      const radiusX =
+        preview.type === "CircleObject"
+          ? preview.data?.radius
+          : preview.data?.radiusX;
+      const radiusY =
+        preview.type === "CircleObject"
+          ? preview.data?.radius
+          : preview.data?.radiusY;
+      if (!(radiusX > 0) || !(radiusY > 0)) return undefined;
+      const worldRect = new RectangleRange(
+        position.x - radiusX,
+        position.y - radiusY,
+        radiusX * 2,
+        radiusY * 2,
+      );
+      return {
+        source: `awareness-creation:${preview.source}`,
+        objectId,
+        type: "rect",
+        geometry: { worldRect },
+        draw: (context, runtime) => {
+          const viewport = runtime?.viewport;
+          const center = worldToScreenPoint(position, viewport);
+          if (!center || !context) return;
+          const zoom = viewport?.zoom ?? 1;
+          context.save?.();
+          context.globalAlpha = 0.6;
+          if (typeof context.strokeStyle !== "undefined") {
+            context.strokeStyle = color;
+          }
+          context.lineWidth = 1.5;
+          context.beginPath?.();
+          context.ellipse?.(
+            center.x,
+            center.y,
+            radiusX * zoom,
+            radiusY * zoom,
+            0,
+            0,
+            Math.PI * 2,
+          );
+          context.stroke?.();
+          context.restore?.();
+        },
+      };
+    }
+
+    return undefined;
   }
 
   /**

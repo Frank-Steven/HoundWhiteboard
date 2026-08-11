@@ -106,4 +106,34 @@ describe("SubFrame 转发器", () => {
     jest.advanceTimersByTime(100);
     expect(sent).toHaveLength(2);
   });
+
+  test("create 上下文后帧盖前帧，与 append 同批打包", () => {
+    const bus = createBus();
+    const sent = [];
+    const forwarder = createSubframeForwarder({
+      boardCore: { activityEventBus: bus },
+      sendAwareness: (data) => sent.push(data),
+      intervalMs: 33,
+    });
+
+    bus.emit("subframe", {
+      objectId: "a/1",
+      create: { type: "StrokeObject", position: { x: 1, y: 1 }, data: {} },
+    });
+    bus.emit("subframe", {
+      objectId: "a/1",
+      append: { key: "data.points", items: [{ x: 2, y: 2 }] },
+    });
+    bus.emit("subframe", {
+      objectId: "a/1",
+      create: { type: "StrokeObject", position: { x: 5, y: 5 }, data: {} },
+    });
+    jest.advanceTimersByTime(33);
+
+    expect(sent).toHaveLength(1);
+    const op = sent[0].ops.find((o) => o.objectId === "a/1");
+    expect(op.create.position).toEqual({ x: 5, y: 5 });
+    expect(op.appends).toHaveLength(1);
+    forwarder.close();
+  });
 });

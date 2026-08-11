@@ -107,6 +107,13 @@ class BoardApi {
   #remoteChoicesDirty = false;
 
   /**
+   * 远程选择变更涉及的对象 id 集合（随 remote-activity 事件携带）
+   * @type {Set<string>}
+   * @private
+   */
+  #remoteChoicesDirtyIds = new Set();
+
+  /**
    * @param {import("../board/board-core.js").BoardCore} boardCore - BoardCore 实例
    */
   constructor(boardCore) {
@@ -194,6 +201,18 @@ class BoardApi {
 
     boardCore.registerObjectInstance(obj);
     boardCore.activeObjectManager.add(new Set([obj]));
+
+    // 创建中预览：远端凭类型与初始数据画临时形态，后续 append/patch 中间帧滚动更新
+    this.#emitSubframe({
+      objectId,
+      create: {
+        type,
+        position: obj.position.serialize(),
+        transform: obj.transform.serialize(),
+        property: { ...(obj.property ?? {}) },
+        data: { ...(obj.data ?? {}) },
+      },
+    });
 
     return objectId;
   }
@@ -1011,6 +1030,7 @@ class BoardApi {
       aom.requestActiveRender(instances);
     }
     if (changedIds.size > 0) {
+      for (const id of changedIds) this.#remoteChoicesDirtyIds.add(id);
       this.#remoteChoicesDirty = true;
       this.#flushRemoteChoicesNotification();
     }
@@ -1030,6 +1050,7 @@ class BoardApi {
       this.#boardCore.activeObjectManager.requestActiveRender(instances);
     }
     if (removed.length > 0) {
+      for (const id of removed) this.#remoteChoicesDirtyIds.add(id);
       this.#remoteChoicesDirty = true;
       this.#flushRemoteChoicesNotification();
     }
@@ -1262,8 +1283,11 @@ class BoardApi {
   #flushRemoteChoicesNotification() {
     if (!this.#remoteChoicesDirty) return;
     this.#remoteChoicesDirty = false;
+    const ids = [...this.#remoteChoicesDirtyIds];
+    this.#remoteChoicesDirtyIds.clear();
     this.#boardCore.activityEventBus?.emit("remote-activity", {
       time: Date.now(),
+      ids,
     });
   }
 
@@ -1808,6 +1832,7 @@ class BoardApi {
     if (source !== undefined && source !== boardCore.hitCommitter.source) {
       aom.applyRemoteChoose([objectId], source, choice);
       this.#remoteChoicesDirty = true;
+      this.#remoteChoicesDirtyIds.add(objectId);
       if (obj) this.#collectObjectChunks(obj, affectedChunks);
       return;
     }
@@ -1836,6 +1861,7 @@ class BoardApi {
     if (source !== undefined && source !== boardCore.hitCommitter.source) {
       aom.applyRemoteUnchoose([objectId], source);
       this.#remoteChoicesDirty = true;
+      this.#remoteChoicesDirtyIds.add(objectId);
       if (obj) this.#collectObjectChunks(obj, affectedChunks);
       return;
     }

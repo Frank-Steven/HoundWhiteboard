@@ -263,4 +263,109 @@ describe("AwarenessOverlay", () => {
     expect(provider().find((e) => e.objectId === "b/1")).toBeUndefined();
     overlay.stop();
   });
+
+  test("创建中预览：append 的 points 画路径，remote-activity ids 到达后清除", async () => {
+    const boardApi = createMockBoardApi();
+    const viewport = createMockViewport();
+    const overlay = new AwarenessOverlay({ boardApi, viewport });
+    overlay.start();
+    await overlay.refresh();
+
+    const provider = viewport.registerUiOverlayProvider.mock.calls[0][0];
+
+    // 创建开始：create 上下文 + 两个 append 中间帧
+    viewport.emitAwareness({
+      type: "awareness",
+      awarenessType: "subframe",
+      source: "dev-b",
+      data: {
+        kind: "subframe",
+        ops: [
+          {
+            objectId: "b/9",
+            create: {
+              type: "StrokeObject",
+              position: { x: 100, y: 100 },
+              property: { width: 3 },
+              data: { points: [{ x: 0, y: 0 }] },
+            },
+          },
+          {
+            objectId: "b/9",
+            appends: [
+              { key: "data.points", items: [{ x: 10, y: 0 }, { x: 20, y: 5 }] },
+            ],
+          },
+        ],
+      },
+    });
+
+    const creation = provider().find((e) => e.objectId === "b/9");
+    expect(creation).toBeDefined();
+    expect(creation.source).toBe("awareness-creation:dev-b");
+    expect(typeof creation.draw).toBe("function");
+
+    // 对端 commit：remote-activity 通知携带 id，预览清除
+    viewport.emitAwareness({
+      type: "awareness",
+      awarenessType: "remote-activity",
+      data: { ids: ["b/9"] },
+    });
+    expect(provider().find((e) => e.objectId === "b/9")).toBeUndefined();
+    overlay.stop();
+  });
+
+  test("创建中预览：圆按 radius 中间帧更新轮廓", async () => {
+    const boardApi = createMockBoardApi();
+    const viewport = createMockViewport();
+    const overlay = new AwarenessOverlay({ boardApi, viewport });
+    overlay.start();
+    await overlay.refresh();
+    const provider = viewport.registerUiOverlayProvider.mock.calls[0][0];
+
+    viewport.emitAwareness({
+      type: "awareness",
+      awarenessType: "subframe",
+      source: "dev-b",
+      data: {
+        kind: "subframe",
+        ops: [
+          {
+            objectId: "b/10",
+            create: {
+              type: "CircleObject",
+              position: { x: 50, y: 50 },
+              property: {},
+              data: { radius: 0 },
+            },
+          },
+        ],
+      },
+    });
+    // 半径为 0：尚无轮廓
+    expect(provider().find((e) => e.objectId === "b/10")).toBeUndefined();
+
+    viewport.emitAwareness({
+      type: "awareness",
+      awarenessType: "subframe",
+      source: "dev-b",
+      data: {
+        kind: "subframe",
+        ops: [{ objectId: "b/10", patch: { data: { radius: 30 } } }],
+      },
+    });
+    const creation = provider().find((e) => e.objectId === "b/10");
+    expect(creation).toBeDefined();
+    expect(creation.geometry.worldRect.left).toBe(20);
+    expect(creation.geometry.worldRect.width).toBe(60);
+
+    // peer-left 清除创建预览
+    viewport.emitAwareness({
+      type: "awareness",
+      awarenessType: "peer-left",
+      source: "dev-b",
+    });
+    expect(provider().find((e) => e.objectId === "b/10")).toBeUndefined();
+    overlay.stop();
+  });
 });

@@ -53,6 +53,10 @@ function createSubframeForwarder(options) {
   const merge = (op) => {
     if (typeof op?.objectId !== "string") return;
     const existing = pending.get(op.objectId) ?? { objectId: op.objectId };
+    if (op.create && typeof op.create === "object") {
+      // 创建上下文全量覆盖（同 id 重复创建按后者为准）
+      existing.create = { ...op.create };
+    }
     if (op.patch && typeof op.patch === "object") {
       // position/transform/data 为全量值：后帧覆盖前帧
       existing.patch = { ...existing.patch, ...op.patch };

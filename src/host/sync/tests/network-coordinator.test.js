@@ -425,6 +425,52 @@ describe("网络协调器", () => {
     forwarder.close();
   });
 
+  test("创建中对象的中间帧跨端到达（创建预览）", async () => {
+    server = createRelayServer({ port: 0 });
+    /** @type {Object[]} */
+    const received = [];
+    const a = await connectEnd("a", server.port, "board-1");
+    const b = await connectEnd("b", server.port, "board-1", {
+      onAwareness: (message) => received.push(message),
+    });
+    ends = [a, b];
+
+    const forwarder = createSubframeForwarder({
+      boardCore: a.boardCore,
+      sendAwareness: (data) => a.coordinator.sendAwareness(data),
+      intervalMs: 20,
+    });
+
+    // a 侧创建笔画并追点（对象尚未提交，b 端日志无此对象）
+    a.api.createObject("StrokeObject", {
+      id: "a/9",
+      position: { x: 100, y: 100 },
+      property: { width: 2 },
+      data: { points: [{ x: 0, y: 0 }] },
+    });
+    a.api.appendListItem("a/9", "data.points", [{ x: 10, y: 0 }]);
+
+    await until(
+      () => received.some((m) => m.data?.kind === "subframe"),
+      "b 收到创建中间帧",
+    );
+    const frame = received.find((m) => m.data?.kind === "subframe");
+    const op = frame.data.ops.find((o) => o.objectId === "a/9");
+    expect(op.create).toMatchObject({
+      type: "StrokeObject",
+      position: { x: 100, y: 100 },
+    });
+    expect(op.appends).toHaveLength(1);
+    // b 端日志无此对象（创建未提交，预览不进日志）
+    expect(
+      b.boardCore.operationLog
+        .toJSON()
+        .filter((r) => r.payload?.objectId === "a/9"),
+    ).toHaveLength(0);
+
+    forwarder.close();
+  });
+
   test("摘要分歧触发全量重建请求", async () => {
     server = createRelayServer({ port: 0 });
     const a = await connectEnd("a", server.port, "board-1");

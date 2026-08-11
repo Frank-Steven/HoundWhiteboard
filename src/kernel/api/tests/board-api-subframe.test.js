@@ -44,6 +44,32 @@ async function createStroke(api, id) {
 }
 
 describe("SubFrame 中间帧事件", () => {
+  test("createObject 发射创建上下文（类型与初始数据）", async () => {
+    const { boardCore, api } = createEnd("a");
+
+    /** @type {Object[]} */
+    const frames = [];
+    boardCore.activityEventBus.on("subframe", (op) => frames.push(op));
+
+    api.createObject("StrokeObject", {
+      id: "a/1",
+      position: { x: 100, y: 100 },
+      property: { width: 2, color: "#000" },
+      data: { points: [{ x: 0, y: 0 }] },
+    });
+
+    expect(frames).toHaveLength(1);
+    expect(frames[0].objectId).toBe("a/1");
+    expect(frames[0].create).toMatchObject({
+      type: "StrokeObject",
+      position: { x: 100, y: 100 },
+      transform: { a: 1, b: 0, c: 0, d: 1 },
+      property: { width: 2, color: "#000" },
+      data: { points: [{ x: 0, y: 0 }] },
+    });
+    await api.commitObjects(["a/1"]);
+  });
+
   test("手势写入口发射 subframe：modifyObject / appendListItem / replaceListItem", async () => {
     const { boardCore, api } = createEnd("a");
     await createStroke(api, "a/1");
