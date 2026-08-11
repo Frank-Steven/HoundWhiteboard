@@ -21,7 +21,6 @@
 | `staticGraph`       | 区块静态层叠图，仅存对象 id 与层关系       | `DirectedGraph`                         |
 | `board`             | 所属白板引用；当前主路径通常是 `BoardCore` | `BoardCore \| Board \| undefined`       |
 | `id`                | 当前区块 id                                | `number`                                |
-| `#localCoverChunks` | 无 `board` 时的本地覆盖索引回退，仅测试用  | `Map<number, Set<number>> \| undefined` |
 
 ## 对象覆盖索引模型
 
@@ -31,8 +30,8 @@
 
 因此：
 
-- `ChunkObjectManager` 在有 `board.getObjectCoverChunks()` / `setObjectCoverChunks()` 时，会委托给 `BoardCore`
-- 只有在无 `board` 的局部测试场景下，才会回退到本地 `#localCoverChunks`
+- `ChunkObjectManager` 的覆盖索引读写以可选链委托给 `BoardCore`
+- 无 `board` 时写入为空操作，读取返回空集合
 
 ### 覆盖索引的用途
 
@@ -75,9 +74,9 @@
 
 ## 区块元数据读写
 
-### `loadChunkMetadata(boardRootPath)`
+### `loadChunkMetadata()`
 
-当前会读取：
+无参，经 `board.persistenceAdapter` 读取（内存模式跳过）：
 
 ```text
 chunks/{chunkId}.json
@@ -88,14 +87,16 @@ chunks/{chunkId}.json
 - `tierGraph`
 - `objectCoverIndex`
 
-### `saveChunkMetadata(boardRootPath)`
+### `saveChunkMetadata()`
 
-当前会把：
+无参，经 `board.persistenceAdapter` 把：
 
 - `staticGraph.toArray()`
 - `serializeObjectCoverChunks()`
 
 写回同一个 `chunks/{chunkId}.json`。
+
+其中覆盖索引由 `BoardCore` 集中持有，`serializeObjectCoverChunks()` 恒返回空数组，盘上的 `objectCoverIndex` 恒为空。
 
 ### 重要说明
 

@@ -4,7 +4,7 @@
 
 ## 概述
 
-`BoardCore` 是白板在 Worker 线程中的纯数据实现，承载对象注册、区块加载、AOM、UndoTree、持久化协调等职责。不依赖 DOM、DevicesDAG、signalsEventBus。
+`BoardCore` 是白板在 Worker 线程中的纯数据实现，承载对象注册、区块加载、AOM、UndoTree、操作日志与 hit 提交、持久化协调等职责。不依赖 DOM、DevicesDAG、signalsEventBus。
 
 UI 侧的 `Board` facade 通过 `BoardApiRpc` 与 Worker 侧的 `BoardCore` 通信。测试路径中可创建本地 `BoardCore` 实例。
 
@@ -23,11 +23,15 @@ UI 侧的 `Board` facade 通过 `BoardApiRpc` 与 Worker 侧的 `BoardCore` 通�
 | --------------------- | --------------------------------------------------------------------------------------- |
 | `width` / `height`    | 区块尺寸（像素），用于 worldToChunkId 计算                                              |
 | `rootPath`            | 白板文件根路径，`undefined` 时为内存模式                                                |
+| `operationLog`        | 操作日志（hit 数据池），`OperationLog` 实例                                             |
 | `undoTree`            | UndoTree 实例                                                                           |
+| `hitCommitter`        | hit 提交器，分子操作的 commit 边界单点                                                  |
+| `trash`               | 已删除对象的回收站（objectId → 删除时刻的全量序列化与各区块层位边集）                   |
 | `activeObjectManager` | AOM 实例，管理活动对象集合与动态层关系                                                  |
 | `chunkLoaded`         | `Map<chunkId, BoardChunkLoadedState>`，记录各区块的加载计数与 loader 策略               |
 | `objectLoaded`        | `Map<objectId, BoardObjectLoadedState>`，白板级对象实例注册表                           |
 | `chunkLoadEventBus`   | 区块加载事件总线（REQUEST_LOAD / REQUEST_UNLOAD / BUFFER_UPDATED / LOAD_COMPLETE）      |
+| `activityEventBus`    | AOM 活动事件总线（ephemeral），本地 choose/unchoose/commit 手势事件即时广播，不经日志   |
 | `rootChunkLoader`     | 根区块加载器，负责区块实例的创建、持有、释放                                            |
 | `persistenceAdapter`  | 持久化适配器接口，内存模式使用默认实现，文件模式使用 `createRendererPersistenceAdapter` |
 | `aomRenderHooks`      | 注入式渲染钩子，替代 AOM 对 viewport/renderer 的直接依赖                                |
@@ -66,7 +70,7 @@ getObjectCoverChunks(objectId); // 读取
 unsetObjectCoverChunks(objectId); // 删除
 ```
 
-`ChunkObjectManager` 上的同名方法委托到 `BoardCore`，无 Board 时回退到本地 `#localCoverChunks`（仅测试场景）。
+`ChunkObjectManager` 上的同名方法以可选链委托到 `BoardCore`：无 board 时写入为空操作，读取返回空集合。
 
 ## 持久化
 

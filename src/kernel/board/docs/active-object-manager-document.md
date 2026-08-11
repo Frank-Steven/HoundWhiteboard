@@ -26,7 +26,7 @@ AOM 本身不依赖 DOM，也不直接持有 viewport 列表。它通过 `render
 每层包含：
 
 - `id`
-- `activeObjects: Set<number>`
+- `activeObjects: Set<string>`
 - `inactiveGraph: DirectedGraph`
 - `active: boolean`
 
@@ -55,18 +55,23 @@ AOM 本身不依赖 DOM，也不直接持有 viewport 列表。它通过 `render
 
 | 方法       | 签名                                                     | 说明                                                |
 | ---------- | -------------------------------------------------------- | --------------------------------------------------- |
-| `has`      | `(objectId: number) => boolean`                          | 判断对象 id 是否在 AOM 的任意层中（含 inactive 层） |
-| `isActive` | `(objectId: number \| string) => boolean`                | 判断对象是否为活动对象（不含非活动层成员）          |
+| `has`      | `(objectId: string) => boolean`                          | 判断对象 id 是否在 AOM 的任意层中（含 inactive 层） |
+| `isActive` | `(objectId: string) => boolean`                          | 判断对象是否为活动对象（不含非活动层成员）          |
 | `add`      | `(objects: Iterable<BasicObject>) => Layer \| undefined` | 将白板外新对象加入 AOM 顶层，返回新创建的层         |
 | `choose`   | `(startFrom: Iterable<BasicObject>) => Promise<void>`    | 从静态图中拾取对象到 AOM（异步，内部 BFS 遍历）     |
 | `discard`  | `(objects: Iterable<BasicObject>) => void`               | 取消活动态，不提交几何变化回静态图                  |
 | `apply`    | `(objects: Iterable<BasicObject>) => Promise<void>`      | 提交活动态变化回静态图（异步，含 FullLoad 预加载）  |
 | `remove`   | `(objects: Iterable<BasicObject>) => void`               | 从白板彻底删除对象并移出 AOM                        |
+| `liftup`   | `(objects: Iterable<BasicObject>) => void`               | 将选中对象置顶（按原所在层分组新建顶层活动层）      |
 | `assignLocalChoice` | `(objectIds: Iterable<string>, name: string) => void` | 将活动对象指派进本地命名选择（匿名 `~` 不覆盖命名选择） |
 | `choiceOf` | `(objectId: string) => string \| undefined`               | 查询对象所属本地命名选择（匿名/无选择为 undefined）   |
 | `queryLocalChoices` | `() => { name, ids }[]`                             | 列出本地命名选择（不含匿名桶）                        |
+| `queryLocalActivity` | `() => { name, ids }[]`                          | 列出本端全部活动持有（含匿名桶；重连后向对端重广播互斥状态用） |
 | `isRemoteActive` | `(objectId: string) => boolean`                      | 判断对象是否被远程选择                                |
+| `remoteActiveSource` | `(objectId: string) => string \| undefined`      | 查询远程活动对象的来源标识（多来源时返回其中之一）    |
 | `remoteChoicesOf` | `(objectId: string) => { source, name }[]`             | 查询对象的远程 choice 标签列表（多来源）                |
+| `queryRemoteChoices` | `() => { source, name, ids }[]`                  | 列出全部远程命名选择（awareness 查询面）                |
+| `revokeRemoteActive` | `(objectId: string) => void`                     | 撤销对象的全部远程选择登记（本地选择优先）              |
 | `applyRemoteChoose` | `(objectIds, source, choice?) => void`              | 登记远程命名选择（同一来源对同一对象只保留一个 choice）      |
 | `applyRemoteUnchoose` | `(objectIds, source) => void`                    | 按（来源，对象）注销远程选择                          |
 | `clearRemoteActive` | `(source) => string[]`                             | 断线清理：注销某来源的全部远程选择                    |

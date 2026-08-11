@@ -70,13 +70,15 @@
 
 只清空当前持有关系，不触发 `unloadChunk` 钩子。
 
-### `destroy()`
+### `destroy(delayMs?)`
 
 当前实现会：
 
 - 对所有已持有区块发出 `REQUEST_UNLOAD`
 - 清空本地持有关系
 - 释放 `eventBus`、`resolveChunkById`、`unloadChunk`、`requesterId`
+
+传入 `delayMs > 0` 时为延时销毁：先挂起定时，到期后才执行上述销毁；定时期间可显式调用 `cancelScheduledDestroy()` 取消，任何追踪/访问方法（`trackChunk`、`getChunkById`、`emitLoadRequest` 等）也会自动取消挂起的定时。AOM 在 `apply()` 批量预加载后以 `destroy(300)` 延时销毁临时 loader，保留已预加载区块供短时间内后续 apply 复用缓存。
 
 ## 与 `BoardCore` 的关系
 

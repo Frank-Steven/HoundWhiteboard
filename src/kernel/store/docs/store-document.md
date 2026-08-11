@@ -28,7 +28,7 @@ kernel 以结构化 typedef 定义最小文件操作接口，不 import io 包�
 ```text
 {board}/
   board.json               # 板元数据（格式版本、lastTime、nextSegmentSeq、id 计数器）
-  objects/{objectId}.json  # 活动对象快照
+  objects/{objectId}.json  # 存活对象快照
   trash/{objectId}.json    # trash 条目（含层位边）
   chunks/{chunkId}.json    # 区块元数据（层叠图与覆盖索引）
   hit/seg-{NNNNNN}.jsonl   # 操作日志段
@@ -36,13 +36,15 @@ kernel 以结构化 typedef 定义最小文件操作接口，不 import io 包�
 
 对象 id 含斜杠，文件名经 `encodeURIComponent` 编码。段序号为六位十进制零填充，单调递增。
 
+CLI 在板目录另维护 `.cli-choices.json`（choice 驻留种子），不属内核布局，不进日志也不进 board.json。
+
 ## 落盘语义（日志跟随者）
 
 journaler 订阅操作日志的 append 事件——本地 commit 与远端应用共用同一入日志通道，订阅者由此观察到全部新增记录，无需逐类型效果逻辑。
 
 - **合批**：记录入队后经微任务合批自动落盘；`flush()` 提供可等待的排空洞；`detach()` 退订并排空。
 - **flush 编排**：新记录写为一段日志段 → 对象文件调和 → 区块元数据调和 → 重写 board.json。
-- **指纹调和**：对象与区块文件按板当前状态对齐——序列化指纹（JSON 串）比对，仅写差异；活动对象写 `objects/`，trash 条目写 `trash/`（层位边集合归一化为数组），既非活动亦非 trash 的对象从盘上移除。撤销/重做/远端记录引起的任意状态迁移统一收敛。
+- **指纹调和**：对象与区块文件按板当前状态对齐——序列化指纹（JSON 串）比对，仅写差异；全部存活对象（objectLoaded 全量）写 `objects/`，trash 条目写 `trash/`（层位边集合归一化为数组），既不存活亦非 trash 的对象从盘上移除。撤销/重做/远端记录引起的任意状态迁移统一收敛。注意此处的「活动对象」指内存中在场对象，与 AOM 三态术语中的「活动对象」不是一回事（AOM 活动态是被选中、正在操作的对象）。
 - **指纹种子**：打开既有板时以盘上内容为种子挂接，首轮 flush 不做无谓重写。
 
 ## 会话恢复

@@ -41,14 +41,14 @@
 
 ## 加载模型
 
-### 临时加载 `loadTemp(boardRootPath)`
+### 临时加载 `loadTemp()`
 
 当前会：
 
 1. 标记 `isLoad = true`
 2. 标记 `isTempLoad = true`
 3. 确保存在 `ChunkObjectManager`
-4. 调用 `objectManager.loadChunkMetadata(boardRootPath)`
+4. 调用 `objectManager.loadChunkMetadata()`
 
 当前临时加载的重点是：
 
@@ -113,8 +113,8 @@
 | `connectTwoChunk(first, second, direction)`         | 连接两个邻接区块             |
 | `addObject(obj, below, above)`                      | 向静态图加入对象             |
 | `removeObject(objectId)`                            | 从静态图移除对象             |
-| `loadTemp(boardRootPath)`                           | 临时加载区块元数据           |
-| `loadFull(boardRootPath)`                           | 将区块升级到完整加载状态     |
+| `loadTemp()`                                        | 临时加载区块元数据           |
+| `loadFull()`                                        | 将区块升级到完整加载状态     |
 | `downgradeToTemp()`                                 | 从完整加载降级为临时加载状态 |
 | `unload()`                                          | 完整卸载区块                 |
 | `unloadTemp()`                                      | 卸载临时加载区块             |
