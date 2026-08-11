@@ -337,6 +337,22 @@ const BOARD_API_ROUTES = {
     invoke: (api, p) => api.queryMolAmendSince(p.molId, p.sinceSeq),
     flush: "none",
   },
+
+  /**
+   * 计算对象状态的确定性校验和（同步 digest 用）
+   */
+  queryStateHash: {
+    invoke: (api) => api.queryStateHash(),
+    flush: "none",
+  },
+
+  /**
+   * 从本端日志重放派生对象状态并对齐活体（效果层分歧自愈）
+   */
+  repairStateFromLog: {
+    invoke: (api) => api.repairStateFromLog(),
+    flush: "sync",
+  },
 };
 
 export { BOARD_API_ROUTES };

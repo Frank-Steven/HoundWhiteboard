@@ -17,11 +17,15 @@ import {
   compareRecords,
 } from "../hit/operation.js";
 import { Matrix, Vector } from "../utils/math.js";
+import { hashString } from "../utils/hash.js";
 import { IncrementalIdPool } from "../utils/incremental-id-pool.js";
 import { intersectsRanges, RectangleRange } from "../range/index.js";
 import { ChunkObjectManager } from "../chunk/chunk-object-manager.js";
 import { CHUNK_LOAD_EVENTS } from "../chunk/chunk-loader.js";
 import { Chunk } from "../chunk/chunk.js";
+import { BoardCore } from "../board/board-core.js";
+import { createDefaultAomRenderHooks } from "../board/aom-render-hooks.js";
+import { createDefaultPersistenceAdapter } from "../board/persistence-adapter.js";
 import {
   ANONYMOUS_CHOICE_NAME,
   isValidChoiceName,
@@ -1529,6 +1533,103 @@ class BoardApi {
    */
   queryRemoteChoices() {
     return this.#boardCore.activeObjectManager.queryRemoteChoices();
+  }
+
+  /**
+   * 计算对象状态的确定性校验和
+   * @description 口径为对象数据（按 id 排序的 serialize JSON）与 trash 条目；不含 AOM
+   * 成员身份与区块层序（各端已载区块集随视口不同，纳入会误报）。供同步 digest 发现
+   * 效果层分歧（日志一致但效果未放全）。
+   * @returns {string} 状态校验和
+   */
+  queryStateHash() {
+    const boardCore = this.#boardCore;
+    const parts = [];
+    const objects = boardCore
+      .getAllObjects()
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    for (const obj of objects) {
+      parts.push(JSON.stringify(obj.serialize()));
+    }
+    parts.push("|trash|");
+    const trashIds = [...boardCore.trash.keys()].sort();
+    for (const id of trashIds) {
+      parts.push(id, JSON.stringify(boardCore.trash.get(id)));
+    }
+    return hashString(parts.join(""));
+  }
+
+  /**
+   * 从本端日志重放派生对象状态并对齐活体（效果层分歧自愈）
+   * @description 正确性定义为「对象状态 == f(日志)」：scratch 核心按日志序纯增量重放全部
+   * 记录得到派生态（undo/redo/折叠随回放自然呈现，永不触发重建），与活体逐对象比对后以
+   * remove+add 对齐（addObjectEffect 自带区块落座与层序，绕开跨区块重排位问题），trash 全量
+   * 对齐。本地有未闭合分子时活体合法偏离派生态（amend 实时改实例），拒绝修复并待下轮。
+   * @returns {{ repaired: boolean, fixedIds: string[] }} 修复结果；repaired=false 表示被门拒绝或无分歧
+   */
+  repairStateFromLog() {
+    const boardCore = this.#boardCore;
+    if (this.queryOpenMols().length > 0) {
+      return { repaired: false, fixedIds: [] };
+    }
+    const scratchCore = new BoardCore({
+      width: boardCore.width,
+      height: boardCore.height,
+      source: "__repair__",
+      chunkUnload: false,
+      aomRenderHooks: createDefaultAomRenderHooks(),
+      persistenceAdapter: createDefaultPersistenceAdapter(),
+    });
+    new BoardApi(scratchCore).applyRemoteOperations(
+      boardCore.operationLog.toJSON(),
+    );
+
+    const affectedChunks = new Set();
+    const fixedIds = [];
+    const canonical = (obj) => JSON.stringify(obj.serialize());
+    const derived = new Map(
+      scratchCore.getAllObjects().map((obj) => [obj.id, obj]),
+    );
+    for (const live of boardCore.getAllObjects()) {
+      const want = derived.get(live.id);
+      if (want !== undefined && canonical(want) === canonical(live)) {
+        derived.delete(live.id);
+        continue;
+      }
+      // 活体多出或数据分歧：先移除（新增与改判的重建统一走下方 addObjectEffect）
+      this.#removeObjectEffect(live.id, affectedChunks);
+      fixedIds.push(live.id);
+    }
+    for (const obj of derived.values()) {
+      this.#addObjectEffect(
+        { objectId: obj.id, data: obj.serialize() },
+        affectedChunks,
+      );
+      fixedIds.push(obj.id);
+    }
+
+    // trash 全量对齐（条目随删除/恢复记录落定，分歧时整体替换）
+    const trashOf = (core) =>
+      JSON.stringify(
+        [...core.trash.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+      );
+    const trashChanged = trashOf(boardCore) !== trashOf(scratchCore);
+    if (trashChanged) {
+      boardCore.trash.clear();
+      for (const [id, entry] of scratchCore.trash) {
+        boardCore.trash.set(id, JSON.parse(JSON.stringify(entry)));
+      }
+    }
+
+    if (affectedChunks.size > 0) {
+      boardCore.aomRenderHooks?.requestStaticRender?.([...affectedChunks]);
+    }
+    const repaired = fixedIds.length > 0 || trashChanged;
+    if (repaired) {
+      // 文档状态变化：UI 工具凭此清理本地失效选中（同远端应用路径）
+      boardCore.activityEventBus?.emit("hit-changed", { time: Date.now() });
+    }
+    return { repaired, fixedIds };
   }
 
   /**
