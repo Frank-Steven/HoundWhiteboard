@@ -203,8 +203,8 @@ async function startBoardDaemon(options) {
     if (coordinator) {
       await coordinator.close();
     }
-    session.flush();
-    session.close();
+    await session.flush();
+    await session.close();
     await fs.rm(path.join(rootPath, DAEMON_FILE), { force: true });
     await fs.rm(activeDaemonFile(), { force: true });
   };
