@@ -963,12 +963,11 @@ class BoardApi {
     );
     const committable = objects.filter((obj) => {
       if (!wasStatic.get(obj.id)) return true;
+      // 已回静态层的对象（如 choose 被撤销后残留选择前快照）重复提交是幂等空操作：
+      // 不产生取消选择分子，避免与会话超分子闭合竞态
+      if (!boardCore.activeObjectManager.has(obj.id)) return false;
       if (this.#chooseSnapshots.has(obj.id)) return true;
-      if (boardCore.activeObjectManager.has(obj.id)) {
-        throw new Error(`对象 ${obj.id} 缺选择前快照`);
-      }
-      // 已提交过的对象（不在选择中的静态对象）重复提交是幂等空操作
-      return false;
+      throw new Error(`对象 ${obj.id} 缺选择前快照`);
     });
     if (committable.length === 0) {
       return objects.map((obj) => obj.id);

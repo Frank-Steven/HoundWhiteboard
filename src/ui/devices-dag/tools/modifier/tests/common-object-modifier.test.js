@@ -1552,4 +1552,342 @@ describe("CommonObjectModifierTool", () => {
     expect(boardApi.commitObjects).not.toHaveBeenCalled();
     expect(tool._overlayModifiedObjects).toHaveLength(1);
   });
+
+  describe("分子管线（beginMol/amendMol/endMol/abortMol）", () => {
+    /**
+     * 构造具备分子能力的 boardApi mock
+     * @param {Object} [overrides={}] - 覆盖方法
+     * @returns {Object} boardApi mock
+     */
+    function createMolBoardApi(overrides = {}) {
+      return {
+        beginMol: jest.fn(() => "demo/mol-1"),
+        amendMol: jest.fn(() => true),
+        endMol: jest.fn(() => true),
+        abortMol: jest.fn(() => true),
+        modifyObject: jest.fn(),
+        commitObjects: jest.fn(),
+        discardActiveObjects: jest.fn(),
+        queryObjects: jest.fn(async () => []),
+        ...overrides,
+      };
+    }
+
+    test("手势驱动分子管线：begin → amend×N → end（松手物化），不再逐帧 modifyObject", () => {
+      const object = { id: "1", position: new Vector(10, 20) };
+      const boardApi = createMolBoardApi();
+      const tool = new CommonObjectModifierTool({
+        processor: new DragGestureProcessor(),
+      });
+      const context = aomCtx(tool, object, { boardApi, supraKey: "S" });
+
+      // 首帧：开启分子（begin+update 同帧，dx=0 的同值补丁同样入 amend 流）
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 12, y: 20 } } }] },
+        context,
+      );
+      expect(boardApi.beginMol).toHaveBeenCalledWith(["1"], { supraKey: "S" });
+      expect(boardApi.amendMol).toHaveBeenCalledTimes(1);
+      expect(object.position).toEqual(new Vector(10, 20));
+
+      // 第二帧：补丁入 amend 流（dx=2, dy=2 → (12,22)）
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 14, y: 22 } } }] },
+        context,
+      );
+      expect(boardApi.amendMol).toHaveBeenLastCalledWith("demo/mol-1", {
+        "1": { position: { x: 12, y: 22 } },
+      });
+      expect(boardApi.modifyObject).not.toHaveBeenCalled();
+      expect(object.position).toEqual(new Vector(12, 22));
+
+      // 松手：分子物化
+      tool.process({ signals: [{ type: "end", context: {} }] }, context);
+      expect(boardApi.endMol).toHaveBeenCalledWith("demo/mol-1");
+
+      // success：endMol 不重复（幂等兜底），commitObjects 提交
+      tool.process({ signals: [{ type: "success", context: {} }] }, context);
+      expect(boardApi.endMol).toHaveBeenCalledTimes(1);
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["1"], {
+        supraKey: "S",
+      });
+    });
+
+    test("两次拖动手势各成一个分子：第二次手势重新 beginMol", () => {
+      const object = { id: "1", position: new Vector(10, 20) };
+      const molIds = ["demo/mol-1", "demo/mol-2"];
+      const boardApi = createMolBoardApi({
+        beginMol: jest.fn(() => molIds.shift()),
+      });
+      const tool = new CommonObjectModifierTool({
+        processor: new DragGestureProcessor(),
+      });
+      const context = aomCtx(tool, object, { boardApi });
+
+      // 第一轮：(10,20) → (12,22)，松手物化 mol-1
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 12, y: 20 } } }] },
+        context,
+      );
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 14, y: 22 } } }] },
+        context,
+      );
+      tool.process({ signals: [{ type: "end", context: {} }] }, context);
+
+      // 第二轮：(12,22) → (14,24)，松手物化 mol-2
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 14, y: 22 } } }] },
+        context,
+      );
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 16, y: 24 } } }] },
+        context,
+      );
+      tool.process({ signals: [{ type: "end", context: {} }] }, context);
+
+      expect(boardApi.beginMol).toHaveBeenCalledTimes(2);
+      expect(boardApi.endMol).toHaveBeenNthCalledWith(1, "demo/mol-1");
+      expect(boardApi.endMol).toHaveBeenNthCalledWith(2, "demo/mol-2");
+      expect(object.position).toEqual(new Vector(14, 24));
+    });
+
+    test("手势进行中 cancel：abortMol 丢弃分子，本地条目回手势起点，不回写内核", () => {
+      const object = { id: "1", position: new Vector(10, 20) };
+      const boardApi = createMolBoardApi();
+      const tool = new CommonObjectModifierTool({
+        processor: new DragGestureProcessor(),
+      });
+      const context = aomCtx(tool, object, { boardApi });
+
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 12, y: 20 } } }] },
+        context,
+      );
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 14, y: 22 } } }] },
+        context,
+      );
+      expect(object.position).toEqual(new Vector(12, 22));
+
+      tool.process({ signals: [{ type: "cancel", context: {} }] }, context);
+
+      expect(boardApi.abortMol).toHaveBeenCalledWith("demo/mol-1");
+      expect(boardApi.endMol).not.toHaveBeenCalled();
+      // amend 流已随 abort 丢弃，cancel 不新增 amend（begin 帧同值 + 移动帧共两次）
+      expect(boardApi.amendMol).toHaveBeenCalledTimes(2);
+      expect(boardApi.modifyObject).not.toHaveBeenCalled();
+      // 本地条目同步回手势起点（内核实例由 abortMol 还原）
+      expect(object.position).toEqual(new Vector(10, 20));
+    });
+
+    test("拖动中撤销（forcedEndMolIds 命中）：手势复位、位置同步内核、对象保持选中", async () => {
+      const object = { id: "1", position: new Vector(10, 20) };
+      const boardApi = createMolBoardApi({
+        queryObjects: jest.fn(async () => [
+          { id: "1", position: { x: 10, y: 20 }, isActive: true },
+        ]),
+      });
+      const tool = new CommonObjectModifierTool({
+        processor: new DragGestureProcessor(),
+      });
+      const context = aomCtx(tool, object, { boardApi });
+
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 12, y: 20 } } }] },
+        context,
+      );
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 14, y: 22 } } }] },
+        context,
+      );
+      expect(tool.isGestureActive).toBe(true);
+      expect(object.position).toEqual(new Vector(12, 22));
+
+      // 内核 undo 强制闭合 mol-1 并撤销（实例回 (10,20)）→ hit:changed
+      tool.process(
+        {
+          signals: [
+            {
+              type: "hit:changed",
+              context: { forcedEndMolIds: ["demo/mol-1"] },
+            },
+          ],
+        },
+        context,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // 手势复位，分子句柄清除（内核已闭合，工具不再重复 endMol）
+      expect(tool.isGestureActive).toBe(false);
+      expect(tool._molId).toBeNull();
+      // 本地条目按内核位置同步
+      expect(object.position).toEqual(new Vector(10, 20));
+      // 对象仍活跃：不丢弃、不提交（保持选中）
+      expect(boardApi.discardActiveObjects).not.toHaveBeenCalled();
+      expect(boardApi.commitObjects).not.toHaveBeenCalled();
+
+      // 继续拖动：从 begin 开启新分子
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 15, y: 21 } } }] },
+        context,
+      );
+      expect(boardApi.beginMol).toHaveBeenCalledTimes(2);
+      expect(tool.isGestureActive).toBe(true);
+    });
+
+    test("Worker 挂起：molId 确认前补丁只落本地，确认后补发最新位置并执行延迟闭合", async () => {
+      const object = { id: "1", position: new Vector(10, 20) };
+      let resolveBegin;
+      const beginPromise = new Promise((resolve) => {
+        resolveBegin = resolve;
+      });
+      const boardApi = createMolBoardApi({
+        beginMol: jest.fn(() => beginPromise),
+      });
+      const tool = new CommonObjectModifierTool({
+        processor: new DragGestureProcessor(),
+      });
+      const context = aomCtx(tool, object, { boardApi });
+
+      // begin 帧：molId 未确认（Worker 模式 RPC 往返中）
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 12, y: 20 } } }] },
+        context,
+      );
+      expect(boardApi.beginMol).toHaveBeenCalledTimes(1);
+      expect(tool._molId).toBeNull();
+      expect(boardApi.amendMol).not.toHaveBeenCalled();
+
+      // 确认前拖动两帧：只落本地条目（渲染不等内核），不发 amend/modifyObject
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 14, y: 22 } } }] },
+        context,
+      );
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 16, y: 24 } } }] },
+        context,
+      );
+      expect(object.position).toEqual(new Vector(14, 24));
+      expect(boardApi.amendMol).not.toHaveBeenCalled();
+      expect(boardApi.modifyObject).not.toHaveBeenCalled();
+
+      // 松手（molId 仍未确认）：标记延迟闭合
+      tool.process({ signals: [{ type: "end", context: {} }] }, context);
+      expect(boardApi.endMol).not.toHaveBeenCalled();
+
+      // molId 到达：补发最新位置一条 amend（绝对坐标幂等覆盖），随后执行延迟 endMol
+      resolveBegin("demo/mol-1");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(boardApi.amendMol).toHaveBeenCalledTimes(1);
+      expect(boardApi.amendMol).toHaveBeenCalledWith("demo/mol-1", {
+        "1": { position: { x: 14, y: 24 } },
+      });
+      expect(boardApi.endMol).toHaveBeenCalledWith("demo/mol-1");
+    });
+
+    test("Worker 挂起期间 cancel：molId 到达后执行延迟中止，本地条目立即回手势起点", async () => {
+      const object = { id: "1", position: new Vector(10, 20) };
+      let resolveBegin;
+      const beginPromise = new Promise((resolve) => {
+        resolveBegin = resolve;
+      });
+      const boardApi = createMolBoardApi({
+        beginMol: jest.fn(() => beginPromise),
+      });
+      const tool = new CommonObjectModifierTool({
+        processor: new DragGestureProcessor(),
+      });
+      const context = aomCtx(tool, object, { boardApi });
+
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 12, y: 20 } } }] },
+        context,
+      );
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 14, y: 22 } } }] },
+        context,
+      );
+      expect(object.position).toEqual(new Vector(12, 22));
+
+      // cancel（molId 未确认）：标记延迟中止，本地条目立即回滚
+      tool.process({ signals: [{ type: "cancel", context: {} }] }, context);
+      expect(object.position).toEqual(new Vector(10, 20));
+
+      // molId 到达：执行延迟中止；挂起期间无补丁到达内核，不补发、不闭合
+      resolveBegin("demo/mol-1");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(boardApi.abortMol).toHaveBeenCalledWith("demo/mol-1");
+      expect(boardApi.amendMol).not.toHaveBeenCalled();
+      expect(boardApi.modifyObject).not.toHaveBeenCalled();
+      expect(boardApi.endMol).not.toHaveBeenCalled();
+    });
+
+    test("集成：真实内核拖动松手后 undo 回退位置且选择保留", async () => {
+      const { BoardApi } = await import(
+        "../../../../../kernel/api/board-api.js"
+      );
+      const { BoardCore } = await import(
+        "../../../../../kernel/board/board-core.js"
+      );
+      const { createDefaultAomRenderHooks } = await import(
+        "../../../../../kernel/board/aom-render-hooks.js"
+      );
+      const { createDefaultPersistenceAdapter } = await import(
+        "../../../../../kernel/board/persistence-adapter.js"
+      );
+      const boardCore = new BoardCore({
+        width: 800,
+        height: 600,
+        source: "demo",
+        aomRenderHooks: createDefaultAomRenderHooks(),
+        persistenceAdapter: createDefaultPersistenceAdapter(),
+      });
+      const api = new BoardApi(boardCore);
+
+      api.createObject("StrokeObject", {
+        id: "demo/1",
+        position: { x: 0, y: 0 },
+        property: { width: 2 },
+        data: { points: [{ x: 0, y: 0 }, { x: 10, y: 0 }] },
+      });
+      await api.commitObjects(["demo/1"]);
+      api.beginSupra("S");
+      await api.addActiveObjects(["demo/1"], { supraKey: "S" });
+
+      const tool = new CommonObjectModifierTool({
+        processor: new DragGestureProcessor(),
+      });
+      const summary = api.queryObjects(["demo/1"])[0];
+      const context = aomCtx(tool, summary, {
+        boardApi: api,
+        supraKey: "S",
+      });
+
+      // 拖动手势（首帧须落在对象矩形内通过准入）：(0,0) → (30,0)，松手物化分子
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 5, y: 0 } } }] },
+        context,
+      );
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 35, y: 0 } } }] },
+        context,
+      );
+      tool.process({ signals: [{ type: "end", context: {} }] }, context);
+
+      expect(api.queryObject("demo/1").position).toEqual({ x: 30, y: 0 });
+      // 分子记录已物化上链（带 molId 与 supraId）
+      const modify = boardCore.operationLog
+        .toArray()
+        .find((r) => r.type === "modify-object");
+      expect(modify.molId).not.toBeNull();
+      expect(modify.supraId).not.toBeNull();
+
+      // Ctrl+Z：撤分子（松手时已闭合，无强制闭合），位置回退、选择保留
+      const result = api.undo();
+      expect(result.forcedEndMolIds).toEqual([]);
+      expect(api.queryObject("demo/1").position).toEqual({ x: 0, y: 0 });
+      expect(boardCore.activeObjectManager.has("demo/1")).toBe(true);
+    });
+  });
 });

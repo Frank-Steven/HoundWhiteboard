@@ -67,6 +67,26 @@ class ObjectModifierTool extends GestureTool {
   _pendingActionObjectIds = null;
 
   /**
+   * 当前手势的增量式分子 id
+   * @description 手势首个空间帧经 `boardApi.beginMol` 分配；手势期间 `applyGesturePatch`
+   * 的补丁改经 `amendMol` 流入 amend 流（不产生记录），end/cancel/success 时闭合或中止。
+   * `null` 表示无在途分子（旧 modifyObject 逐帧路径）。
+   * @type {?string}
+   * @protected
+   */
+  _molId = null;
+
+  /**
+   * 分子 id 确认中的挂起状态
+   * @description Worker 模式下 beginMol 经 RPC 确认异步返回 molId；挂起期间
+   * `applyGesturePatch` 的补丁只落本地条目（渲染不等内核），molId 到达后由
+   * `#resolveMol` 补发最新绝对坐标并执行延迟的闭合/中止。
+   * @type {?{ closing: "end"|"abort"|null, context: Object, objects: Array }}
+   * @protected
+   */
+  _molPending = null;
+
+  /**
    * 提交修改后是否自动卸载当前 workflow 节点
    * @description wrapper 嵌入场景（如 HandoffWrapperTool）由 wrapper 置为 false，
    * 阻止 modifier 提交后自卸载，保持两阶段流程的槽位存活。
@@ -171,7 +191,8 @@ class ObjectModifierTool extends GestureTool {
    * 将手势补丁写入对象条目并同步 RPC
    * @description
    * 修改工具的统一写入口：patch 形状与 `boardApi.modifyObject(objectId, patch)` 的补丁契约一致。
-   * position 经 Vector.parse 规整；有 boardApi 且 objectId 有效时一次性
+   * position 经 Vector.parse 规整；有 boardApi 且 objectId 有效时，分子在途（`_molId` 非空）
+   * 经 `boardApi.amendMol(molId, { objectId: patch })` 流入 amend 流，否则一次性
    * `boardApi.modifyObject(objectId, patch)` 提交整份补丁；
    * 本地条目同步更新（position → 新 Vector、data → Object.assign 合并、transform → 浅拷贝）。
    * @param {import("../../../../kernel/types/types.js").LightweightObjectEntry} objectEntry - 当前对象条目
@@ -211,7 +232,15 @@ class ObjectModifierTool extends GestureTool {
     const objectId = this.resolveObjectId(objectEntry);
     const boardApi = interaction?.context?.services?.boardApi;
     if (boardApi && objectId != null && Object.keys(rpcPatch).length > 0) {
-      boardApi.modifyObject(objectId, rpcPatch);
+      if (this._molId != null && typeof boardApi.amendMol === "function") {
+        // 分子在途：补丁入 amend 流（不产生记录），endMol 时折叠物化
+        boardApi.amendMol(this._molId, { [objectId]: rpcPatch });
+      } else if (this._molPending != null) {
+        // molId 确认中（Worker 模式 RPC 往返）：补丁只落本地条目，
+        // molId 到达后由 #resolveMol 补发最新绝对坐标
+      } else {
+        boardApi.modifyObject(objectId, rpcPatch);
+      }
     }
   }
 
@@ -555,6 +584,15 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
   processor;
 
   /**
+   * 手势分子起点快照（objectId → 位置）
+   * @description `#ensureMol` 开启分子时从本地条目捕获，abortMol 后用于把本地条目
+   * 同步回手势起点（内核实例已由 abortMol 还原，本地条目不再经 applyGesturePatch 回写）。
+   * @type {Map<string, { x: number, y: number }>|null}
+   * @private
+   */
+  _molBeginPositions = null;
+
+  /**
    * @param {{
    *   processor: import("./gesture/drag-processor.js").DragGestureProcessor,
    * }} options - 配置选项（processor 必传）
@@ -569,6 +607,193 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
     }
     this.processor = options.processor;
     this.autoActionOnGestureEnd = false;
+  }
+
+  /**
+   * 开启当前手势的增量式分子（幂等）
+   * @description 手势首个 position/displacement 帧调用：boardApi 具备分子能力
+   * （beginMol/amendMol）时分配 molId 并捕获手势起点快照；无分子能力或分配失败时
+   * 保持 `_molId = null`，applyGesturePatch 回退旧 modifyObject 逐帧路径。
+   * Worker 模式 beginMol 异步返回（Promise），进入挂起状态由 `#resolveMol` 收尾。
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @param {import("../../../../kernel/types/types.js").LightweightObjectEntry[]} objects - 活动对象
+   * @returns {void}
+   * @private
+   */
+  #ensureMol(context, objects) {
+    if (this._molId !== null || this._molPending !== null) return;
+    const boardApi = context?.services?.boardApi;
+    if (
+      typeof boardApi?.beginMol !== "function" ||
+      typeof boardApi?.amendMol !== "function"
+    ) {
+      return;
+    }
+    const objectIds = this.resolveObjectIds(context, objects);
+    if (objectIds.length === 0) return;
+    let allocated;
+    try {
+      allocated = boardApi.beginMol(objectIds, {
+        supraKey: context?.services?.supraKey,
+      });
+    } catch {
+      return;
+    }
+    this._molBeginPositions = new Map(
+      objects.map((obj) => [
+        this.resolveObjectId(obj) ?? obj,
+        this.resolveModifiedObjectPosition(obj),
+      ]),
+    );
+    if (typeof allocated?.then === "function") {
+      // Worker 模式：molId 经 RPC 确认异步到达；确认前补丁只落本地条目，
+      // 确认后由 #resolveMol 补发最新绝对坐标（幂等覆盖，中间帧由本地渲染承担）
+      const pending = { closing: null, context, objects };
+      this._molPending = pending;
+      Promise.resolve(allocated).then(
+        (molId) => this.#resolveMol(pending, molId),
+        () => {
+          if (this._molPending === pending) {
+            this._molPending = null;
+          }
+        },
+      );
+      return;
+    }
+    this._molId = allocated;
+  }
+
+  /**
+   * molId 确认到达：补发挂起期间的最新位置并执行延迟的闭合/中止
+   * @param {{ closing: "end"|"abort"|null, context: Object, objects: Array }} pending - 挂起状态
+   * @param {*} molId - beginMol 确认的分子 id（非字符串时视为分配失败）
+   * @returns {void}
+   * @private
+   */
+  #resolveMol(pending, molId) {
+    if (this._molPending !== pending) return;
+    this._molPending = null;
+    const boardApi = pending.context?.services?.boardApi;
+    if (typeof molId !== "string" || molId === "") return;
+    this._molId = molId;
+    if (pending.closing === "abort") {
+      // 挂起期间无补丁到达内核，abort 还原 before 幂等无害
+      this.#abortMol(pending.context);
+      return;
+    }
+    const patches = {};
+    for (const obj of pending.objects) {
+      const objectId = this.resolveObjectId(obj);
+      const position = this.resolveModifiedObjectPosition(obj);
+      if (objectId != null && position) {
+        patches[objectId] = { position: { x: position.x, y: position.y } };
+      }
+    }
+    const alive =
+      Object.keys(patches).length === 0 ||
+      boardApi?.amendMol?.(molId, patches) !== false;
+    if (!alive) {
+      // 挂起期间分子已被内核强制闭合（undo 抢先）：复位手势并按内核位置同步
+      this._molId = null;
+      this._molBeginPositions = null;
+      this.isGestureActive = false;
+      this.processor.reset();
+      this.#syncPositionsFromKernel(pending.context, pending.objects);
+      return;
+    }
+    if (pending.closing === "end") {
+      this.#endMol(pending.context);
+    }
+  }
+
+  /**
+   * 按内核查询结果同步本地条目位置（手势被强制结束后对齐 undo 回退）
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @param {import("../../../../kernel/types/types.js").LightweightObjectEntry[]} objects - 活动对象
+   * @returns {void}
+   * @private
+   */
+  #syncPositionsFromKernel(context, objects) {
+    const boardApi = context?.services?.boardApi;
+    if (typeof boardApi?.queryObjects !== "function") return;
+    const ids = this.resolveObjectIds(context, objects);
+    if (ids.length === 0) return;
+    Promise.resolve(boardApi.queryObjects(ids))
+      .then((summaries) => {
+        const byId = new Map(
+          (summaries ?? []).map((s) => [String(s?.id), s]),
+        );
+        for (const obj of objects) {
+          const summary = byId.get(String(this.resolveObjectId(obj)));
+          const position = Vector.parse(summary?.position);
+          if (position) {
+            obj.position = position;
+          }
+        }
+        this.requestUiOverlayRefresh(context);
+      })
+      .catch(() => { });
+  }
+
+  /**
+   * 定稿当前手势分子：amend 流折叠物化为分子记录
+   * @description 无在途分子时为空操作；endMol 对已关闭分子在内核侧同样幂等。
+   * molId 确认中（Worker 模式）时标记延迟闭合，确认后由 `#resolveMol` 执行。
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @returns {void}
+   * @private
+   */
+  #endMol(context) {
+    if (this._molPending !== null) {
+      this._molPending.closing = "end";
+      return;
+    }
+    if (this._molId === null) return;
+    const molId = this._molId;
+    this._molId = null;
+    this._molBeginPositions = null;
+    context?.services?.boardApi?.endMol?.(molId);
+  }
+
+  /**
+   * 中止当前手势分子：丢弃 amend 流，内核实例还原到手势 before
+   * @description 无在途分子时为空操作并返回 false。
+   * molId 确认中（Worker 模式）时标记延迟中止，确认后由 `#resolveMol` 执行。
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @returns {boolean} 是否中止了一个在途分子
+   * @private
+   */
+  #abortMol(context) {
+    if (this._molPending !== null) {
+      this._molPending.closing = "abort";
+      return true;
+    }
+    if (this._molId === null) return false;
+    const molId = this._molId;
+    this._molId = null;
+    context?.services?.boardApi?.abortMol?.(molId);
+    return true;
+  }
+
+  /**
+   * abortMol 后把本地条目同步回手势起点
+   * @description 内核实例已被 abortMol 还原（position/data/transform 全量），
+   * 此处仅写本地条目的 position（drag 手势的唯一变更维度），不再回写内核。
+   * @param {import("../../../../kernel/types/types.js").LightweightObjectEntry[]} objects - 活动对象
+   * @returns {void}
+   * @private
+   */
+  #syncMolBeginPositions(objects) {
+    const beginPositions = this._molBeginPositions;
+    this._molBeginPositions = null;
+    if (!beginPositions) return;
+    for (const obj of objects) {
+      const key = this.resolveObjectId(obj) ?? obj;
+      const beginPosition = beginPositions.get(key);
+      if (beginPosition) {
+        obj.position = new Vector(beginPosition.x ?? 0, beginPosition.y ?? 0);
+      }
+    }
   }
 
   /**
@@ -635,6 +860,8 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
    * hit 变更后的失效清理：持有对象已被撤销移除时丢弃当前动作
    * @description 撤销/重做可能移除工具仍持有的对象（幽灵选择）；收到 hit:changed 时按
    * queryObjects 校验，存在已移除对象则丢弃动作（dead 对象由 discardActiveObjects 过滤）。
+   * 信号 context 携带 forcedEndMolIds（内核 undo 自动闭合的在途分子）且命中当前手势分子时，
+   * 结束手势复位：分子已被内核物化并撤销，本地条目按内核位置同步，对象仍活跃则保持选中。
    * @param {SignalPacket|Object} signalPacket - 输入信号包
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
    * @returns {?Promise<void>} 校验 Promise（测试可等待）
@@ -642,7 +869,8 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
    */
   #pruneStaleObjects(signalPacket, context) {
     const signals = signalPacket?.signals ?? [];
-    if (!signals.some((s) => s?.type === "hit:changed")) return null;
+    const hitSignal = signals.find((s) => s?.type === "hit:changed");
+    if (!hitSignal) return null;
     const boardApi = context?.services?.boardApi;
     const held = this.resolveActiveModifiedObjects(context);
     if (typeof boardApi?.queryObjects !== "function" || held.length === 0) {
@@ -650,6 +878,13 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
     }
     const ids = this.resolveObjectIds(context, held);
     if (ids.length === 0) return null;
+    const forcedIds = hitSignal?.context?.forcedEndMolIds;
+    // 内核 undo 自动闭合本端全部在途分子：命中当前手势分子则结束后复位；
+    // molId 确认中（Worker 模式 RPC 往返）无法按 id 匹配，但 pending 分子必在被闭合之列
+    const forcedHit =
+      Array.isArray(forcedIds) &&
+      ((this._molId !== null && forcedIds.includes(this._molId)) ||
+        (this._molPending !== null && forcedIds.length > 0));
     return Promise.resolve(boardApi.queryObjects(ids))
       .then((summaries) => {
         const byId = new Map(
@@ -661,15 +896,38 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
           const summary = byId.get(String(id));
           return !summary || summary.isActive !== true;
         });
-        if (!stale) return;
-        if (this.isGestureActive) {
-          // 手势进行中：回滚几何
-          this.discardAction(context);
+        if (stale) {
+          // 在途分子一并中止，防止悬挂分子的后续 amend 落到已失效对象
+          this.#abortMol(context);
+          this._molBeginPositions = null;
+          if (this.isGestureActive) {
+            // 手势进行中：回滚几何
+            this.discardAction(context);
+            return;
+          }
+          // 无手势：结束动作让 wrapper 复位相位（再次框选才能生效）
+          // 对已失效对象 commitObjects 为幂等空操作，无副作用
+          this.completeAction(context);
           return;
         }
-        // 无手势：结束动作让 wrapper 复位相位（再次框选才能生效）
-        // 对已失效对象 commitObjects 为幂等空操作，无副作用
-        this.completeAction(context);
+        if (forcedHit) {
+          // 拖动中撤销：内核已强制闭合本手势分子并撤销（实例回退到手势前），
+          // 手势状态复位、本地条目按内核位置同步；对象仍在活动层保持选中，
+          // 用户继续拖动会从 begin 开启新分子
+          this._molId = null;
+          this._molPending = null;
+          this._molBeginPositions = null;
+          this.isGestureActive = false;
+          this.processor.reset();
+          for (const obj of held) {
+            const summary = byId.get(String(this.resolveObjectId(obj)));
+            const position = Vector.parse(summary?.position);
+            if (position) {
+              obj.position = position;
+            }
+          }
+          this.requestUiOverlayRefresh(context);
+        }
       })
       .catch(() => { });
   }
@@ -709,7 +967,7 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
     }
 
     if (!interaction.position && !interaction.displacement) {
-      this._handleOrphanEnd(interaction);
+      this._handleOrphanEnd(interaction, context);
       return;
     }
 
@@ -720,20 +978,36 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
    * 处理 cancel 信号：取消当前手势
    * @description
    * 无论手势是否激活，都尝试回退对象位置。
-   * 手势结束后（end 信号后）cancel 应仍然能回退到手势初始位置，
-   * 前提是 processor 的 complete 保留了初始位置缓存。
-   * cancel 只回滚几何，对象仍由本工具持有（`_overlayModifiedObjects` 保留），
+   * 分子在途（手势进行中取消）时由 abortMol 丢弃 amend 流并把内核实例还原到手势
+   * before（position/data/transform 全量），取代 drag-processor 的 position-only 本地回滚；
+   * 无在途分子（松手后取消）走旧路径：processor 回滚到初始位置（内核经 applyGesturePatch 同步）。
+   * 对象仍由本工具持有（`_overlayModifiedObjects` 保留），
    * 由后续的 discardAction / success / umount 决定归属。
    * @param {ModifyGestureInteraction} interaction - 当前交互上下文
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @param {import("../../../../kernel/types/types.js").LightweightObjectEntry[]} objects - 活动对象
    * @private
    */
   _handleCancel(interaction, context, objects) {
-    this.withGeometryMutation(
-      context,
-      () => this.cancelGesture(interaction),
-      objects,
-      { captureSnapshot: false },
-    );
+    if (this._molId !== null || this._molPending !== null) {
+      this.withGeometryMutation(
+        context,
+        () => {
+          this.#abortMol(context);
+          this.#syncMolBeginPositions(objects);
+          this.processor.reset();
+        },
+        objects,
+        { captureSnapshot: false },
+      );
+    } else {
+      this.withGeometryMutation(
+        context,
+        () => this.cancelGesture(interaction),
+        objects,
+        { captureSnapshot: false },
+      );
+    }
     this.isGestureActive = false;
   }
 
@@ -751,6 +1025,9 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
       this.completeGesture(interaction);
       this.isGestureActive = false;
     }
+    // 未松手直接 success 时兜底物化当前分子（松手已闭合的幂等空操作）；
+    // 已物化对象由内核水位机制跳过重复 modify，commitObjects 只产取消选择分子
+    this.#endMol(context);
     this.applyModifiedObjects(context, objects);
     this.processor.reset();
     this._overlayModifiedObjects = [];
@@ -759,12 +1036,15 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
   /**
    * 处理无位置信号时孤立的 end 信号
    * @param {ModifyGestureInteraction} interaction - 当前交互上下文
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
    * @private
    */
-  _handleOrphanEnd(interaction) {
+  _handleOrphanEnd(interaction, context) {
     if (interaction.hasEndSignal && this.isGestureActive) {
       this.completeGesture(interaction);
       this.isGestureActive = false;
+      // 松手 = 分子物化（amend 流折叠为分子记录上链）
+      this.#endMol(context);
     }
   }
 
@@ -783,8 +1063,9 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
     // Step 1: Position 处理（手势状态机）
     if (interaction.position) {
       if (!this.isGestureActive) {
-        // 首次位置：准入检测 → begin + update
+        // 首次位置：准入检测 → 开启分子 → begin + update
         if (this.canBeginGesture(interaction) === false) return;
+        this.#ensureMol(context, objects);
         this.withGeometryMutation(
           context,
           () => {
@@ -809,6 +1090,8 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
 
     // Step 2: Displacement 处理（无状态，直接累加）
     if (interaction.displacement) {
+      // displacement 首帧（无 position 先行）同样开启分子
+      this.#ensureMol(context, objects);
       this.withGeometryMutation(
         context,
         () => this.processor.displace(this, interaction),
@@ -817,10 +1100,11 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
       );
     }
 
-    // Step 3: End 检查
+    // Step 3: End 检查（松手 = 分子物化）
     if (interaction.hasEndSignal) {
       this.completeGesture(interaction);
       this.isGestureActive = false;
+      this.#endMol(context);
     }
   }
 
@@ -872,12 +1156,16 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
 
   /**
    * 工具节点被卸载时清理手势状态
+   * @description 在途分子一并中止（abortMol 幂等兜底），随后走基类的 discard 流程。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void}
    */
   umount(context = {}) {
     this.isActionActive = false;
     this.isGestureActive = false;
+    if (this.#abortMol(context)) {
+      this.#syncMolBeginPositions(this.resolveActiveModifiedObjects(context));
+    }
     super.umount(context);
   }
 

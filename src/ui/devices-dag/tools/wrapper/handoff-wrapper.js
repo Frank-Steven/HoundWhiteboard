@@ -38,13 +38,17 @@ let handoffSessionSeq = 0;
 class HandoffWrapperTool extends WrapperTool {
   /**
    * 会话超分子 key（first 阶段信号到达时开启，second 完成或会话终结时闭合）
+   * @description 三级容器模型下会话超分子从开启持续整个「选择 → 修改 → 提交」会话，
+   * 不再于 first 完成时闭合重开（b874e04 会话分割已被撤销）：
+   * choose 与后续修改分子挂同一 supraId，闭合时经 close-supra 折叠为聚合节点。
    * @type {?string}
    */
   #sessionKey = null;
 
   /**
    * 开启会话超分子（first 阶段信号到达时）
-   * @description 一次「选择 → 修改 → 提交」会话的所有提交指定同一 key，闭合时凝聚为一个节点。
+   * @description 一次「选择 → 修改 → 提交」会话的所有提交指定同一 key，
+   * 成员即时物化挂入，endSupra 时追加 close-supra 折叠为一个聚合节点。
    * key 取模块级单调序号，跨 wrapper 实例唯一。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
    * @returns {void}
@@ -59,7 +63,7 @@ class HandoffWrapperTool extends WrapperTool {
   }
 
   /**
-   * 闭合会话超分子（提交物化）
+   * 闭合会话超分子（追加 close-supra 折叠；成员不足两条时纯清理句柄）
    * @returns {void}
    */
   #closeSessionSupra() {
@@ -69,19 +73,6 @@ class HandoffWrapperTool extends WrapperTool {
     const key = this.#sessionKey;
     this.#sessionKey = null;
     this._resolveLatestServices()?.boardApi?.endSupra?.(key);
-  }
-
-  /**
-   * 中止会话超分子（取消：几何已回滚，草稿丢弃）
-   * @returns {void}
-   */
-  #abortSessionSupra() {
-    if (this.#sessionKey === null) {
-      return;
-    }
-    const key = this.#sessionKey;
-    this.#sessionKey = null;
-    this._resolveLatestServices()?.boardApi?.abortSupra?.(key);
   }
 
   /**
@@ -250,17 +241,13 @@ class HandoffWrapperTool extends WrapperTool {
       return;
     }
 
-    // 选择完成：先闭合会话超分子，使选择物化为独立可撤销节点——
-    // 未闭合时 choose 停在草稿缓冲，undo 摸不到它，会误撤到更早的创建；
-    // 随后为第二阶段的修改开启新会话（「撤销选择」与「撤销修改」分离）。
-    this.#closeSessionSupra();
-
+    // 选择完成：choose 已随 first 阶段的提交挂入会话超分子（即时物化带 supraId），
+    // 超分子保持开启，等待 second 阶段的修改分子继续挂入
     if (this.#autoBridgeObjects) {
       this.#second.receiveHandoffObjects?.(objects, eventContext ?? {});
     }
 
     this.#setPhase("second");
-    this.#openSessionSupra(eventContext ?? {});
   }
 
   /**
@@ -311,10 +298,11 @@ class HandoffWrapperTool extends WrapperTool {
       this.#phase === "second"
     ) {
       // 对齐旧 completeOnCancel 的丢弃语义：second 的 cancel 手势只回滚几何，
-      // 其持有的活动对象需由 wrapper 显式丢弃
+      // 其持有的活动对象需由 wrapper 显式丢弃（discard 型 unchoose，位置回选择前快照），
+      // 随后闭合会话超分子——Esc 为 discard 闭合，零撤销动作
       this.#second.discardAction?.(this._buildSlotContext("second", context));
       this.#setPhase("first");
-      this.#abortSessionSupra();
+      this.#closeSessionSupra();
       this._resolveLatestServices()?.viewport?.requestViewportUiRender?.();
     }
   }
@@ -335,7 +323,8 @@ class HandoffWrapperTool extends WrapperTool {
 
   /**
    * 取消当前动作
-   * @description 对当前相位工具调用 `cancelAction`（槽位作用域上下文）并切回 first。
+   * @description 对当前相位工具调用 `cancelAction`（槽位作用域上下文）并切回 first，
+   * 会话超分子按取消语义闭合（成员不足两条时纯清理句柄）。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void}
    */
@@ -344,7 +333,7 @@ class HandoffWrapperTool extends WrapperTool {
       this._buildSlotContext(this.#phase, context),
     );
     this.#setPhase("first");
-    this.#abortSessionSupra();
+    this.#closeSessionSupra();
   }
 
   /**

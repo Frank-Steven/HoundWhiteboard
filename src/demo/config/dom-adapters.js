@@ -177,7 +177,7 @@ function attachKeyboardAdapter(viewport, board, demoLog, tools) {
    * 向各工具 workflow 广播 hit 变更信号（撤销/重做后工具清理失效对象引用）
    * @returns {void}
    */
-  const notifyHitChanged = () => {
+  const notifyHitChanged = (hitContext = {}) => {
     const workflows = [
       DEMO_WORKFLOW_NAMES.TOOL_SWITCHER,
       DEMO_WORKFLOW_NAMES.SECONDARY_CHOOSER,
@@ -185,7 +185,7 @@ function attachKeyboardAdapter(viewport, board, demoLog, tools) {
     for (const wf of workflows) {
       board.signalsEventBus.emit("input", {
         to: `/${viewport.viewportId}/workflows/${wf}`,
-        signals: [{ type: "hit:changed", context: {} }],
+        signals: [{ type: "hit:changed", context: hitContext }],
       });
     }
   };
@@ -193,6 +193,8 @@ function attachKeyboardAdapter(viewport, board, demoLog, tools) {
   /**
    * 处理撤销/重做快捷键（Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y）
    * @description 组合键不进入设备图，直接经 BoardApi 路由调用；返回 true 表示事件已被消费。
+   * 内核 undo 自动闭合的在途分子 id（forcedEndMolIds）随 hit:changed 信号 context 透传，
+   * 命中当前手势分子的工具据此结束手势复位。
    * @param {KeyboardEvent} event - 键盘事件
    * @returns {boolean} 是否已消费
    */
@@ -210,10 +212,15 @@ function attachKeyboardAdapter(viewport, board, demoLog, tools) {
     demoLog.logKeyInput(isRedo ? "重做" : "撤销");
     const pending = isRedo ? api.redo() : api.undo();
     Promise.resolve(pending)
+      .then((result) => {
+        notifyHitChanged({
+          forcedEndMolIds: result?.forcedEndMolIds ?? [],
+        });
+      })
       .catch((error) => {
         console.error("[whiteboard] undo/redo failed:", error);
-      })
-      .finally(notifyHitChanged);
+        notifyHitChanged();
+      });
     return true;
   };
 

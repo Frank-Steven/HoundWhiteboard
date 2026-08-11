@@ -132,7 +132,12 @@ async function bootstrapWhiteboard() {
     for (const wf of workflows) {
       board.signalsEventBus.emit("input", {
         to: `/${viewport.viewportId}/workflows/${wf}`,
-        signals: [{ type: "hit:changed", context: {} }],
+        signals: [
+          {
+            type: "hit:changed",
+            context: { forcedEndMolIds: message.forcedEndMolIds ?? [] },
+          },
+        ],
       });
     }
   });
