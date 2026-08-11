@@ -325,4 +325,61 @@ describe("远端会话全序列应用（实时双端驱动）", () => {
     pump(A, B);
     expect(B.api.queryObject("a/1").position).toEqual({ x: 100, y: 100 });
   });
+
+  test("多对象手势：同分子成员增量归并后远端效果不丢（第二对象不回弹）", async () => {
+    const A = createEnd("a");
+    const B = createEnd("b");
+    const pump = (from, to) => {
+      const seen = new Set(to.boardCore.operationLog.toJSON().map((r) => r.id));
+      const fresh = from.boardCore.operationLog
+        .toJSON()
+        .filter((r) => !seen.has(r.id));
+      if (fresh.length > 0) {
+        to.api.applyRemoteOperations(JSON.parse(JSON.stringify(fresh)));
+      }
+    };
+
+    for (const [n, y] of [[1, 100], [2, 300]]) {
+      A.api.createObject("StrokeObject", {
+        id: `a/${n}`,
+        position: { x: 100, y },
+        property: { width: 2 },
+        data: { points: [{ x: 0, y: 0 }, { x: 10, y: 0 }] },
+      });
+      await A.api.commitObjects([`a/${n}`]);
+    }
+    pump(A, B);
+
+    const notices = [];
+    B.boardCore.activityEventBus.on("remote-activity", (e) => notices.push(e));
+
+    A.api.beginSupra("S");
+    await A.api.addActiveObjects(["a/1", "a/2"], { supraKey: "S" });
+    pump(A, B);
+
+    // 一次手势覆盖两个对象：同 molId 的两条 modify 同批到达，第二条增量归并进分子节点
+    const molId = A.api.beginMol(["a/1", "a/2"], { supraKey: "S" });
+    A.api.amendMol(molId, {
+      "a/1": { position: { x: 200, y: 100 } },
+      "a/2": { position: { x: 200, y: 300 } },
+    });
+    A.api.endMol(molId);
+    pump(A, B);
+    // 归并就地改节点：过渡序列若取在树变更后，第二条成员的效果会被判为零过渡丢掉
+    expect(B.api.queryObject("a/1").position).toEqual({ x: 200, y: 100 });
+    expect(B.api.queryObject("a/2").position).toEqual({ x: 200, y: 300 });
+    expect(notices.at(-1).ids).toEqual(expect.arrayContaining(["a/1", "a/2"]));
+
+    await A.api.commitObjects(["a/1", "a/2"], { supraKey: "S" });
+    A.api.endSupra("S");
+    pump(A, B);
+    expect(B.api.queryObject("a/1").position).toEqual({ x: 200, y: 100 });
+    expect(B.api.queryObject("a/2").position).toEqual({ x: 200, y: 300 });
+    expect(B.api.queryRemoteChoices()).toEqual([]);
+
+    A.api.undo();
+    pump(A, B);
+    expect(B.api.queryObject("a/1").position).toEqual({ x: 100, y: 100 });
+    expect(B.api.queryObject("a/2").position).toEqual({ x: 100, y: 300 });
+  });
 });

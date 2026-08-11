@@ -1832,12 +1832,27 @@ class BoardApi {
     if (targetId === null || !tree.isOnActiveChain(targetId)) {
       return { undone: false, targetNodeId: null };
     }
-    const beforeChain = tree.getActiveChain();
+    const beforeRecords = this.#recordsOfChain(tree.getActiveChain());
     boardCore.hitCommitter.commitUndo({ targetNodeId: targetId });
-    this.#transitionEffects(beforeChain, tree.getActiveChain());
+    this.#transitionEffects(
+      beforeRecords,
+      this.#recordsOfChain(tree.getActiveChain()),
+    );
     // 过渡可能逆放远端 modify（远程活动对象几何变化）：冲刷选择装饰刷新通知
     this.#flushRemoteChoicesNotification();
     return { undone: true, targetNodeId: targetId };
+  }
+
+  /**
+   * 取活动链的成员记录序列（效果过渡的比较与重放粒度）
+   * @description 必须在树变更「之前」对旧链取序列：增量式分子归并就地改末端节点的
+   * memberIds（undo-tree-core 不复制节点），变更后再取会把新记录误算进旧序列。
+   * @param {import("../hit/undo-tree-core.js").MolecularNode[]} chain - 活动链
+   * @returns {import("../hit/operation.js").OperationRecord[]} 成员记录序列（链序）
+   * @private
+   */
+  #recordsOfChain(chain) {
+    return chain.flatMap((node) => this.#recordsOfNode(node));
   }
 
   /**
@@ -1845,18 +1860,13 @@ class BoardApi {
    * @description 分叉判定以成员记录序列为粒度（而非节点 shareId）：折叠只改节点分组、
    * 记录序列不变，判为零过渡；若按节点比较，聚合节点复用段首 shareId 会把段尾成员误判为
    * 已撤销，净亏其效果（远端应用 close-supra 时位置回弹、选择残留）。
-   * @param {import("../hit/undo-tree-core.js").MolecularNode[]} beforeChain - 过渡前活动链
-   * @param {import("../hit/undo-tree-core.js").MolecularNode[]} afterChain - 过渡后活动链
+   * 入参为记录序列而非节点链，且须在树变更前取妥（见 recordsOfChain）。
+   * @param {import("../hit/operation.js").OperationRecord[]} beforeRecords - 过渡前记录序列
+   * @param {import("../hit/operation.js").OperationRecord[]} afterRecords - 过渡后记录序列
    * @returns {boolean} 活动链是否发生变化
    * @private
    */
-  #transitionEffects(beforeChain, afterChain) {
-    const beforeRecords = beforeChain.flatMap((node) =>
-      this.#recordsOfNode(node),
-    );
-    const afterRecords = afterChain.flatMap((node) =>
-      this.#recordsOfNode(node),
-    );
+  #transitionEffects(beforeRecords, afterRecords) {
     let diverge = 0;
     while (
       diverge < beforeRecords.length &&
@@ -2226,10 +2236,13 @@ class BoardApi {
    */
   redo() {
     const tree = this.#boardCore.undoTree;
-    const beforeChain = tree.getActiveChain();
+    const beforeRecords = this.#recordsOfChain(tree.getActiveChain());
     this.#boardCore.hitCommitter.commitRedo();
     const afterChain = tree.getActiveChain();
-    const changed = this.#transitionEffects(beforeChain, afterChain);
+    const changed = this.#transitionEffects(
+      beforeRecords,
+      this.#recordsOfChain(afterChain),
+    );
     // 过渡可能正放远端 modify（远程活动对象几何变化）：冲刷选择装饰刷新通知
     this.#flushRemoteChoicesNotification();
     return { redone: changed, targetNodeId: changed ? (afterChain.at(-1)?.shareId ?? null) : null };
@@ -2270,7 +2283,7 @@ class BoardApi {
           throw new Error(errors.join("；"));
         }
       }
-      const beforeChain = tree.getActiveChain();
+      const beforeRecords = this.#recordsOfChain(tree.getActiveChain());
       if (this.#needsReplay(group[group.length - 1])) {
         tree.rebuild();
       } else if (group[0].supraOpId === null) {
@@ -2278,7 +2291,10 @@ class BoardApi {
       } else {
         tree.applySupraNode(group);
       }
-      this.#transitionEffects(beforeChain, tree.getActiveChain());
+      this.#transitionEffects(
+        beforeRecords,
+        this.#recordsOfChain(tree.getActiveChain()),
+      );
     }
     // 链过渡可能含远程 choose/unchoose 效果：合批冲刷一次变更通知
     this.#flushRemoteChoicesNotification();
