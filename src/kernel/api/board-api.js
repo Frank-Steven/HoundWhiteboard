@@ -1100,8 +1100,9 @@ class BoardApi {
     try {
       for (const obj of objects) {
         if (!hasStaticBoardObject(boardCore, obj.id)) continue;
-        // 已在选择中的对象不重复记录，前快照保留首次选择时刻的状态
-        if (this.#chooseSnapshots.has(obj.id)) continue;
+        // 已在活动层的对象不重复记录；重新选择已退出的对象（如 choose 被撤销后）
+        // 需重新捕获选择前快照并产生选择分子，不能以残留快照为由跳过
+        if (boardCore.activeObjectManager.isActive(obj.id)) continue;
         this.#chooseSnapshots.set(obj.id, obj.serialize());
         committer.commitChoose({
           chunkId: this.#resolveObjectChunkId(obj.id),
@@ -1136,6 +1137,7 @@ class BoardApi {
   /**
    * 将对象从 AOM 动态图移除
    * @description 静态对象被放弃更改即取消选择分子操作；生于 AOM 的暂存对象不产生记录。
+   * 已退出活动层的对象（如 choose 被撤销后的残留选择）丢弃为幂等空操作，不产生记录。
    * @param {string[]} objectIds - 对象 id 列表
    * @param {Object} [options] - 选项
    * @param {string} [options.supraKey] - 指定进入的超分子 key
@@ -1152,21 +1154,27 @@ class BoardApi {
       (obj) => !hasStaticBoardObject(boardCore, obj.id),
     );
 
+    // 不在 AOM 的对象（choose 被撤销后快照仍在）跳过：不还原快照、不产取消选择分子，
+    // 否则残留选择的延迟丢弃会把 unchoose(discard) 泄漏进后续会话的超分子
+    const discardable = objects.filter((obj) =>
+      boardCore.activeObjectManager.has(obj.id),
+    );
+
     // 放弃前快照各对象的命名选择（discard 后成员关系即解除，取消选择分子凭以留名）
     const choiceOfObject = new Map(
-      objects.map((obj) => [
+      discardable.map((obj) => [
         obj.id,
         boardCore.activeObjectManager.choiceOf(obj.id),
       ]),
     );
-    boardCore.activeObjectManager.discard(new Set(objects));
+    boardCore.activeObjectManager.discard(new Set(discardable));
 
     const committer = boardCore.hitCommitter;
     const internalKey =
       options.supraKey === undefined ? this.#beginInternalSupra() : null;
     const supraKey = options.supraKey ?? internalKey;
     try {
-      for (const obj of objects) {
+      for (const obj of discardable) {
         // 放弃更改仅在对象确经选择时产生取消选择分子
         if (this.#chooseSnapshots.has(obj.id)) {
           // 用选择前快照还原实例（choose→modify→discard 链的整体回滚），

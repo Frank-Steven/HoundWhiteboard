@@ -294,6 +294,54 @@ describe("撤销语义三分（场景推演）", () => {
     expect(api.queryObject("s1").position).toEqual({ x: 0, y: 0 });
   });
 
+  test("撤销 choose 后重新选择：残留快照不产 discard 泄漏，重新选择重新上链", async () => {
+    const { boardCore, api } = createEnd();
+    await createStaticStroke(api, "s1");
+    api.beginSupra("S1");
+    await api.addActiveObjects(["s1"], { supraKey: "S1" });
+    dragOnce(api, "s1", { x: 30, y: 0 }, "S1");
+    // 撤 modify、撤 choose：对象退出活动层，选择前快照仍残留（redo 路径依赖）
+    api.undo();
+    api.undo();
+    expect(boardCore.activeObjectManager.has("s1")).toBe(false);
+    expect(api.queryObject("s1").position).toEqual({ x: 0, y: 0 });
+
+    // 新会话先丢弃残留选择（chooser 换选语义）：已退出活动层，幂等空操作不产记录
+    api.beginSupra("S2");
+    api.discardActiveObjects(["s1"], { supraKey: "S2" });
+    expect(
+      boardCore.operationLog
+        .toArray()
+        .filter((r) => r.type === "unchoose-object"),
+    ).toHaveLength(0);
+
+    // 重新选择产生新的 choose 分子并挂入新超分子（残留快照不得拦截）
+    await api.addActiveObjects(["s1"], { supraKey: "S2" });
+    dragOnce(api, "s1", { x: 50, y: 0 }, "S2");
+    dragOnce(api, "s1", { x: 80, y: 0 }, "S2");
+    await api.commitObjects(["s1"], { supraKey: "S2" });
+    api.endSupra("S2");
+
+    // 折叠段恰好 {choose, mov1, mov2, unchoose}，无 discard 泄漏进段首
+    const aggregate = boardCore.undoTree.getActiveChain().at(-1);
+    expect(
+      aggregate.memberIds.map((id) => boardCore.operationLog.get(id).type),
+    ).toEqual([
+      "choose-object",
+      "modify-object",
+      "modify-object",
+      "unchoose-object",
+    ]);
+    expect(api.queryObject("s1").position).toEqual({ x: 80, y: 0 });
+
+    // 撤整个聚合回选择前，redo 回定格
+    api.undo();
+    expect(api.queryObject("s1").position).toEqual({ x: 0, y: 0 });
+    expect(boardCore.activeObjectManager.has("s1")).toBe(false);
+    expect(api.redo().redone).toBe(true);
+    expect(api.queryObject("s1").position).toEqual({ x: 80, y: 0 });
+  });
+
   test("场景 6/7：未闭合撤销分子后再拖并闭合，折叠只取活动链成员", async () => {
     const { boardCore, api } = createEnd();
     await createStaticStroke(api, "s1");
