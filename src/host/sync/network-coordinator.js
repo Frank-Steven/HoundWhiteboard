@@ -71,6 +71,7 @@ function compareRecords(a, b) {
  * @param {number} [options.connectTimeoutMs=3000] - 连接超时（毫秒）；地址无响应（无 error 事件的挂起）时按超时拒绝
  * @param {Function} [options.WebSocketImpl] - WebSocket 实现（默认全局实现）
  * @param {Function} [options.onAwareness] - awareness 消息回调（{source, data}；peer-left 时 data 为 {kind:"peer-left"}）
+ * @param {Function} [options.onDisconnect] - 非主动断开回调（宿主据此自动重连；主动 close 不触发）
  * @returns {Object} 协调器句柄
  *
  * @description
@@ -89,6 +90,7 @@ function createNetworkCoordinator(options) {
     connectTimeoutMs = 3000,
     WebSocketImpl = globalThis.WebSocket,
     onAwareness,
+    onDisconnect,
   } = options;
   const source = boardCore.hitCommitter.source;
   const log = boardCore.operationLog;
@@ -117,6 +119,47 @@ function createNetworkCoordinator(options) {
   const outbox = [];
   /** @type {boolean} 发送微任务是否已排队 */
   let sendScheduled = false;
+  /** @type {boolean} 是否为调用方主动关闭（主动关闭不触发 onDisconnect） */
+  let closedByUser = false;
+
+  /**
+   * 清理全部订阅与定时器（断线与主动关闭共用）
+   * @returns {void}
+   */
+  const cleanup = () => {
+    if (digestTimer !== null) {
+      clearInterval(digestTimer);
+      digestTimer = null;
+    }
+    if (windowTimer !== null) {
+      clearTimeout(windowTimer);
+      windowTimer = null;
+    }
+    unsubscribeAppend?.();
+    unsubscribeAppend = null;
+    unsubscribeActivity?.();
+    unsubscribeActivity = null;
+  };
+
+  /**
+   * 处理套接字断开：清理本地状态、清理远程选择登记、通知宿主（非主动关闭时）
+   * @returns {void}
+   */
+  const onSocketClosed = () => {
+    const wasJoined = state === "joined";
+    state = "closed";
+    ws = null;
+    cleanup();
+    if (wasJoined) {
+      // 本端离线期间对端活动状态未知，清空待重连后重建
+      for (const { source: remoteSource } of boardApi.queryRemoteChoices()) {
+        boardApi.clearRemoteActivity(remoteSource);
+      }
+    }
+    if (wasJoined && !closedByUser) {
+      onDisconnect?.();
+    }
+  };
 
   /**
    * 微任务合批发送本地记录
@@ -273,6 +316,50 @@ function createNetworkCoordinator(options) {
   };
 
   /**
+   * 本端各来源的最大操作序号（lastSeen 摘要）
+   * @returns {Object<string, number>} 来源到最大序号的映射
+   */
+  const localLastSeen = () => Object.fromEntries(maxSeqBySource(log.toJSON()));
+
+  /**
+   * 按请求方的 lastSeen 过滤缺口记录（无 lastSeen 为全量，向后兼容 INIT）
+   * @param {Object<string, number>} [lastSeen] - 请求方各来源最大序号
+   * @returns {Object[]} 缺口记录
+   */
+  const filterGapRecords = (lastSeen) => {
+    const all = log.toJSON();
+    if (!lastSeen || typeof lastSeen !== "object") return all;
+    return all.filter((record) => {
+      const parsed = parseOperationId(record.id);
+      if (parsed === null) return false;
+      return parsed.n > (lastSeen[record.source] ?? 0);
+    });
+  };
+
+  /**
+   * 重广播本端当前活动持有（重连后互斥状态重建）
+   * @returns {void}
+   *
+   * @description
+   * 断线时本端持有在对端被 peer-left 清理，重连后按 hold 逐条重发 choose 活动；
+   * 对端按来源迁移语义登记，不产生重复持有。
+   */
+  const rebroadcastLocalActivity = () => {
+    for (const hold of boardCore.activeObjectManager.queryLocalActivity()) {
+      send({
+        type: "aom",
+        event: {
+          kind: "choose",
+          ids: [...hold.ids],
+          source,
+          time: Date.now(),
+          ...(hold.name !== undefined ? { choice: hold.name } : {}),
+        },
+      });
+    }
+  };
+
+  /**
    * 处理中继消息
    * @param {Object} message - 已解析消息
    * @returns {void}
@@ -282,11 +369,17 @@ function createNetworkCoordinator(options) {
       case "joined":
         state = "joined";
         if (Array.isArray(message.peers) && message.peers.length > 0) {
-          send({ type: "request-init" });
+          send({ type: "request-init", lastSeen: localLastSeen() });
+          rebroadcastLocalActivity();
         }
         digestTimer = setInterval(() => {
           send({ type: "digest", digest: localDigest() });
         }, digestIntervalMs);
+        return;
+      case "peer-joined":
+        // 对端（重）加入：告知我方缺口并同步当前互斥状态
+        send({ type: "request-init", lastSeen: localLastSeen() });
+        rebroadcastLocalActivity();
         return;
       case "peer-left":
         boardApi.clearRemoteActivity(message.source);
@@ -302,14 +395,18 @@ function createNetworkCoordinator(options) {
         // volatile 通道：转发给宿主，不进日志不参与收敛
         onAwareness?.({ source: message.source, data: message.data });
         return;
-      case "request-init":
+      case "request-init": {
+        const records = filterGapRecords(message.lastSeen);
+        // 增量请求无缺口时不回应（降噪）；全量请求（无 lastSeen）总是回应（meta 供 id 续种）
+        if (message.lastSeen && records.length === 0) return;
         send({
           type: "respond-init",
           to: message.source,
-          records: log.toJSON(),
+          records,
           meta: boardCore.collectSessionMeta(),
         });
         return;
+      }
       case "respond-init":
         ingestRecords(message.records);
         return;
@@ -396,7 +493,7 @@ function createNetworkCoordinator(options) {
           }
         });
         ws.addEventListener("close", () => {
-          state = "closed";
+          onSocketClosed();
         });
       });
     },
@@ -415,18 +512,8 @@ function createNetworkCoordinator(options) {
      * @returns {Promise<void>}
      */
     async close() {
-      if (digestTimer !== null) {
-        clearInterval(digestTimer);
-        digestTimer = null;
-      }
-      if (windowTimer !== null) {
-        clearTimeout(windowTimer);
-        windowTimer = null;
-      }
-      unsubscribeAppend?.();
-      unsubscribeAppend = null;
-      unsubscribeActivity?.();
-      unsubscribeActivity = null;
+      closedByUser = true;
+      cleanup();
       const socket = ws;
       ws = null;
       state = "closed";

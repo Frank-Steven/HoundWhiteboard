@@ -153,6 +153,24 @@ class CoreWorkerRuntime {
   #subframeForwarder;
 
   /**
+   * 同步中继地址（createBoard 时记录，供断线重连）
+   * @type {string | null}
+   */
+  #syncUrl = null;
+
+  /**
+   * 同步房间 id（createBoard 时记录，供断线重连）
+   * @type {string | null}
+   */
+  #syncBoardId = null;
+
+  /**
+   * 协调器重连定时器
+   * @type {ReturnType<typeof setTimeout> | null}
+   */
+  #coordinatorRetryTimer = null;
+
+  /**
    * 等待主线程 io-response 的挂起表
    * @type {Map<string, { resolve: Function, reject: Function }>}
    */
@@ -187,6 +205,9 @@ class CoreWorkerRuntime {
     this.#coordinator = null;
     this.#unsubscribeRemoteActivity = null;
     this.#subframeForwarder = null;
+    this.#syncUrl = null;
+    this.#syncBoardId = null;
+    this.#coordinatorRetryTimer = null;
     this.#ioPending = new Map();
     this.#ioMsgSeq = 0;
   }
@@ -491,41 +512,74 @@ class CoreWorkerRuntime {
 
     this.#boardApi = new BoardApi(this.#boardCore);
 
-    // 同步：syncUrl 存在时连接中继；连接失败降级为离线运行
+    // 同步：syncUrl 存在时连接中继；首次失败起每 3s 自动重试，不阻塞开板
     if (typeof options.syncUrl === "string" && options.syncUrl !== "") {
-      this.#coordinator = createNetworkCoordinator({
-        boardCore: this.#boardCore,
-        boardApi: this.#boardApi,
-        url: options.syncUrl,
-        boardId:
-          typeof options.boardId === "string" && options.boardId !== ""
-            ? options.boardId
-            : options.rootPath,
-        // awareness 下行：volatile 消息（光标等）与成员离开转发 UI
-        onAwareness: ({ source, data }) => {
-          this.#postMessage({
-            type: "awareness",
-            awarenessType: data?.kind,
-            source,
-            data,
-          });
-        },
-      });
-      try {
-        await this.#coordinator.connect();
-        this.#subframeForwarder = createSubframeForwarder({
-          boardCore: this.#boardCore,
-          sendAwareness: (data) => this.#coordinator?.sendAwareness(data),
-        });
-        this.#log.info(`已连接同步中继：${options.syncUrl}`);
-      } catch (error) {
-        this.#log.warn(`同步中继连接失败，离线运行：${error?.message ?? error}`);
-        await this.#coordinator.close();
-        this.#coordinator = null;
-      }
+      this.#syncUrl = options.syncUrl;
+      this.#syncBoardId =
+        typeof options.boardId === "string" && options.boardId !== ""
+          ? options.boardId
+          : options.rootPath;
+      await this.#connectCoordinator();
     }
 
     return { ok: true };
+  }
+
+  /**
+   * 连接（或重连）同步中继
+   * @returns {Promise<void>}
+   * @private
+   *
+   * @description
+   * 每次尝试使用新的协调器实例（断线后旧实例已自清理）；成功时挂接 SubFrame 转发器，
+   * 失败起每 3s 自动重试（板存活期间中继后启动也能连上）。
+   */
+  async #connectCoordinator() {
+    if (this.#boardCore === null || this.#syncUrl === null) return;
+    const coordinator = createNetworkCoordinator({
+      boardCore: this.#boardCore,
+      boardApi: this.#boardApi,
+      url: this.#syncUrl,
+      boardId: this.#syncBoardId,
+      // awareness 下行：volatile 消息（光标等）与成员离开转发 UI
+      onAwareness: ({ source, data }) => {
+        this.#postMessage({
+          type: "awareness",
+          awarenessType: data?.kind,
+          source,
+          data,
+        });
+      },
+      onDisconnect: () => this.#scheduleCoordinatorReconnect(),
+    });
+    try {
+      await coordinator.connect();
+      this.#coordinator = coordinator;
+      this.#subframeForwarder?.close();
+      this.#subframeForwarder = createSubframeForwarder({
+        boardCore: this.#boardCore,
+        sendAwareness: (data) => this.#coordinator?.sendAwareness(data),
+      });
+      this.#log.info(`已连接同步中继：${this.#syncUrl}`);
+    } catch (error) {
+      this.#log.warn(`同步中继连接失败，离线运行：${error?.message ?? error}`);
+      await coordinator.close();
+      this.#scheduleCoordinatorReconnect();
+    }
+  }
+
+  /**
+   * 调度一次协调器重连（板存活且未在计时时才调度）
+   * @returns {void}
+   * @private
+   */
+  #scheduleCoordinatorReconnect() {
+    if (this.#boardCore === null || this.#syncUrl === null) return;
+    if (this.#coordinatorRetryTimer !== null) return;
+    this.#coordinatorRetryTimer = setTimeout(() => {
+      this.#coordinatorRetryTimer = null;
+      void this.#connectCoordinator();
+    }, 3000);
   }
 
   /**
@@ -588,12 +642,18 @@ class CoreWorkerRuntime {
    * @returns {Promise<{ ok: boolean }>} 销毁结果
    */
   async destroyBoard() {
+    if (this.#coordinatorRetryTimer !== null) {
+      clearTimeout(this.#coordinatorRetryTimer);
+      this.#coordinatorRetryTimer = null;
+    }
     this.#subframeForwarder?.close();
     this.#subframeForwarder = null;
     if (this.#coordinator) {
       await this.#coordinator.close();
       this.#coordinator = null;
     }
+    this.#syncUrl = null;
+    this.#syncBoardId = null;
     this.#unsubscribeRemoteActivity?.();
     this.#unsubscribeRemoteActivity = null;
     if (this.#journaler) {

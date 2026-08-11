@@ -4,7 +4,7 @@
 
 > [!NOTE]
 >
-> **实现状态**：中继服务器（无状态纯转发、板即房间）、网络协调器（本地广播、远程接入、延迟容忍窗、INIT 全量补齐、周期摘要校验、断线清理）、GUI 接入（core-worker 携带 syncUrl 自动连接）均已落地并通过跨设备（Windows + macOS）双 Tauri 窗口实测。待落地：断线自动重连与离线队列、CLI daemon 化。
+> **实现状态**：中继服务器（无状态纯转发、板即房间）、网络协调器（本地广播、远程接入、延迟容忍窗、增量 INIT 补齐、周期摘要校验、断线清理、连接超时与自动重连、lastSeen 增量握手、AOM 活动状态重广播）、GUI 接入（core-worker 携带 syncUrl 自动连接）、CLI daemon 化、awareness 通道与 SubFrame 中间帧预览均已落地并通过跨设备（Windows + macOS）双 Tauri 窗口实测。
 
 ## 模块定位
 
@@ -35,8 +35,8 @@
 | 服务器 → 客户端 | `{type:"aom", source, event}`                                 | 活动事件转发                     |
 | 客户端 → 服务器 | `{type:"awareness", data}`                                       | awareness 广播（volatile） |
 | 服务器 → 客户端 | `{type:"awareness", source, data}`                              | awareness 转发（可丢、不进日志） |
-| 客户端 → 服务器 | `{type:"request-init"}`                                       | 请求全量日志（新成员 / 落后端）  |
-| 服务器 → 客户端 | `{type:"request-init", source}`                               | 转发给其他成员                   |
+| 客户端 → 服务器 | `{type:"request-init", lastSeen?}`                          | 请求增量日志（无 lastSeen 为全量） |
+| 服务器 → 客户端 | `{type:"request-init", source, lastSeen?}`                  | 增量请求转发                     |
 | 客户端 → 服务器 | `{type:"respond-init", to, records, meta}`                    | 定向全量响应                     |
 | 服务器 → 客户端 | `{type:"respond-init", source, records, meta}`                | 定向转发（仅目标收到）           |
 | 客户端 → 服务器 | `{type:"digest", digest}`                                     | 周期状态摘要（默认 30s）         |
@@ -57,14 +57,15 @@
 - **微任务合批**：超分子成员在 endSupra 时同步连续物化，合批保证成员同批到达——传输中的超分子原子性与日志一致（逐条广播会让接收端部分建节点、后续成员效果丢失）。
 - 订阅 `activityEventBus`：手势内 choose/commit 事件即时广播（超分子闭合前 choose 不入日志，互斥与实时可见依赖此通道）。choose 事件携带 `choice`（命名选择名，匿名缺省）；unchoose/commit 事件按（来源，对象）注销，无需携带。
 - **awareness（K5）**：光标位置经 `sendAwareness` 走 volatile 通道广播，接收端由 `onAwareness` 回调转发宿主（只画不存）；peer-left 以 `{kind:"peer-left"}` 通知，供接收端清理远程光标。远程选择的装饰走 aom 可靠通道与 remote-activity 通知，不经 volatile 通道。
-- **SubFrame 中间帧预览**：手势写入口（createObject / modifyObject / appendListItem 等）在内核事件总线发射 subframe 事件，`subframe-forwarder` 按 33ms 间隔节流合批（create 与 position/transform 后帧盖前帧、append 按序累积）后经 volatile 通道广播；接收端只画不存（预览位置画选择框、创建中对象按类型画半透明轮廓），丢了不补，最终分子操作到达时按记录归位。
+- **SubFrame 中间帧预览**：手势写入口（createObject / modifyObject / appendListItem 等）在内核事件总线发射 subframe 事件，`subframe-forwarder` 按 33ms 间隔节流合批（create 与 position/transform 后帧盖前帧、append 按序累积）后经 volatile 通道广播；接收端只画不存（预览位置画选择框、创建中对象按类型画半透明轮廓），丢了不补，最终分子操作到达时按记录归位
 
 ### 远端 → 本地
 
 - **去重**：按记录 id 跳过日志中已有的与缓冲中待接入的。
 - **预检接入**：按来源序号连续性与父在日志判定，通过后整组交给 `applyRemoteOperations`；超分子成员按 supraOpId 成组，组内同批应用。
 - **延迟容忍窗**：乱序记录（来源序号空洞 / 父未达）入缓冲，500ms 窗到再整理；连续 3 窗仍未补齐则广播 request-init 请求全量。
-- **INIT**：join 时房间已有成员则 request-init；收到 respond-init 后去重接入全量日志。
+- **增量 INIT（lastSeen 握手）**：join 与 peer-joined 时互发 request-init 携带各来源最大序号（lastSeen）；respond-init 仅携带缺口记录（增量请求无缺口时不回应，无 lastSeen 时全量回应供新成员与 id 续种）。离线期间的操作是本地日志的未同步段，重连后双向补发缺口即收敛，增量 anti-entropy 之外的兜底仍是周期摘要。
+- **重连与 AOM 重同步**：socket 断开（非主动）时协调器自清理（订阅、定时器）并回调 onDisconnect，宿主每 3s 自动重连；断线即清空远程选择登记，重连后各端按 hold 重广播 choose 活动，互斥状态重建。
 - **周期摘要**：30s 广播 `{logSize, head, objects}`；落后或同长分歧时 request-init（全量重建兜底）。
 - **断线清理**：peer-left 到达时清除该来源的远程活动登记（解锁其选择的对象）。
 
@@ -81,8 +82,7 @@
 
 ## 设计约束
 
-- 中继无状态：断线期间的消息不缓存，重连后靠 INIT/摘要补齐（K6 才做离线队列）。
-- 无自动重连：断线后协调器进入 closed，需重建连接。[todo]
+- 中继无状态：断线期间的消息不缓存，重连后靠 lastSeen 增量握手补齐，周期摘要全量重建兜底。
 - 同 source 覆盖：中继按 source 唯一定位成员，同 source 并发连接会互相顶替（同机双开需显式区分身份）。
 - 远程活跃对象可见但无视觉指示：锁定感与选中框属 K5 awareness 通道（choice 名已经由 choice 字段就位）。
 - 浏览器（无 Tauri）打开 demo 为内存板：同步照常，内容不落盘。

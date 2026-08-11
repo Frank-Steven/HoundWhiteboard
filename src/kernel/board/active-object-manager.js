@@ -1885,6 +1885,21 @@ class ActiveObjectManager {
   }
 
   /**
+   * 列出本端全部活动持有（含匿名桶；重连后向对端重广播互斥状态用）
+   * @returns {{ name: string|undefined, ids: string[] }[]} 活动持有列表（匿名为 name undefined）
+   */
+  queryLocalActivity() {
+    const activity = [];
+    for (const [name, members] of this.#localChoices) {
+      activity.push({
+        name: name === ANONYMOUS_CHOICE_NAME ? undefined : name,
+        ids: [...members],
+      });
+    }
+    return activity;
+  }
+
+  /**
    * 列出全部远程命名选择（awareness 查询面）
    * @returns {{ source: string, name: string|undefined, ids: string[] }[]} 远程选择列表（按来源与 choice 名展开；匿名为 name undefined）
    */

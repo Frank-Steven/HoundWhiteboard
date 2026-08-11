@@ -192,6 +192,42 @@ describe("CoreWorker 同步接线", () => {
     );
   });
 
+  test("中继断线后自动重连并补齐离线期间的操作", async () => {
+    server = createRelayServer({ port: 0 });
+    const host = new FakeWorkerHost();
+    const runtime = new CoreWorkerRuntime(host);
+    runtime.start();
+
+    await rpc(host, "createBoard", {
+      width: 800,
+      height: 600,
+      source: "worker",
+      syncUrl: `ws://127.0.0.1:${server.port}`,
+      boardId: "test-room",
+    });
+    const peer = await connectPeer("peer", server.port);
+    peers = [peer];
+
+    // 中继下线：worker 离线编辑（不入对端）
+    const port = server.port;
+    await server.close();
+    server = null;
+    await createStrokeViaRpc(host, "worker/offline-1");
+    expect(peer.boardCore.getObjectById("worker/offline-1")).toBeUndefined();
+
+    // 中继在原地址恢复：worker 每 3s 自动重连，增量补发离线记录
+    server = createRelayServer({ port });
+    const peer2 = await connectPeer("peer", port);
+    peers.push(peer2);
+    // 重连后 peer 端重新加入同一房间并请求增量（worker 响应后补齐）
+    await until(
+      () => peer2.boardCore.getObjectById("worker/offline-1") != null,
+      "对等端补齐 worker 离线记录",
+    );
+
+    await rpc(host, "destroyBoard");
+  });
+
   test("中继不可达时降级离线运行", async () => {
     const host = new FakeWorkerHost();
     const runtime = new CoreWorkerRuntime(host);

@@ -95,16 +95,24 @@ async function startBoardDaemon(options) {
       : resolveDeviceSource();
   const session = await openBoardSession(rootPath, { source });
 
-  // 可选连中继：失败降级单机并每 3s 自动重试（中继可能后于 daemon 启动）
+  // 可选连中继：失败降级单机并每 3s 自动重试（中继可能后于 daemon 启动）；断线后同周期自动重连
   let coordinator = null;
   let subframeForwarder = null;
   let relayRetryTimer = null;
+  const scheduleRelayRetry = () => {
+    if (relayRetryTimer !== null) return;
+    relayRetryTimer = setTimeout(() => {
+      relayRetryTimer = null;
+      void connectRelay();
+    }, 3000);
+  };
   const connectRelay = async () => {
     const next = createNetworkCoordinator({
       boardCore: session.boardCore,
       boardApi: session.api,
       url: options.relayUrl,
       boardId: options.boardId ?? rootPath,
+      onDisconnect: () => scheduleRelayRetry(),
     });
     try {
       await next.connect();
@@ -119,28 +127,19 @@ async function startBoardDaemon(options) {
         `[daemon] 已连接中继：${options.relayUrl}（房间 ${options.boardId ?? rootPath}）`,
       );
     } catch {
-      relayRetryTimer = setTimeout(() => void connectRelay(), 3000);
+      scheduleRelayRetry();
     }
   };
   if (options.relayUrl) {
-    coordinator = createNetworkCoordinator({
-      boardCore: session.boardCore,
-      boardApi: session.api,
-      url: options.relayUrl,
-      boardId: options.boardId ?? rootPath,
-    });
     try {
-      await coordinator.connect();
-      subframeForwarder = createSubframeForwarder({
-        boardCore: session.boardCore,
-        sendAwareness: (data) => coordinator?.sendAwareness(data),
-      });
+      await connectRelay();
+      if (coordinator === null) {
+        console.warn(`[daemon] 中继连接失败，按单机模式运行并每 3s 重试`);
+      }
     } catch (error) {
       console.warn(
         `[daemon] 中继连接失败（${error?.message ?? error}），按单机模式运行并每 3s 重试`,
       );
-      coordinator = null;
-      relayRetryTimer = setTimeout(() => void connectRelay(), 3000);
     }
   }
 

@@ -52,6 +52,26 @@ async function connectEnd(source, port, boardId, options = {}) {
 }
 
 /**
+ * 用既有端的内核重连中继（断线重连场景）
+ * @param {{ boardCore: BoardCore, api: BoardApi }} end - 既有端
+ * @param {number} port - 中继端口
+ * @param {string} boardId - 板 id
+ * @param {Object} [options] - 协调器选项
+ * @returns {Promise<Object>} 协调器句柄
+ */
+async function reconnectEnd(end, port, boardId, options = {}) {
+  const coordinator = createNetworkCoordinator({
+    boardCore: end.boardCore,
+    boardApi: end.api,
+    url: `ws://127.0.0.1:${port}`,
+    boardId,
+    ...options,
+  });
+  await coordinator.connect();
+  return coordinator;
+}
+
+/**
  * 创建并提交一笔静态笔画
  * @param {BoardApi} api - 内核 API
  * @param {string} id - 对象 id
@@ -489,6 +509,174 @@ describe("网络协调器", () => {
       "摘要落后触发 request-init",
     );
 
+    await raw.close();
+  });
+
+  test("断线触发 onDisconnect 且清理订阅，主动 close 不触发", async () => {
+    server = createRelayServer({ port: 0 });
+    let disconnects = 0;
+    const a = await connectEnd("a", server.port, "board-1", {
+      onDisconnect: () => {
+        disconnects += 1;
+      },
+    });
+    ends = [a];
+
+    // 中继整体下线（对端套接字被终止 → 本端收到 close）
+    await server.close();
+    await until(() => disconnects === 1, "onDisconnect 触发");
+    expect(a.coordinator.state).toBe("closed");
+
+    // 断线后本地操作继续入本地日志（不报错、不广播）
+    await createStroke(a.api, "a/1");
+    expect(a.boardCore.operationLog.size).toBe(1);
+
+    // 主动关闭不再触发 onDisconnect
+    const b = createEnd("b");
+    const coordinatorB = createNetworkCoordinator({
+      boardCore: b.boardCore,
+      boardApi: b.api,
+      url: `ws://127.0.0.1:1`,
+      boardId: "board-1",
+      onDisconnect: () => {
+        disconnects += 1;
+      },
+    });
+    await coordinatorB.close();
+    expect(disconnects).toBe(1);
+  });
+
+  test("离线编辑与重连合并：双端离线增删改撤销后收敛", async () => {
+    server = createRelayServer({ port: 0 });
+    const a = await connectEnd("a", server.port, "board-1");
+    const b = await connectEnd("b", server.port, "board-1");
+    ends = [a, b];
+
+    // 在线基线：a/1 同步到双端
+    await createStroke(a.api, "a/1");
+    await until(
+      () => b.boardCore.getObjectById("a/1") != null,
+      "b 收到 a/1",
+    );
+
+    // 中继下线，双端各自离线编辑
+    await server.close();
+
+    await createStroke(a.api, "a/2", 20);
+    await a.api.addActiveObjects(["a/1"]);
+    a.api.modifyObject("a/1", { position: { x: 50, y: 0 } });
+    await a.api.commitObjects(["a/1"]);
+    // 离线撤销刚才对 a/1 的修改
+    a.api.undo();
+
+    await createStroke(b.api, "b/1", 40);
+    await b.api.addActiveObjects(["a/1"]);
+    b.api.modifyObject("a/1", { position: { x: 80, y: 0 } });
+    await b.api.commitObjects(["a/1"]);
+
+    // 中继恢复，双端重连（新实例）
+    server = createRelayServer({ port: 0 });
+    const port = server.port;
+    ends = [
+      { ...a, coordinator: await reconnectEnd(a, port, "board-1") },
+      { ...b, coordinator: await reconnectEnd(b, port, "board-1") },
+    ];
+
+    // 双向增量补发后收敛：日志 id 集合一致、HEAD 一致、对象状态一致
+    const idsOf = (end) =>
+      new Set(end.boardCore.operationLog.toJSON().map((r) => r.id));
+    await until(
+      () => {
+        const ai = idsOf(a);
+        const bi = idsOf(b);
+        if (ai.size !== bi.size) return false;
+        for (const id of ai) if (!bi.has(id)) return false;
+        return true;
+      },
+      "双端日志收敛",
+    );
+
+    const headOf = (end) => end.boardCore.undoTree.head?.shareId ?? null;
+    expect(headOf(a)).toBe(headOf(b));
+    expect(a.boardCore.getObjectById("a/1")?.position.serialize()).toEqual(
+      b.boardCore.getObjectById("a/1")?.position.serialize(),
+    );
+    expect(a.boardCore.getObjectById("a/2")?.position.serialize()).toEqual(
+      b.boardCore.getObjectById("a/2")?.position.serialize(),
+    );
+    expect(a.boardCore.getObjectById("b/1")?.position.serialize()).toEqual(
+      b.boardCore.getObjectById("b/1")?.position.serialize(),
+    );
+  });
+
+  test("重连后 AOM 远程选择经重广播重建", async () => {
+    server = createRelayServer({ port: 0 });
+    const a = await connectEnd("a", server.port, "board-1");
+    const b = await connectEnd("b", server.port, "board-1");
+    ends = [a, b];
+
+    await createStroke(a.api, "a/1");
+    await until(
+      () => b.boardCore.getObjectById("a/1") != null,
+      "b 收到 a/1",
+    );
+
+    // b 命名选择 a/1，a 端登记远程持有
+    await b.api.addActiveObjects(["a/1"], { choice: "hold" });
+    await until(
+      () =>
+        a.boardCore.activeObjectManager.remoteChoicesOf("a/1").length > 0,
+      "a 登记 b 的远程持有",
+    );
+
+    // 中继下线：a 端远程持有被断线清理
+    await server.close();
+    await until(
+      () =>
+        a.boardCore.activeObjectManager.remoteChoicesOf("a/1").length === 0,
+      "a 端远程持有被清理",
+    );
+    // b 端本地持有不受断线影响（AOM 是本地状态）
+    expect(b.api.queryChoices()).toHaveLength(1);
+
+    // 中继恢复重连：b 重广播持有，a 端重建（名字保留）
+    server = createRelayServer({ port: 0 });
+    const port = server.port;
+    ends = [
+      { ...a, coordinator: await reconnectEnd(a, port, "board-1") },
+      { ...b, coordinator: await reconnectEnd(b, port, "board-1") },
+    ];
+    await until(
+      () =>
+        a.boardCore.activeObjectManager.remoteChoicesOf("a/1").length > 0,
+      "a 端重建远程持有",
+    );
+    expect(a.boardCore.activeObjectManager.remoteChoicesOf("a/1")).toEqual([
+      { source: "b", name: "hold" },
+    ]);
+  });
+
+  test("增量 INIT：respond-init 仅携带 lastSeen 之后的缺口记录", async () => {
+    server = createRelayServer({ port: 0 });
+    const a = await connectEnd("a", server.port, "board-1");
+    ends = [a];
+
+    await createStroke(a.api, "a/1");
+    await createStroke(a.api, "a/2", 20);
+    await createStroke(a.api, "a/3", 40);
+
+    // 裸客户端请求增量：lastSeen 覆盖前两条，只应收到第三条
+    const raw = await connectRawClient(server.port, "board-1", "watcher");
+    raw.send({
+      type: "request-init",
+      lastSeen: { a: 2 },
+    });
+    await until(
+      () => raw.messages.some((m) => m.type === "respond-init"),
+      "watcher 收到增量响应",
+    );
+    const respond = raw.messages.find((m) => m.type === "respond-init");
+    expect(respond.records.map((r) => r.id)).toEqual(["a/op-3"]);
     await raw.close();
   });
 });
