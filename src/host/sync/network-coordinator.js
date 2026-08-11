@@ -187,7 +187,8 @@ function createNetworkCoordinator(options) {
    * @returns {void}
    *
    * @description
-   * 超分子成员在 endSupra 时同步连续物化，微任务合批保证成员同批到达（传输中的超分子原子性）。
+   * 同一同步行程连续产生的记录（如超分子成员随闭合连续物化）合批同批到达；
+   * 成员本就独立有效，合批只为同批美观。
    */
   const scheduleSend = () => {
     if (sendScheduled) return;

@@ -4,7 +4,7 @@
 
 > [!NOTE]
 >
-> **实现状态**：中继服务器（无状态纯转发、板即房间）、网络协调器（本地广播、远程接入、延迟容忍窗、增量 INIT 补齐、周期摘要校验、断线清理、连接超时与自动重连、lastSeen 增量握手、AOM 活动状态重广播）、GUI 接入（core-worker 携带 syncUrl 自动连接）、CLI daemon 化、awareness 通道与 SubFrame 中间帧预览均已落地并通过跨设备（Windows + macOS）双 Tauri 窗口实测。
+> **实现状态**：中继服务器（无状态纯转发、板即房间）、网络协调器（本地广播、远程接入、延迟容忍窗、增量 INIT 补齐、周期摘要校验、断线清理、连接超时与自动重连、lastSeen 增量握手、在途分子对账、AOM 活动状态重广播）、GUI 接入（core-worker 携带 syncUrl 自动连接）、CLI daemon 化、awareness 通道与分子中间帧预览（amend 通道）均已落地并通过跨设备（Windows + macOS）双 Tauri 窗口实测。
 
 ## 模块定位
 
@@ -54,8 +54,8 @@
 ### 本地 → 远端
 
 - 订阅 `operationLog.onAppend`：仅广播本端 source 的记录（远程应用的记录过滤，防回环放大）。
-- **微任务合批**：超分子成员在 endSupra 时同步连续物化，合批保证成员同批到达——传输中的超分子原子性与日志一致（逐条广播会让接收端部分建节点、后续成员效果丢失）。
-- 订阅 `activityEventBus`：手势内 choose/commit 事件即时广播（超分子闭合前 choose 不入日志，互斥与实时可见依赖此通道）。choose 事件携带 `choice`（命名选择名，匿名缺省）；unchoose/commit 事件按（来源，对象）注销，无需携带。
+- **微任务合批**：同一同步行程内连续产生的记录合为一批发出（如 endSupra 强制闭合在途分子并追加 close-supra 的同步连发），接收端同批接入；成员记录本就独立有效，合批只为同批美观（接入侧按 supraId 成组同批应用，见下）。
+- 订阅 `activityEventBus`：手势内 choose/commit 事件即时广播（choose 记录即时入日志挂 supraId、随记录通道收敛；此通道提供手势内的即时互斥与实时可见性，不等记录通道）。choose 事件携带 `choice`（命名选择名，匿名缺省）；unchoose/commit 事件按（来源，对象）注销，无需携带。
 - **awareness（K5）**：光标位置经 `sendAwareness` 走 volatile 通道广播，接收端由 `onAwareness` 回调转发宿主（只画不存）；peer-left 以 `{kind:"peer-left"}` 通知，供接收端清理远程光标。远程选择的装饰走 aom 可靠通道与 remote-activity 通知，不经 volatile 通道。
 - **分子中间帧预览**：分子写入口在内核事件总线发射 amend 事件（begin-mol / amend / end-mol / abort-mol），`amend-forwarder` 负责转发：begin-mol 即时发出（不合批）；amend 按 33ms 间隔节流合批（position/transform/data 绝对值后帧盖前帧、append items 按序累积、seq 取批内最大）打包为 mol-amend 发出；end-mol 先冲出残余缓冲再即时发 mol-end，abort-mol 丢弃该分子缓冲后即时发 mol-abort。均经 volatile 通道广播；接收端只画不存，丢了不补，分子记录经可靠通道到达后按记录定格归位。本端断线时协调器经 `onDisconnect` 通知 UI 清空全部预览与光标（对端手势状态不可信），重连后各自重建。
 
