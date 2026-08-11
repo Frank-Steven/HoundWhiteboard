@@ -342,6 +342,26 @@ describe("撤销语义三分（场景推演）", () => {
     expect(api.queryObject("s1").position).toEqual({ x: 80, y: 0 });
   });
 
+  test("撤销提交型 unchoose 后再操作：回放再激活补捕快照，再提交不抛错", async () => {
+    const { boardCore, api } = createEnd();
+    await createStaticStroke(api, "s1");
+    await api.addActiveObjects(["s1"]);
+    // 无差异提交：只产取消选择分子，选择前快照随之删除
+    await api.commitObjects(["s1"]);
+    api.undo();
+    // 撤 unchoose：对象经回放再激活（快照需补捕，否则后续提交抛「缺选择前快照」）
+    expect(boardCore.activeObjectManager.has("s1")).toBe(true);
+
+    const molId = dragOnce(api, "s1", { x: 60, y: 0 });
+    await expect(api.commitObjects(["s1"])).resolves.toEqual(["s1"]);
+    expect(api.queryObject("s1").position).toEqual({ x: 60, y: 0 });
+    expect(boardCore.activeObjectManager.has("s1")).toBe(false);
+
+    // 手势已物化修改分子（before 为再激活时刻状态），提交只补取消选择分子
+    expect(boardCore.operationLog.getMoleculeMembers(molId)).toHaveLength(1);
+    expect(recordTypes(boardCore).at(-1)).toBe("unchoose-object");
+  });
+
   test("场景 6/7：未闭合撤销分子后再拖并闭合，折叠只取活动链成员", async () => {
     const { boardCore, api } = createEnd();
     await createStaticStroke(api, "s1");

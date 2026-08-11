@@ -2166,6 +2166,15 @@ class BoardApi {
     }
     if (!obj || aom.isActive(objectId)) return;
     this.#collectObjectChunks(obj, affectedChunks);
+    // 回放再激活（撤销 unchoose / 重做 choose）补捕选择前快照：快照在 commit/discard
+    // 时已删除，缺失会让后续 commitObjects 抛错；须在 add 前判断（add 后对象离开静态图）。
+    // 仅缺失时补捕：重做 choose 时原快照仍有效（首次选择时刻的状态），不得覆盖
+    if (
+      hasStaticBoardObject(boardCore, objectId) &&
+      !this.#chooseSnapshots.has(objectId)
+    ) {
+      this.#chooseSnapshots.set(objectId, obj.serialize());
+    }
     // 本地选择优先：撤销该对象的远程活动登记（并发 choose 冲突按链序收敛）
     aom.revokeRemoteActive(objectId);
     aom.add(new Set([obj]));
