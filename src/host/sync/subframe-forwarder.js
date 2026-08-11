@@ -73,6 +73,10 @@ function createSubframeForwarder(options) {
         { ...op.replace },
       ];
     }
+    if (op.end === true) {
+      // 手势终点帧：随本批发出，接收端见到即删预览
+      existing.end = true;
+    }
     pending.set(op.objectId, existing);
   };
 

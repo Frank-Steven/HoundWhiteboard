@@ -826,6 +826,10 @@ class BoardApi {
       "commit",
       committable.map((obj) => obj.id),
     );
+    // 手势终点帧：预览流中的确定性终点，接收端见到即删预览（尾随采样点必然先到）
+    for (const obj of committable) {
+      this.#emitSubframe({ objectId: obj.id, end: true });
+    }
     return objects.map((obj) => obj.id);
   }
 
@@ -963,6 +967,9 @@ class BoardApi {
       "unchoose",
       objects.map((obj) => obj.id),
     );
+    for (const obj of objects) {
+      this.#emitSubframe({ objectId: obj.id, end: true });
+    }
   }
 
   /**

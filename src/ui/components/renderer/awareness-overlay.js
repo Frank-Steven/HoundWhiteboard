@@ -230,9 +230,27 @@ class AwarenessOverlay {
         this.#dropRemoteCursor(message.source);
         this.#dropSourcePreviews(message.source);
         return;
+      case "disconnect":
+        // 本端断线：对端手势与光标状态全部不可信，重连后各自重建
+        this.#clearAllRemotePresence();
+        return;
       default:
         return;
     }
+  }
+
+  /**
+   * 清空全部远程在场状态（本端断线时调用）
+   * @returns {void}
+   * @private
+   */
+  #clearAllRemotePresence() {
+    for (const cursor of this.#cursors.values()) {
+      if (cursor.expiryTimer !== null) clearTimeout(cursor.expiryTimer);
+    }
+    this.#cursors.clear();
+    this.#previews.clear();
+    this.#viewport.uiRenderer?.invalidateViewport?.();
   }
 
   /**
@@ -306,6 +324,12 @@ class AwarenessOverlay {
       if (op.replace && typeof op.replace.key === "string") {
         if (!preview.replacements) preview.replacements = [];
         preview.replacements.push({ ...op.replace });
+      }
+      if (op.end === true) {
+        // 手势终点：本批字段应用完毕后删除预览（提交/放弃后按记录呈现）
+        this.#previews.delete(op.objectId);
+        changed = true;
+        continue;
       }
       this.#previews.set(op.objectId, preview);
       changed = true;
@@ -597,16 +621,18 @@ class AwarenessOverlay {
       const ys = worldPoints.map((p) => p.y);
       const minX = Math.min(...xs);
       const minY = Math.min(...ys);
-      const worldRect = new RectangleRange(
-        minX,
-        minY,
-        Math.max(...xs) - minX,
-        Math.max(...ys) - minY,
-      );
       const closed = preview.type === "PolygonObject";
       const lineWidth = Number.isFinite(preview.property?.width)
         ? preview.property.width
         : 2;
+      // 描边以路径为中心向两侧延展，边界外扩防止脏区裁剪
+      const pad = lineWidth / 2 + 1;
+      const worldRect = new RectangleRange(
+        minX - pad,
+        minY - pad,
+        Math.max(...xs) - minX + pad * 2,
+        Math.max(...ys) - minY + pad * 2,
+      );
       return {
         source: `awareness-creation:${preview.source}`,
         objectId,
@@ -699,7 +725,8 @@ class AwarenessOverlay {
     return {
       source: `awareness-cursor:${source}`,
       type: "point",
-      geometry: { worldPoint: cursor.point, radius: 5 },
+      // 边界需覆盖圆点与右侧来源标签文本，避免脏区增量重绘时文字被裁
+      geometry: { worldPoint: cursor.point, radius: 12 + source.length * 4 },
       draw: (context, runtime) => {
         const point = runtime?.entry?.geometry?.screenPoint;
         if (!point || !context) return;

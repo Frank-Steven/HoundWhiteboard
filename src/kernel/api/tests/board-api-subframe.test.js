@@ -102,6 +102,26 @@ describe("SubFrame 中间帧事件", () => {
     });
   });
 
+  test("手势终点帧：commit 与 discard 均发射 end 中间帧", async () => {
+    const { boardCore, api } = createEnd("a");
+    await createStroke(api, "a/1");
+    await createStroke(api, "a/2");
+
+    /** @type {Object[]} */
+    const frames = [];
+    boardCore.activityEventBus.on("subframe", (op) => frames.push(op));
+
+    await api.addActiveObjects(["a/1"]);
+    api.modifyObject("a/1", { position: { x: 5, y: 5 } });
+    await api.commitObjects(["a/1"]);
+
+    await api.addActiveObjects(["a/2"]);
+    api.discardActiveObjects(["a/2"]);
+
+    const ends = frames.filter((op) => op.end === true);
+    expect(ends.map((op) => op.objectId)).toEqual(["a/1", "a/2"]);
+  });
+
   test("回放路径不发射 subframe（防回环）", async () => {
     const a = createEnd("a");
     const b = createEnd("b");

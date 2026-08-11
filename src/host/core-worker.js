@@ -550,7 +550,11 @@ class CoreWorkerRuntime {
           data,
         });
       },
-      onDisconnect: () => this.#scheduleCoordinatorReconnect(),
+      onDisconnect: () => {
+        // 断线瞬间对端手势状态不可信：通知 UI 清空全部预览与光标，重连后重建
+        this.#postMessage({ type: "awareness", awarenessType: "disconnect" });
+        this.#scheduleCoordinatorReconnect();
+      },
     });
     try {
       await coordinator.connect();

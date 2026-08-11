@@ -312,6 +312,25 @@ describe("AwarenessOverlay", () => {
       data: { ids: ["b/9"] },
     });
     expect(provider().find((e) => e.objectId === "b/9")).toBeUndefined();
+
+    // 竞态兜底：通知之后到达的尾随批次（手势最后采样点 + 终点帧）
+    // 预览不得复活
+    viewport.emitAwareness({
+      type: "awareness",
+      awarenessType: "subframe",
+      source: "dev-b",
+      data: {
+        kind: "subframe",
+        ops: [
+          {
+            objectId: "b/9",
+            appends: [{ key: "data.points", items: [{ x: 30, y: 8 }] }],
+            end: true,
+          },
+        ],
+      },
+    });
+    expect(provider().find((e) => e.objectId === "b/9")).toBeUndefined();
     overlay.stop();
   });
 
