@@ -274,6 +274,17 @@ describe("撤销语义三分（场景推演）", () => {
     expect(unchoose.discard).toBe(true);
     expect(recordTypes(boardCore)).not.toContain("undo");
 
+    // tree 视图：聚合节点成员展开，discard 型取消选择带 (discard) 后缀
+    const treeView = api.queryUndoTree();
+    const supraNode = treeView.nodes.find((n) => n.memberTypes != null);
+    expect(supraNode.supraId).not.toBeNull();
+    expect(supraNode.memberTypes).toEqual([
+      "choose-object",
+      "modify-object",
+      "modify-object",
+      "unchoose-object(discard)",
+    ]);
+
     // 事后 Ctrl+Z 撤整个聚合节点：与 Enter 闭合的撤销殊途同归
     api.undo();
     expect(api.queryObject("s1").position).toEqual({ x: 0, y: 0 });

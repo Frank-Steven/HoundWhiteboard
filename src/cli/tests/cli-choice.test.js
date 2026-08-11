@@ -75,9 +75,9 @@ describe("CLI choice/modify 命令", () => {
       // add ×2 + 超分子链（choose/modify/unchoose 简并为一个节点）
       expect(opsAfterSingle.filter((r) => r.type === "modify-object")).toHaveLength(1);
 
-      // 超分子合并：树只多一个节点，成员类型拼接展示
+      // 超分子合并：树只多一个聚合节点（花括号包裹），成员类型拼接展示
       const { stdout: treeOut } = await runCli(["tree", "--path", dir]);
-      expect(treeOut).toContain("cli/op-3  choose+modify+unchoose  [HEAD]");
+      expect(treeOut).toContain("cli/op-3  {choose+modify+unchoose}  [HEAD]");
       expect(treeOut).not.toContain("choose-object");
 
       // choice 增量：两对象各自平移

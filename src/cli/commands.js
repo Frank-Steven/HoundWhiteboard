@@ -229,6 +229,8 @@ async function cmdOps(session, _args, flags) {
  *
  * @description
  * 活动链节点不标状态，HEAD 节点标 [HEAD]，活动链外的已撤销分支节点标 [已撤销]。
+ * 多成员节点按成员类型加号相连：聚合节点（超分子折叠段）以花括号包裹、
+ * 多对象分子节点以方括号包裹，discard 型取消选择成员带 (discard) 后缀。
  */
 function formatUndoTree(tree) {
   if (tree.nodes.length === 0) return "（空树）";
@@ -239,10 +241,21 @@ function formatUndoTree(tree) {
       if (node.isHead) marks.push("HEAD");
       if (!node.active) marks.push("已撤销");
       const suffix = marks.length > 0 ? `  [${marks.join(", ")}]` : "";
-      const type =
-        node.memberTypes != null
-          ? node.memberTypes.map((t) => t.replace(/-object$/, "")).join("+")
-          : (node.type ?? "?");
+      let type;
+      if (node.memberTypes != null) {
+        const joined = node.memberTypes
+          .map((t) => t.replace(/-object$/, ""))
+          .join("+");
+        // 聚合节点（超分子折叠段）花括号包裹，多对象分子节点方括号包裹
+        type =
+          node.supraId != null
+            ? `{${joined}}`
+            : node.molId != null
+              ? `[${joined}]`
+              : joined;
+      } else {
+        type = node.type ?? "?";
+      }
       return `${indent}${node.id}  ${type}${suffix}`;
     })
     .join("\n");

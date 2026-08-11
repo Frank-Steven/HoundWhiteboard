@@ -1419,18 +1419,30 @@ class BoardApi {
     const walk = (parent) => {
       for (const child of parent.children) {
         const record = recordById.get(child.shareId);
-        // 多记录节点（增量式分子/聚合节点）以节点 memberIds 为准展开成员类型
+        // 多记录节点（增量式分子/聚合节点）以节点 memberIds 为准展开成员类型；
+        // discard 型取消选择成员标注 (discard) 后缀
         const memberTypes =
           child.memberIds.length > 1
             ? child.memberIds
-              .map((id) => recordById.get(id)?.type ?? null)
+              .map((id) => {
+                const member = recordById.get(id);
+                if (member == null) return null;
+                return member.discard === true
+                  ? `${member.type}(discard)`
+                  : member.type;
+              })
               .filter((type) => type !== null)
             : null;
         nodes.push({
           id: child.shareId,
           parentId: parent.shareId ?? null,
           depth: child.depth,
-          type: record?.type ?? null,
+          type:
+            record == null
+              ? null
+              : record.discard === true
+                ? `${record.type}(discard)`
+                : record.type,
           memberTypes,
           molId: child.molId,
           supraId: child.supraId,
