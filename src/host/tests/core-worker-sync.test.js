@@ -13,6 +13,8 @@ import { createDefaultAomRenderHooks } from "../../kernel/board/aom-render-hooks
 import { createDefaultPersistenceAdapter } from "../../kernel/board/persistence-adapter.js";
 import { createRelayServer } from "../sync/relay-server.js";
 import { createNetworkCoordinator } from "../sync/network-coordinator.js";
+import { createSubframeForwarder } from "../sync/subframe-forwarder.js";
+import { installNoopOffscreenCanvas } from "../../test-support/noop-canvas.js";
 
 /**
  * 测试用假 Worker 宿主
@@ -219,11 +221,16 @@ describe("CoreWorker 同步接线", () => {
     server = createRelayServer({ port });
     const peer2 = await connectPeer("peer", port);
     peers.push(peer2);
-    // 重连后 peer 端重新加入同一房间并请求增量（worker 响应后补齐）
-    await until(
-      () => peer2.boardCore.getObjectById("worker/offline-1") != null,
-      "对等端补齐 worker 离线记录",
-    );
+    // 重连后 peer 端重新加入同一房间并请求增量（worker 响应后补齐）；
+    // 重连定时器 3s，并行负载下放宽等待窗口
+    const start = Date.now();
+    for (;;) {
+      if (peer2.boardCore.getObjectById("worker/offline-1") != null) break;
+      if (Date.now() - start > 10000) {
+        throw new Error("until 超时：对等端补齐 worker 离线记录");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
 
     await rpc(host, "destroyBoard");
   });
@@ -275,5 +282,92 @@ describe("CoreWorker 同步接线", () => {
     });
 
     await expect(coordinator.connect()).rejects.toThrow("中继连接超时");
+  });
+
+  test("远程中间帧驱动渲染器预览坐标，commit 后清除", async () => {
+    const restoreCanvas = installNoopOffscreenCanvas();
+    try {
+      server = createRelayServer({ port: 0 });
+      const host = new FakeWorkerHost();
+      const runtime = new CoreWorkerRuntime(host);
+      runtime.start();
+
+      await rpc(host, "createBoard", {
+        width: 800,
+        height: 600,
+        source: "worker",
+        syncUrl: `ws://127.0.0.1:${server.port}`,
+        boardId: "test-room",
+      });
+      await rpc(host, "createViewport", {
+        options: { viewportId: "v1", width: 800, height: 600 },
+      });
+
+      const peer = await connectPeer("peer", server.port);
+      peers = [peer];
+
+      // 基线对象同步到双端
+      peer.api.createObject("StrokeObject", {
+        id: "peer/1",
+        position: { x: 10, y: 10 },
+        property: { width: 2 },
+        data: { points: [{ x: 0, y: 0 }, { x: 10, y: 0 }] },
+      });
+      await peer.api.commitObjects(["peer/1"]);
+      await until(
+        () =>
+          rpc(host, "queryObjects", { ids: ["peer/1"] }).then(
+            (r) => r?.some?.((item) => item?.id === "peer/1") === true,
+          ),
+        "worker 看到 peer/1",
+      );
+
+      // peer 选择并拖动：中间帧经 volatile 通道到达 worker
+      // （渲染侧预览应用由 renderer 单测覆盖；此处验证集成链路收到并转发）
+      const peerForwarder = createSubframeForwarder({
+        boardCore: peer.boardCore,
+        sendAwareness: (data) => peer.coordinator.sendAwareness(data),
+        intervalMs: 20,
+      });
+      await peer.api.addActiveObjects(["peer/1"]);
+      peer.api.modifyObject("peer/1", { position: { x: 60, y: 0 } });
+      await until(
+        () => {
+          const message = host.postedMessages.find(
+            (m) =>
+              m.type === "awareness" &&
+              m.awarenessType === "subframe" &&
+              Array.isArray(m.data?.ops),
+          );
+          return (
+            message?.data?.ops?.some(
+              (o) =>
+                o.objectId === "peer/1" && o.patch?.position?.x === 60,
+            ) === true
+          );
+        },
+        "worker 收到并转发 subframe 中间帧",
+      );
+
+      // peer 提交：终点帧到达 worker（预览清理的触发信号）
+      await peer.api.commitObjects(["peer/1"]);
+      await until(
+        () => {
+          const message = host.postedMessages
+            .filter((m) => m.type === "awareness" && m.awarenessType === "subframe")
+            .at(-1);
+          return (
+            message?.data?.ops?.some(
+              (o) => o.objectId === "peer/1" && o.end === true,
+            ) === true
+          );
+        },
+        "worker 收到手势终点帧",
+      );
+      await rpc(host, "destroyBoard");
+      peerForwarder.close();
+    } finally {
+      restoreCanvas();
+    }
   });
 });

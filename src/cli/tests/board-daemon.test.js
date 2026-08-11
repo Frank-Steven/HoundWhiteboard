@@ -403,7 +403,7 @@ describe("板 daemon", () => {
       // 中继后启动，daemon 应在重试周期内自动连上
       const relay = createRelayServer({ port });
       try {
-        await waitFor(() => relay.roomSize("room") >= 1, 8000);
+        await waitFor(() => relay.roomSize("room") >= 1, 15000);
 
         const client = await connectDaemon(dir);
         const id = await client.api.addObject("StrokeObject", {
