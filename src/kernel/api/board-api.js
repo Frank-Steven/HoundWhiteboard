@@ -1824,36 +1824,40 @@ class BoardApi {
 
   /**
    * 活动链状态过渡：分叉点逆放旧链尾段、正放新链尾段
+   * @description 分叉判定以成员记录序列为粒度（而非节点 shareId）：折叠只改节点分组、
+   * 记录序列不变，判为零过渡；若按节点比较，聚合节点复用段首 shareId 会把段尾成员误判为
+   * 已撤销，净亏其效果（远端应用 close-supra 时位置回弹、选择残留）。
    * @param {import("../hit/undo-tree-core.js").MolecularNode[]} beforeChain - 过渡前活动链
    * @param {import("../hit/undo-tree-core.js").MolecularNode[]} afterChain - 过渡后活动链
    * @returns {boolean} 活动链是否发生变化
    * @private
    */
   #transitionEffects(beforeChain, afterChain) {
+    const beforeRecords = beforeChain.flatMap((node) =>
+      this.#recordsOfNode(node),
+    );
+    const afterRecords = afterChain.flatMap((node) =>
+      this.#recordsOfNode(node),
+    );
     let diverge = 0;
     while (
-      diverge < beforeChain.length &&
-      diverge < afterChain.length &&
-      beforeChain[diverge].shareId === afterChain[diverge].shareId
+      diverge < beforeRecords.length &&
+      diverge < afterRecords.length &&
+      beforeRecords[diverge].id === afterRecords[diverge].id
     ) {
       diverge++;
     }
     const affectedChunks = new Set();
-    for (let i = beforeChain.length - 1; i >= diverge; i--) {
-      const records = this.#recordsOfNode(beforeChain[i]);
-      for (let j = records.length - 1; j >= 0; j--) {
-        this.#revertOpEffect(records[j], affectedChunks);
-      }
+    for (let i = beforeRecords.length - 1; i >= diverge; i--) {
+      this.#revertOpEffect(beforeRecords[i], affectedChunks);
     }
-    for (let i = diverge; i < afterChain.length; i++) {
-      for (const record of this.#recordsOfNode(afterChain[i])) {
-        this.#applyOpEffect(record, affectedChunks);
-      }
+    for (let i = diverge; i < afterRecords.length; i++) {
+      this.#applyOpEffect(afterRecords[i], affectedChunks);
     }
     if (affectedChunks.size > 0) {
       this.#boardCore.aomRenderHooks?.requestStaticRender?.([...affectedChunks]);
     }
-    return diverge !== beforeChain.length || diverge !== afterChain.length;
+    return diverge !== beforeRecords.length || diverge !== afterRecords.length;
   }
 
   /**

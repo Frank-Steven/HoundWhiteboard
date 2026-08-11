@@ -266,3 +266,54 @@ describe("情景九：重做与并发新增", () => {
     expect(endA.boardCore.undoTree.findNode("a/op-2").children).toEqual([]);
   });
 });
+
+describe("远端会话全序列应用（实时双端驱动）", () => {
+  // 与上述手工记录情景不同，此处由 A 端真实会话驱动物化记录，按到达批泵给 B 端
+  test("close-supra 折叠对远端为零过渡：位置定格不回弹、远程选择消退", async () => {
+    const A = createEnd("a");
+    const B = createEnd("b");
+    // 增量泵：把 from 端新记录以线上 JSON 形态投递给 to 端
+    const pump = (from, to) => {
+      const seen = new Set(to.boardCore.operationLog.toJSON().map((r) => r.id));
+      const fresh = from.boardCore.operationLog
+        .toJSON()
+        .filter((r) => !seen.has(r.id));
+      if (fresh.length > 0) {
+        to.api.applyRemoteOperations(JSON.parse(JSON.stringify(fresh)));
+      }
+    };
+
+    A.api.createObject("StrokeObject", {
+      id: "a/1",
+      position: { x: 100, y: 100 },
+      property: { width: 2 },
+      data: { points: [{ x: 0, y: 0 }, { x: 10, y: 0 }] },
+    });
+    await A.api.commitObjects(["a/1"]);
+    pump(A, B);
+
+    A.api.beginSupra("S");
+    await A.api.addActiveObjects(["a/1"], { supraKey: "S" });
+    pump(A, B);
+    expect(B.api.queryRemoteChoices()).toEqual([{ source: "a", ids: ["a/1"] }]);
+
+    const molId = A.api.beginMol(["a/1"], { supraKey: "S" });
+    A.api.amendMol(molId, { "a/1": { position: { x: 200, y: 200 } } });
+    A.api.endMol(molId);
+    pump(A, B);
+    expect(B.api.queryObject("a/1").position).toEqual({ x: 200, y: 200 });
+
+    // Enter：提交与闭合同批到达；折叠是纯树操作，远端效果零回滚
+    await A.api.commitObjects(["a/1"], { supraKey: "S" });
+    A.api.endSupra("S");
+    pump(A, B);
+    expect(B.api.queryObject("a/1").position).toEqual({ x: 200, y: 200 });
+    expect(B.api.queryRemoteChoices()).toEqual([]);
+    expect(B.boardCore.activeObjectManager.has("a/1")).toBe(false);
+
+    // 远端撤销聚合：对端同步回选择前
+    A.api.undo();
+    pump(A, B);
+    expect(B.api.queryObject("a/1").position).toEqual({ x: 100, y: 100 });
+  });
+});
