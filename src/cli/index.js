@@ -10,7 +10,17 @@ import { openBoardSession } from "./board-session.js";
 import { connectDaemon } from "./daemon-client.js";
 import { readActiveDaemonRoot } from "./board-daemon.js";
 import { resolveBoardPath } from "./board-path.js";
+import { parseArgv } from "./args.js";
 import { COMMANDS } from "./commands.js";
+import { readFileSync } from "node:fs";
+
+/**
+ * 包版本号（读 package.json，供 --version 输出）
+ * @type {string}
+ */
+const VERSION = JSON.parse(
+  readFileSync(new URL("../../package.json", import.meta.url), "utf-8"),
+).version;
 
 /**
  * 用法文本
@@ -43,44 +53,18 @@ const USAGE = `用法：hwb <命令> [参数] [--path <板目录>] [--标志 值
   --property '<json>'         全量样式属性（choice 仅单成员允许）
   --data '<json>'|"@文件"     全量数据（choice 仅单成员允许）
 
+
 通用标志：
   --path <板目录>   板目录路径（支持 ~ 展开）；省略时操作当前活动 daemon 持有的板
   --source <来源>   操作作者命名空间（默认 cli），决定新对象 id 前缀
+  --json            输出为纯 JSON（默认输出为人类可读文本）
+  -h, --help        打印用法
+  --version         打印版本号
 
 协作模式：
   板目录存在 daemon（.daemon.json）时自动连接，操作经 daemon 执行；
   daemon 若连了中继，CLI 操作与 GUI 实时互见。启动 daemon：yarn daemon --path <板目录>
 `;
-
-/**
- * 解析命令行参数
- * @param {string[]} argv - process.argv.slice(2)
- * @returns {{command: string, args: string[], flags: Object}} 解析结果
- *
- * @description
- * 板目录经 --path 传入，位置参数全部是命令参数（对象 id / 操作 id），不参与路径。
- */
-function parseArgv(argv) {
-  const [command, ...rest] = argv;
-  const args = [];
-  const flags = {};
-  for (let i = 0; i < rest.length; i++) {
-    const token = rest[i];
-    if (token.startsWith("--")) {
-      const key = token.slice(2);
-      const next = rest[i + 1];
-      if (next === undefined || next.startsWith("--")) {
-        flags[key] = true;
-      } else {
-        flags[key] = next;
-        i++;
-      }
-    } else {
-      args.push(token);
-    }
-  }
-  return { command, args, flags };
-}
 
 /**
  * CLI 主流程：解析 → 开会话 → 执行命令 → 落盘 → 关闭
@@ -89,6 +73,14 @@ function parseArgv(argv) {
 async function main() {
   const parsed = parseArgv(process.argv.slice(2));
   const { command, args, flags } = parsed;
+  if (command === "--version" || flags.version === true) {
+    console.log(VERSION);
+    process.exit(0);
+  }
+  if (command === "-h" || command === "--help" || flags.help === true) {
+    console.log(USAGE);
+    process.exit(0);
+  }
   const spec = COMMANDS[command];
   let board;
   if (typeof flags.path === "string" && flags.path !== "") {
@@ -97,12 +89,17 @@ async function main() {
     // --path 省略时操作当前活动 daemon 持有的板
     board = (await readActiveDaemonRoot()) ?? undefined;
   }
-  if (!spec || !board) {
+  if (!spec) {
     console.log(USAGE);
-    if (command && command !== "help" && !board) {
-      console.error("缺少板目录：传 --path <板目录>，或先启动 daemon 后可省略。");
+    if (command && command !== "help") {
+      console.error(`未知命令：${command}`);
     }
     process.exit(command === "help" || !command ? 0 : 1);
+  }
+  if (!board) {
+    console.log(USAGE);
+    console.error("缺少板目录：传 --path <板目录>，或先启动 daemon 后可省略。");
+    process.exit(1);
   }
 
   let session = null;

@@ -8,31 +8,16 @@
 
 import { startBoardDaemon } from "./board-daemon.js";
 import { resolveBoardPath } from "./board-path.js";
+import { parseArgv } from "./args.js";
 
-/**
- * 解析命令行参数
- * @param {string[]} argv - 参数列表
- * @returns {{rootPath: string, source?: string, relayUrl?: string, boardId?: string, port?: number}} 解析结果
- */
-function parseArgs(argv) {
-  const flags = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg.startsWith("--")) {
-      flags[arg.slice(2)] = argv[i + 1];
-      i += 1;
-    }
-  }
-  return {
-    rootPath: flags.path,
-    source: flags.source,
-    relayUrl: flags.relay,
-    boardId: flags["board-id"],
-    port: flags.port != null ? Number(flags.port) : undefined,
-  };
-}
-
-const options = parseArgs(process.argv.slice(2));
+const { flags } = parseArgv(process.argv.slice(2));
+const options = {
+  rootPath: flags.path,
+  source: flags.source,
+  relayUrl: flags.relay,
+  boardId: flags["board-id"],
+  port: flags.port != null ? Number(flags.port) : undefined,
+};
 if (!options.rootPath) {
   console.error(
     "用法：yarn daemon --path <板目录> [--source 身份] [--relay 中继地址] [--board-id 房间] [--port 端口]",
