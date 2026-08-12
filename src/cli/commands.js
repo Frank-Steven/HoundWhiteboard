@@ -7,6 +7,7 @@
 
 import fs from "node:fs/promises";
 import { resolveBoardPath } from "./board-path.js";
+import { exportBoard, importBoard } from "./board-zip.js";
 import {
   loadChoices,
   setChoice,
@@ -110,6 +111,41 @@ function printResult(flags, jsonValue, humanText) {
   } else {
     console.log(humanText);
   }
+}
+
+/**
+ * export 命令：导出板目录为 .hwb 文件
+ * @param {Object} flags - 标志（path、out、json）
+ * @returns {Promise<void>}
+ *
+ * @description
+ * 离线读操作，不接 daemon；打包 zip 平铺（board.json 在根），排除 .daemon.json 运行时标记。
+ */
+async function cmdExport(flags) {
+  const boardRoot = resolveBoardPath(flags.path);
+  const outFile = flags.out;
+  if (typeof outFile !== "string" || outFile === "") {
+    throw new Error("export 需要 --out <文件.hwb>。");
+  }
+  await exportBoard(boardRoot, outFile);
+  printResult(flags, { out: outFile, root: boardRoot }, `已导出：${outFile}`);
+}
+
+/**
+ * import 命令：导入 .hwb 文件为板目录
+ * @param {string[]} args - 位置参数（.hwb 文件路径）
+ * @param {Object} flags - 标志（path、json）
+ * @returns {Promise<void>}
+ *
+ * @description
+ * 离线建板操作，不接 daemon；校验 zip 内 board.json 与 formatVersion 后平铺解压。
+ */
+async function cmdImport(args, flags) {
+  const zipFile = args[0];
+  if (!zipFile) throw new Error("import 需要 .hwb 文件路径。");
+  const targetRoot = resolveBoardPath(flags.path);
+  await importBoard(zipFile, targetRoot);
+  printResult(flags, { root: targetRoot, from: zipFile }, `已导入：${targetRoot}`);
 }
 
 /**
@@ -797,4 +833,4 @@ const WRITE_COMMANDS = new Set([
   "modify",
 ]);
 
-export { COMMANDS, READ_COMMANDS, WRITE_COMMANDS };
+export { COMMANDS, READ_COMMANDS, WRITE_COMMANDS, cmdExport, cmdImport };

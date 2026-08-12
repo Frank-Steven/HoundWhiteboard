@@ -17,7 +17,7 @@ import {
 import { readDaemonDescriptor, isDaemonAlive } from "./board-daemon.js";
 import { resolveBoardPath } from "./board-path.js";
 import { parseArgv } from "./args.js";
-import { COMMANDS, READ_COMMANDS, WRITE_COMMANDS } from "./commands.js";
+import { COMMANDS, READ_COMMANDS, WRITE_COMMANDS, cmdExport, cmdImport } from "./commands.js";
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { access } from "node:fs/promises";
@@ -52,8 +52,10 @@ daemon 管理：
   daemon stop --name <名>                                            停止 daemon（排空 in-flight、落盘、注销注册表）
   daemon status [--name <名>]                                        查单个 daemon；省略 name 时列出全部
 
-建板（离线，不接 daemon）：
+建板与打包（离线，不接 daemon）：
   create --path <板目录> [--width 800] [--height 600]   创建空板
+  export --path <板目录> --out <文件.hwb>               导出板为 .hwb（zip 平铺，不含 .daemon.json）
+  import <文件.hwb> --path <板目录>                     导入 .hwb 建板（校验格式版本，目标须为空/不存在）
 
 读命令（--daemon <名> 经 daemon 查询，或 --path <板目录> 直读板文件）：
   info                                    打印板元数据与统计（含活动链 chain）
@@ -264,6 +266,26 @@ async function main() {
     if (command === "daemon") {
       try {
         await runDaemonCommand(args, flags);
+      } catch (error) {
+        console.error(error.message);
+        process.exit(1);
+      }
+      return;
+    }
+    if (command === "export") {
+      // 离线导出：不接 daemon，直读板文件打包
+      try {
+        await cmdExport(flags);
+      } catch (error) {
+        console.error(error.message);
+        process.exit(1);
+      }
+      return;
+    }
+    if (command === "import") {
+      // 离线导入：解压校验建板，不接 daemon
+      try {
+        await cmdImport(args, flags);
       } catch (error) {
         console.error(error.message);
         process.exit(1);

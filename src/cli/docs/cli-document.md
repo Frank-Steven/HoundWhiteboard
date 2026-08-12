@@ -4,7 +4,7 @@
 
 > [!NOTE]
 >
-> **实现状态**：daemon 管理（start/status/stop，按 name 注册表寻址）、`create` 离线建板、十三个板命令（info / list / show / add / delete / undo / redo / ops / tree / choose / choices / unchoose / modify）、daemon 连接与直读双寻址、`--json` 输出契约、并发安全（RPC 串行队列 + 持板侧原子 id 分配）与子进程端到端测试均已落地。
+> **实现状态**：daemon 管理（start/status/stop，按 name 注册表寻址）、`create` 离线建板、`.hwb` 打包（export/import）、十五个板命令（info / list / show / add / delete / undo / redo / ops / tree / choose / choices / unchoose / modify）、daemon 连接与直读双寻址、`--json` 输出契约、并发安全（RPC 串行队列 + 持板侧原子 id 分配）与子进程端到端测试均已落地。
 
 ## 定位
 
@@ -64,6 +64,8 @@ hwb <命令> [--daemon <名> | --path <板目录>] [--标志 值]
 | `daemon stop --name <名>`                                                                             | 停止 daemon（排空 in-flight、落盘、注销注册表）                                                                                                                         |
 | `daemon status [--name <名>]`                                                                         | 查单个 daemon（name/板目录/端口/身份/启动时间/存活）；省略 name 列出全部                                                                                                 |
 | `create --path <板目录> [--width 800] [--height 600]`                                                  | 离线创建空板；板目录已存在时报错                                                                                                                                         |
+| `export --path <板目录> --out <文件.hwb>`                                                               | 导出板为 .hwb（zip 平铺，board.json 在根；不含 .daemon.json 运行时标记）                                                                                                  |
+| `import <文件.hwb> --path <板目录>`                                                                    | 导入 .hwb 建板（校验 zip 内 board.json 与 formatVersion；目标须为空/不存在）                                                                                               |
 | `info`                                                                                                | 打印板元数据与统计（板配置、记录数、HEAD、活动链 chain、对象/trash 计数、id 计数器）                                                                                     |
 | `list`                                                                                                | 列出活动对象（id、类型）与 trash 条目                                                                                                                                    |
 | `show <对象id>`                                                                                       | 打印单个对象的序列化数据                                                                                                                                                 |
@@ -95,12 +97,21 @@ hwb <命令> [--daemon <名> | --path <板目录>] [--标志 值]
 
 `--type` 取对象注册表中的类型名：`StrokeObject`、`CircleObject`、`EllipseObject`、`PolygonObject`。
 
+## .hwb 板包格式
+
+`.hwb` 是板的单文件交换格式（zip 容器，后缀为 .hwb）：
+
+- **内容**：zip 平铺板目录布局——`board.json` 在 zip 根，`objects/`、`trash/`、`hit/`、`chunks/` 与 `.cli-choices.json`（choice 种子）原样打包；`.daemon.json` 是运行时持有标记，不导出
+- **导出**：`hwb export --path <板目录> --out foo.hwb`，离线读操作（不接 daemon），对 daemon 正在持有的板同样安全（写操作响应前均已落盘）
+- **导入**：`hwb import foo.hwb --path <板目录>`，校验 zip 内 `board.json` 存在且 `formatVersion` 与当前版本一致，目标目录须为空或不存在；导入后即是一块可被 `daemon start` 持有的新板
+- **格式版本**：随 `board.json` 的 `formatVersion` 字段（当前 1），跨版本导入报错
+
 ## 输出契约
 
 所有命令支持 `--json` 标志，输出分两种模式：
 
-- **默认（人类可读）**：`create` 输出 `板已创建：<路径>`；`daemon start/stop/status` 输出状态文本；`info` 输出板配置/记录/活动链/计数行；`list` 输出对象与 trash 行列表；`show` 输出 `id 类型` 标题加数据；`ops` 每条记录一行；`tree` 输出缩进回溯树；`undo`/`redo`/`delete`/`choose`/`unchoose`/`modify` 输出 `xxx ok（...）` 文本；`add` 输出单行对象 id（脚本捕获用）。
-- **`--json`（纯 JSON）**：所有命令 stdout 只输出一个可整体 `JSON.parse` 的结构——`info`/`list`/`show`/`ops`/`choices` 输出查询面原始结构，`tree` 输出回溯树原始结构，`daemon status` 输出条目（含 `alive`），`add` 输出 `{"id": ...}`，`undo`/`redo` 输出 `{"undone" 或 "redone" 布尔, "targetNodeId"}`，`delete` 输出 `{"deleted": [...]}`，`modify` 输出 `{"objectId" 或 "choice", "committed" 或 "pending"}`，`unchoose` 输出 `{"choice", "action", "dropped"}`。
+- **默认（人类可读）**：`create` 输出 `板已创建：<路径>`；`export`/`import` 输出 `已导出/已导入：<路径>`；`daemon start/stop/status` 输出状态文本；`info` 输出板配置/记录/活动链/计数行；`list` 输出对象与 trash 行列表；`show` 输出 `id 类型` 标题加数据；`ops` 每条记录一行；`tree` 输出缩进回溯树；`undo`/`redo`/`delete`/`choose`/`unchoose`/`modify` 输出 `xxx ok（...）` 文本；`add` 输出单行对象 id（脚本捕获用）。
+- **`--json`（纯 JSON）**：所有命令 stdout 只输出一个可整体 `JSON.parse` 的结构——`info`/`list`/`show`/`ops`/`choices` 输出查询面原始结构，`tree` 输出回溯树原始结构，`daemon status` 输出条目（含 `alive`），`export`/`import` 输出 `{"out"|"root", ...}`，`add` 输出 `{"id": ...}`，`undo`/`redo` 输出 `{"undone" 或 "redone" 布尔, "targetNodeId"}`，`delete` 输出 `{"deleted": [...]}`，`modify` 输出 `{"objectId" 或 "choice", "committed" 或 "pending"}`，`unchoose` 输出 `{"choice", "action", "dropped"}`。
 
 错误一律经 stderr 打印并以退出码 1 结束，不混入 stdout。
 
