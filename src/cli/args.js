@@ -11,11 +11,16 @@
  * @returns {{command: ?string, args: string[], flags: Object}} 解析结果
  *
  * @description
- * 非标志 token 全部是位置参数（对象 id / 操作 id），不参与路径；
+ * 首个非 `--` 前缀的 token 为命令，全部 token 均为标志时命令为空（如 daemon 进程入口）；
  * `--key value` 与 `--key=value` 等价，无值标志解析为 true。
  */
 function parseArgv(argv) {
-  const [command, ...rest] = argv;
+  let [command, ...rest] = argv;
+  if (command !== undefined && command.startsWith("--")) {
+    // 首个 token 是标志：无命令形态（纯标志入口），全部按标志解析
+    rest = [command, ...rest];
+    command = undefined;
+  }
   const args = [];
   const flags = {};
   for (let i = 0; i < rest.length; i++) {

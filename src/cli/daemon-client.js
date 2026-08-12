@@ -1,30 +1,28 @@
 /**
  * @file daemon 客户端
- * @description 连接板 daemon 的 WebSocket RPC 客户端；提供与 BoardApi 同契约的会话面。
+ * @description 按 daemon name（或板目录描述）连接板 daemon 的 WebSocket RPC 客户端；提供与 BoardApi 同契约的会话面。
  * @module cli/daemon-client
  * @author Zhou Chenyu
  */
 
 import { readDaemonDescriptor } from "./board-daemon.js";
+import { readEntry, isEntryAlive } from "./daemon-registry.js";
 
 /** 单次调用的超时毫秒数 */
 const INVOKE_TIMEOUT_MS = 10000;
-/** 连接 daemon 的超时毫秒数（daemon 繁忙时握手可能较慢，误判僵尸会回退文件模式读到未落盘的旧数据） */
+/** 连接 daemon 的超时毫秒数 */
 const CONNECT_TIMEOUT_MS = 5000;
 
 /**
- * 连接板目录下的 daemon
- * @param {string} rootPath - 板目录
- * @returns {Promise<Object|null>} 会话面（api/source/close）；无活 daemon 时为 null
+ * 连接一个 daemon 描述对象
+ * @param {Object} desc - daemon 描述（含 port/source/rootPath）
+ * @returns {Promise<Object|null>} 会话面（api/source/rootPath/close）；连不上时为 null
  *
  * @description
- * 读取板目录 `.daemon.json` 自动发现 daemon；连接失败（僵尸描述文件）时返回 null，
- * 调用方回退文件直读直写模式。会话面 api 的方法与 BoardApi 同契约，经 RPC 转发。
+ * 会话面 api 的方法与 BoardApi 同契约，经 RPC 转发；rootPath 为 daemon 持有的板目录
+ * （choice buffer 等板目录侧文件操作凭此定位）。
  */
-async function connectDaemon(rootPath) {
-  const desc = await readDaemonDescriptor(rootPath);
-  if (!desc) return null;
-
+async function connectDescriptor(desc) {
   const ws = await new Promise((resolve) => {
     const socket = new WebSocket(`ws://127.0.0.1:${desc.port}`);
     const timer = setTimeout(() => {
@@ -87,6 +85,7 @@ async function connectDaemon(rootPath) {
 
   return {
     source: desc.source,
+    rootPath: desc.rootPath,
     api: {
       addObject: (type, props) => invoke("addObject", { type, props }),
       deleteObjects: (ids) => invoke("deleteObjects", { objectIds: ids }),
@@ -121,6 +120,7 @@ async function connectDaemon(rootPath) {
       queryOpenMols: () => invoke("queryOpenMols", {}),
       queryMolAmendSince: (molId, sinceSeq) =>
         invoke("queryMolAmendSince", { molId, sinceSeq }),
+      shutdown: () => invoke("daemon-shutdown", {}),
     },
     close() {
       try {
@@ -132,4 +132,66 @@ async function connectDaemon(rootPath) {
   };
 }
 
-export { connectDaemon };
+/**
+ * 按 daemon name 连接（注册表寻址）
+ * @param {string} name - daemon 名
+ * @returns {Promise<Object|null>} 会话面；注册表无条目或连不上时为 null
+ */
+async function connectDaemonByName(name) {
+  const desc = await readEntry(name);
+  if (desc === null) return null;
+  const session = await connectDescriptor(desc);
+  if (session === null) return null;
+  return session;
+}
+
+/**
+ * 连接板目录的持有 daemon（板目录 .daemon.json 寻址）
+ * @param {string} rootPath - 板目录
+ * @returns {Promise<Object|null>} 会话面；板无持有 daemon 或连不上时为 null
+ */
+async function connectDaemonByPath(rootPath) {
+  const desc = await readDaemonDescriptor(rootPath);
+  if (desc === null) return null;
+  const session = await connectDescriptor(desc);
+  if (session === null) return null;
+  return session;
+}
+
+/**
+ * 停止一个 daemon（发 daemon-shutdown route，等待其清理退出）
+ * @param {string} name - daemon 名
+ * @returns {Promise<boolean>} 是否成功停止
+ * @throws {Error} 注册表无该 daemon 或已不存活时
+ *
+ * @description
+ * daemon 收到停机指令后排空 in-flight RPC、清理描述与注册表条目后退出；
+ * 客户端等待注册表条目消失确认停机完成。
+ */
+async function shutdownDaemon(name) {
+  const desc = await readEntry(name);
+  if (desc === null) {
+    throw new Error(`daemon ${name} 未在运行（注册表无此条目）。`);
+  }
+  if (!(await isEntryAlive(desc))) {
+    throw new Error(`daemon ${name} 已停止（端口 ${desc.port} 不可连通）。`);
+  }
+  const session = await connectDescriptor(desc);
+  if (session === null) {
+    throw new Error(`daemon ${name} 连接失败（端口 ${desc.port}）。`);
+  }
+  try {
+    await session.api.shutdown();
+  } finally {
+    session.close();
+  }
+  // 等待 daemon 清理注册表条目（异步清理，轮询确认）
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if ((await readEntry(name)) === null) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+}
+
+export { connectDaemonByName, connectDaemonByPath, shutdownDaemon };

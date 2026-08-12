@@ -120,7 +120,8 @@ function printResult(flags, jsonValue, humanText) {
  * @returns {Promise<void>}
  *
  * @description
- * 板目录已存在时在开会话阶段报错；创建成功后默认输出人类可读确认，--json 输出板概要。
+ * 纯离线建板，不接 daemon；板目录已存在时在开会话阶段报错。
+ * 创建成功后默认输出人类可读确认，--json 输出板概要。
  */
 async function cmdCreate(session, _args, flags) {
   if (flags.json === true) {
@@ -495,9 +496,8 @@ async function ensureActive(session, ids, options) {
  * @throws {Error} choice 不存在时
  *
  * @description
- * daemon 模式优先走 AOM 注册表（权威：在册即在板上且活动）；注册表未命中再回退
- * buffer 文件（daemon 重启后未恢复的种子）。文件模式选择不跨进程驻留，buffer 文件
- * 是唯一载体。
+ * daemon 连接优先走 AOM 注册表（权威：在册即在板上且活动）；注册表未命中再回退
+ * buffer 文件（daemon 重启后未恢复的种子）。
  */
 async function resolveChoiceMembers(session, name) {
   if (session.mode === "daemon") {
@@ -555,8 +555,7 @@ async function cmdChoices(session, _args, flags) {
       registered.add(name);
       out[name] = ids.map((id) => ({ id, missing: false, active: true }));
     }
-  }
-  for (const [name, ids] of Object.entries(buffer.choices)) {
+  }  for (const [name, ids] of Object.entries(buffer.choices)) {
     if (registered.has(name)) continue;
     const summaries = await session.api.queryObjects(ids);
     out[name] = ids.map((id, i) => ({
@@ -719,7 +718,7 @@ async function modifyChoice(session, name, flags, onlyId) {
     });
   }
   if (session.mode === "daemon") {
-    // daemon 模式：驻留 AOM，修改等 unchoose --apply 一次性提交；
+    // daemon 持有：修改驻留 AOM，等 unchoose --apply 一次性提交；
     // 自愈重选携带 choice，重启后重建注册表
     await ensureActive(session, ids, { choice: name });
     await session.api.modifyObjects(patches);
@@ -730,7 +729,7 @@ async function modifyChoice(session, name, flags, onlyId) {
     );
     return;
   }
-  // 文件模式：choose→modify→commit 超分子链原子完成（supraKey 显式传入，见单对象路径）
+  // 非 daemon 连接（直读会话）不应到达写路径；防御性保留原子成链语义
   const supraKey = `cli-supra/${Date.now()}`;
   await session.api.beginSupra(supraKey);
   try {
@@ -771,4 +770,31 @@ const COMMANDS = {
   modify: { run: cmdModify },
 };
 
-export { COMMANDS };
+/**
+ * 读命令集合（--path 直读板文件 或 --daemon 连接均可）
+ * @type {Set<string>}
+ */
+const READ_COMMANDS = new Set([
+  "info",
+  "list",
+  "show",
+  "ops",
+  "tree",
+  "choices",
+]);
+
+/**
+ * 写命令集合（仅 --daemon 寻址）
+ * @type {Set<string>}
+ */
+const WRITE_COMMANDS = new Set([
+  "add",
+  "delete",
+  "undo",
+  "redo",
+  "choose",
+  "unchoose",
+  "modify",
+]);
+
+export { COMMANDS, READ_COMMANDS, WRITE_COMMANDS };

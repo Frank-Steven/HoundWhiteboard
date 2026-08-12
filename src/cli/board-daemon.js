@@ -11,23 +11,18 @@ import { BOARD_API_ROUTES } from "../kernel/api/board-api-routes.js";
 import { createNetworkCoordinator } from "../host/sync/network-coordinator.js";
 import { createAmendForwarder } from "../host/sync/amend-forwarder.js";
 import { resolveDeviceSource } from "../utils/device-identity.js";
+import {
+  isValidDaemonName,
+  writeEntry,
+  removeEntry,
+  readEntry,
+  isDaemonAlive,
+} from "./daemon-registry.js";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 
-/** daemon 描述文件名（写在板目录下，供 CLI 自动发现） */
+/** daemon 描述文件名（写在板目录下，标记板被哪个 daemon 持有） */
 const DAEMON_FILE = ".daemon.json";
-
-/**
- * 活动 daemon 全局引用路径（CLI 免路径时据此定位当前 daemon；可用 HWB_DAEMON_REF 覆盖，测试隔离用）
- * @returns {string} 引用文件路径
- */
-function activeDaemonFile() {
-  return (
-    process.env.HWB_DAEMON_REF ??
-    path.join(os.homedir(), ".hound-whiteboard", "daemon.json")
-  );
-}
 
 /**
  * 创建串行任务队列
@@ -63,20 +58,6 @@ function createQueue() {
 }
 
 /**
- * 读取活动 daemon 引用的板目录
- * @returns {Promise<string|null>} 板目录；无活动 daemon 时为 null
- */
-async function readActiveDaemonRoot() {
-  try {
-    const text = await fs.readFile(activeDaemonFile(), "utf-8");
-    const desc = JSON.parse(text);
-    return typeof desc?.rootPath === "string" ? desc.rootPath : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * 读取板目录下的 daemon 描述文件
  * @param {string} rootPath - 板目录
  * @returns {Promise<Object|null>} 描述；不存在或非法时为 null
@@ -97,24 +78,40 @@ async function readDaemonDescriptor(rootPath) {
 /**
  * 启动板 daemon
  * @param {Object} options - 启动选项
+ * @param {string} options.name - daemon 名（注册表唯一标识，不可与存活 daemon 重复）
  * @param {string} options.rootPath - 板目录（必须是既有板）
  * @param {string} [options.source] - 协作身份；省略时用设备自动身份
  * @param {string} [options.boardId] - 中继房间 id；省略时用板目录路径
  * @param {string} [options.relayUrl] - 中继地址；省略时 daemon 不参与协作
  * @param {number} [options.port=0] - 监听端口（0 为随机）
  * @param {string} [options.host="127.0.0.1"] - 监听地址
- * @returns {Promise<{port: number, source: string, close: Function}>} daemon 句柄
+ * @returns {Promise<{name: string, rootPath: string, port: number, source: string, close: Function}>} daemon 句柄
  *
  * @description
- * 启动后在板目录写入 `.daemon.json`（pid/port/source/boardId），CLI 据此自动发现并连接。
- * 板目录已有活 daemon（描述文件指向可连通的端口）时拒绝重复启动。
+ * 启动后登记注册表（~/.hound-whiteboard/daemons/<name>.json）并在板目录写入
+ * `.daemon.json`（name/pid/port/source/boardId）。name 与存活 daemon 重复、
+ * 板目录已被其它活 daemon 持有时拒绝启动。
  */
 async function startBoardDaemon(options) {
+  const name = options?.name;
+  if (!isValidDaemonName(name)) {
+    throw new Error(
+      `非法 daemon name：${name}（仅允许字母/数字/.-_，不能重复）。`,
+    );
+  }
   const rootPath = options?.rootPath;
   if (typeof rootPath !== "string" || rootPath.trim() === "") {
     throw new Error("缺少板目录路径。");
   }
 
+  // name 查重：注册表同名且存活的 daemon 拒绝启动；僵尸条目可覆盖
+  const registered = await readEntry(name);
+  if (registered !== null && (await isDaemonAlive(registered.port))) {
+    throw new Error(
+      `daemon ${name} 已在运行（板目录 ${registered.rootPath}，端口 ${registered.port}）。`,
+    );
+  }
+  // 板目录占用检查：同一板目录只能被一个活 daemon 持有
   const existing = await readDaemonDescriptor(rootPath);
   if (existing && (await isDaemonAlive(existing.port))) {
     throw new Error(
@@ -196,11 +193,28 @@ async function startBoardDaemon(options) {
   const queue = createQueue();
   wss.on("connection", (ws) => {
     ws.on("message", (data) => {
+      let message;
+      try {
+        message = JSON.parse(String(data));
+      } catch {
+        return;
+      }
+      if (message?.route === "daemon-shutdown") {
+        // 管理停机：响应后异步关闭（close 内部排空既有 RPC），不入队列避免自死锁
+        ws.send(JSON.stringify({ id: message.id, ok: true, result: null }));
+        void (async () => {
+          await close();
+          process.exit(0);
+        })();
+        return;
+      }
       queue.enqueue(() => handleRpcMessage(session, ws, data));
     });
   });
 
   const desc = {
+    name,
+    rootPath,
     pid: process.pid,
     port,
     source,
@@ -212,13 +226,8 @@ async function startBoardDaemon(options) {
     JSON.stringify(desc, null, 2),
     "utf-8",
   );
-  // 全局活动引用：CLI 免路径时据此连接当前 daemon
-  await fs.mkdir(path.dirname(activeDaemonFile()), { recursive: true });
-  await fs.writeFile(
-    activeDaemonFile(),
-    JSON.stringify({ ...desc, rootPath }, null, 2),
-    "utf-8",
-  );
+  // 注册表登记：CLI 按 name 定位 daemon
+  await writeEntry(desc);
 
   const close = async () => {
     closed = true;
@@ -243,10 +252,10 @@ async function startBoardDaemon(options) {
     await session.flush();
     await session.close();
     await fs.rm(path.join(rootPath, DAEMON_FILE), { force: true });
-    await fs.rm(activeDaemonFile(), { force: true });
+    await removeEntry(name);
   };
 
-  return { port, source, close };
+  return { name, rootPath, port, source, close };
 }
 
 /**
@@ -276,7 +285,7 @@ async function handleRpcMessage(session, ws, data) {
   try {
     const result = await entry.invoke(session.api, params ?? {});
     if (entry.flush === "sync" || entry.flush === "async") {
-      // 响应前落盘：daemon 崩溃不丢操作；客户端回退文件模式时也能读到最新数据
+      // 响应前落盘：daemon 崩溃不丢操作；读命令直读时也能读到最新数据
       await session.flush();
     }
     ws.send(JSON.stringify({ id, ok: true, result: result ?? null }));
@@ -291,36 +300,4 @@ async function handleRpcMessage(session, ws, data) {
   }
 }
 
-/**
- * 探测端口上是否有活 daemon
- * @param {number} port - 端口
- * @returns {Promise<boolean>} 是否可连通
- * @private
- */
-function isDaemonAlive(port) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (alive) => {
-      if (settled) return;
-      settled = true;
-      try {
-        ws.close();
-      } catch {
-        /* 忽略 */
-      }
-      resolve(alive);
-    };
-    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
-    const timer = setTimeout(() => finish(false), 500);
-    ws.addEventListener("open", () => {
-      clearTimeout(timer);
-      finish(true);
-    });
-    ws.addEventListener("error", () => {
-      clearTimeout(timer);
-      finish(false);
-    });
-  });
-}
-
-export { startBoardDaemon, readDaemonDescriptor, readActiveDaemonRoot, DAEMON_FILE };
+export { startBoardDaemon, readDaemonDescriptor, DAEMON_FILE, isDaemonAlive };
