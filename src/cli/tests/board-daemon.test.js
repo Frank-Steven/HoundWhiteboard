@@ -558,4 +558,77 @@ describe("板 daemon", () => {
       await cleanup();
     }
   }, 30000);
+
+  test("并发 RPC addObject：id 不撞号、记录完整", async () => {
+    const { dir, cleanup } = await tempBoard();
+    const daemon = await startBoardDaemon({
+      rootPath: dir,
+      source: "daemon-c",
+    });
+    const client1 = await connectDaemon(dir);
+    const client2 = await connectDaemon(dir);
+    try {
+      const calls = [];
+      for (let i = 0; i < 5; i++) {
+        calls.push(
+          client1.api.addObject("StrokeObject", { data: { ...STROKE_DATA } }),
+        );
+        calls.push(
+          client2.api.addObject("StrokeObject", { data: { ...STROKE_DATA } }),
+        );
+      }
+      const ids = await Promise.all(calls);
+      expect(new Set(ids).size).toBe(10);
+      // 串行队列下全部落盘：记录数与对象数一致
+      const records = await client1.api.queryOperations();
+      expect(records).toHaveLength(10);
+      expect((await client1.api.queryObjectList()).objects).toHaveLength(10);
+    } finally {
+      client1.close();
+      client2.close();
+      await daemon.close();
+      await cleanup();
+    }
+  }, 30000);
+
+  test("close 排空 in-flight RPC：已到达队列的操作不丢", async () => {
+    const { dir, cleanup } = await tempBoard();
+    const daemon = await startBoardDaemon({
+      rootPath: dir,
+      source: "daemon-c",
+    });
+    const client = await connectDaemon(dir);
+    try {
+      // 前 3 个操作等待完成：确认通道与队列工作
+      for (let i = 0; i < 3; i++) {
+        await client.api.addObject("StrokeObject", {
+          data: { ...STROKE_DATA },
+        });
+      }
+      // 再发 3 个不等待响应，给本地回环留送达时间后立即 close：
+      // 已入队的操作应被排空落盘，响应在关连接前发出
+      const pending = [];
+      for (let i = 0; i < 3; i++) {
+        pending.push(
+          client.api.addObject("StrokeObject", { data: { ...STROKE_DATA } }),
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await daemon.close();
+      const ids = await Promise.all(pending);
+      expect(ids).toHaveLength(3);
+
+      // 重开板：6 个对象全部落盘
+      const session = await openBoardSession(dir, { source: "cli" });
+      try {
+        expect(session.api.queryObjectList().objects).toHaveLength(6);
+        expect(session.api.queryOperations()).toHaveLength(6);
+      } finally {
+        await session.close();
+      }
+    } finally {
+      client.close();
+      await cleanup();
+    }
+  }, 30000);
 });

@@ -30,6 +30,39 @@ function activeDaemonFile() {
 }
 
 /**
+ * 创建串行任务队列
+ * @returns {{enqueue: Function, drain: Function}} 队列操作面
+ *
+ * @description
+ * 队列保证前一条任务（RPC 的 invoke+落盘）完成后才执行下一条：并发客户端到达的
+ * 异步方法（addObject/commitObjects 等内部有真实 await 让出）不会交错执行。
+ * 单条失败不中断队列（错误已在任务内转为响应或日志）。
+ */
+function createQueue() {
+  /** @type {Promise<void>} 队列尾链 */
+  let tail = Promise.resolve();
+  return {
+    /**
+     * 将任务排入队尾
+     * @param {() => Promise<void>} task - 任务
+     * @returns {Promise<void>} 任务结果
+     */
+    enqueue(task) {
+      const run = tail.then(task);
+      tail = run.catch(() => {});
+      return run;
+    },
+    /**
+     * 排空：等待全部已入队任务完成
+     * @returns {Promise<void>}
+     */
+    drain() {
+      return tail;
+    },
+  };
+}
+
+/**
  * 读取活动 daemon 引用的板目录
  * @returns {Promise<string|null>} 板目录；无活动 daemon 时为 null
  */
@@ -159,9 +192,11 @@ async function startBoardDaemon(options) {
   });
   const port = wss.address().port;
 
+  // RPC 串行队列：并发客户端的写操作经队列逐个执行，invoke 与落盘不交错
+  const queue = createQueue();
   wss.on("connection", (ws) => {
     ws.on("message", (data) => {
-      void handleRpcMessage(session, ws, data);
+      queue.enqueue(() => handleRpcMessage(session, ws, data));
     });
   });
 
@@ -187,6 +222,8 @@ async function startBoardDaemon(options) {
 
   const close = async () => {
     closed = true;
+    // 排空 in-flight RPC：关闭前最后一次落盘不截断
+    await queue.drain();
     if (relayRetryTimer !== null) {
       clearTimeout(relayRetryTimer);
       relayRetryTimer = null;
