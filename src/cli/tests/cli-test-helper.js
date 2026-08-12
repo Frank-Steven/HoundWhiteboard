@@ -1,7 +1,6 @@
 /**
  * @file CLI 测试支撑
- * @description 提供 CLI 端到端测试通用的子进程执行、临时板目录与环境隔离辅助。
- * @module cli/tests/cli-test-helper
+ * @description 提供 CLI 端到端测试通用的子进程执行、测试内 daemon 启动、临时板目录与环境隔离辅助。
  * @author Zhou Chenyu
  */
 
@@ -12,6 +11,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterAll, beforeAll } from "@jest/globals";
+import { startBoardDaemon } from "../board-daemon.js";
+import { openBoardSession } from "../board-session.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -22,19 +23,19 @@ const execFileAsync = promisify(execFile);
 const CLI_PATH = fileURLToPath(new URL("../index.js", import.meta.url));
 
 /**
- * 注册测试环境隔离钩子：避免子进程读到真实 daemon 的全局引用
+ * 注册测试环境隔离钩子：注册表指向临时目录，避免子进程读到真实 daemon
  * @returns {void}
  */
 export function setupCliTestEnv() {
   beforeAll(() => {
-    process.env.HWB_DAEMON_REF = path.join(
+    process.env.HWB_DAEMON_DIR = path.join(
       tmpdir(),
-      "hwb-cli-test-no-daemon.json",
+      `hwb-cli-test-registry-${process.pid}`,
     );
   });
 
   afterAll(() => {
-    delete process.env.HWB_DAEMON_REF;
+    delete process.env.HWB_DAEMON_DIR;
   });
 }
 
@@ -42,9 +43,14 @@ export function setupCliTestEnv() {
  * 运行一次 CLI 命令
  * @param {string[]} argv - 命令参数
  * @returns {Promise<{stdout: string, stderr: string}>} 进程输出
+ *
+ * @description
+ * 显式传 env：jest 沙箱下默认 env 快照不含测试期间设置的变量。
  */
 export function runCli(argv) {
-  return execFileAsync(process.execPath, [CLI_PATH, ...argv]);
+  return execFileAsync(process.execPath, [CLI_PATH, ...argv], {
+    env: process.env,
+  });
 }
 
 /**
@@ -73,6 +79,33 @@ export function tempBoardDir() {
     dir: board,
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
   };
+}
+
+/**
+ * 在测试进程内启动一个板 daemon（不经子进程，可靠且快速）
+ * @param {string} name - daemon 名
+ * @param {string} boardDir - 板目录（已存在或 --create 语义由调用方保证）
+ * @param {Object} [options] - 启动选项（source 等）
+ * @returns {Promise<{name: string, rootPath: string, port: number, close: Function}>} daemon 句柄
+ */
+export async function startTestDaemon(name, boardDir, options = {}) {
+  return startBoardDaemon({ name, rootPath: boardDir, ...options });
+}
+
+/**
+ * 创建空板（测试内直开会话建板）
+ * @param {string} boardDir - 板目录
+ * @param {{width?: number, height?: number}} [config] - 板尺寸
+ * @returns {Promise<void>}
+ */
+export async function createTestBoard(boardDir, config = {}) {
+  const session = await openBoardSession(boardDir, {
+    create: true,
+    width: config.width ?? 800,
+    height: config.height ?? 600,
+  });
+  await session.flush();
+  await session.close();
 }
 
 /**

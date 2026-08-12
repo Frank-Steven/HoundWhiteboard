@@ -11,6 +11,7 @@ import { jest } from "@jest/globals";
 import {
   runCli,
   setupCliTestEnv,
+  startTestDaemon,
   STROKE_DATA,
   tempBoardDir,
 } from "./cli-test-helper.js";
@@ -45,18 +46,20 @@ describe("CLI 只读命令", () => {
 
   test("读命令不重写板文件", async () => {
     const { dir, cleanup } = tempBoardDir();
+    let daemon = null;
     try {
       await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
+      daemon = await startTestDaemon("readonly-test", dir, { source: "cli" });
       const { stdout: id } = await runCli([
         "add",
-        "--path",
-        dir,
+        "--daemon",
+        "readonly-test",
         "--type",
         "StrokeObject",
         "--data",
         STROKE_DATA,
       ]);
-      await runCli(["add", "--path", dir, "--type", "CircleObject", "--data", "{radius: 20}"]);
+      await runCli(["add", "--daemon", "readonly-test", "--type", "CircleObject", "--data", "{radius: 20}"]);
 
       const before = await snapshotBoard(dir);
       expect(before["board.json"]).toBeDefined();
@@ -70,18 +73,21 @@ describe("CLI 只读命令", () => {
       const after = await snapshotBoard(dir);
       expect(after).toEqual(before);
     } finally {
+      if (daemon) await daemon.close();
       cleanup();
     }
   });
 
   test("写命令后板文件正常更新", async () => {
     const { dir, cleanup } = tempBoardDir();
+    let daemon = null;
     try {
       await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
+      daemon = await startTestDaemon("readonly-test", dir, { source: "cli" });
       await runCli([
         "add",
-        "--path",
-        dir,
+        "--daemon",
+        "readonly-test",
         "--type",
         "StrokeObject",
         "--data",
@@ -93,8 +99,8 @@ describe("CLI 只读命令", () => {
       await runCli(["info", "--path", dir]);
       await runCli([
         "add",
-        "--path",
-        dir,
+        "--daemon",
+        "readonly-test",
         "--type",
         "CircleObject",
         "--data",
@@ -107,6 +113,7 @@ describe("CLI 只读命令", () => {
       );
       expect(after["board.json"]).not.toBe(before["board.json"]);
     } finally {
+      if (daemon) await daemon.close();
       cleanup();
     }
   });

@@ -13,7 +13,7 @@ import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { startBoardDaemon, readDaemonDescriptor } from "../board-daemon.js";
-import { connectDaemon } from "../daemon-client.js";
+import { connectDaemonByPath } from "../daemon-client.js";
 import { openBoardSession } from "../board-session.js";
 import { createRelayServer } from "../../host/sync/relay-server.js";
 import { createNetworkCoordinator } from "../../host/sync/network-coordinator.js";
@@ -29,13 +29,13 @@ const CLI_PATH = fileURLToPath(new URL("../index.js", import.meta.url));
 let refFile = null;
 
 beforeAll(async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "hwb-daemon-ref-"));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "hwb-daemon-reg-"));
   refFile = path.join(dir, "daemon.json");
-  process.env.HWB_DAEMON_REF = refFile;
+  process.env.HWB_DAEMON_DIR = refFile;
 });
 
 afterAll(async () => {
-  delete process.env.HWB_DAEMON_REF;
+  delete process.env.HWB_DAEMON_DIR;
   if (refFile) {
     await fs.rm(path.dirname(refFile), { recursive: true, force: true });
   }
@@ -100,6 +100,7 @@ describe("板 daemon", () => {
     const { dir, cleanup } = await tempBoard();
     const daemon = await startBoardDaemon({
       rootPath: dir,
+      name: "dt",
       source: "daemon-test",
     });
     try {
@@ -107,7 +108,7 @@ describe("板 daemon", () => {
       expect(desc.port).toBe(daemon.port);
       expect(desc.source).toBe("daemon-test");
 
-      const client = await connectDaemon(dir);
+      const client = await connectDaemonByPath(dir);
       expect(client).not.toBeNull();
       expect(client.source).toBe("daemon-test");
 
@@ -145,11 +146,12 @@ describe("板 daemon", () => {
     const { dir, cleanup } = await tempBoard();
     const daemon = await startBoardDaemon({
       rootPath: dir,
+      name: "dt",
       source: "daemon-test",
     });
     try {
       await expect(
-        startBoardDaemon({ rootPath: dir, source: "other" }),
+        startBoardDaemon({ name: "other-dt", rootPath: dir, source: "other" }),
       ).rejects.toThrow("已有 daemon");
     } finally {
       await daemon.close();
@@ -161,7 +163,7 @@ describe("板 daemon", () => {
       JSON.stringify({ pid: 1, port: 1, source: "ghost" }),
       "utf-8",
     );
-    expect(await connectDaemon(dir)).toBeNull();
+    expect(await connectDaemonByPath(dir)).toBeNull();
     await cleanup();
   });
 
@@ -169,9 +171,10 @@ describe("板 daemon", () => {
     const { dir, cleanup } = await tempBoard();
     const daemon = await startBoardDaemon({
       rootPath: dir,
+      name: "dt",
       source: "daemon-test",
     });
-    const client = await connectDaemon(dir);
+    const client = await connectDaemonByPath(dir);
     const id = await client.api.addObject("StrokeObject", {
       data: { ...STROKE_DATA },
     });
@@ -192,6 +195,7 @@ describe("板 daemon", () => {
     const { dir, cleanup } = await tempBoard();
     const daemon = await startBoardDaemon({
       rootPath: dir,
+      name: "dt",
       source: "daemon",
       relayUrl,
       boardId: "test-room",
@@ -217,7 +221,7 @@ describe("板 daemon", () => {
       await peerCoordinator.connect();
 
       // CLI → daemon → relay → 对端可见
-      const client = await connectDaemon(dir);
+      const client = await connectDaemonByPath(dir);
       const id = await client.api.addObject("StrokeObject", {
         data: { ...STROKE_DATA },
       });
@@ -251,46 +255,47 @@ describe("板 daemon", () => {
     }
   }, 15000);
 
-  test("CLI 子进程自动发现 daemon：命令经 daemon 执行且可免 --source", async () => {
+  test("CLI 子进程按 --daemon 寻址：命令经 daemon 执行且身份属 daemon", async () => {
     const { dir, cleanup } = await tempBoard();
     const daemon = await startBoardDaemon({
       rootPath: dir,
+      name: "dt",
       source: "daemon-x",
     });
     try {
       // 无 --source：daemon 模式下身份属 daemon，add 输出 daemon 前缀 id
-      const { stdout: idOut } = await execFileAsync(process.execPath, [
-        CLI_PATH,
-        "add",
-        "--path",
-        dir,
-        "--type",
-        "StrokeObject",
-        "--data",
-        JSON.stringify(STROKE_DATA),
-      ]);
+      const { stdout: idOut } = await execFileAsync(
+        process.execPath,
+        [
+          CLI_PATH,
+          "add",
+          "--daemon",
+          "dt",
+          "--type",
+          "StrokeObject",
+          "--data",
+          JSON.stringify(STROKE_DATA),
+        ],
+        { env: process.env },
+      );
       expect(idOut.trim()).toBe("daemon-x/1");
 
-      const { stdout: listOut } = await execFileAsync(process.execPath, [
-        CLI_PATH,
-        "list",
-        "--path",
-        dir,
-        "--json",
-      ]);
+      const { stdout: listOut } = await execFileAsync(
+        process.execPath,
+        [CLI_PATH, "list", "--daemon", "dt", "--json"],
+        { env: process.env },
+      );
       const listed = JSON.parse(listOut);
       expect(listed.objects).toEqual([
         { id: "daemon-x/1", type: "StrokeObject" },
       ]);
 
-      await execFileAsync(process.execPath, [CLI_PATH, "undo", "--path", dir]);
-      const { stdout: infoOut } = await execFileAsync(process.execPath, [
-        CLI_PATH,
-        "info",
-        "--path",
-        dir,
-        "--json",
-      ]);
+      await execFileAsync(process.execPath, [CLI_PATH, "undo", "--daemon", "dt"], { env: process.env });
+      const { stdout: infoOut } = await execFileAsync(
+        process.execPath,
+        [CLI_PATH, "info", "--daemon", "dt", "--json"],
+        { env: process.env },
+      );
       expect(JSON.parse(infoOut).objects).toBe(0);
     } finally {
       await daemon.close();
@@ -298,10 +303,11 @@ describe("板 daemon", () => {
     }
   }, 20000);
 
-  test("CLI 免路径：daemon 启动后不带板目录直接操作", async () => {
+  test("CLI 按 --daemon 显式寻址操作", async () => {
     const { dir, cleanup } = await tempBoard();
     const daemon = await startBoardDaemon({
       rootPath: dir,
+      name: "dt",
       source: "daemon-y",
     });
     try {
@@ -310,6 +316,8 @@ describe("板 daemon", () => {
         [
           CLI_PATH,
           "add",
+          "--daemon",
+          "dt",
           "--type",
           "StrokeObject",
           "--data",
@@ -321,7 +329,7 @@ describe("板 daemon", () => {
 
       const { stdout: listOut } = await execFileAsync(
         process.execPath,
-        [CLI_PATH, "list", "--json"],
+        [CLI_PATH, "list", "--daemon", "dt", "--json"],
         { env: process.env },
       );
       const listed = JSON.parse(listOut);
@@ -334,16 +342,17 @@ describe("板 daemon", () => {
     }
   }, 20000);
 
-  test("免路径下 show/delete 的对象 id 不误判为板路径", async () => {
+  test("show/delete 的对象 id 不误判为 daemon 名", async () => {
     const { dir, cleanup } = await tempBoard();
     const daemon = await startBoardDaemon({
       rootPath: dir,
+      name: "dt",
       source: "daemon-z",
     });
     try {
       const { stdout: idOut } = await execFileAsync(
         process.execPath,
-        [CLI_PATH, "add", "--type", "CircleObject", "--data", "{radius: 20}"],
+        [CLI_PATH, "add", "--daemon", "dt", "--type", "CircleObject", "--data", "{radius: 20}"],
         { env: process.env },
       );
       const id = idOut.trim();
@@ -351,17 +360,17 @@ describe("板 daemon", () => {
 
       const { stdout: showOut } = await execFileAsync(
         process.execPath,
-        [CLI_PATH, "show", id, "--json"],
+        [CLI_PATH, "show", id, "--daemon", "dt", "--json"],
         { env: process.env },
       );
       expect(JSON.parse(showOut).data.radius).toBe(20);
 
-      await execFileAsync(process.execPath, [CLI_PATH, "delete", id], {
+      await execFileAsync(process.execPath, [CLI_PATH, "delete", id, "--daemon", "dt"], {
         env: process.env,
       });
       const { stdout: listOut } = await execFileAsync(
         process.execPath,
-        [CLI_PATH, "list", "--json"],
+        [CLI_PATH, "list", "--daemon", "dt", "--json"],
         { env: process.env },
       );
       expect(JSON.parse(listOut).trash).toEqual([id]);
@@ -369,13 +378,13 @@ describe("板 daemon", () => {
       // undo 带显式操作 id：免路径下不误判为板路径；撤销 delete 节点后 trash 清空、对象回 objects
       const { stdout: undoOut } = await execFileAsync(
         process.execPath,
-        [CLI_PATH, "undo", "daemon-z/op-2"],
+        [CLI_PATH, "undo", "daemon-z/op-2", "--daemon", "dt"],
         { env: process.env },
       );
       expect(undoOut).toContain("撤销 daemon-z/op-2");
       const { stdout: listOut2 } = await execFileAsync(
         process.execPath,
-        [CLI_PATH, "list", "--json"],
+        [CLI_PATH, "list", "--daemon", "dt", "--json"],
         { env: process.env },
       );
       const afterUndo = JSON.parse(listOut2);
@@ -397,6 +406,7 @@ describe("板 daemon", () => {
     const relayUrl = `ws://127.0.0.1:${port}`;
     const daemon = await startBoardDaemon({
       rootPath: dir,
+      name: "dt",
       source: "daemon-r",
       relayUrl,
       boardId: "room",
@@ -407,7 +417,7 @@ describe("板 daemon", () => {
       try {
         await waitFor(() => relay.roomSize("room") >= 1, 15000);
 
-        const client = await connectDaemon(dir);
+        const client = await connectDaemonByPath(dir);
         const id = await client.api.addObject("StrokeObject", {
           data: { ...STROKE_DATA },
         });
@@ -443,6 +453,7 @@ describe("板 daemon", () => {
     const { dir, cleanup } = await tempBoard();
     const daemon = await startBoardDaemon({
       rootPath: dir,
+      name: "dt",
       source: "daemon-c",
     });
     try {
@@ -454,24 +465,23 @@ describe("板 daemon", () => {
         "add", "--type", "StrokeObject",
         "--data", "{points:[{x:1,y:1},{x:9,y:9}]}",
         "--position", "10,10",
-      ]);
+        "--daemon", "dt"]);
       const id = idOut.trim();
 
-      await run(["choose", id, "--choice", "c1"]);
-      await run(["modify", "--choice", "c1", "--displacement", "5,5"]);
-      await run(["modify", "--choice", "c1", "--displacement", "5,5"]);
+      await run(["choose", id, "--choice", "c1", "--daemon", "dt"]);
+      await run(["modify", "--choice", "c1", "--displacement", "5,5", "--daemon", "dt"]);
+      await run(["modify", "--choice", "c1", "--displacement", "5,5", "--daemon", "dt"]);
 
       // 驻留期间静态图未变（修改在 AOM 活动对象上）
       const { stdout: listMid } = await run([
         "ops",
         "--type",
         "modify-object",
-        "--json",
-      ]);
+        "--json", "--daemon", "dt"]);
       expect(JSON.parse(listMid)).toHaveLength(0);
 
-      await run(["unchoose", "c1", "--apply"]);
-      const { stdout: showOut } = await run(["show", id, "--json"]);
+      await run(["unchoose", "c1", "--apply", "--daemon", "dt"]);
+      const { stdout: showOut } = await run(["show", id, "--json", "--daemon", "dt"]);
       expect(JSON.parse(showOut).position).toEqual({ x: 20, y: 20 });
 
       // 两次 modify 累积为一条 modify-object 记录
@@ -479,28 +489,26 @@ describe("板 daemon", () => {
         "ops",
         "--type",
         "modify-object",
-        "--json",
-      ]);
+        "--json", "--daemon", "dt"]);
       expect(JSON.parse(opsOut)).toHaveLength(1);
 
       // buffer 已清
-      const { stdout: choicesOut } = await run(["choices", "--json"]);
+      const { stdout: choicesOut } = await run(["choices", "--json", "--daemon", "dt"]);
       expect(JSON.parse(choicesOut)).toEqual({});
 
       // discard 放弃：修改还原到选择前状态，不产生 modify 记录
-      const { stdout: beforeOut } = await run(["show", id, "--json"]);
+      const { stdout: beforeOut } = await run(["show", id, "--json", "--daemon", "dt"]);
       const beforePos = JSON.parse(beforeOut).position;
-      await run(["choose", id, "--choice", "drop"]);
-      await run(["modify", "--choice", "drop", "--displacement", "77,77"]);
-      await run(["unchoose", "drop", "--discard"]);
-      const { stdout: afterOut } = await run(["show", id, "--json"]);
+      await run(["choose", id, "--choice", "drop", "--daemon", "dt"]);
+      await run(["modify", "--choice", "drop", "--displacement", "77,77", "--daemon", "dt"]);
+      await run(["unchoose", "drop", "--discard", "--daemon", "dt"]);
+      const { stdout: afterOut } = await run(["show", id, "--json", "--daemon", "dt"]);
       expect(JSON.parse(afterOut).position).toEqual(beforePos);
       const { stdout: opsAfter } = await run([
         "ops",
         "--type",
         "modify-object",
-        "--json",
-      ]);
+        "--json", "--daemon", "dt"]);
       expect(JSON.parse(opsAfter)).toHaveLength(1);
     } finally {
       await daemon.close();
@@ -512,6 +520,7 @@ describe("板 daemon", () => {
     const { dir, cleanup } = await tempBoard();
     let daemon = await startBoardDaemon({
       rootPath: dir,
+      name: "dt",
       source: "daemon-r",
     });
     const run = (argv) =>
@@ -523,35 +532,36 @@ describe("板 daemon", () => {
         "add", "--type", "StrokeObject",
         "--data", "{points:[{x:1,y:1},{x:9,y:9}]}",
         "--position", "10,10",
-      ]);
+        "--daemon", "dt"]);
       const id = idOut.trim();
-      await run(["choose", id, "--choice", "c1"]);
+      await run(["choose", id, "--choice", "c1", "--daemon", "dt"]);
 
       // 注册表权威：驻留中的成员标 active:true
-      const before = JSON.parse((await run(["choices", "--json"])).stdout);
+      const before = JSON.parse((await run(["choices", "--json", "--daemon", "dt"])).stdout);
       expect(before.c1).toEqual([{ id, missing: false, active: true }]);
 
       // 重启 daemon：AOM 注册表随进程丢失，buffer 文件种子仍在
       await daemon.close();
       daemon = await startBoardDaemon({
         rootPath: dir,
+        name: "dt",
         source: "daemon-r",
       });
 
-      const unrestored = JSON.parse((await run(["choices", "--json"])).stdout);
+      const unrestored = JSON.parse((await run(["choices", "--json", "--daemon", "dt"])).stdout);
       expect(unrestored.c1).toEqual([{ id, missing: false, active: false }]);
 
       // modify 触发自愈重选：注册表重建，驻留期间修改不入日志
-      await run(["modify", "--choice", "c1", "--displacement", "5,5"]);
-      const healed = JSON.parse((await run(["choices", "--json"])).stdout);
+      await run(["modify", "--choice", "c1", "--displacement", "5,5", "--daemon", "dt"]);
+      const healed = JSON.parse((await run(["choices", "--json", "--daemon", "dt"])).stdout);
       expect(healed.c1).toEqual([{ id, missing: false, active: true }]);
       const midOps = JSON.parse(
-        (await run(["ops", "--type", "modify-object", "--json"])).stdout,
+        (await run(["ops", "--type", "modify-object", "--json", "--daemon", "dt"])).stdout,
       );
       expect(midOps).toHaveLength(0);
 
-      await run(["unchoose", "c1", "--apply"]);
-      const shown = JSON.parse((await run(["show", id, "--json"])).stdout);
+      await run(["unchoose", "c1", "--apply", "--daemon", "dt"]);
+      const shown = JSON.parse((await run(["show", id, "--json", "--daemon", "dt"])).stdout);
       expect(shown.position).toEqual({ x: 15, y: 15 });
     } finally {
       await daemon.close();
@@ -563,10 +573,11 @@ describe("板 daemon", () => {
     const { dir, cleanup } = await tempBoard();
     const daemon = await startBoardDaemon({
       rootPath: dir,
+      name: "dt",
       source: "daemon-c",
     });
-    const client1 = await connectDaemon(dir);
-    const client2 = await connectDaemon(dir);
+    const client1 = await connectDaemonByPath(dir);
+    const client2 = await connectDaemonByPath(dir);
     try {
       const calls = [];
       for (let i = 0; i < 5; i++) {
@@ -595,9 +606,10 @@ describe("板 daemon", () => {
     const { dir, cleanup } = await tempBoard();
     const daemon = await startBoardDaemon({
       rootPath: dir,
+      name: "dt",
       source: "daemon-c",
     });
-    const client = await connectDaemon(dir);
+    const client = await connectDaemonByPath(dir);
     try {
       // 前 3 个操作等待完成：确认通道与队列工作
       for (let i = 0; i < 3; i++) {

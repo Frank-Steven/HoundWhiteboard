@@ -118,7 +118,7 @@ Kernel 不依赖 DOM，也不依赖 Worker 宿主：
 - `hitTest`、`queryObjects`、`queryChunkObjects` 已接到 Worker 权威状态
 - `undo` / `redo` 已接通（含侧栏按钮与快捷键）
 - 持久化已接通：demo 以 `~/hound-whiteboard/demo-board` 为板目录运行，撤销历史穿越重开
-- CLI 前端已接通：`yarn cli` 直读直写板文件（`src/cli/`）；daemon 模式下经中继与协作端实时同步，「与 GUI 不同步」仅限文件直读直写回退路径（回退路径下 GUI 运行期间勿操作同一板目录，详见 cli-document.md daemon 章节）
+- CLI 前端已接通：写命令经持板 daemon 执行（`src/cli/`），读命令可直读板文件；daemon 连中继时与协作端实时同步，多 CLI 并发安全（详见 cli-document.md daemon 章节）
 
 ## 关键术语
 

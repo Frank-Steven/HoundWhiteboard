@@ -9,6 +9,7 @@ import { jest } from "@jest/globals";
 import {
   runCli,
   setupCliTestEnv,
+  startTestDaemon,
   STROKE_DATA,
   tempBoardDir,
 } from "./cli-test-helper.js";
@@ -43,11 +44,13 @@ describe("CLI 通用标志", () => {
 
   test("--key=value 形式与 --key value 等价", async () => {
     const { dir, cleanup } = tempBoardDir();
+    let daemon = null;
     try {
       await runCli(["create", `--path=${dir}`, "--width", "800", "--height", "600"]);
+      daemon = await startTestDaemon("args-test", dir, { source: "cli" });
       const { stdout: id } = await runCli([
         "add",
-        `--path=${dir}`,
+        `--daemon=args-test`,
         "--type",
         "StrokeObject",
         "--data",
@@ -55,6 +58,7 @@ describe("CLI 通用标志", () => {
       ]);
       expect(id.trim()).toMatch(/^cli\/\d+$/);
     } finally {
+      if (daemon) await daemon.close();
       cleanup();
     }
   });

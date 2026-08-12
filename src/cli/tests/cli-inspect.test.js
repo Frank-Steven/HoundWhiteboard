@@ -10,6 +10,7 @@ import {
   runCli,
   runCliJson,
   setupCliTestEnv,
+  startTestDaemon,
   STROKE_DATA,
   tempBoardDir,
 } from "./cli-test-helper.js";
@@ -41,18 +42,20 @@ describe("CLI 查询命令", () => {
 
   test("ops 打印操作记录明细，支持过滤与 limit", async () => {
     const { dir, cleanup } = tempBoardDir();
+    let daemon = null;
     try {
       await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
+      daemon = await startTestDaemon("inspect-test", dir, { source: "cli" });
       const { stdout: id } = await runCli([
         "add",
-        "--path",
-        dir,
+        "--daemon",
+        "inspect-test",
         "--type",
         "StrokeObject",
         "--data",
         STROKE_DATA,
       ]);
-      await runCli(["delete", id.trim(), "--path", dir]);
+      await runCli(["delete", id.trim(), "--daemon", "inspect-test"]);
 
       const all = await runCliJson(["ops", "--path", dir]);
       expect(all.map((r) => r.type)).toEqual(["add-object", "delete-object"]);
@@ -72,21 +75,24 @@ describe("CLI 查询命令", () => {
       ]);
       expect(filtered).toHaveLength(1);
     } finally {
+      if (daemon) await daemon.close();
       cleanup();
     }
   });
 
   test("tree 以缩进树打印活动链、HEAD 与已撤销分支", async () => {
     const { dir, cleanup } = tempBoardDir();
+    let daemon = null;
     try {
       await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
+      daemon = await startTestDaemon("inspect-test", dir, { source: "cli" });
       const { stdout: emptyOut } = await runCli(["tree", "--path", dir]);
       expect(emptyOut).toContain("（空树）");
 
       await runCli([
         "add",
-        "--path",
-        dir,
+        "--daemon",
+        "inspect-test",
         "--type",
         "StrokeObject",
         "--data",
@@ -94,20 +100,21 @@ describe("CLI 查询命令", () => {
       ]);
       await runCli([
         "add",
-        "--path",
-        dir,
+        "--daemon",
+        "inspect-test",
         "--type",
         "StrokeObject",
         "--data",
         STROKE_DATA,
       ]);
-      await runCli(["undo", "cli/op-2", "--path", dir]);
+      await runCli(["undo", "cli/op-2", "--daemon", "inspect-test"]);
 
       const { stdout } = await runCli(["tree", "--path", dir]);
       expect(stdout).toContain("cli/op-1  add-object  [HEAD]");
       expect(stdout).toContain("  cli/op-2  add-object  [已撤销]");
       expect(stdout).toContain("重做栈：cli/op-2");
     } finally {
+      if (daemon) await daemon.close();
       cleanup();
     }
   });
