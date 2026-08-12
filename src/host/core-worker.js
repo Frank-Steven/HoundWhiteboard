@@ -545,6 +545,8 @@ class CoreWorkerRuntime {
         lastTime: persistence.session.meta?.lastTime ?? 0,
         knownObjects: persistence.session.objects,
         knownTrash: persistence.session.trash,
+        knownMeta: persistence.session.meta,
+        knownChunkMetadata: persistence.session.chunkMetadataList,
       });
     }
 

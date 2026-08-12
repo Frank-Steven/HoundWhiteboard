@@ -209,6 +209,46 @@ describe("Journaler", () => {
     expect(writeCount).toBe(0);
   });
 
+  test("knownMeta 种子：无变化 flush 不重写板元数据与区块元数据", async () => {
+    const { boardCore, api, store } = setup();
+    await store.create();
+    const journaler = createJournaler({ boardCore, store });
+    journaler.attach();
+    await createStaticStroke(api, "s1");
+    await journaler.detach();
+
+    // 模拟重新打开：以盘上 meta 与区块元数据为种子，无修改 flush 不应重写
+    const meta = await store.readMeta();
+    let writeMetaCount = 0;
+    let writeChunkCount = 0;
+    const countingStore = Object.create(store);
+    countingStore.writeMeta = async (m) => {
+      writeMetaCount++;
+      return store.writeMeta(m);
+    };
+    countingStore.writeChunkMetadata = async (chunkId, metadata) => {
+      writeChunkCount++;
+      return store.writeChunkMetadata(chunkId, metadata);
+    };
+    const journaler2 = createJournaler({ boardCore, store: countingStore });
+    journaler2.attach({
+      nextSegmentSeq: meta.nextSegmentSeq,
+      lastTime: meta.lastTime ?? 0,
+      knownObjects: await store.readAllObjects(),
+      knownTrash: [],
+      knownMeta: meta,
+      knownChunkMetadata: await store.readAllChunkMetadata(),
+    });
+    await journaler2.flush();
+    expect(writeMetaCount).toBe(0);
+    expect(writeChunkCount).toBe(0);
+
+    // 真实修改后元数据正常重写
+    await createStaticStroke(api, "s2");
+    await journaler2.flush();
+    expect(writeMetaCount).toBe(1);
+  });
+
   test("trash 种子：重开后撤销删除，trash 文件随对象复活移除", async () => {
     const { boardCore, api, store } = setup();
     await store.create();

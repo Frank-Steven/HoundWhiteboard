@@ -76,6 +76,8 @@ async function openBoardSession(rootPath, options = {}) {
     lastTime: meta?.lastTime ?? 0,
     knownObjects: session.objects,
     knownTrash: session.trash,
+    knownMeta: meta,
+    knownChunkMetadata: session.chunkMetadataList,
   });
 
   const api = new BoardApi(boardCore);

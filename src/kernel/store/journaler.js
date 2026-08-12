@@ -18,6 +18,24 @@
  * 记录经 append 事件入队，微任务合批后自动落盘；flush 可显式等待排空。
  * 对象文件按当前白板状态调和（序列化比对，仅写差异），撤销/重做/远端记录引起的任何状态迁移统一收敛。
  */
+/**
+ * 按键排序的 JSON 序列化（键序无关的内容指纹）
+ * @param {*} value - 任意可序列化值
+ * @returns {string} 排序后的 JSON 文本
+ */
+function stringifySorted(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(stringifySorted).join(",")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    return `{${keys
+      .map((key) => `${JSON.stringify(key)}:${stringifySorted(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function createJournaler({ boardCore, store, collectMeta }) {
   /** @type {(() => void)|null} 追加事件退订函数 */
   let unsubscribe = null;
@@ -33,6 +51,9 @@ function createJournaler({ boardCore, store, collectMeta }) {
 
   /** @type {{nextSegmentSeq: number, lastTime: number}} 段序号与最新时间标记 */
   let state = { nextSegmentSeq: 0, lastTime: 0 };
+
+  /** @type {?string} 已落盘板元数据的排序指纹（比对相同则跳过重写） */
+  let lastMetaJson = null;
 
   /**
    * 已落盘对象的内容指纹
@@ -133,11 +154,17 @@ function createJournaler({ boardCore, store, collectMeta }) {
     }
     await reconcileObjects();
     await reconcileChunks();
-    await store.writeMeta({
+    // 板元数据指纹比对：值不变不重写（读命令不应触碰文件）
+    const meta = {
       lastTime: state.lastTime,
       nextSegmentSeq: state.nextSegmentSeq,
       ...(collectMeta?.() ?? {}),
-    });
+    };
+    const metaJson = stringifySorted(meta);
+    if (metaJson !== lastMetaJson) {
+      await store.writeMeta(meta);
+      lastMetaJson = metaJson;
+    }
   };
 
   /**
@@ -170,9 +197,11 @@ function createJournaler({ boardCore, store, collectMeta }) {
      * @param {number} [options.lastTime=0] - 已落盘的最晚时间标记
      * @param {Object[]} [options.knownObjects=[]] - 盘上已有活动对象数据（指纹种子，避免首 flush 重写）
      * @param {Object[]} [options.knownTrash=[]] - 盘上已有 trash 条目（指纹种子）
+     * @param {Object} [options.knownMeta=null] - 盘上板元数据（含 formatVersion，剥离后作首轮比对种子）
+     * @param {Array<{chunkId: number, tierGraph: Array, objectCoverIndex: Array}>} [options.knownChunkMetadata=[]] - 盘上区块元数据（指纹种子，避免首 flush 重写）
      * @returns {void}
      */
-    attach({ nextSegmentSeq = 0, lastTime = 0, knownObjects = [], knownTrash = [] } = {}) {
+    attach({ nextSegmentSeq = 0, lastTime = 0, knownObjects = [], knownTrash = [], knownMeta = null, knownChunkMetadata = [] } = {}) {
       if (unsubscribe !== null) {
         throw new Error("journaler 已挂接");
       }
@@ -186,6 +215,21 @@ function createJournaler({ boardCore, store, collectMeta }) {
           location: "trash",
           json: JSON.stringify(entry),
         });
+      }
+      if (knownMeta !== null && typeof knownMeta === "object") {
+        // 盘上读出的 meta 含 formatVersion 键，剥离后与待写形状对齐
+        const { formatVersion: _formatVersion, ...rest } = knownMeta;
+        lastMetaJson = stringifySorted(rest);
+      }
+      for (const metadata of knownChunkMetadata) {
+        // 种子与写入形状一致（键序固定），避免首 flush 因键序差异重写
+        lastChunkSync.set(
+          metadata.chunkId,
+          JSON.stringify({
+            tierGraph: metadata.tierGraph ?? [],
+            objectCoverIndex: metadata.objectCoverIndex ?? [],
+          }),
+        );
       }
       unsubscribe = boardCore.operationLog.onAppend((record) => {
         pendingRecords.push(record);
