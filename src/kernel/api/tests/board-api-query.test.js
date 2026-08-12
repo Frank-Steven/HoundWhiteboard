@@ -55,6 +55,21 @@ describe("BoardApi.addObject", () => {
     const id = await api.addObject("StrokeObject", { data: { ...STROKE_DATA } });
     expect(id).toBe("test/42");
   });
+
+  test("并发 addObject 不撞号：分配串行化，全部成功且 id 唯一", async () => {
+    const { api } = createEnd("test");
+    const ids = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        api.addObject("StrokeObject", { data: { ...STROKE_DATA } }),
+      ),
+    );
+    expect(new Set(ids).size).toBe(8);
+    expect(ids.sort()).toEqual(
+      Array.from({ length: 8 }, (_, i) => `test/${i + 1}`),
+    );
+    expect(api.queryObjectList().objects).toHaveLength(8);
+    expect(api.queryBoardInfo().records).toBe(8);
+  });
 });
 
 describe("BoardApi 查询面", () => {

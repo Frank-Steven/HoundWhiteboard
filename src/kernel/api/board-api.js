@@ -1342,8 +1342,9 @@ class BoardApi {
     const pool = new IncrementalIdPool(source, counters[source] ?? 0);
     const id = pool.allocate();
     this.createObject(type, { ...props, id });
-    await this.commitObjects([id]);
+    // 计数在 commit 的异步让出前上报：并发调用分配时读到已上报的最新计数，避免撞号
     this.reportObjectIdCounter(source, pool.counter);
+    await this.commitObjects([id]);
     return id;
   }
 
