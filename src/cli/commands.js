@@ -98,36 +98,114 @@ function parsePosition(text) {
 }
 
 /**
+ * 按 --json 模式输出：--json 输出纯 JSON，默认输出人类可读文本
+ * @param {Object} flags - 命令标志
+ * @param {*} jsonValue - --json 模式下的输出值
+ * @param {string} humanText - 默认模式下的输出文本
+ * @returns {void}
+ */
+function printResult(flags, jsonValue, humanText) {
+  if (flags.json === true) {
+    console.log(JSON.stringify(jsonValue, null, 2));
+  } else {
+    console.log(humanText);
+  }
+}
+
+/**
+ * create 命令：创建空板并打印确认
+ * @param {Object} session - 板会话
+ * @param {string[]} _args - 位置参数（未使用）
+ * @param {Object} flags - 标志（json）
+ * @returns {Promise<void>}
+ *
+ * @description
+ * 板目录已存在时在开会话阶段报错；创建成功后默认输出人类可读确认，--json 输出板概要。
+ */
+async function cmdCreate(session, _args, flags) {
+  if (flags.json === true) {
+    const info = await session.api.queryBoardInfo();
+    console.log(JSON.stringify(info, null, 2));
+    return;
+  }
+  console.log(`板已创建：${session.rootPath}`);
+}
+
+/**
  * info 命令：打印板元数据与统计
  * @param {Object} session - 板会话
+ * @param {string[]} _args - 位置参数（未使用）
+ * @param {Object} flags - 标志（json）
  * @returns {Promise<void>}
  */
-async function cmdInfo(session) {
+async function cmdInfo(session, _args, flags) {
   const info = await session.api.queryBoardInfo();
-  console.log(JSON.stringify(info, null, 2));
+  if (flags.json === true) {
+    console.log(JSON.stringify(info, null, 2));
+    return;
+  }
+  const config = info.boardConfig
+    ? `${info.boardConfig.width}×${info.boardConfig.height}`
+    : "未设置";
+  const lines = [
+    `板配置：${config}`,
+    `记录：${info.records} 条（HEAD ${info.head ?? "无"}）`,
+    `活动链：${info.chain.length > 0 ? info.chain.join(" → ") : "（空）"}`,
+    `对象：${info.objects}（trash：${info.trash}）`,
+  ];
+  console.log(lines.join("\n"));
 }
 
 /**
  * list 命令：列出活动与 trash 对象
  * @param {Object} session - 板会话
+ * @param {string[]} _args - 位置参数（未使用）
+ * @param {Object} flags - 标志（json）
  * @returns {Promise<void>}
  */
-async function cmdList(session) {
+async function cmdList(session, _args, flags) {
   const { objects, trash } = await session.api.queryObjectList();
-  console.log(JSON.stringify({ objects, trash }, null, 2));
+  if (flags.json === true) {
+    console.log(JSON.stringify({ objects, trash }, null, 2));
+    return;
+  }
+  const lines = [];
+  if (objects.length > 0) {
+    lines.push("对象：");
+    for (const obj of objects) {
+      lines.push(`  ${obj.id}  ${obj.type}`);
+    }
+  }
+  if (trash.length > 0) {
+    lines.push("trash：");
+    for (const id of trash) {
+      lines.push(`  ${id}`);
+    }
+  }
+  if (lines.length === 0) {
+    console.log("（空板）");
+    return;
+  }
+  console.log(lines.join("\n"));
 }
 
 /**
  * show 命令：打印单个对象的序列化数据
  * @param {Object} session - 板会话
  * @param {string[]} args - 位置参数（对象 id）
+ * @param {Object} flags - 标志（json）
  * @returns {Promise<void>}
  */
-async function cmdShow(session, args) {
+async function cmdShow(session, args, flags) {
   const id = args[0];
   if (!id) throw new Error("show 需要一个对象 id。");
   const data = await session.api.queryObject(id);
   if (!data) throw new Error(`对象不存在：${id}`);
+  if (flags.json === true) {
+    console.log(JSON.stringify(data, null, 2));
+    return;
+  }
+  console.log(`${id}  ${data.type ?? "?"}`);
   console.log(JSON.stringify(data, null, 2));
 }
 
@@ -135,11 +213,12 @@ async function cmdShow(session, args) {
  * add 命令：创建并提交一个对象
  * @param {Object} session - 板会话
  * @param {string[]} _args - 位置参数（未使用）
- * @param {Object} flags - 标志（type、data、position、source）
+ * @param {Object} flags - 标志（type、data、position、source、json）
  * @returns {Promise<void>}
  *
  * @description
  * 对象 id 由 CLI 侧 id 池按板上计数续号分配，创建后经 commit 入静态图并记录日志。
+ * 默认输出单行 id（脚本捕获用）；--json 输出 {"id": ...}。
  */
 async function cmdAdd(session, _args, flags) {
   const type = flags.type;
@@ -151,7 +230,7 @@ async function cmdAdd(session, _args, flags) {
     props.property = parseLenientJson(flags.property);
   }
   const id = await session.api.addObject(type, props);
-  console.log(id);
+  printResult(flags, { id }, id);
 }
 
 /**
@@ -164,7 +243,7 @@ async function cmdAdd(session, _args, flags) {
 async function cmdDelete(session, args, flags) {
   if (args.length === 0) throw new Error("delete 需要至少一个对象 id。");
   await session.api.deleteObjects(args);
-  console.log(`deleted: ${args.join(", ")}`);
+  printResult(flags, { deleted: args }, `deleted: ${args.join(", ")}`);
 }
 
 /**
@@ -177,7 +256,9 @@ async function cmdDelete(session, args, flags) {
 async function cmdUndo(session, args, flags) {
   const targetNodeId = args[0];
   const result = await session.api.undo(targetNodeId);
-  console.log(
+  printResult(
+    flags,
+    { undone: result.undone, targetNodeId: result.targetNodeId ?? null },
     result.undone
       ? `undo ok（撤销 ${result.targetNodeId}）`
       : `undo：无可撤销目标${targetNodeId ? `（${targetNodeId} 不在活动链上）` : "（无本端操作）"}`,
@@ -193,7 +274,9 @@ async function cmdUndo(session, args, flags) {
  */
 async function cmdRedo(session, _args, flags) {
   const result = await session.api.redo();
-  console.log(
+  printResult(
+    flags,
+    { redone: result.redone, targetNodeId: result.targetNodeId ?? null },
     result.redone
       ? `redo ok（重做 ${result.targetNodeId}）`
       : "redo：无最近撤销可重做",
@@ -219,7 +302,15 @@ async function cmdOps(session, _args, flags) {
     options.limit = limit;
   }
   const records = await session.api.queryOperations(options);
-  console.log(JSON.stringify(records, null, 2));
+  if (flags.json === true) {
+    console.log(JSON.stringify(records, null, 2));
+    return;
+  }
+  for (const record of records) {
+    console.log(
+      `${record.id}  ${record.type}  ${record.source}  ${record.time}${record.parentId ? `  （父 ${record.parentId}）` : ""}`,
+    );
+  }
 }
 
 /**
@@ -264,10 +355,16 @@ function formatUndoTree(tree) {
 /**
  * tree 命令：以缩进树形式打印时间回溯树
  * @param {Object} session - 板会话
+ * @param {string[]} _args - 位置参数（未使用）
+ * @param {Object} flags - 标志（json）
  * @returns {Promise<void>}
  */
-async function cmdTree(session) {
+async function cmdTree(session, _args, flags) {
   const tree = await session.api.queryUndoTree();
+  if (flags.json === true) {
+    console.log(JSON.stringify(tree, null, 2));
+    return;
+  }
   console.log(formatUndoTree(tree));
   if (tree.redoStack.length > 0) {
     console.log(
@@ -436,7 +533,7 @@ async function cmdChoose(session, args, flags) {
   await session.api.addActiveObjects(args, { choice: name });
   // buffer 文件仍维护：daemon 重启后的自愈种子
   await setChoice(session.rootPath, name, args);
-  console.log(`choose ok（${name}：${args.join(", ")}）`);
+  printResult(flags, { choice: name, ids: args }, `choose ok（${name}：${args.join(", ")}）`);
 }
 
 /**
@@ -449,7 +546,7 @@ async function cmdChoose(session, args, flags) {
  * buffer 文件中未恢复的 choice（daemon 重启后未再操作）以 active:false 标注。
  * 文件模式选择不跨进程驻留，直接列 buffer 文件并标注。
  */
-async function cmdChoices(session) {
+async function cmdChoices(session, _args, flags) {
   const buffer = await loadChoices(session.rootPath);
   const out = {};
   const registered = new Set();
@@ -468,7 +565,25 @@ async function cmdChoices(session) {
       active: summaries[i]?.isActive ?? false,
     }));
   }
-  console.log(JSON.stringify(out, null, 2));
+  if (flags.json === true) {
+    console.log(JSON.stringify(out, null, 2));
+    return;
+  }
+  const entries = Object.entries(out);
+  if (entries.length === 0) {
+    console.log("（无 choice）");
+    return;
+  }
+  const lines = [];
+  for (const [name, members] of entries) {
+    lines.push(`${name}（${members.length} 成员）：`);
+    for (const member of members) {
+      lines.push(
+        `  ${member.id}${member.active ? "  active" : "  active:false"}${member.missing ? "  missing" : ""}`,
+      );
+    }
+  }
+  console.log(lines.join("\n"));
 }
 
 /**
@@ -502,7 +617,13 @@ async function cmdUnchoose(session, args, flags) {
   }
   await removeChoice(session.rootPath, name);
   const dropped = ids.length - alive.length;
-  console.log(
+  printResult(
+    flags,
+    {
+      choice: name,
+      action: apply ? "apply" : "discard",
+      dropped,
+    },
     `unchoose ok（${name}，${apply ? "已提交" : "已放弃"}${dropped > 0 ? `，${dropped} 个对象已不在板上` : ""}）`,
   );
 }
@@ -553,7 +674,7 @@ async function cmdModify(session, args, flags) {
     await session.api.abortSupra(supraKey);
     throw error;
   }
-  console.log(`modify ok（${id}，超分子链）`);
+  printResult(flags, { objectId: id, committed: true }, `modify ok（${id}，超分子链）`);
 }
 
 /**
@@ -602,7 +723,9 @@ async function modifyChoice(session, name, flags, onlyId) {
     // 自愈重选携带 choice，重启后重建注册表
     await ensureActive(session, ids, { choice: name });
     await session.api.modifyObjects(patches);
-    console.log(
+    printResult(
+      flags,
+      { choice: name, ids, committed: false, pending: true },
       `modify ok（${name}：${ids.join(", ")}，驻留待提交）`,
     );
     return;
@@ -619,7 +742,11 @@ async function modifyChoice(session, name, flags, onlyId) {
     await session.api.abortSupra(supraKey);
     throw error;
   }
-  console.log(`modify ok（${name}：${ids.join(", ")}，已提交）`);
+  printResult(
+    flags,
+    { choice: name, ids, committed: true },
+    `modify ok（${name}：${ids.join(", ")}，已提交）`,
+  );
 }
 
 /**
@@ -628,7 +755,7 @@ async function modifyChoice(session, name, flags, onlyId) {
  * @type {Object<string, {run: Function, create?: boolean}>}
  */
 const COMMANDS = {
-  create: { run: cmdInfo, create: true },
+  create: { run: cmdCreate, create: true },
   info: { run: cmdInfo },
   list: { run: cmdList },
   show: { run: cmdShow },

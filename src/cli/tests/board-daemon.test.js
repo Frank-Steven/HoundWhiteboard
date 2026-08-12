@@ -276,6 +276,7 @@ describe("板 daemon", () => {
         "list",
         "--path",
         dir,
+        "--json",
       ]);
       const listed = JSON.parse(listOut);
       expect(listed.objects).toEqual([
@@ -288,6 +289,7 @@ describe("板 daemon", () => {
         "info",
         "--path",
         dir,
+        "--json",
       ]);
       expect(JSON.parse(infoOut).objects).toBe(0);
     } finally {
@@ -319,7 +321,7 @@ describe("板 daemon", () => {
 
       const { stdout: listOut } = await execFileAsync(
         process.execPath,
-        [CLI_PATH, "list"],
+        [CLI_PATH, "list", "--json"],
         { env: process.env },
       );
       const listed = JSON.parse(listOut);
@@ -349,7 +351,7 @@ describe("板 daemon", () => {
 
       const { stdout: showOut } = await execFileAsync(
         process.execPath,
-        [CLI_PATH, "show", id],
+        [CLI_PATH, "show", id, "--json"],
         { env: process.env },
       );
       expect(JSON.parse(showOut).data.radius).toBe(20);
@@ -359,7 +361,7 @@ describe("板 daemon", () => {
       });
       const { stdout: listOut } = await execFileAsync(
         process.execPath,
-        [CLI_PATH, "list"],
+        [CLI_PATH, "list", "--json"],
         { env: process.env },
       );
       expect(JSON.parse(listOut).trash).toEqual([id]);
@@ -373,7 +375,7 @@ describe("板 daemon", () => {
       expect(undoOut).toContain("撤销 daemon-z/op-2");
       const { stdout: listOut2 } = await execFileAsync(
         process.execPath,
-        [CLI_PATH, "list"],
+        [CLI_PATH, "list", "--json"],
         { env: process.env },
       );
       const afterUndo = JSON.parse(listOut2);
@@ -460,30 +462,45 @@ describe("板 daemon", () => {
       await run(["modify", "--choice", "c1", "--displacement", "5,5"]);
 
       // 驻留期间静态图未变（修改在 AOM 活动对象上）
-      const { stdout: listMid } = await run(["ops", "--type", "modify-object"]);
+      const { stdout: listMid } = await run([
+        "ops",
+        "--type",
+        "modify-object",
+        "--json",
+      ]);
       expect(JSON.parse(listMid)).toHaveLength(0);
 
       await run(["unchoose", "c1", "--apply"]);
-      const { stdout: showOut } = await run(["show", id]);
+      const { stdout: showOut } = await run(["show", id, "--json"]);
       expect(JSON.parse(showOut).position).toEqual({ x: 20, y: 20 });
 
       // 两次 modify 累积为一条 modify-object 记录
-      const { stdout: opsOut } = await run(["ops", "--type", "modify-object"]);
+      const { stdout: opsOut } = await run([
+        "ops",
+        "--type",
+        "modify-object",
+        "--json",
+      ]);
       expect(JSON.parse(opsOut)).toHaveLength(1);
 
       // buffer 已清
-      const { stdout: choicesOut } = await run(["choices"]);
+      const { stdout: choicesOut } = await run(["choices", "--json"]);
       expect(JSON.parse(choicesOut)).toEqual({});
 
       // discard 放弃：修改还原到选择前状态，不产生 modify 记录
-      const { stdout: beforeOut } = await run(["show", id]);
+      const { stdout: beforeOut } = await run(["show", id, "--json"]);
       const beforePos = JSON.parse(beforeOut).position;
       await run(["choose", id, "--choice", "drop"]);
       await run(["modify", "--choice", "drop", "--displacement", "77,77"]);
       await run(["unchoose", "drop", "--discard"]);
-      const { stdout: afterOut } = await run(["show", id]);
+      const { stdout: afterOut } = await run(["show", id, "--json"]);
       expect(JSON.parse(afterOut).position).toEqual(beforePos);
-      const { stdout: opsAfter } = await run(["ops", "--type", "modify-object"]);
+      const { stdout: opsAfter } = await run([
+        "ops",
+        "--type",
+        "modify-object",
+        "--json",
+      ]);
       expect(JSON.parse(opsAfter)).toHaveLength(1);
     } finally {
       await daemon.close();
@@ -511,7 +528,7 @@ describe("板 daemon", () => {
       await run(["choose", id, "--choice", "c1"]);
 
       // 注册表权威：驻留中的成员标 active:true
-      const before = JSON.parse((await run(["choices"])).stdout);
+      const before = JSON.parse((await run(["choices", "--json"])).stdout);
       expect(before.c1).toEqual([{ id, missing: false, active: true }]);
 
       // 重启 daemon：AOM 注册表随进程丢失，buffer 文件种子仍在
@@ -521,20 +538,20 @@ describe("板 daemon", () => {
         source: "daemon-r",
       });
 
-      const unrestored = JSON.parse((await run(["choices"])).stdout);
+      const unrestored = JSON.parse((await run(["choices", "--json"])).stdout);
       expect(unrestored.c1).toEqual([{ id, missing: false, active: false }]);
 
       // modify 触发自愈重选：注册表重建，驻留期间修改不入日志
       await run(["modify", "--choice", "c1", "--displacement", "5,5"]);
-      const healed = JSON.parse((await run(["choices"])).stdout);
+      const healed = JSON.parse((await run(["choices", "--json"])).stdout);
       expect(healed.c1).toEqual([{ id, missing: false, active: true }]);
       const midOps = JSON.parse(
-        (await run(["ops", "--type", "modify-object"])).stdout,
+        (await run(["ops", "--type", "modify-object", "--json"])).stdout,
       );
       expect(midOps).toHaveLength(0);
 
       await run(["unchoose", "c1", "--apply"]);
-      const shown = JSON.parse((await run(["show", id])).stdout);
+      const shown = JSON.parse((await run(["show", id, "--json"])).stdout);
       expect(shown.position).toEqual({ x: 15, y: 15 });
     } finally {
       await daemon.close();

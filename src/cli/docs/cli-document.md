@@ -49,22 +49,22 @@ $ yarn cli undo
 yarn cli <命令> [参数] [--path <板目录>] [--标志 值]
 ```
 
-| 命令                                                              | 说明                                                                                 |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `create --path <板目录> [--width 800] [--height 600]`             | 创建空板；板目录已存在时报错                                                         |
-| `info [--path <板目录>]`                                          | 打印板元数据与统计（板配置、记录数、HEAD、活动链 chain、对象/trash 计数、id 计数器） |
-| `list [--path <板目录>]`                                          | 列出活动对象（id、类型）与 trash 条目                                                |
-| `show <对象id> [--path <板目录>]`                                 | 打印单个对象的序列化数据                                                             |
-| `add --type <类型> [--data '<json>' \| "@文件"] [--property '<json>'] [--position x,y] [--path <板目录>]` | 创建并提交对象，打印新对象 id |
-| `delete <对象id...> [--path <板目录>]`                            | 删除对象（移入 trash，可撤销）                                                       |
-| `undo [<操作id>] [--path <板目录>]` / `redo [--path <板目录>]`    | 撤销 / 重做一步；undo 指定操作 id 时撤销该操作，省略时撤销本端最近操作               |
-| `ops [--source 来源] [--type 类型] [--limit N] [--path <板目录>]` | 打印操作记录明细（id/type/source/time/parentId/supraOpId/molId/supraId/discard/properties/payload） |
-| `tree [--path <板目录>]`                                          | 以缩进树打印时间回溯树（HEAD 与已撤销分支标记、重做栈；聚合节点以 `{choose+modify+unchoose}` 花括号包裹、多对象分子节点以方括号包裹、discard 型成员带 `(discard)` 后缀） |
-| `choose <对象id...> --choice <名> [--path <板目录>]`              | 把对象选入命名 choice（AOM 命名选择注册表权威；同一对象同时只属一个 choice）                    |
-| `choices [--path <板目录>]`                                       | 列出全部 choice 及成员状态（daemon 驻留标 active；未恢复种子标 active:false）              |
-| `unchoose <名> (--apply\|--discard) [--path <板目录>]`            | 结束一个 choice：--apply 提交修改 / --discard 放弃修改                               |
-| `modify <对象id> <修改标志> [--path <板目录>]`                    | 修改单对象；未选中时自动 choose→modify→commit 超分子会话，闭合折叠为一个聚合节点      |
-| `modify --choice <名> <修改标志> [--path <板目录>]`               | 修改 choice 成员；增量逐对象换算，全量仅单成员 choice 允许                           |
+| 命令                                                                                                      | 说明                                                                                                                                                                     |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `create --path <板目录> [--width 800] [--height 600]`                                                     | 创建空板；板目录已存在时报错                                                                                                                                             |
+| `info [--path <板目录>]`                                                                                  | 打印板元数据与统计（板配置、记录数、HEAD、活动链 chain、对象/trash 计数、id 计数器）                                                                                     |
+| `list [--path <板目录>]`                                                                                  | 列出活动对象（id、类型）与 trash 条目                                                                                                                                    |
+| `show <对象id> [--path <板目录>]`                                                                         | 打印单个对象的序列化数据                                                                                                                                                 |
+| `add --type <类型> [--data '<json>' \| "@文件"] [--property '<json>'] [--position x,y] [--path <板目录>]` | 创建并提交对象，打印新对象 id                                                                                                                                            |
+| `delete <对象id...> [--path <板目录>]`                                                                    | 删除对象（移入 trash，可撤销）                                                                                                                                           |
+| `undo [<操作id>] [--path <板目录>]` / `redo [--path <板目录>]`                                            | 撤销 / 重做一步；undo 指定操作 id 时撤销该操作，省略时撤销本端最近操作                                                                                                   |
+| `ops [--source 来源] [--type 类型] [--limit N] [--path <板目录>]`                                         | 打印操作记录明细（id/type/source/time/parentId/supraOpId/molId/supraId/discard/properties/payload）                                                                      |
+| `tree [--path <板目录>]`                                                                                  | 以缩进树打印时间回溯树（HEAD 与已撤销分支标记、重做栈；聚合节点以 `{choose+modify+unchoose}` 花括号包裹、多对象分子节点以方括号包裹、discard 型成员带 `(discard)` 后缀） |
+| `choose <对象id...> --choice <名> [--path <板目录>]`                                                      | 把对象选入命名 choice（AOM 命名选择注册表权威；同一对象同时只属一个 choice）                                                                                             |
+| `choices [--path <板目录>]`                                                                               | 列出全部 choice 及成员状态（daemon 驻留标 active；未恢复种子标 active:false）                                                                                            |
+| `unchoose <名> (--apply\|--discard) [--path <板目录>]`                                                    | 结束一个 choice：--apply 提交修改 / --discard 放弃修改                                                                                                                   |
+| `modify <对象id> <修改标志> [--path <板目录>]`                                                            | 修改单对象；未选中时自动 choose→modify→commit 超分子会话，闭合折叠为一个聚合节点                                                                                         |
+| `modify --choice <名> <修改标志> [--path <板目录>]`                                                       | 修改 choice 成员；增量逐对象换算，全量仅单成员 choice 允许                                                                                                               |
 
 修改标志：
 
@@ -76,11 +76,24 @@ yarn cli <命令> [参数] [--path <板目录>] [--标志 值]
 
 - `--path <板目录>`：板目录路径（支持 `~` 展开）；省略时操作当前活动 daemon 持有的板
 - `--source <来源>`：协作身份（默认 `cli`），决定操作记录的 source 与新对象 id 前缀（`<source>/<n>`）
+- `--json`：输出为纯 JSON（见下文输出契约）
+- `-h` / `--help`：打印用法；`--version`：打印版本号
 - `--width` / `--height`：仅新建板时生效；重开既有板以盘上板配置为准
 
 `--type` 取对象注册表中的类型名：`StrokeObject`、`CircleObject`、`EllipseObject`、`PolygonObject`。
 
-输出均为 stdout 上的 JSON（`add` 输出单行 id），错误经 stderr 打印并以退出码 1 结束。
+## 输出契约
+
+所有命令支持 `--json` 标志，输出分两种模式：
+
+- **默认（人类可读）**：`create` 输出 `板已创建：<路径>`；`info` 输出板配置/记录/活动链/计数行；`list` 输出对象与 trash 行列表；`show` 输出 `id 类型` 标题加数据；`ops` 每条记录一行；`tree` 输出缩进回溯树；`undo`/`redo`/`delete`/`choose`/`unchoose`/`modify` 输出 `xxx ok（...）` 文本；`add` 输出单行对象 id（脚本捕获用）。
+- **`--json`（纯 JSON）**：所有命令 stdout 只输出一个可整体 `JSON.parse` 的结构——`info`/`list`/`show`/`ops`/`choices` 输出查询面原始结构，`tree` 输出回溯树原始结构，`add` 输出 `{"id": ...}`，`undo`/`redo` 输出 `{"undone" 或 "redone" 布尔, "targetNodeId"}`，`delete` 输出 `{"deleted": [...]}`，`modify` 输出 `{"objectId" 或 "choice", "committed" 或 "pending"}`，`unchoose` 输出 `{"choice", "action", "dropped"}`。
+
+错误一律经 stderr 打印并以退出码 1 结束，不混入 stdout。
+
+> [!NOTE]
+>
+> 带 `--json` 的输出一定是 JSON；不带 `--json` 的输出一定是人类可读文本（`add` 的单行 id 视为文本）。脚本化使用请显式传 `--json`。
 
 ## choice 与查改语义
 
@@ -114,14 +127,14 @@ choice 全量修改（--position/--transform/--property/--data）仅单成员 ch
 - **装配零专改**：CLI 不引入任何内核改动以外的机制，全部复用 `kernel/store` 与 `io` 的现有缝（node driver 是进程的自有文件面，不经权限协商）。
 - **板上配置优先**：板尺寸是文档数据（决定区块划分），重开时以 `board.json` 的 `boardConfig` 为准；0 值视为未知，不写入也不抢占调用方显式配置。
 - **协作身份贯穿**：`--source` 在构造 BoardCore 时注入，操作记录 source、Core 侧 id 子命名空间与 CLI 侧对象 id 池同前缀；id 池计数经 `reportObjectIdCounter` 随板元数据持久化，跨进程续号。
-- **指纹种子契约**：挂接时以盘上对象与 trash 条目为调和种子，首轮 flush 不做无谓重写；种子形状即 `loadAll` 的输出形状（trash 条目 id 在 `entry.data.id`）。
+- **指纹种子契约**：挂接时以盘上对象、trash 条目、区块元数据与板元数据为调和种子（种子形状即 `loadAll` 的输出形状，trash 条目 id 在 `entry.data.id`），首轮 flush 不做无谓重写；板元数据按排序指纹比对，值不变不落盘。
 
 ## 设计约束
 
 - 无交互与渲染能力：CLI 面向文档操作，不表达视口、选择与 overlay 状态。
 - **与 GUI 不同步**：CLI 直接读写板文件，与运行中的 GUI 进程没有协同通道（无锁、无同步、无共享会话）。GUI 保持打开期间用 CLI 操作同一板目录，两侧各自按自己的内存状态落盘并追加日志段，会互相覆盖与竞态。CLI 只应在 GUI 未运行该板时使用；同步能力属于传输层（K4）的职责，不在 CLI 的文件直读直写模式内。
 - 每次调用一个进程：无长驻会话，命令间状态完全经板文件传递。
-- 读命令同样经 flush 收敛元数据（值不变，文件会被重写）。
+- 读命令不落盘：`info`/`list`/`show`/`ops`/`tree` 等纯查询命令执行后的 flush 全部命中指纹跳过，不重写任何板文件。
 - 板尺寸未知的板（`boardConfig` 缺失且未传 `--width/--height`）上执行 `add` 会因无法解析区块而失败，需显式指定尺寸。
 
 ## 相关文档

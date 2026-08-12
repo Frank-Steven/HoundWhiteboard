@@ -51,9 +51,14 @@ export function runCli(argv) {
  * 运行一次 CLI 命令并解析 stdout 为 JSON
  * @param {string[]} argv - 命令参数
  * @returns {Promise<Object>} 解析结果
+ *
+ * @description
+ * 自动追加 --json（已显式传入时不重复），保证 stdout 为纯 JSON。
  */
 export async function runCliJson(argv) {
-  const { stdout } = await runCli(argv);
+  const { stdout } = await runCli(
+    argv.includes("--json") ? argv : [...argv, "--json"],
+  );
   return JSON.parse(stdout);
 }
 
