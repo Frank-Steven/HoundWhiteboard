@@ -68,7 +68,8 @@ async function readEntry(name) {
 async function writeEntry(desc) {
   const file = entryFile(desc.name);
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid}`;
+  // tmp 名带唯一后缀：同进程并发写同一条目时不冲突（rename 原子性保持）
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   await fs.writeFile(tmp, JSON.stringify(desc, null, 2), "utf-8");
   await fs.rename(tmp, file);
 }

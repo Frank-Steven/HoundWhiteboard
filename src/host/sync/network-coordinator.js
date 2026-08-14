@@ -308,7 +308,8 @@ function createNetworkCoordinator(options) {
     for (const record of Array.isArray(records) ? records : []) {
       if (record?.source === undefined || record?.id === undefined) continue;
       if (parseOperationId(record.id) === null) continue;
-      if (record.source === source) continue;
+      // 回环（本端发出经对端转发回来）由 log.has 去重；
+      // 不按 source 跳过：同 source 重开会话的历史补发需要接入
       if (log.has(record.id) || pending.has(record.id)) continue;
       pending.set(record.id, record);
     }
@@ -616,6 +617,16 @@ function createNetworkCoordinator(options) {
      */
     sendAwareness(data) {
       sendAwareness(data);
+    },
+
+    /**
+     * 显式转发一批操作记录到房间（协作桥接：本端经其它通道接入的远端记录原样广播）
+     * @param {Object[]} records - 操作记录数组
+     * @returns {void}
+     */
+    sendRecords(records) {
+      if (!Array.isArray(records) || records.length === 0) return;
+      send({ type: "records", records });
     },
 
     /**

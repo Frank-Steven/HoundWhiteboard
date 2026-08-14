@@ -195,6 +195,48 @@ class CoreWorkerRuntime {
   #coordinatorRetryTimer = null;
 
   /**
+   * GUI 协作协调器（板 daemon 直连；协作模式非空，journaler 不挂）
+   * @type {Object | null}
+   */
+  #guiCoordinator = null;
+
+  /**
+   * GUI 协作板 daemon 信息（{name, port}；createBoard 时记录，供重连探测）
+   * @type {Object | null}
+   */
+  #guiDaemon = null;
+
+  /**
+   * GUI 协作 daemon 重连定时器
+   * @type {ReturnType<typeof setTimeout> | null}
+   */
+  #guiRetryTimer = null;
+
+  /**
+   * GUI 协作身份（createBoard 时记录，spawn daemon 用）
+   * @type {string | null}
+   */
+  #guiSource = null;
+
+  /**
+   * GUI 板尺寸（createBoard 时记录，spawn 建板骨架用）
+   * @type {{width: number, height: number}}
+   */
+  #boardSize = { width: 0, height: 0 };
+
+  /**
+   * 持久化只读 driver（协作重连时读 .daemon.json 重新探测用）
+   * @type {Object | null}
+   */
+  #persistenceDriver = null;
+
+  /**
+   * 持久化根目录 id
+   * @type {string | null}
+   */
+  #persistenceRootId = null;
+
+  /**
    * 等待主线程 io-response 的挂起表
    * @type {Map<string, { resolve: Function, reject: Function }>}
    */
@@ -235,6 +277,13 @@ class CoreWorkerRuntime {
     this.#syncUrl = null;
     this.#syncBoardId = null;
     this.#coordinatorRetryTimer = null;
+    this.#guiCoordinator = null;
+    this.#guiDaemon = null;
+    this.#guiRetryTimer = null;
+    this.#guiSource = null;
+    this.#boardSize = { width: 0, height: 0 };
+    this.#persistenceDriver = null;
+    this.#persistenceRootId = null;
     this.#ioPending = new Map();
     this.#ioMsgSeq = 0;
   }
@@ -476,20 +525,22 @@ class CoreWorkerRuntime {
     }
   }
 
-  /**
-   * 创建 Worker 侧 BoardCore
-   * @param {{ width?: number, height?: number, rootPath?: string }} [options={}] - Board 初始化选项
-   * @returns {Promise<{ ok: boolean }>} 创建结果
-   *
-   * @description
-   * rootPath 有效时进入持久化模式：tauri driver 经主线程转发落地文件，
-   * 既有板从会话存储恢复（树、对象、trash、层叠图、计数器），随后挂接日志跟随者增量落盘。
-   */
+/**
+ * 创建 Worker 侧 BoardCore
+ * @param {{ width?: number, height?: number, rootPath?: string, source?: string }} [options={}] - Board 初始化选项
+ * @returns {Promise<{ ok: boolean }>} 创建结果
+ *
+ * @description
+ * rootPath 有效时进入持久化协作模式：只读挂载板目录（落盘在持板 daemon），
+ * 探测或拉起板 daemon 后经协作通道双向同步；既有板从会话存储恢复（树、对象、trash、层叠图、计数器）。
+ */
   async createBoard(options = {}) {
     if (this.#boardCore) {
       throw new Error("BoardCore already created.");
     }
 
+    this.#guiSource = options.source ?? "gui";
+    this.#boardSize = { width: options.width ?? 0, height: options.height ?? 0 };
     const persistence = await this.#setupPersistence(options.rootPath);
 
     // 盘上板配置优先：板尺寸是文档数据（决定区块划分），重开必须与原值一致
@@ -533,24 +584,30 @@ class CoreWorkerRuntime {
       },
     );
 
+    this.#boardApi = new BoardApi(this.#boardCore);
+
     if (persistence) {
       this.#boardCore.restoreSession(persistence.session);
-      this.#journaler = createJournaler({
-        boardCore: this.#boardCore,
-        store: persistence.store,
-        collectMeta: () => this.#boardCore.collectSessionMeta(),
-      });
-      this.#journaler.attach({
-        nextSegmentSeq: persistence.session.nextSegmentSeq,
-        lastTime: persistence.session.meta?.lastTime ?? 0,
-        knownObjects: persistence.session.objects,
-        knownTrash: persistence.session.trash,
-        knownMeta: persistence.session.meta,
-        knownChunkMetadata: persistence.session.chunkMetadataList,
-      });
+      // 协作模式：journaler 不挂接（零写盘，落盘在 daemon），直连 daemon 协作通道
+      if (persistence.daemon) {
+        this.#guiDaemon = persistence.daemon;
+        await this.#connectGuiDaemon();
+      } else {
+        this.#journaler = createJournaler({
+          boardCore: this.#boardCore,
+          store: persistence.store,
+          collectMeta: () => this.#boardCore.collectSessionMeta(),
+        });
+        this.#journaler.attach({
+          nextSegmentSeq: persistence.session.nextSegmentSeq,
+          lastTime: persistence.session.meta?.lastTime ?? 0,
+          knownObjects: persistence.session.objects,
+          knownTrash: persistence.session.trash,
+          knownMeta: persistence.session.meta,
+          knownChunkMetadata: persistence.session.chunkMetadataList,
+        });
+      }
     }
-
-    this.#boardApi = new BoardApi(this.#boardCore);
 
     // 同步：syncUrl 存在时连接中继；首次失败起每 3s 自动重试，不阻塞开板
     if (typeof options.syncUrl === "string" && options.syncUrl !== "") {
@@ -624,6 +681,115 @@ class CoreWorkerRuntime {
       await coordinator.close();
       this.#scheduleCoordinatorReconnect();
     }
+  }
+
+  /**
+   * 连接（或重连）板 daemon 协作通道
+   * @returns {Promise<void>}
+   * @private
+   *
+   * @description
+   * 每次尝试先重新探测 daemon（重启后端口可能变化）；失败起每 3s 重试。
+   * 协作通道与 relay 协调器同协议（join/records/aom/awareness/digest），
+   * 断线重连后的全量收敛沿用同步机制的 digest/request-init 对账。
+   */
+  async #connectGuiDaemon() {
+    if (this.#boardCore === null || this.#guiDaemon === null) return;
+    const daemon = await this.#resolveGuiDaemonForReconnect();
+    if (daemon === null) {
+      this.#scheduleGuiReconnect();
+      return;
+    }
+    this.#guiDaemon = daemon;
+    const coordinator = createNetworkCoordinator({
+      boardCore: this.#boardCore,
+      boardApi: this.#boardApi,
+      url: `ws://127.0.0.1:${daemon.port}`,
+      boardId: this.#boardCore.rootPath ?? "board",
+      onAwareness: ({ source, data }) => {
+        this.#postMessage({
+          type: "awareness",
+          awarenessType: data?.kind,
+          source,
+          data,
+        });
+        if (
+          data?.kind === "mol-begin" ||
+          data?.kind === "mol-amend" ||
+          data?.kind === "mol-end" ||
+          data?.kind === "mol-abort"
+        ) {
+          this.#applyMolMessages(data);
+        }
+      },
+      onDisconnect: () => {
+        this.#postMessage({ type: "awareness", awarenessType: "disconnect" });
+        for (const viewportCore of this.#viewportCores.values()) {
+          viewportCore.renderer?.clearAllPreviewPositions?.();
+        }
+        this.#clearAllMolPreviews();
+        this.#requestStaticRender();
+        this.#scheduleGuiReconnect();
+      },
+    });
+    try {
+      await coordinator.connect();
+      this.#guiCoordinator = coordinator;
+      this.#amendForwarder?.close();
+      this.#amendForwarder = createAmendForwarder({
+        boardCore: this.#boardCore,
+        sendAwareness: (data) => this.#guiCoordinator?.sendAwareness(data),
+      });
+      this.#log.info(`已连接板 daemon 协作通道：${daemon.name}（端口 ${daemon.port}）`);
+    } catch (error) {
+      this.#log.warn(`板 daemon 协作连接失败：${error?.message ?? error}`);
+      await coordinator.close();
+      this.#scheduleGuiReconnect();
+    }
+  }
+
+  /**
+   * 调度板 daemon 协作重连（3s 后重新探测）
+   * @returns {void}
+   * @private
+   */
+  #scheduleGuiReconnect() {
+    if (this.#guiRetryTimer !== null) return;
+    this.#guiRetryTimer = setTimeout(() => {
+      this.#guiRetryTimer = null;
+      if (this.#boardCore !== null) {
+        void this.#connectGuiDaemon();
+      }
+    }, 3000);
+  }
+
+  /**
+   * 重连时重新探测板 daemon（重启后端口可能变化；无则返回 null 等待重试）
+   * @returns {Promise<Object|null>} daemon 信息
+   * @private
+   */
+  async #resolveGuiDaemonForReconnect() {
+    const driver = this.#persistenceDriver;
+    if (driver !== null) {
+      try {
+        const text = await driver.read(this.#persistenceRootId, ".daemon.json");
+        if (typeof text === "string" && text !== "") {
+          const desc = JSON.parse(text);
+          if (
+            typeof desc?.port === "number" &&
+            (await this.#probeWs(desc.port))
+          ) {
+            return { name: desc.name, port: desc.port };
+          }
+        }
+      } catch {
+        // 描述文件缺失或损坏：走旧端口兜底
+      }
+    }
+    if (this.#guiDaemon && (await this.#probeWs(this.#guiDaemon.port))) {
+      return this.#guiDaemon;
+    }
+    return null;
   }
 
   /**
@@ -819,7 +985,11 @@ class CoreWorkerRuntime {
   /**
    * 装配持久化（rootPath 有效时）
    * @param {string} [rootPath] - 白板根路径
-   * @returns {Promise<{ adapter: Object, store: Object, session: Object } | null>} 持久化上下文，内存模式为 null
+   * @returns {Promise<{ adapter: Object, store: Object, session: Object, daemon: Object } | null>} 持久化上下文，内存模式为 null
+   *
+   * @description
+   * 协作模式：只读挂载（read/ls/stat，无写权限）+ 探测或 spawn 板 daemon（GUI 一律经 daemon 落盘），
+   * journaler 由 createBoard 决定不挂接（零写盘）。板不存在时由 spawn 侧建骨架。
    * @private
    */
   async #setupPersistence(rootPath) {
@@ -829,13 +999,13 @@ class CoreWorkerRuntime {
     const driver = createTauriDriver({
       invoke: (command, args) => this.#forwardIoInvoke(command, args),
     });
-    // 板存储需要读、写、列目录、建目录与删除（journaler 调和会移除对象文件）
+    // 协作模式只读挂载：板存储需要读、列目录、状态与存在检查（落盘在 daemon）
     const registered = await driver.registerRoot(rootPath, {
       read: true,
-      write: true,
+      write: false,
       ls: true,
-      mkdir: true,
-      rm: true,
+      mkdir: false,
+      rm: false,
       hide: false,
       zip: false,
     });
@@ -845,15 +1015,98 @@ class CoreWorkerRuntime {
     }
     const { rootId } = registered;
     const store = createSessionStore(bindRoot(driver, rootId));
-    if (!(await store.exists())) {
-      await store.create();
+    this.#persistenceDriver = driver;
+    this.#persistenceRootId = rootId;
+    // 板 daemon：探测活 daemon 或 spawn（板不存在时 spawn 侧建骨架）；失败则拒绝持久打开
+    const daemon = await this.#resolveBoardDaemon(driver, rootId, rootPath);
+    if (daemon === null) {
+      throw new Error(
+        `板 daemon 不可用：${rootPath}（无法连接或启动持板 daemon）`,
+      );
     }
     const session = await store.loadAll();
     return {
       adapter: createPersistenceAdapter({ driver, rootId }),
       store,
       session,
+      daemon,
     };
+  }
+
+  /**
+   * 探测板目录的活 daemon，无则请求主线程 spawn（Rust command，等就绪）
+   * @param {Object} driver - tauri driver
+   * @param {string} rootId - 根目录 id
+   * @param {string} rootPath - 板目录
+   * @returns {Promise<{name: string, port: number}|null>} daemon 信息；不可用时为 null
+   * @private
+   */
+  async #resolveBoardDaemon(driver, rootId, rootPath) {
+    let desc = null;
+    try {
+      const text = await driver.read(rootId, ".daemon.json");
+      if (typeof text === "string" && text !== "") {
+        desc = JSON.parse(text);
+      }
+    } catch {
+      // 无描述文件
+    }
+    if (desc && typeof desc?.port === "number" && (await this.#probeWs(desc.port))) {
+      this.#log.info(`板 daemon 已存在：${desc.name}（端口 ${desc.port}）`);
+      return { name: desc.name, port: desc.port };
+    }
+    // 无活 daemon：请求 Rust 侧 spawn（含建板骨架与就绪等待）
+    const name = `gui-${guiDaemonNameFromPath(rootPath)}`;
+    const spawned = await this.#forwardIoInvoke("spawn_board_daemon", {
+      path: rootPath,
+      name,
+      source: this.#guiSource ?? "gui",
+      width: this.#boardSize.width ?? 0,
+      height: this.#boardSize.height ?? 0,
+    });
+    if (spawned && typeof spawned?.port === "number") {
+      this.#log.info(`已拉起板 daemon：${spawned.name}（端口 ${spawned.port}）`);
+      return { name: spawned.name, port: spawned.port };
+    }
+    return null;
+  }
+
+  /**
+   * WS 探测端口上是否有活 daemon（WebView 仅能作客户端，短连即断）
+   * @param {number} port - 端口
+   * @returns {Promise<boolean>} 是否可连通
+   * @private
+   */
+  #probeWs(port) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let ws = null;
+      const finish = (ok) => {
+        if (settled) return;
+        settled = true;
+        try {
+          ws?.close();
+        } catch {
+          /* 忽略 */
+        }
+        resolve(ok);
+      };
+      try {
+        ws = new WebSocket(`ws://127.0.0.1:${port}`);
+      } catch {
+        finish(false);
+        return;
+      }
+      const timer = setTimeout(() => finish(false), 800);
+      ws.addEventListener("open", () => {
+        clearTimeout(timer);
+        finish(true);
+      });
+      ws.addEventListener("error", () => {
+        clearTimeout(timer);
+        finish(false);
+      });
+    });
   }
 
   /**
@@ -893,6 +1146,17 @@ class CoreWorkerRuntime {
     this.#unsubscribeRemoteActivity = null;
     this.#unsubscribeHitChanged?.();
     this.#unsubscribeHitChanged = null;
+    if (this.#guiCoordinator) {
+      await this.#guiCoordinator.close();
+      this.#guiCoordinator = null;
+    }
+    if (this.#guiRetryTimer !== null) {
+      clearTimeout(this.#guiRetryTimer);
+      this.#guiRetryTimer = null;
+    }
+    this.#guiDaemon = null;
+    this.#persistenceDriver = null;
+    this.#persistenceRootId = null;
     if (this.#journaler) {
       await this.#journaler.detach();
       this.#journaler = null;
@@ -1223,6 +1487,17 @@ class CoreWorkerRuntime {
     const boardCore = this.#requireBoardCore();
     handleDebugQuery(boardCore, query, params);
   }
+}
+
+/**
+ * 由板目录路径派生 GUI daemon 名（清洗为注册表字符集 [A-Za-z0-9._-]）
+ * @param {string} rootPath - 板目录
+ * @returns {string} 清洗后的板名
+ */
+function guiDaemonNameFromPath(rootPath) {
+  const base = String(rootPath).split(/[\\/]/).filter(Boolean).pop() ?? "board";
+  const cleaned = base.replace(/[^A-Za-z0-9._-]/g, "-").replace(/^-+|-+$/g, "");
+  return cleaned !== "" ? cleaned : "board";
 }
 
 /**

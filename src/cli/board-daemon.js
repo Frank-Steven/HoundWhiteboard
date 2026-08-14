@@ -10,6 +10,7 @@ import { openBoardSession } from "./board-session.js";
 import { BOARD_API_ROUTES } from "../kernel/api/board-api-routes.js";
 import { createNetworkCoordinator } from "../host/sync/network-coordinator.js";
 import { createAmendForwarder } from "../host/sync/amend-forwarder.js";
+import { parseOperationId } from "../kernel/hit/operation.js";
 import { resolveDeviceSource } from "../utils/device-identity.js";
 import {
   isValidDaemonName,
@@ -191,6 +192,267 @@ async function startBoardDaemon(options) {
 
   // RPC 串行队列：并发客户端的写操作经队列逐个执行，invoke 与落盘不交错
   const queue = createQueue();
+
+  /**
+   * 引用计数（创建者引用 1；GUI 长连接与 hold 递增，release 递减，归零自动退出）
+   * @type {number}
+   */
+  let refCount = 1;
+
+  /**
+   * 协作客户端表（WS 连接 → 来源标识；GUI 直连协作通道）
+   * @type {Map<Object, string>}
+   */
+  const collabClients = new Map();
+  /** @type {Function|null} 协作广播的本地记录订阅 */
+  let unsubscribeCollabAppend = null;
+  /** @type {Function|null} 协作广播的 activity 订阅 */
+  let unsubscribeCollabActivity = null;
+  /** @type {ReturnType<typeof setInterval>|null} 协作 digest 周期 */
+  let collabDigestTimer = null;
+  /** @type {Object|null} 注册表镜像条目（refCount 变化时更新） */
+  let desc = null;
+
+  /**
+   * 把 refCount 镜像进注册表（status 展示用）
+   * @returns {Promise<void>}
+   */
+  const syncRefCount = () => {
+    if (desc === null) return Promise.resolve();
+    return writeEntry({ ...desc, refCount });
+  };
+
+  /**
+   * 广播消息给全部协作客户端（可排除来源，relay 房间语义）
+   * @param {Object} message - 消息体
+   * @param {?string} [exceptSource=null] - 排除的来源
+   * @returns {void}
+   */
+  const collabBroadcast = (message, exceptSource = null) => {
+    for (const [clientWs, clientSource] of collabClients) {
+      if (clientSource === exceptSource) continue;
+      if (clientWs.readyState === clientWs.OPEN) {
+        clientWs.send(JSON.stringify(message));
+      }
+    }
+  };
+
+  /**
+   * 挂协作广播订阅（首个协作客户端 join 时）
+   * @returns {void}
+   */
+  const attachCollabSubscriptions = () => {
+    if (unsubscribeCollabAppend !== null) return;
+    // 本端（含经 applyRemoteOperations 接入的）记录推送给协作客户端；
+    // 来源为对端自己的记录不回环（对端 ingest 按来源去重）
+    unsubscribeCollabAppend = session.boardCore.operationLog.onAppend((record) => {
+      // 不按来源排除：同 source 重开会话的历史补发不能被误杀；
+      // 回环记录由客户端 log.has 去重（见 ingestRecords）
+      collabBroadcast({ type: "records", source, records: [record] });
+    });
+    unsubscribeCollabActivity = session.boardCore.activityEventBus.on(
+      "activity",
+      (event) => {
+        const eventSource = event?.source ?? null;
+        collabBroadcast(
+          { type: "aom", source: eventSource ?? source, event },
+          eventSource,
+        );
+      },
+    );
+    collabDigestTimer = setInterval(() => {
+      collabBroadcast({
+        type: "digest",
+        source,
+        digest: localDigest(),
+      });
+    }, 30000);
+  };
+
+  /**
+   * 卸协作广播订阅（最后协作客户端离开时）
+   * @returns {void}
+   */
+  const detachCollabSubscriptions = () => {
+    unsubscribeCollabAppend?.();
+    unsubscribeCollabAppend = null;
+    unsubscribeCollabActivity?.();
+    unsubscribeCollabActivity = null;
+    if (collabDigestTimer !== null) {
+      clearInterval(collabDigestTimer);
+      collabDigestTimer = null;
+    }
+  };
+
+  /**
+   * 移除协作客户端（断开时：引用 -1，空表卸订阅）
+   * @param {Object} ws - 连接
+   * @returns {void}
+   */
+  const removeCollabClient = (ws) => {
+    if (!collabClients.has(ws)) return;
+    collabClients.delete(ws);
+    refCount = Math.max(0, refCount - 1);
+    // 并发写注册表可能失败（tmp 冲突），镜像失败不影响进程内权威计数
+    void syncRefCount().catch(() => {});
+    if (collabClients.size === 0) {
+      detachCollabSubscriptions();
+    }
+  };
+
+  /**
+   * 计算本端状态摘要（协作 digest 用，与协调器同款）
+   * @returns {{logSize: number, head: ?string, objects: number, stateHash: string, openMols: number}} 摘要
+   */
+  const localDigest = () => ({
+    logSize: session.boardCore.operationLog.size,
+    head: session.boardCore.undoTree.head?.shareId ?? null,
+    objects: session.boardCore.getAllObjects().length,
+    stateHash: session.api.queryStateHash(),
+    openMols: session.api.queryOpenMols().length,
+  });
+
+  /**
+   * 按请求方 lastSeen 过滤缺口记录（无 lastSeen 为全量）
+   * @param {Object} [lastSeen] - 请求方各来源最大序号
+   * @returns {Object[]} 缺口记录
+   */
+  const filterGapRecords = (lastSeen) => {
+    const all = session.boardCore.operationLog.toJSON();
+    if (!lastSeen || typeof lastSeen !== "object") return all;
+    return all.filter((record) => {
+      const parsed = parseOperationId(record.id);
+      if (parsed === null) return false;
+      return parsed.n > (lastSeen[record.source] ?? 0);
+    });
+  };
+
+  /**
+   * 处理协作 digest：落后或分歧时请求全量重建
+   * @param {Object} digest - 对端摘要
+   * @param {Object} ws - 对端连接
+   * @returns {void}
+   */
+  const handleCollabDigest = (digest, ws) => {
+    if (!digest || typeof digest.logSize !== "number") return;
+    const local = localDigest();
+    if (digest.logSize > local.logSize) {
+      ws.send(
+        JSON.stringify({
+          type: "request-init",
+          source,
+          openMols: session.api.queryOpenMols(),
+        }),
+      );
+      return;
+    }
+    if (digest.logSize === local.logSize && digest.head !== local.head) {
+      ws.send(
+        JSON.stringify({
+          type: "request-init",
+          source,
+          openMols: session.api.queryOpenMols(),
+        }),
+      );
+    }
+  };
+
+  /**
+   * 处理协作消息（GUI 直连通道，relay 房间协议的单客户端版）
+   * @param {Object} ws - 连接
+   * @param {Object} message - 已解析消息
+   * @returns {Promise<void>}
+   */
+  const handleCollabMessage = async (ws, message) => {
+    switch (message.type) {
+      case "join": {
+        if (collabClients.has(ws)) return;
+        if (typeof message.source !== "string" || message.source === "") return;
+        collabClients.set(ws, message.source);
+        refCount += 1;
+        await syncRefCount();
+        ws.send(
+          JSON.stringify({
+            type: "joined",
+            source: message.source,
+            peers: [source],
+          }),
+        );
+        // 老成员向新成员要缺口（relay 的 peer-joined 语义）
+        ws.send(
+          JSON.stringify({
+            type: "request-init",
+            source,
+            openMols: session.api.queryOpenMols(),
+          }),
+        );
+        attachCollabSubscriptions();
+        return;
+      }
+      case "records": {
+        if (!Array.isArray(message.records)) return;
+        await session.api.applyRemoteOperations(message.records);
+        await session.flush();
+        // 桥接进 relay 房间（若 daemon 连了中继）：GUI 的操作对远端可见
+        coordinator?.sendRecords(message.records);
+        return;
+      }
+      case "aom": {
+        if (message.event === undefined || message.event === null) return;
+        session.api.applyRemoteActivity(
+          message.event,
+          message.source ?? "collab",
+        );
+        return;
+      }
+      case "awareness": {
+        if (message.data === undefined || message.data === null) return;
+        coordinator?.sendAwareness(message.data);
+        return;
+      }
+      case "request-init": {
+        const records = filterGapRecords(message.lastSeen);
+        // 增量请求无缺口时不回应（降噪）；全量请求总是回应（meta 供 id 续种）
+        if (message.lastSeen && records.length === 0) return;
+        ws.send(
+          JSON.stringify({
+            type: "respond-init",
+            to: message.source,
+            records,
+            meta: session.boardCore.collectSessionMeta(),
+            openMols: session.api.queryOpenMols(),
+          }),
+        );
+        return;
+      }
+      case "respond-init": {
+        if (Array.isArray(message.records) && message.records.length > 0) {
+          await session.api.applyRemoteOperations(message.records);
+          await session.flush();
+        }
+        return;
+      }
+      case "digest":
+        handleCollabDigest(message.digest, ws);
+        return;
+      default:
+        return;
+    }
+  };
+
+  /**
+   * 关闭并退出进程（引用归零或强制停机共用；exitOnZero 关闭时只清理不退出，测试内嵌场景用）
+   * @returns {void}
+   */
+  const closeAndExit = () => {
+    void (async () => {
+      await close();
+      if (options.exitOnZero !== false) {
+        process.exit(0);
+      }
+    })();
+  };
+
   wss.on("connection", (ws) => {
     ws.on("message", (data) => {
       let message;
@@ -200,25 +462,49 @@ async function startBoardDaemon(options) {
         return;
       }
       if (message?.route === "daemon-shutdown") {
-        // 管理停机：响应后异步关闭（close 内部排空既有 RPC），不入队列避免自死锁
+        // 强制停机：响应后异步关闭（close 内部排空既有 RPC），不入队列避免自死锁
         ws.send(JSON.stringify({ id: message.id, ok: true, result: null }));
-        void (async () => {
-          await close();
-          process.exit(0);
-        })();
+        closeAndExit();
         return;
       }
-      queue.enqueue(() => handleRpcMessage(session, ws, data));
+      if (message?.route === "daemon-hold") {
+        // 引用 +1（CLI 显式占住，防止被 release 归零退出）
+        refCount += 1;
+        void syncRefCount();
+        ws.send(JSON.stringify({ id: message.id, ok: true, result: { refCount } }));
+        return;
+      }
+      if (message?.route === "daemon-release") {
+        // 引用 -1；归零则自动退出
+        refCount = Math.max(0, refCount - 1);
+        void syncRefCount();
+        ws.send(JSON.stringify({ id: message.id, ok: true, result: { refCount } }));
+        if (refCount === 0) {
+          closeAndExit();
+        }
+        return;
+      }
+      if (typeof message?.id === "number" && typeof message?.route === "string") {
+        queue.enqueue(() => handleRpcMessage(session, ws, data));
+        return;
+      }
+      if (message?.type !== undefined) {
+        // 协作消息（GUI 直连）：与 RPC 共用串行队列，invoke 与落盘不交错
+        queue.enqueue(() => handleCollabMessage(ws, message));
+      }
     });
+    ws.on("close", () => removeCollabClient(ws));
+    ws.on("error", () => removeCollabClient(ws));
   });
 
-  const desc = {
+  desc = {
     name,
     rootPath,
     pid: process.pid,
     port,
     source,
     boardId: options.boardId ?? null,
+    refCount,
     startedAt: new Date().toISOString(),
   };
   await fs.writeFile(
@@ -233,6 +519,7 @@ async function startBoardDaemon(options) {
     closed = true;
     // 排空 in-flight RPC：关闭前最后一次落盘不截断
     await queue.drain();
+    detachCollabSubscriptions();
     if (relayRetryTimer !== null) {
       clearTimeout(relayRetryTimer);
       relayRetryTimer = null;
