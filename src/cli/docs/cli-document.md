@@ -4,7 +4,7 @@
 
 > [!NOTE]
 >
-> **实现状态**：daemon 管理（start/status/stop，按 name 注册表寻址）、`create` 离线建板、`.hwb` 打包（export/import）、十五个板命令（info / list / show / add / delete / undo / redo / ops / tree / choose / choices / unchoose / modify）、daemon 连接与直读双寻址、`--json` 输出契约、并发安全（RPC 串行队列 + 持板侧原子 id 分配）与子进程端到端测试均已落地。
+> **实现状态**：daemon 管理（start/hold/release/stop/status，按 name 注册表寻址，引用计数模型）、`create` 离线建板、`.hwb` 打包（export/import）、十五个板命令、daemon 连接与直读双寻址、GUI 协作通道（本机直连 daemon，relay 只管跨机）、`--json` 输出契约、并发安全（RPC 串行队列 + 持板侧原子 id 分配）与端到端测试均已落地。
 
 ## 定位
 
@@ -12,19 +12,41 @@ CLI 是白板的**第二前端**：写命令（add/delete/undo/redo/choose/uncho
 
 ## daemon 与注册表
 
-每块板由一个**持板 daemon** 独占持有（进程内 BoardCore + BoardApi + 日志跟随者落盘 + WebSocket RPC 服务）。daemon 有全局唯一的 **name**（字符集 `[A-Za-z0-9._-]`，不含中文），启动时登记到注册表 `~/.hound-whiteboard/daemons/<name>.json`（条目含 name/rootPath/pid/port/source/boardId/startedAt），停止时注销。CLI 与后续的 GUI 协作端都按 name（或板目录持有标记）定位持板者。
+**能持板（落盘）的只有 daemon**：每块板由一个持板 daemon 独占持有（进程内 BoardCore + BoardApi + 日志跟随者落盘 + WebSocket RPC 服务），**一个板文件夹同时最多一个 daemon**（重复启动被板目录占用检查拒绝）。daemon 有全局唯一的 **name**（字符集 `[A-Za-z0-9._-]`，不含中文），启动时登记到注册表 `~/.hound-whiteboard/daemons/<name>.json`（条目含 name/rootPath/pid/port/source/boardId/refCount/startedAt），停止时注销。
+
+### 引用计数
+
+daemon 进程内维护引用计数（创建者引用 1）：
+
+| 动作 | 计数 |
+|---|---|
+| `daemon start` / GUI 打开板时 spawn | 初始 1（创建者引用，需 release 释放） |
+| GUI 长连接建立 / 断开 | +1 / -1 |
+| `hwb daemon hold --name <名>` | +1（CLI 显式占住） |
+| `hwb daemon release --name <名>` | -1；归零 → daemon 自动退出 |
+| `hwb daemon stop --name <名>` | 强制归零、无条件关闭 |
+
+- 自洽性：GUI 连接持有引用，GUI 开着时 release 最多降到 GUI 那份（>0），daemon 不会中途消失
+- refCount 不持久化：daemon 重启/僵尸覆盖后重置为 1；注册表条目镜像当前值供 `status` 展示
+- CLI 短命令不计数（用之前确保 daemon 在，用完不持有）
 
 ```bash
 hwb daemon start --name board1 --path ~/boards/a [--source 身份] [--relay ws://...] [--board-id 房间]
-hwb daemon status [--name board1]        # 省略 name 列出全部（含僵尸条目）
-hwb daemon stop --name board1
+hwb daemon status [--name board1]        # 显示 refCount；省略 name 列出全部（含僵尸条目）
+hwb daemon hold --name board1            # 引用 +1
+hwb daemon release --name board1         # 引用 -1，归零自动退出
+hwb daemon stop --name board1            # 强制归零关闭
 ```
 
 - **后台启动**：`daemon start` 以 detached 子进程拉起 daemon 并等待就绪（注册表条目出现 + 端口可连通）后立即返回，终端可继续使用
 - **唯一性**：name 与存活 daemon 重复、板目录已被其它活 daemon 持有，均拒绝启动；僵尸条目（进程已死）可覆盖
 - **板必须已存在**：先用 `create` 离线建板，再 `daemon start`
-- **停止**：经 WS 发停机指令，daemon 排空 in-flight RPC、落盘、清理板目录 `.daemon.json`（name/pid/port 持有标记）与注册表条目后退出
-- **中继**：daemon 连了中继（`--relay`）时，CLI 操作实时广播到协作端，协作端的操作 CLI 也能查到
+- **强制关闭**：`daemon stop` 无条件关闭（排空 in-flight、落盘、清理板目录 `.daemon.json` 与注册表条目）
+- **中继**：daemon 连了中继（`--relay`）时，GUI 的操作经 daemon 桥接进 relay 房间，跨机协作端实时互见
+
+### GUI 协作
+
+GUI 打开板时检测板目录 `.daemon.json`：有活 daemon 直接作为**协作客户端**（只读挂载板目录、本地 BoardCore 渲染、零写盘、经协作通道与 daemon 双向同步，落盘全在 daemon）；无活 daemon 则请求宿主进程 spawn 一个（name `gui-<板名>`，等就绪后连接）。GUI 关闭后 spawn 的 daemon 常驻（创建者引用保留），`daemon release` 才回收。本机端（CLI/TUI/MCP/GUI）之间不走 relay；relay 只承载跨机协作。
 
 ## 命令寻址
 
@@ -61,8 +83,10 @@ hwb <命令> [--daemon <名> | --path <板目录>] [--标志 值]
 | 命令                                                                                                  | 说明                                                                                                                                                                     |
 | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `daemon start --name <名> --path <板目录> [--source <身份>]`                                           | 后台启动持板 daemon（板必须已存在）                                                                                                                                      |
-| `daemon stop --name <名>`                                                                             | 停止 daemon（排空 in-flight、落盘、注销注册表）                                                                                                                         |
-| `daemon status [--name <名>]`                                                                         | 查单个 daemon（name/板目录/端口/身份/启动时间/存活）；省略 name 列出全部                                                                                                 |
+| `daemon hold --name <名>`                                                                             | 引用 +1（占住 daemon，防止 release 归零退出）                                                                                                                            |
+| `daemon release --name <名>`                                                                          | 引用 -1；归零则 daemon 自动退出                                                                                                                                          |
+| `daemon stop --name <名>`                                                                             | 强制归零关闭（无条件，清理描述与注册表）                                                                                                                                 |
+| `daemon status [--name <名>]`                                                                         | 查单个 daemon（name/refCount/板目录/端口/身份/启动时间/存活）；省略 name 列出全部                                                                                       |
 | `create --path <板目录> [--width 800] [--height 600]`                                                  | 离线创建空板；板目录已存在时报错                                                                                                                                         |
 | `export --path <板目录> --out <文件.hwb>`                                                               | 导出板为 .hwb（zip 平铺，board.json 在根；不含 .daemon.json 运行时标记）                                                                                                  |
 | `import <文件.hwb> --path <板目录>`                                                                    | 导入 .hwb 建板（校验 zip 内 board.json 与 formatVersion；目标须为空/不存在）                                                                                               |

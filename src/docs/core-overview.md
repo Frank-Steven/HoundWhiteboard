@@ -118,7 +118,7 @@ Kernel 不依赖 DOM，也不依赖 Worker 宿主：
 - `hitTest`、`queryObjects`、`queryChunkObjects` 已接到 Worker 权威状态
 - `undo` / `redo` 已接通（含侧栏按钮与快捷键）
 - 持久化已接通：demo 以 `~/hound-whiteboard/demo-board` 为板目录运行，撤销历史穿越重开
-- CLI 前端已接通：写命令经持板 daemon 执行（`src/cli/`），读命令可直读板文件；daemon 连中继时与协作端实时同步，多 CLI 并发安全（详见 cli-document.md daemon 章节）
+- CLI 前端已接通：写命令经持板 daemon 执行（`src/cli/`），读命令可直读板文件；本机所有权模型为「一个板文件夹一个持板 daemon，CLI/TUI/MCP/GUI 均为其客户端」——GUI 打开板时只读挂载并经协作通道直连 daemon（零写盘），无 daemon 时由宿主 spawn（引用计数 hold/release 管理生命周期）；relay 只承载跨机协作，多 CLI 并发安全（详见 cli-document.md daemon 章节）
 
 ## 关键术语
 
