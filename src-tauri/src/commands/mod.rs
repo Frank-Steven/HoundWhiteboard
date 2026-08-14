@@ -4,7 +4,9 @@
 //! - registry：根目录注册表与路径解析（安全核心）
 //! - fs：文件系统操作（read/write/ls/stat/exists/rm/cp/mv/mkdir/hide/unhide/isHidden）
 //! - zip：ZIP 压缩/解压/列表
+//! - daemon：板 daemon 进程管理（spawn + 就绪等待）
 
+pub mod daemon;
 pub mod fs;
 pub mod hide;
 pub mod registry;

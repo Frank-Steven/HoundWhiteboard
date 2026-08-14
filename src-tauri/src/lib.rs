@@ -24,6 +24,7 @@ pub fn run() {
             commands::zip::safe_io_zip_from,
             commands::zip::safe_io_zip_extract,
             commands::zip::safe_io_zip_list,
+            commands::daemon::spawn_board_daemon,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
