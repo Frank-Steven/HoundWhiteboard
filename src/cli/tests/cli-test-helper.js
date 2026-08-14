@@ -89,7 +89,8 @@ export function tempBoardDir() {
  * @returns {Promise<{name: string, rootPath: string, port: number, close: Function}>} daemon 句柄
  */
 export async function startTestDaemon(name, boardDir, options = {}) {
-  return startBoardDaemon({ name, rootPath: boardDir, ...options });
+  // 测试内嵌 daemon：引用归零只清理不退出（退出会杀掉测试进程）
+  return startBoardDaemon({ name, rootPath: boardDir, exitOnZero: false, ...options });
 }
 
 /**

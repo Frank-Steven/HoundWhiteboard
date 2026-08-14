@@ -6,6 +6,11 @@
 
 import { CoreWorkerRuntime } from "../core-worker.js";
 import { createMemoryDriver } from "../../io/driver/memory.js";
+import { startBoardDaemon } from "../../cli/board-daemon.js";
+import { openBoardSession } from "../../cli/board-session.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 /**
  * 测试用假 Worker 宿主（io-invoke 由内存驱动模拟的"Rust 侧"应答）
@@ -175,76 +180,134 @@ async function createStroke(host, handler, id) {
 }
 
 /**
- * 装配持久化模式的 runtime
- * @returns {{ host: FakeWorkerHost, runtime: CoreWorkerRuntime, handler: Function, driver: Object }} 测试上下文
+ * 轮询等待条件成立
+ * @param {Function} probe - 探测函数
+ * @param {number} [timeoutMs=2000] - 超时毫秒数
+ * @returns {Promise<boolean>} 是否成立
+ */
+async function waitFor(probe, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await probe()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return false;
+}
+
+/**
+ * 装配协作模式的 runtime：真 daemon（持板落盘）+ mock 盘预置 .daemon.json（探测命中，不 spawn）
+ * @returns {{ host: FakeWorkerHost, runtime: CoreWorkerRuntime, handler: Function, driver: Object, daemon: Object, boardDir: string }} 测试上下文
  */
 async function setup() {
   const host = new FakeWorkerHost();
   const runtime = new CoreWorkerRuntime(host);
   runtime.start();
   const { handler, driver } = createMemoryCommandHandler();
+  // 真 daemon：临时板目录 + startBoardDaemon（协作通道对端，唯一落盘者）
+  const boardDir = mkdtempSync(path.join(tmpdir(), "hwb-worker-collab-"));
+  const session = await openBoardSession(boardDir, {
+    create: true,
+    width: 800,
+    height: 600,
+  });
+  await session.flush();
+  await session.close();
+  const daemon = await startBoardDaemon({
+    name: "worker-test",
+    rootPath: boardDir,
+    source: "worker-test",
+  });
+  // mock 盘预置 .daemon.json：worker 探测命中（不触发 spawn）
+  await driver.write(
+    "mem",
+    ".daemon.json",
+    JSON.stringify({
+      name: "worker-test",
+      port: daemon.port,
+      source: "worker-test",
+    }),
+  );
   await rpcCall(host, handler, "createBoard", {
     width: 800,
     height: 600,
     rootPath: "/boards/demo",
   });
-  return { host, runtime, handler, driver };
+  return { host, runtime, handler, driver, daemon, boardDir };
 }
 
 describe("CoreWorker 持久化接线", () => {
-  test("rootPath 有效时操作经 io 转发增量落盘", async () => {
-    const { host, handler, driver } = await setup();
+  test("rootPath 有效时经协作通道落盘在 daemon（worker 零写盘）", async () => {
+    const { host, handler, driver, daemon } = await setup();
+    try {
+      await createStroke(host, handler, "demo/1");
+      // 协作同步：worker 操作广播 → daemon 应用 + 落盘
+      const landed = await waitFor(async () => {
+        const s = await openBoardSession(daemon.rootPath, { source: "check" });
+        const found = s.api
+          .queryObjectList()
+          .objects.some((o) => o.id === "demo/1");
+        await s.close();
+        return found;
+      });
+      expect(landed).toBe(true);
 
-    await createStroke(host, handler, "demo/1");
-    // 等待日志跟随者微任务合批落盘
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    for (let i = 0; i < 50; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      for (const message of host.postedMessages) {
-        if (message.type !== "io-invoke" || message.__handled) continue;
-        message.__handled = true;
-        const result = await handler(message.command, message.args);
-        host.emit({ type: "io-response", msgId: message.msgId, ok: true, result });
-      }
+      // worker 侧 mock 盘零写：无 write/mkdir/rm 类 io 命令
+      const writes = host.postedMessages.filter(
+        (m) =>
+          m.type === "io-invoke" &&
+          /write|mkdir|rm|cp|mv/.test(m.command),
+      );
+      expect(writes).toHaveLength(0);
+    } finally {
+      await daemon.close();
+      rmSync(daemon.rootPath, { recursive: true, force: true });
     }
-
-    // 日志段、对象文件、板元数据均已落地
-    const segments = await driver.ls("mem", "hit");
-    expect(segments.length).toBeGreaterThan(0);
-    const objects = await driver.ls("mem", "objects");
-    expect(objects.map((e) => e.name)).toEqual(["demo%2F1.json"]);
-    const meta = JSON.parse(await driver.read("mem", "board.json"));
-    expect(meta.formatVersion).toBe(1);
-    expect(meta.nextSegmentSeq).toBeGreaterThan(0);
   });
 
-  test("重开后会话恢复，撤销历史穿越重开", async () => {
-    const { host, handler, driver } = await setup();
-    await createStroke(host, handler, "demo/1");
-    await new Promise((resolve) => setTimeout(resolve, 20));
+  test("重开后经协作同步恢复，撤销穿越重开", async () => {
+    const { host, handler, driver, daemon } = await setup();
+    try {
+      await createStroke(host, handler, "demo/1");
+      await waitFor(async () => {
+        const s = await openBoardSession(daemon.rootPath, { source: "check" });
+        const found = s.api
+          .queryObjectList()
+          .objects.some((o) => o.id === "demo/1");
+        await s.close();
+        return found;
+      });
 
-    // 排空 io 转发后销毁
-    await rpcCall(host, handler, "queryObjects", { ids: ["demo/1"] });
-    await rpcCall(host, handler, "destroyBoard");
+      // 排空 io 转发后销毁
+      await rpcCall(host, handler, "queryObjects", { ids: ["demo/1"] });
+      await rpcCall(host, handler, "destroyBoard");
 
-    // 重开同一板
-    await rpcCall(host, handler, "createBoard", {
-      width: 800,
-      height: 600,
-      rootPath: "/boards/demo",
-    });
-    const objects = await rpcCall(host, handler, "queryObjects", {
-      ids: ["demo/1"],
-    });
-    expect(objects).toHaveLength(1);
-    expect(objects[0].id).toBe("demo/1");
+      // 重开同一板：worker 本地盘为空，经协作通道全量同步恢复
+      await rpcCall(host, handler, "createBoard", {
+        width: 800,
+        height: 600,
+        rootPath: "/boards/demo",
+      });
+      const restored = await waitFor(async () => {
+        const objects = await rpcCall(host, handler, "queryObjects", {
+          ids: ["demo/1"],
+        });
+        return objects.length === 1 && objects[0].id === "demo/1";
+      });
+      expect(restored).toBe(true);
 
-    // 撤销穿越重开：undo 撤销新增，对象消失
-    await rpcCall(host, handler, "undo");
-    const afterUndo = await rpcCall(host, handler, "queryObjects", {
-      ids: ["demo/1"],
-    });
-    expect(afterUndo).toHaveLength(0);
+      // 撤销穿越重开：worker undo 广播 → daemon 应用，对象消失
+      await rpcCall(host, handler, "undo");
+      const undone = await waitFor(async () => {
+        const s = await openBoardSession(daemon.rootPath, { source: "check" });
+        const found = s.api.queryObjectList().objects.length === 0;
+        await s.close();
+        return found;
+      });
+      expect(undone).toBe(true);
+    } finally {
+      await daemon.close();
+      rmSync(daemon.rootPath, { recursive: true, force: true });
+    }
     void driver;
   });
 
