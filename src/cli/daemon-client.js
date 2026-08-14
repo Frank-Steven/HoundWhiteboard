@@ -121,6 +121,8 @@ async function connectDescriptor(desc) {
       queryMolAmendSince: (molId, sinceSeq) =>
         invoke("queryMolAmendSince", { molId, sinceSeq }),
       shutdown: () => invoke("daemon-shutdown", {}),
+      hold: () => invoke("daemon-hold", {}),
+      release: () => invoke("daemon-release", {}),
     },
     close() {
       try {

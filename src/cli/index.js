@@ -49,8 +49,10 @@ const USAGE = `用法：hwb <命令> [--daemon <名> | --path <板目录>] [--�
 
 daemon 管理：
   daemon start --name <名> --path <板目录> [--source <身份>]   后台启动 daemon（板必须已存在，用 create 建板）
-  daemon stop --name <名>                                            停止 daemon（排空 in-flight、落盘、注销注册表）
-  daemon status [--name <名>]                                        查单个 daemon；省略 name 时列出全部
+  daemon hold --name <名>                                     引用 +1（占住 daemon，防止 release 归零退出）
+  daemon release --name <名>                                  引用 -1；归零则 daemon 自动退出
+  daemon stop --name <名>                                     强制归零关闭（无条件，清理描述与注册表）
+  daemon status [--name <名>]                                 查单个 daemon（含引用计数）；省略 name 时列出全部
 
 建板与打包（离线，不接 daemon）：
   create --path <板目录> [--width 800] [--height 600]   创建空板
@@ -190,7 +192,7 @@ async function runDaemonStatus(flags) {
       console.log(JSON.stringify({ ...desc, alive }, null, 2));
     } else {
       console.log(
-        `${desc.name}  ${alive ? "运行中" : "已停止（僵尸条目）"}  板：${desc.rootPath}  端口：${desc.port}  身份：${desc.source}  启动：${desc.startedAt}`,
+        `${desc.name}  ${alive ? "运行中" : "已停止（僵尸条目）"}  引用：${desc.refCount ?? 1}  板：${desc.rootPath}  端口：${desc.port}  身份：${desc.source}  启动：${desc.startedAt}`,
       );
     }
     return;
@@ -203,7 +205,7 @@ async function runDaemonStatus(flags) {
       out.push({ ...desc, alive });
     } else {
       console.log(
-        `${desc.name}  ${alive ? "运行中" : "已停止（僵尸条目）"}  板：${desc.rootPath}  端口：${desc.port}  身份：${desc.source}  启动：${desc.startedAt}`,
+        `${desc.name}  ${alive ? "运行中" : "已停止（僵尸条目）"}  引用：${desc.refCount ?? 1}  板：${desc.rootPath}  端口：${desc.port}  身份：${desc.source}  启动：${desc.startedAt}`,
       );
     }
   }
@@ -236,6 +238,54 @@ async function runDaemonCommand(args, flags) {
         throw new Error(`daemon ${name} 停机确认超时（注册表条目仍在）。`);
       }
       console.log(`daemon ${name} 已停止。`);
+      return;
+    }
+    case "hold": {
+      const name = flags.name;
+      if (!isValidDaemonName(name)) {
+        throw new Error(`daemon hold 需要 --name <名>。`);
+      }
+      const session = await connectDaemonByName(name);
+      if (session === null) {
+        throw new Error(`daemon ${name} 不可用：注册表无条目或端口不可连通。`);
+      }
+      try {
+        const result = await session.api.hold();
+        console.log(`daemon ${name} 引用 +1（当前 ${result.refCount}）。`);
+      } finally {
+        session.close();
+      }
+      return;
+    }
+    case "release": {
+      const name = flags.name;
+      if (!isValidDaemonName(name)) {
+        throw new Error(`daemon release 需要 --name <名>。`);
+      }
+      const session = await connectDaemonByName(name);
+      if (session === null) {
+        throw new Error(`daemon ${name} 不可用：注册表无条目或端口不可连通。`);
+      }
+      let refCountAfter;
+      try {
+        const result = await session.api.release();
+        refCountAfter = result.refCount;
+      } finally {
+        session.close();
+      }
+      console.log(`daemon ${name} 引用 -1（当前 ${refCountAfter}）。`);
+      if (refCountAfter === 0) {
+        // 归零自动退出：等待注册表条目消失确认
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+          if ((await readEntry(name)) === null) {
+            console.log(`daemon ${name} 已退出。`);
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        throw new Error(`daemon ${name} 退出确认超时（注册表条目仍在）。`);
+      }
       return;
     }
     case "status":
