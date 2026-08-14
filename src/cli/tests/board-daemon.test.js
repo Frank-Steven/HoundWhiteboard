@@ -614,7 +614,7 @@ describe("板 daemon", () => {
     }
   }, 30000);
 
-  test("引用计数：hold/release/stop 与 GUI 连接增减，release 归零自动退出", async () => {
+  test("引用计数：start 幂等/release/stop 与 GUI 连接增减，release 归零自动退出", async () => {
     const { dir, cleanup } = await tempBoard();
     const daemon = await startBoardDaemon({
       rootPath: dir,
@@ -629,8 +629,8 @@ describe("板 daemon", () => {
     try {
       // start 后引用 1
       expect(JSON.parse((await run(["daemon", "status", "--name", "dt", "--json"])).stdout).refCount).toBe(1);
-      // hold +1、release -1
-      await run(["daemon", "hold", "--name", "dt"]);
+      // 重复 start（幂等）引用 +1、release -1
+      await run(["daemon", "start", "--name", "dt", "--path", dir]);
       expect(JSON.parse((await run(["daemon", "status", "--name", "dt", "--json"])).stdout).refCount).toBe(2);
       await run(["daemon", "release", "--name", "dt"]);
       expect(JSON.parse((await run(["daemon", "status", "--name", "dt", "--json"])).stdout).refCount).toBe(1);
@@ -666,11 +666,16 @@ describe("板 daemon", () => {
       await coord2.connect();
       await run(["daemon", "release", "--name", "dt"]);
       expect(JSON.parse((await run(["daemon", "status", "--name", "dt", "--json"])).stdout).alive).toBe(true);
+      // 创建者引用已 release：GUI 断开 → 归零 → daemon 自动关闭（注册表条目消失）
       await coord2.close();
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
-      // release 归零：daemon 自动退出（注册表条目消失）
-      await run(["daemon", "release", "--name", "dt"]);
+      await waitFor(async () => {
+        try {
+          await run(["daemon", "status", "--name", "dt", "--json"]);
+          return false;
+        } catch {
+          return true;
+        }
+      });
       await expect(run(["daemon", "status", "--name", "dt"])).rejects.toMatchObject({ code: 1 });
     } finally {
       await daemon.close();

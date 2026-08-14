@@ -194,10 +194,16 @@ async function startBoardDaemon(options) {
   const queue = createQueue();
 
   /**
-   * 引用计数（创建者引用 1；GUI 长连接与 hold 递增，release 递减，归零自动退出）
+   * 创建者引用（start/hold 递增，release 递减；归零且无客户端连接时自动退出）
    * @type {number}
    */
-  let refCount = 1;
+  let ownerRefs = 1;
+
+  /**
+   * 客户端引用（GUI 协作长连接数，join/leave 自动管理）
+   * @type {number}
+   */
+  let clientRefs = 0;
 
   /**
    * 协作客户端表（WS 连接 → 来源标识；GUI 直连协作通道）
@@ -217,9 +223,28 @@ async function startBoardDaemon(options) {
    * 把 refCount 镜像进注册表（status 展示用）
    * @returns {Promise<void>}
    */
+  /** 总引用数（status 展示与归零判定） */
+  const totalRefs = () => ownerRefs + clientRefs;
+
+  /** 注册表镜像写队列（close 时先排空再删除条目，避免飞行中的写回复活条目） */
+  let refSyncTail = Promise.resolve();
+
   const syncRefCount = () => {
-    if (desc === null) return Promise.resolve();
-    return writeEntry({ ...desc, refCount });
+    if (desc === null || closed) return refSyncTail;
+    refSyncTail = refSyncTail
+      .then(() => writeEntry({ ...desc, refCount: totalRefs() }))
+      .catch(() => {});
+    return refSyncTail;
+  };
+
+  /**
+   * 引用归零检查：无创建者引用且无客户端连接时关闭退出
+   * @returns {void}
+   */
+  const checkZeroAndExit = () => {
+    if (ownerRefs === 0 && clientRefs === 0) {
+      closeAndExit();
+    }
   };
 
   /**
@@ -292,12 +317,13 @@ async function startBoardDaemon(options) {
   const removeCollabClient = (ws) => {
     if (!collabClients.has(ws)) return;
     collabClients.delete(ws);
-    refCount = Math.max(0, refCount - 1);
+    clientRefs = Math.max(0, clientRefs - 1);
     // 并发写注册表可能失败（tmp 冲突），镜像失败不影响进程内权威计数
     void syncRefCount().catch(() => {});
     if (collabClients.size === 0) {
       detachCollabSubscriptions();
     }
+    checkZeroAndExit();
   };
 
   /**
@@ -369,7 +395,7 @@ async function startBoardDaemon(options) {
         if (collabClients.has(ws)) return;
         if (typeof message.source !== "string" || message.source === "") return;
         collabClients.set(ws, message.source);
-        refCount += 1;
+        clientRefs += 1;
         await syncRefCount();
         ws.send(
           JSON.stringify({
@@ -468,20 +494,18 @@ async function startBoardDaemon(options) {
         return;
       }
       if (message?.route === "daemon-hold") {
-        // 引用 +1（CLI 显式占住，防止被 release 归零退出）
-        refCount += 1;
+        // 创建者引用 +1（CLI 显式占住，防止 release 归零退出）
+        ownerRefs += 1;
         void syncRefCount();
-        ws.send(JSON.stringify({ id: message.id, ok: true, result: { refCount } }));
+        ws.send(JSON.stringify({ id: message.id, ok: true, result: { refCount: totalRefs() } }));
         return;
       }
       if (message?.route === "daemon-release") {
-        // 引用 -1；归零则自动退出
-        refCount = Math.max(0, refCount - 1);
+        // 创建者引用 -1；无引用且无客户端连接时自动退出
+        ownerRefs = Math.max(0, ownerRefs - 1);
         void syncRefCount();
-        ws.send(JSON.stringify({ id: message.id, ok: true, result: { refCount } }));
-        if (refCount === 0) {
-          closeAndExit();
-        }
+        ws.send(JSON.stringify({ id: message.id, ok: true, result: { refCount: totalRefs() } }));
+        checkZeroAndExit();
         return;
       }
       if (typeof message?.id === "number" && typeof message?.route === "string") {
@@ -504,7 +528,7 @@ async function startBoardDaemon(options) {
     port,
     source,
     boardId: options.boardId ?? null,
-    refCount,
+    refCount: totalRefs(),
     startedAt: new Date().toISOString(),
   };
   await fs.writeFile(
@@ -516,6 +540,7 @@ async function startBoardDaemon(options) {
   await writeEntry(desc);
 
   const close = async () => {
+    if (closed) return;
     closed = true;
     // 排空 in-flight RPC：关闭前最后一次落盘不截断
     await queue.drain();
@@ -526,7 +551,8 @@ async function startBoardDaemon(options) {
     }
     for (const ws of wss.clients) {
       try {
-        ws.close();
+        // terminate 立即终止（close 是握手式，未完成握手的连接会让 wss.close 回调挂起）
+        ws.terminate();
       } catch {
         /* 忽略单个客户端关闭失败 */
       }
@@ -538,6 +564,8 @@ async function startBoardDaemon(options) {
     }
     await session.flush();
     await session.close();
+    // 排空镜像写再删除条目：飞行中的 writeEntry 会让条目复活
+    await refSyncTail;
     await fs.rm(path.join(rootPath, DAEMON_FILE), { force: true });
     await removeEntry(name);
   };

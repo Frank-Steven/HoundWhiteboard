@@ -20,12 +20,13 @@ daemon 进程内维护引用计数（创建者引用 1）：
 
 | 动作 | 计数 |
 |---|---|
-| `daemon start` / GUI 打开板时 spawn | 初始 1（创建者引用，需 release 释放） |
+| `daemon start`（新创建）/ GUI 打开板时 spawn | 初始 1（创建者引用，需 release 释放） |
+| `daemon start`（同名同板已存活，幂等） | +1（重复 start 是"增加持有"而非报错） |
 | GUI 长连接建立 / 断开 | +1 / -1 |
-| `hwb daemon hold --name <名>` | +1（CLI 显式占住） |
 | `hwb daemon release --name <名>` | -1；归零 → daemon 自动退出 |
 | `hwb daemon stop --name <名>` | 强制归零、无条件关闭 |
 
+- **start 幂等**：重复 `start`（同名同板）是引用 +1 而非报错——误操作（不知情地两次 start）不会被打断，也不会被一次 release 误关；同名不同板、同板不同名仍报错（name 唯一 + 一个板一个 daemon 约束不变）
 - 自洽性：GUI 连接持有引用，GUI 开着时 release 最多降到 GUI 那份（>0），daemon 不会中途消失
 - refCount 不持久化：daemon 重启/僵尸覆盖后重置为 1；注册表条目镜像当前值供 `status` 展示
 - CLI 短命令不计数（用之前确保 daemon 在，用完不持有）
@@ -33,7 +34,7 @@ daemon 进程内维护引用计数（创建者引用 1）：
 ```bash
 hwb daemon start --name board1 --path ~/boards/a [--source 身份] [--relay ws://...] [--board-id 房间]
 hwb daemon status [--name board1]        # 显示 refCount；省略 name 列出全部（含僵尸条目）
-hwb daemon hold --name board1            # 引用 +1
+hwb daemon start --name board1 --path ~/boards/a   # 同名同板已存活：引用 +1（幂等，不重启）
 hwb daemon release --name board1         # 引用 -1，归零自动退出
 hwb daemon stop --name board1            # 强制归零关闭
 ```
@@ -82,9 +83,8 @@ hwb <命令> [--daemon <名> | --path <板目录>] [--标志 值]
 
 | 命令                                                                                                  | 说明                                                                                                                                                                     |
 | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `daemon start --name <名> --path <板目录> [--source <身份>]`                                           | 后台启动持板 daemon（板必须已存在）                                                                                                                                      |
-| `daemon hold --name <名>`                                                                             | 引用 +1（占住 daemon，防止 release 归零退出）                                                                                                                            |
-| `daemon release --name <名>`                                                                          | 引用 -1；归零则 daemon 自动退出                                                                                                                                          |
+| `daemon start --name <名> --path <板目录> [--source <身份>]`                                           | 后台启动持板 daemon；同名同板已存活时引用 +1（幂等）                                                                                                                     |
+| `daemon release --name <名>`                                                                          | 引用 -1；归零且无客户端连接则 daemon 自动退出                                                                                                                            |
 | `daemon stop --name <名>`                                                                             | 强制归零关闭（无条件，清理描述与注册表）                                                                                                                                 |
 | `daemon status [--name <名>]`                                                                         | 查单个 daemon（name/refCount/板目录/端口/身份/启动时间/存活）；省略 name 列出全部                                                                                       |
 | `create --path <板目录> [--width 800] [--height 600]`                                                  | 离线创建空板；板目录已存在时报错                                                                                                                                         |

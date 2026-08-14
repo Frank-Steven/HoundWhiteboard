@@ -48,9 +48,8 @@ const START_READY_TIMEOUT_MS = 15000;
 const USAGE = `用法：hwb <命令> [--daemon <名> | --path <板目录>] [--标志 值]
 
 daemon 管理：
-  daemon start --name <名> --path <板目录> [--source <身份>]   后台启动 daemon（板必须已存在，用 create 建板）
-  daemon hold --name <名>                                     引用 +1（占住 daemon，防止 release 归零退出）
-  daemon release --name <名>                                  引用 -1；归零则 daemon 自动退出
+  daemon start --name <名> --path <板目录> [--source <身份>]   后台启动 daemon；同名同板已存活时引用 +1（幂等）
+  daemon release --name <名>                                  引用 -1；归零且无客户端连接则 daemon 自动退出
   daemon stop --name <名>                                     强制归零关闭（无条件，清理描述与注册表）
   daemon status [--name <名>]                                 查单个 daemon（含引用计数）；省略 name 时列出全部
 
@@ -125,29 +124,44 @@ async function runDaemonStart(flags) {
       `非法 daemon name：${name}（仅允许字母/数字/.-_）。`,
     );
   }
-  // 前置校验：name 查重与板目录占用（快速失败，避免后台进程起后才发现）
+  // 分支 1：同名存活 daemon → 幂等引用 +1（同板）或报错（换板）
   const registered = await readEntry(name);
   if (registered !== null && (await isEntryAlive(registered))) {
+    if (registered.rootPath !== rootPath) {
+      throw new Error(
+        `daemon ${name} 已持有板目录 ${registered.rootPath}，同一 name 只能指向一块板。`,
+      );
+    }
+    // 重复 start 同板 = 引用 +1（误操作安全：不会因重复 start 报错，也不会被一次 release 误关）
+    const session = await connectDaemonByName(name);
+    if (session === null) {
+      throw new Error(`daemon ${name} 连接失败（端口 ${registered.port}）。`);
+    }
+    try {
+      const result = await session.api.hold();
+      console.log(`daemon ${name} 引用 +1（当前 ${result.refCount}）。`);
+    } finally {
+      session.close();
+    }
+    return;
+  }
+  // 分支 2：新创建（含僵尸覆盖）
+  // 板必须已存在（create 建板）；board.json 是板的标志文件
+  try {
+    await access(path.join(rootPath, "board.json"));
+  } catch {
     throw new Error(
-      `daemon ${name} 已在运行（板目录 ${registered.rootPath}）。`,
+      `板目录不存在或不是板：${rootPath}（先用 hwb create --path <板目录> 建板）。`,
     );
   }
-  if (flags.create !== true) {
-    // 板必须已存在（create 建板）；board.json 是板的标志文件
-    try {
-      await access(path.join(rootPath, "board.json"));
-    } catch {
-      throw new Error(
-        `板目录不存在或不是板：${rootPath}（先用 hwb create --path <板目录> 建板）。`,
-      );
-    }
-    const existing = await readDaemonDescriptor(rootPath);
-    if (existing && (await isDaemonAlive(existing.port))) {
-      throw new Error(
-        `板目录已有 daemon 在运行（端口 ${existing.port}）。`,
-      );
-    }
-  }  const childArgs = [
+  // 板占用检查：同一板目录只能被一个活 daemon 持有（同 name 同板已在上方分支处理）
+  const existing = await readDaemonDescriptor(rootPath);
+  if (existing && (await isDaemonAlive(existing.port))) {
+    throw new Error(
+      `板目录已有 daemon 在运行（端口 ${existing.port}）。`,
+    );
+  }
+  const childArgs = [
     START_DAEMON_PATH,
     "--name",
     name,
@@ -238,23 +252,6 @@ async function runDaemonCommand(args, flags) {
         throw new Error(`daemon ${name} 停机确认超时（注册表条目仍在）。`);
       }
       console.log(`daemon ${name} 已停止。`);
-      return;
-    }
-    case "hold": {
-      const name = flags.name;
-      if (!isValidDaemonName(name)) {
-        throw new Error(`daemon hold 需要 --name <名>。`);
-      }
-      const session = await connectDaemonByName(name);
-      if (session === null) {
-        throw new Error(`daemon ${name} 不可用：注册表无条目或端口不可连通。`);
-      }
-      try {
-        const result = await session.api.hold();
-        console.log(`daemon ${name} 引用 +1（当前 ${result.refCount}）。`);
-      } finally {
-        session.close();
-      }
       return;
     }
     case "release": {
