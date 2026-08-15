@@ -213,12 +213,6 @@ class CoreWorkerRuntime {
   #guiRetryTimer = null;
 
   /**
-   * GUI 协作身份（createBoard 时记录，spawn daemon 用）
-   * @type {string | null}
-   */
-  #guiSource = null;
-
-  /**
    * GUI 板尺寸（createBoard 时记录，spawn 建板骨架用）
    * @type {{width: number, height: number}}
    */
@@ -280,7 +274,6 @@ class CoreWorkerRuntime {
     this.#guiCoordinator = null;
     this.#guiDaemon = null;
     this.#guiRetryTimer = null;
-    this.#guiSource = null;
     this.#boardSize = { width: 0, height: 0 };
     this.#persistenceDriver = null;
     this.#persistenceRootId = null;
@@ -539,7 +532,6 @@ class CoreWorkerRuntime {
       throw new Error("BoardCore already created.");
     }
 
-    this.#guiSource = options.source ?? "gui";
     this.#boardSize = { width: options.width ?? 0, height: options.height ?? 0 };
     const persistence = await this.#setupPersistence(options.rootPath);
 
@@ -577,15 +569,12 @@ class CoreWorkerRuntime {
       },
     );
     // hit 变更下行：远程文档变化通知 UI（工具清理失效选中）
-    // 携带对象 id 计数表：远端 add-object（如 CLI 经 daemon 写入）推进后，
-    // 主线程 id 池随之取大，GUI 创建对象不与远端撞号
     this.#unsubscribeHitChanged = this.#boardCore.activityEventBus.on(
       "hit-changed",
       () => {
         this.#postMessage({
           type: "awareness",
           awarenessType: "hit-changed",
-          objectIdCounters: this.#boardCore.getObjectIdCounters(),
         });
       },
     );
@@ -1053,11 +1042,11 @@ class CoreWorkerRuntime {
    */
   async #resolveBoardDaemon(rootPath) {
     // 无条件请求 Rust 侧拉起（幂等：已有活 daemon 直接返回现有实例，无则建骨架并 spawn）
+    // 不传 source：daemon 身份按注册表 name→source 映射自持，不与 GUI 共享（撞号结构性排除）
     const name = `gui-${guiDaemonNameFromPath(rootPath)}`;
     const spawned = await this.#forwardIoInvoke("spawn_board_daemon", {
       path: rootPath,
       name,
-      source: this.#guiSource ?? "gui",
       width: this.#boardSize.width ?? 0,
       height: this.#boardSize.height ?? 0,
     });

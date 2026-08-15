@@ -75,6 +75,44 @@ async function writeEntry(desc) {
 }
 
 /**
+ * daemon 身份映射文件路径（按 name 独立文件，stop 删条目不影响身份持久化）
+ * @param {string} name - daemon 名
+ * @returns {string} 身份文件路径
+ */
+function daemonIdentityFile(name) {
+  return path.join(daemonsDir(), "sources", `${name}.json`);
+}
+
+/**
+ * 解析 daemon 协作身份（首启生成并持久化，之后读回；重启/停止后身份稳定）
+ * @param {string} name - daemon 名
+ * @returns {Promise<string>} 形如 "daemon-xxxx" 的身份
+ *
+ * @description
+ * 分片存储（布局 v2）的身份唯一化前提：每个 daemon 有独立 source，不继承 GUI 身份，
+ * 也不回退设备身份（node 进程无 localStorage，设备身份在 daemon 内无法持久化）。
+ */
+async function resolveDaemonIdentity(name) {
+  try {
+    const text = await fs.readFile(daemonIdentityFile(name), "utf-8");
+    const desc = JSON.parse(text);
+    if (typeof desc?.source === "string" && desc.source.startsWith("daemon-")) {
+      return desc.source;
+    }
+  } catch {
+    /* 缺失或损坏时按首启处理 */
+  }
+  const random = Math.floor(Math.random() * 36 ** 4);
+  const source = `daemon-${random.toString(36).padStart(4, "0")}`;
+  const file = daemonIdentityFile(name);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  await fs.writeFile(tmp, JSON.stringify({ name, source }), "utf-8");
+  await fs.rename(tmp, file);
+  return source;
+}
+
+/**
  * 移除注册表条目
  * @param {string} name - daemon 名
  * @returns {Promise<boolean>} 是否存在并被移除
@@ -153,6 +191,8 @@ async function isEntryAlive(desc) {
 export {
   isValidDaemonName,
   daemonsDir,
+  daemonIdentityFile,
+  resolveDaemonIdentity,
   readEntry,
   writeEntry,
   removeEntry,

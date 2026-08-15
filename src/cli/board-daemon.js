@@ -11,9 +11,9 @@ import { BOARD_API_ROUTES } from "../kernel/api/board-api-routes.js";
 import { createNetworkCoordinator } from "../host/sync/network-coordinator.js";
 import { createAmendForwarder } from "../host/sync/amend-forwarder.js";
 import { parseOperationId } from "../kernel/hit/operation.js";
-import { resolveDeviceSource } from "../utils/device-identity.js";
 import {
   isValidDaemonName,
+  resolveDaemonIdentity,
   writeEntry,
   removeEntry,
   readEntry,
@@ -81,7 +81,7 @@ async function readDaemonDescriptor(rootPath) {
  * @param {Object} options - 启动选项
  * @param {string} options.name - daemon 名（注册表唯一标识，不可与存活 daemon 重复）
  * @param {string} options.rootPath - 板目录（必须是既有板）
- * @param {string} [options.source] - 协作身份；省略时用设备自动身份
+ * @param {string} [options.source] - 协作身份；省略时按注册表 name→source 映射解析（首启生成持久化）
  * @param {string} [options.boardId] - 中继房间 id；省略时用板目录路径
  * @param {string} [options.relayUrl] - 中继地址；省略时 daemon 不参与协作
  * @param {number} [options.port=0] - 监听端口（0 为随机）
@@ -120,10 +120,13 @@ async function startBoardDaemon(options) {
     );
   }
 
+  // 身份解析：显式 --source 优先；否则按注册表 name→source 映射（首启生成持久化，
+  // 重启/停止后身份稳定）。daemon 不继承 GUI 身份（分片存储身份唯一化前提），
+  // 也不回退设备身份（node 进程无 localStorage，设备身份在 daemon 内无法持久化）
   const source =
     typeof options.source === "string" && options.source !== ""
       ? options.source
-      : resolveDeviceSource();
+      : await resolveDaemonIdentity(name);
   const session = await openBoardSession(rootPath, { source });
 
   // 可选连中继：失败降级单机并每 3s 自动重试（中继可能后于 daemon 启动）；断线后同周期自动重连

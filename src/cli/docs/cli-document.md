@@ -114,7 +114,7 @@ hwb <命令> [--daemon <名> | --path <板目录>] [--标志 值]
 
 - `--daemon <名>`：目标 daemon（写命令必填；读命令与 `--path` 二选一）
 - `--path <板目录>`：读命令直读板文件（不接 daemon，零写盘）；`create` 与 `daemon start` 指定板位置
-- `--source <来源>`：daemon 启动时的协作身份（默认设备自动身份），决定新对象 id 前缀（`<source>/<n>`）与操作记录 source
+- `--source <来源>`：daemon 启动时的协作身份（省略时按注册表 name→source 映射解析：首启生成 `daemon-*` 并持久化，重启后身份稳定），决定新对象 id 前缀（`<source>/<n>`）与操作记录 source
 - `--json`：输出为纯 JSON（见下文输出契约）
 - `-h` / `--help`：打印用法；`--version`：打印版本号
 - `--width` / `--height`：仅 `create` 建板时生效
@@ -168,7 +168,7 @@ choice 全量修改（--position/--transform/--property/--data）仅单成员 ch
 - **并发安全**：持板侧 id 分配原子化（`addObject` 的计数上报在异步让出前完成），daemon 的 RPC 经串行队列逐个执行（invoke + 落盘不交错），关闭前排空 in-flight——多 CLI 并发不撞号、不丢操作
 - **读命令零写盘**：直读会话挂接时以盘上对象、trash 条目、区块元数据与板元数据为调和种子（种子形状即 `loadAll` 的输出形状，trash 条目 id 在 `entry.data.id`），板元数据按排序指纹比对，值不变不落盘
 - **板上配置优先**：板尺寸是文档数据（决定区块划分），重开时以 `board.json` 的 `boardConfig` 为准；0 值视为未知，不写入也不抢占调用方显式配置
-- **协作身份贯穿**：`--source` 在 daemon 启动时注入，操作记录 source、Core 侧 id 子命名空间与对象 id 池同前缀；id 池计数经 `reportObjectIdCounter` 随板元数据持久化，跨进程续号
+- **协作身份贯穿**：`--source` 在 daemon 启动时注入（省略时按注册表 name→source 映射分配独立 `daemon-*` 身份，不继承 GUI 身份——双写端不同 source，撞号结构性排除）；操作记录 source、Core 侧 id 子命名空间与对象 id 池同前缀；id 池计数经 `reportObjectIdCounter` 随板元数据持久化，跨进程续号
 
 ## 设计约束
 

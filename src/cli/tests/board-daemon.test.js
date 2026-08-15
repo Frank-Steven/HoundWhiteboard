@@ -13,6 +13,7 @@ import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { startBoardDaemon, readDaemonDescriptor } from "../board-daemon.js";
+import { daemonIdentityFile } from "../daemon-registry.js";
 import { connectDaemonByPath } from "../daemon-client.js";
 import { openBoardSession } from "../board-session.js";
 import { createRelayServer } from "../../host/sync/relay-server.js";
@@ -785,4 +786,84 @@ describe("板 daemon", () => {
       await cleanup();
     }
   }, 30000);
+});
+
+describe("daemon 身份持久化", () => {
+  test("首启生成 daemon-* 身份并写入身份映射文件", async () => {
+    const { dir, cleanup } = await tempBoard();
+    const daemon = await startBoardDaemon({
+      rootPath: dir,
+      exitOnZero: false,
+      name: "id-first",
+    });
+    try {
+      expect(daemon.source).toMatch(/^daemon-[0-9a-z]{4}$/);
+      const text = await fs.readFile(daemonIdentityFile("id-first"), "utf-8");
+      expect(JSON.parse(text).source).toBe(daemon.source);
+    } finally {
+      await daemon.close();
+      await cleanup();
+    }
+  });
+
+  test("停止后重启同名 daemon 身份不变（stop 删注册表条目不影响身份映射）", async () => {
+    const { dir, cleanup } = await tempBoard();
+    const first = await startBoardDaemon({
+      rootPath: dir,
+      exitOnZero: false,
+      name: "id-stable",
+    });
+    const firstSource = first.source;
+    await first.close();
+    const second = await startBoardDaemon({
+      rootPath: dir,
+      exitOnZero: false,
+      name: "id-stable",
+    });
+    try {
+      expect(second.source).toBe(firstSource);
+    } finally {
+      await second.close();
+      await cleanup();
+    }
+  });
+
+  test("不同 name 分配不同身份", async () => {
+    const { dir: dirA, cleanup: cleanupA } = await tempBoard();
+    const { dir: dirB, cleanup: cleanupB } = await tempBoard();
+    const daemonA = await startBoardDaemon({
+      rootPath: dirA,
+      exitOnZero: false,
+      name: "id-distinct-a",
+    });
+    const daemonB = await startBoardDaemon({
+      rootPath: dirB,
+      exitOnZero: false,
+      name: "id-distinct-b",
+    });
+    try {
+      expect(daemonA.source).not.toBe(daemonB.source);
+    } finally {
+      await daemonA.close();
+      await daemonB.close();
+      await cleanupA();
+      await cleanupB();
+    }
+  });
+
+  test("显式 source 优先于身份映射", async () => {
+    const { dir, cleanup } = await tempBoard();
+    const daemon = await startBoardDaemon({
+      rootPath: dir,
+      exitOnZero: false,
+      name: "id-explicit",
+      source: "explicit-src",
+    });
+    try {
+      expect(daemon.source).toBe("explicit-src");
+    } finally {
+      await daemon.close();
+      await cleanup();
+    }
+  });
 });

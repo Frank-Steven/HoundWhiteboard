@@ -249,27 +249,6 @@ class Board {
     // worker 内驱动的文件操作经主线程转发到 Tauri invoke
     this.#detachIoForwarder = attachIoInvokeForwarder(worker);
 
-    // hit-changed 下行携带对象 id 计数表：远端写入（CLI 经 daemon）后推进主线程 id 池，防撞号
-    const onWorkerMessage = (event) => {
-      const message = event?.data;
-      if (
-        message?.type === "awareness" &&
-        message.awarenessType === "hit-changed" &&
-        message.objectIdCounters
-      ) {
-        const counter = message.objectIdCounters[this.idSource];
-        if (Number.isInteger(counter)) {
-          this.#idPool.ensureAbove(counter);
-        }
-      }
-    };
-    worker.addEventListener("message", onWorkerMessage);
-    const prevDetach = this.#detachIoForwarder;
-    this.#detachIoForwarder = () => {
-      prevDetach();
-      worker.removeEventListener("message", onWorkerMessage);
-    };
-
     try {
       await boardApi.waitUntilReady(
         options.readyTimeoutMs ?? options.timeoutMs,
