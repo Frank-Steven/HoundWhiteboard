@@ -583,40 +583,31 @@ class CoreWorkerRuntime {
 
     if (persistence) {
       this.#boardCore.restoreSession(persistence.session);
+      // 布局 v2：GUI 自己落盘——只落本端 source 的日志流（persistStream），
+      // 对象文件按 AOM 活动性仲裁（journaler 内跳过远程活动对象）；
+      // 元数据写本端分片 meta/<source>.json（board.json 创建后只读）；
+      // chunkUnload 部分驻留下不移除缺失对象文件
+      this.#journaler = createJournaler({
+        boardCore: this.#boardCore,
+        store: persistence.store,
+        collectMeta: () => this.#boardCore.collectSessionMeta(),
+        persistStream: (s) => s === this.#boardCore.source,
+        removeMissing: false,
+      });
+      this.#journaler.attach({
+        nextSegmentSeqBySource: persistence.session.nextSegmentSeqBySource,
+        lastTime: persistence.session.meta?.lastTime ?? 0,
+        knownObjects: persistence.session.objects,
+        knownTrash: persistence.session.trash,
+        knownSourceMeta: persistence.session.sourceMeta ?? null,
+        knownChunkMetadata: persistence.session.chunkMetadataList,
+      });
       if (persistence.daemon) {
-        // 协作模式（布局 v2）：GUI 自己落盘——只落本端 source 的日志流（persistStream），
-        // 对象文件按 AOM 活动性仲裁（journaler 内跳过远程活动对象）；
-        // 不写 board.json（daemon 单写）；chunkUnload 部分驻留下不移除缺失对象文件
-        this.#journaler = createJournaler({
-          boardCore: this.#boardCore,
-          store: persistence.store,
-          persistStream: (s) => s === this.#boardCore.source,
-          writeMeta: false,
-          removeMissing: false,
-        });
-        this.#journaler.attach({
-          nextSegmentSeqBySource: persistence.session.nextSegmentSeqBySource,
-          lastTime: persistence.session.meta?.lastTime ?? 0,
-          knownObjects: persistence.session.objects,
-          knownTrash: persistence.session.trash,
-          knownChunkMetadata: persistence.session.chunkMetadataList,
-        });
         this.#guiDaemon = persistence.daemon;
         await this.#connectGuiDaemon();
       } else {
-        this.#journaler = createJournaler({
-          boardCore: this.#boardCore,
-          store: persistence.store,
-          collectMeta: () => this.#boardCore.collectSessionMeta(),
-        });
-        this.#journaler.attach({
-          nextSegmentSeqBySource: persistence.session.nextSegmentSeqBySource,
-          lastTime: persistence.session.meta?.lastTime ?? 0,
-          knownObjects: persistence.session.objects,
-          knownTrash: persistence.session.trash,
-          knownMeta: persistence.session.meta,
-          knownChunkMetadata: persistence.session.chunkMetadataList,
-        });
+        // 单机降级：daemon 暂不可用（断线/未拉起），盘即兜底；周期重试探测/拉起并接入协作
+        this.#scheduleGuiReconnect();
       }
     }
 
@@ -705,7 +696,9 @@ class CoreWorkerRuntime {
    * 断线重连后的全量收敛沿用同步机制的 digest/request-init 对账。
    */
   async #connectGuiDaemon() {
-    if (this.#boardCore === null || this.#guiDaemon === null) return;
+    if (this.#boardCore === null) return;
+    // 内存模式（无 rootPath）无 daemon 可言；单机降级下 #guiDaemon 为空也要继续探测
+    if (!this.#boardCore.rootPath) return;
     const daemon = await this.#resolveGuiDaemonForReconnect();
     if (daemon === null) {
       this.#scheduleGuiReconnect();
@@ -800,10 +793,15 @@ class CoreWorkerRuntime {
     if (this.#guiDaemon && (await this.#probeWs(this.#guiDaemon.port))) {
       return this.#guiDaemon;
     }
-    // 探测不到活 daemon（崩溃/被 stop）：重新拉起，幂等（活 daemon 直返）
+    // 探测不到活 daemon（崩溃/被 stop）：重新拉起，幂等（活 daemon 直返）；
+    // 拉起失败（含单机降级期）返回 null 等下轮重试
     const rootPath = this.#boardCore?.rootPath;
     if (typeof rootPath === "string" && rootPath !== "") {
-      return await this.#resolveBoardDaemon(rootPath);
+      try {
+        return await this.#resolveBoardDaemon(rootPath);
+      } catch {
+        return null;
+      }
     }
     return null;
   }
@@ -1004,9 +1002,9 @@ class CoreWorkerRuntime {
    * @returns {Promise<{ adapter: Object, store: Object, session: Object, daemon: Object } | null>} 持久化上下文，内存模式为 null
    *
    * @description
-   * 协作模式：可写挂载（布局 v2：GUI 落自己的日志流与活动对象文件）+ 探测或 spawn 板 daemon，
-   * journaler 由 createBoard 挂接（persistStream 只落本端流、不写 board.json、不移除缺失对象文件）。
-   * 板不存在时由 spawn 侧建骨架。
+   * 可写挂载（布局 v2：GUI 落自己的日志流、活动对象文件与 meta 分片）+ 探测或 spawn 板 daemon。
+   * daemon 不可用时不抛错：单机降级（盘即兜底，GUI 照常落盘，周期重试接入协作）。
+   * 板不存在时自行建骨架（不再依赖 spawn 侧）。
    * @private
    */
   async #setupPersistence(rootPath) {
@@ -1016,14 +1014,7 @@ class CoreWorkerRuntime {
     const driver = createTauriDriver({
       invoke: (command, args) => this.#forwardIoInvoke(command, args),
     });
-    // 先确保板 daemon（Rust 侧幂等：有活 daemon 直接返回，无则建骨架并拉起）
-    const daemon = await this.#resolveBoardDaemon(rootPath);
-    if (daemon === null) {
-      throw new Error(
-        `板 daemon 不可用：${rootPath}（无法连接或启动持板 daemon）`,
-      );
-    }
-    // 再可写挂载（daemon 已建骨架，目录必然存在）
+    // 可写挂载先行（目录不存在且声明写权限时自动创建）
     const registered = await driver.registerRoot(rootPath, {
       read: true,
       write: true,
@@ -1038,14 +1029,33 @@ class CoreWorkerRuntime {
     }
     const { rootId } = registered;
     const store = createSessionStore(bindRoot(driver, rootId));
+    // 单机降级自建仓（daemon 侧建骨架的历史职责收回到这里；幂等）
+    if (!(await store.exists())) {
+      await store.create(
+        this.#boardSize.width > 0 && this.#boardSize.height > 0
+          ? { boardConfig: { ...this.#boardSize } }
+          : {},
+      );
+    }
     this.#persistenceDriver = driver;
     this.#persistenceRootId = rootId;
     const session = await store.loadAll();
+    // daemon 探测/拉起失败不阻塞开板（单机降级，盘即兜底）
+    let daemon = null;
+    try {
+      daemon = await this.#resolveBoardDaemon(rootPath);
+    } catch (error) {
+      this.#log.warn(`板 daemon 拉起失败：${error?.message ?? error}`);
+    }
+    if (daemon === null) {
+      this.#log.warn(`板 daemon 暂不可用，按单机模式开板（盘即兜底）：${rootPath}`);
+    }
     return {
       adapter: createPersistenceAdapter({ driver, rootId }),
       store,
       session,
       daemon,
+      rootPath,
     };
   }
 

@@ -79,9 +79,8 @@ describe("Journaler", () => {
     expect(objects).toHaveLength(1);
     expect(objects[0].id).toBe("demo/1");
 
-    const meta = await store.readMeta();
-    expect(meta.nextSegmentSeq).toBeUndefined();
-    expect(meta.lastTime).toBe(records[0].time);
+    const metaBySource = await store.readAllSourceMeta();
+    expect(metaBySource.core?.lastTime).toBe(records[0].time);
     // 段落入 per-source 流目录
     const { nextSegmentSeqBySource } = await store.readAllRecords();
     expect(nextSegmentSeqBySource).toEqual({ core: 1 });
@@ -220,8 +219,8 @@ describe("Journaler", () => {
     expect(writeCount).toBe(0);
   });
 
-  test("knownMeta 种子：无变化 flush 不重写板元数据与区块元数据", async () => {
-    // 递增时钟：meta 不再携带段序号后，lastTime 必须真实推进才能触发重写
+  test("knownSourceMeta 种子：无变化 flush 不重写元数据分片与区块元数据", async () => {
+    // 递增时钟：lastTime 必须真实推进才能触发重写
     let tick = 1000;
     const { boardCore, api, store } = setup({ now: () => ++tick });
     await store.create();
@@ -230,14 +229,15 @@ describe("Journaler", () => {
     await createStaticStroke(api, "s1");
     await journaler.detach();
 
-    // 模拟重新打开：以盘上 meta 与区块元数据为种子，无修改 flush 不应重写
-    const meta = await store.readMeta();
+    // 模拟重新打开：以盘上 meta 分片与区块元数据为种子，无修改 flush 不应重写
+    const sourceMeta = await store.readAllSourceMeta();
+    const lastTime = Object.values(sourceMeta)[0]?.lastTime ?? 0;
     let writeMetaCount = 0;
     let writeChunkCount = 0;
     const countingStore = Object.create(store);
-    countingStore.writeMeta = async (m) => {
+    countingStore.writeSourceMeta = async (source, m) => {
       writeMetaCount++;
-      return store.writeMeta(m);
+      return store.writeSourceMeta(source, m);
     };
     countingStore.writeChunkMetadata = async (chunkId, metadata) => {
       writeChunkCount++;
@@ -247,17 +247,17 @@ describe("Journaler", () => {
     journaler2.attach({
       nextSegmentSeqBySource: (await store.readAllRecords())
         .nextSegmentSeqBySource,
-      lastTime: meta.lastTime ?? 0,
+      lastTime,
       knownObjects: await store.readAllObjects(),
       knownTrash: [],
-      knownMeta: meta,
+      knownSourceMeta: sourceMeta,
       knownChunkMetadata: await store.readAllChunkMetadata(),
     });
     await journaler2.flush();
     expect(writeMetaCount).toBe(0);
     expect(writeChunkCount).toBe(0);
 
-    // 真实修改后元数据正常重写
+    // 真实修改后元数据分片正常重写
     await createStaticStroke(api, "s2");
     await journaler2.flush();
     expect(writeMetaCount).toBe(1);
@@ -538,8 +538,52 @@ describe("Journaler", () => {
     await journaler.flush();
 
     expect(await store.readMeta()).toEqual(before);
+    // meta 分片同样零写盘
+    expect(await store.readAllSourceMeta()).toEqual({});
     // 流与对象照常落盘
     expect((await store.readAllRecords()).records).toHaveLength(1);
     expect((await store.readAllObjects()).map((o) => o.id)).toEqual(["s1"]);
+  });
+
+  test("flush 写本端与代写来源的 meta 分片（含各自计数切片）", async () => {
+    const { boardCore, api, store } = setup();
+    await store.create();
+    const journaler = createJournaler({
+      boardCore,
+      store,
+      collectMeta: () => boardCore.collectSessionMeta(),
+    });
+    journaler.attach();
+
+    await createStaticStroke(api, "s1");
+    await api.applyRemoteOperations([
+      createAddObjectOperation({
+        id: "b/op-1",
+        source: "b",
+        time: Date.now() + 1000,
+        parentId: null,
+        chunkId: "1",
+        objectId: "b/1",
+        data: {
+          id: "b/1",
+          type: "StrokeObject",
+          position: { x: 0, y: 0 },
+          property: { width: 2 },
+          data: { points: [{ x: 0, y: 0 }] },
+          transform: { a: 1, b: 0, c: 0, d: 1 },
+        },
+        layerStackSnapshot: ["s1", "b/1"],
+      }),
+    ]);
+    await journaler.flush();
+
+    const sourceMeta = await store.readAllSourceMeta();
+    // 本端 core 与代写的 b 各有分片；计数切片按 source 归属
+    expect(Object.keys(sourceMeta).sort()).toEqual(["b", "core"]);
+    expect(sourceMeta.core.lastTime).toBeGreaterThan(0);
+    expect(sourceMeta.b.objectIdCounters).toEqual({ b: 1 });
+    // 合并视图：两源计数并入
+    const session = await store.loadAll();
+    expect(session.meta.objectIdCounters).toEqual({ b: 1 });
   });
 });

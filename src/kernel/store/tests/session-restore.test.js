@@ -62,7 +62,7 @@ async function createStaticStroke(api, id, y = 100) {
  * @returns {Promise<{boardCore: BoardCore, api: BoardApi}>} 源端
  */
 async function buildSession(store) {
-  const boardCore = createBoard();
+  const boardCore = createBoard({ source: "test" });
   const api = new BoardApi(boardCore);
   const journaler = createJournaler({
     boardCore,
@@ -96,6 +96,7 @@ async function buildSession(store) {
 async function openSession(store) {
   const session = await store.loadAll();
   const boardCore = createBoard({
+    source: "test",
     hitRecords: session.records,
     lastTime: session.meta?.lastTime ?? 0,
     coreIdCounters: session.meta?.coreIdCounters ?? {},
@@ -185,7 +186,8 @@ describe("会话恢复", () => {
 
   test("UI 侧对象 id 计数器随元数据持久化与恢复", async () => {
     const store = await setup();
-    const boardCore = createBoard();
+    // 计数来源 = 板身份（生产语义：GUI 的对象 id 池与记录同 source）
+    const boardCore = createBoard({ source: "demo" });
     const journaler = createJournaler({
       boardCore,
       store,

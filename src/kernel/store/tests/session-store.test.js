@@ -200,4 +200,43 @@ describe("SessionStore", () => {
       "a/2",
     ]);
   });
+
+  test("per-source 元数据分片：写入读回与 loadAll 归并", async () => {
+    const store = setup();
+    await store.create();
+    await store.writeSourceMeta("a", {
+      lastTime: 10,
+      coreIdCounters: { a: 3 },
+    });
+    await store.writeSourceMeta("b", {
+      lastTime: 20,
+      objectIdCounters: { b: 5 },
+    });
+    // board.json 存量兜底字段（boardConfig 与老板计数）
+    await store.writeMeta({
+      boardConfig: { width: 800, height: 600 },
+      lastTime: 5,
+      coreIdCounters: { legacy: 1 },
+    });
+
+    const session = await store.loadAll();
+    expect(session.sourceMeta.a.coreIdCounters).toEqual({ a: 3 });
+    // lastTime 取全源最大；计数表按 key 并入（分片覆盖板级同名 key）
+    expect(session.meta.lastTime).toBe(20);
+    expect(session.meta.coreIdCounters).toEqual({ legacy: 1, a: 3 });
+    expect(session.meta.objectIdCounters).toEqual({ b: 5 });
+    expect(session.meta.boardConfig).toEqual({ width: 800, height: 600 });
+  });
+
+  test("损坏的来源分片被跳过", async () => {
+    const driver = createMemoryDriver({ rootId: "mem" });
+    const d = bindRoot(driver, "mem");
+    const store = createSessionStore(d);
+    await store.create();
+    await store.writeSourceMeta("a", { lastTime: 10 });
+    await d.write("meta/bad.json", "{oops");
+    await d.write("meta/.tmp-leftover", "{}");
+    const sourceMeta = await store.readAllSourceMeta();
+    expect(Object.keys(sourceMeta)).toEqual(["a"]);
+  });
 });

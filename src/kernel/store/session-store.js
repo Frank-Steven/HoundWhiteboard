@@ -39,6 +39,9 @@ const TRASH_DIR = "trash";
 /** 操作日志目录名 */
 const HIT_DIR = "hit";
 
+/** per-source 元数据目录名 */
+const META_DIR = "meta";
+
 /** 区块元数据目录名 */
 const CHUNKS_DIR = "chunks";
 
@@ -148,13 +151,44 @@ function parseJson(content) {
 }
 
 /**
+ * 归并板级元数据与 per-source 元数据分片
+ * @param {Object|null} boardMeta - board.json 内容
+ * @param {Object<string, Object>} sourceMeta - 来源到分片的映射
+ * @returns {Object|null} 归并后的板元数据
+ *
+ * @description
+ * 计数表按 key 并入（分片覆盖板级同名 key），lastTime 取全源最大值。
+ */
+function mergeSourceMeta(boardMeta, sourceMeta) {
+  if (boardMeta === null && Object.keys(sourceMeta).length === 0) return null;
+  const merged = { ...(boardMeta ?? {}) };
+  let lastTime = typeof merged.lastTime === "number" ? merged.lastTime : 0;
+  const coreIdCounters = { ...(merged.coreIdCounters ?? {}) };
+  const objectIdCounters = { ...(merged.objectIdCounters ?? {}) };
+  for (const meta of Object.values(sourceMeta)) {
+    if (typeof meta.lastTime === "number" && meta.lastTime > lastTime) {
+      lastTime = meta.lastTime;
+    }
+    Object.assign(coreIdCounters, meta.coreIdCounters ?? {});
+    Object.assign(objectIdCounters, meta.objectIdCounters ?? {});
+  }
+  if (boardMeta !== null || lastTime > 0) merged.lastTime = lastTime;
+  if (Object.keys(coreIdCounters).length > 0) merged.coreIdCounters = coreIdCounters;
+  if (Object.keys(objectIdCounters).length > 0) {
+    merged.objectIdCounters = objectIdCounters;
+  }
+  return merged;
+}
+
+/**
  * 创建会话存储
  * @param {SessionDriver} driver - 注入的会话驱动（已绑定白板根目录）
  * @returns {Object} 会话存储操作面
  *
  * @description
- * 布局：board.json（板元数据）、objects/{id}.json（活动对象快照）、
- * trash/{id}.json（trash 条目，含层位边）、chunks/{chunkId}.json（区块层叠图与覆盖索引）、
+ * 布局：board.json（板级元数据，创建时写一次后只读）、meta/{source}.json（per-source 元数据分片）、
+ * objects/{id}.json（活动对象快照）、trash/{id}.json（trash 条目，含层位边）、
+ * chunks/{chunkId}.json（区块层叠图与覆盖索引）、
  * hit/{source}/seg-{NNNNNN}.jsonl（per-source 操作日志流，一行一条记录，各写端只写自己的流）。
  */
 function createSessionStore(driver) {
@@ -243,6 +277,7 @@ function createSessionStore(driver) {
         driver.mkdir(OBJECTS_DIR),
         driver.mkdir(TRASH_DIR),
         driver.mkdir(HIT_DIR),
+        driver.mkdir(META_DIR),
         driver.mkdir(CHUNKS_DIR),
       ]);
       if (!dirsReady.every(Boolean)) return false;
@@ -272,6 +307,46 @@ function createSessionStore(driver) {
         BOARD_META_FILE,
         JSON.stringify({ formatVersion: FORMAT_VERSION, ...meta }),
       );
+    },
+
+    /**
+     * 写入某来源的元数据分片（per-source，原子写）
+     * @param {string} source - 来源标识
+     * @param {Object} meta - 元数据分片（lastTime 与本端 id 计数）
+     * @returns {Promise<boolean>} 是否成功
+     *
+     * @description
+     * 各写端只写自己的分片（布局 v2：board.json 创建时写一次后只读，
+     * 计数与时间水位随 source 分片，多写者零冲突）。
+     */
+    async writeSourceMeta(source, meta) {
+      if (typeof source !== "string" || source === "") return false;
+      if (!meta || typeof meta !== "object") return false;
+      if (!knownSegmentDirs.has(META_DIR)) {
+        await driver.mkdir(META_DIR);
+        knownSegmentDirs.add(META_DIR);
+      }
+      return atomicWrite(
+        `${META_DIR}/${encodeSourceDirName(source)}.json`,
+        JSON.stringify(meta),
+      );
+    },
+
+    /**
+     * 读取全部来源的元数据分片
+     * @returns {Promise<Object<string, Object>>} 来源到分片的映射（损坏文件跳过）
+     */
+    async readAllSourceMeta() {
+      const entries = await driver.ls(META_DIR);
+      const out = {};
+      for (const entry of entries) {
+        if (!entry.isFile || !entry.name.endsWith(".json")) continue;
+        const source = decodeSourceDirName(entry.name.slice(0, -".json".length));
+        if (source === null) continue;
+        const meta = parseJson(await driver.read(`${META_DIR}/${entry.name}`));
+        if (meta && typeof meta === "object") out[source] = meta;
+      }
+      return out;
     },
 
     /**
@@ -470,18 +545,32 @@ function createSessionStore(driver) {
 
     /**
      * 聚合读取全部会话数据（打开既有板）
-     * @returns {Promise<Object>} 会话数据（meta、records、nextSegmentSeqBySource、chunkMetadataList、objects、trash）
+     * @returns {Promise<Object>} 会话数据（meta、sourceMeta、records、nextSegmentSeqBySource、chunkMetadataList、objects、trash）
+     *
+     * @description
+     * meta 归并：board.json（boardConfig / formatVersion 与存量兜底字段）+ 全部
+     * meta/<source>.json 分片——计数表按 key 并入（分片覆盖板级同名字段），lastTime 取最大值。
      */
     async loadAll() {
-      const [meta, { records, nextSegmentSeqBySource }, chunkMetadataList, objects, trash] =
+      const [meta, sourceMeta, { records, nextSegmentSeqBySource }, chunkMetadataList, objects, trash] =
         await Promise.all([
           this.readMeta(),
+          this.readAllSourceMeta(),
           this.readAllRecords(),
           this.readAllChunkMetadata(),
           this.readAllObjects(),
           this.readAllTrash(),
         ]);
-      return { meta, records, nextSegmentSeqBySource, chunkMetadataList, objects, trash };
+      const merged = mergeSourceMeta(meta, sourceMeta);
+      return {
+        meta: merged,
+        sourceMeta,
+        records,
+        nextSegmentSeqBySource,
+        chunkMetadataList,
+        objects,
+        trash,
+      };
     },
 
     /**

@@ -73,7 +73,7 @@ async function runScript(api) {
   await api.eraseData({
     points: [new Vector(20, 195), new Vector(20, 205)],
     radius: 1,
-    source: "test",
+    source: "core",
   });
   await api.deleteObjects(["demo/3"]);
 

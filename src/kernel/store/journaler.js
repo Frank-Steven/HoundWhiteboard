@@ -13,14 +13,15 @@
  * @param {ReturnType<import("./session-store.js").createSessionStore>} params.store - 会话存储
  * @param {() => Object} [params.collectMeta] - 附加板元数据收集器（flush 时并入 board.json）
  * @param {(source: string) => boolean} [params.persistStream] - 日志流落盘判定（默认全落；GUI 只落本端流，daemon 不落直连客户端的流）
- * @param {boolean} [params.writeMeta=true] - 是否重写 board.json（多写者共板时仅 daemon 写）
+ * @param {boolean} [params.writeMeta=true] - 是否写本端元数据分片 meta/<source>.json（读会话置 false 保持零写盘）
  * @param {boolean} [params.removeMissing=true] - 是否移除「既非活动亦非 trash」的对象文件（部分驻留的 GUI 必须关闭，否则会误删未加载对象的文件）
  * @returns {Object} 跟随者操作面
  *
  * @description
  * 记录经 append 事件入队，微任务合批后自动落盘；flush 可显式等待排空。
  * 对象文件按当前白板状态调和（序列化比对，仅写差异），撤销/重做/远端记录引起的任何状态迁移统一收敛。
- * 写权仲裁（布局 v2）：远程活动对象（AOM isRemoteActive）不写不移除——写权属活动方。
+ * 写权仲裁（布局 v2）：远程活动对象（AOM isRemoteActive）不写不移除——写权属活动方；
+ * 元数据按 source 分片（meta/<source>.json），board.json 创建时写一次后只读。
  */
 /**
  * 按键排序的 JSON 序列化（键序无关的内容指纹）
@@ -53,11 +54,15 @@ function createJournaler({ boardCore, store, collectMeta, persistStream, writeMe
   /** @type {Promise<void>} flush 串行链 */
   let flushing = Promise.resolve();
 
-  /** @type {{nextSegmentSeqBySource: Map<string, number>, lastTime: number}} 各源流的下一段序号与最新时间标记 */
-  let state = { nextSegmentSeqBySource: new Map(), lastTime: 0 };
+  /** @type {{nextSegmentSeqBySource: Map<string, number>, lastTime: number, flushedSources: Set<string>}} 各源流的下一段序号、最新时间标记与本会话已代写的来源 */
+  let state = {
+    nextSegmentSeqBySource: new Map(),
+    lastTime: 0,
+    flushedSources: new Set(),
+  };
 
   /** @type {?string} 已落盘板元数据的排序指纹（比对相同则跳过重写） */
-  let lastMetaJson = null;
+  const lastMetaJson = new Map();
 
   /**
    * 已落盘对象的内容指纹
@@ -174,6 +179,8 @@ function createJournaler({ boardCore, store, collectMeta, persistStream, writeMe
         const used = await store.appendSegment(source, seq, group);
         if (used !== false) {
           state.nextSegmentSeqBySource.set(source, used + 1);
+          // 代写该来源的流即承担其元数据分片（本盘上的计数与时间水位由此续号）
+          state.flushedSources.add(source);
         }
       }
       for (const record of records) {
@@ -185,15 +192,25 @@ function createJournaler({ boardCore, store, collectMeta, persistStream, writeMe
     await reconcileObjects();
     await reconcileChunks();
     if (!writeMeta) return;
-    // 板元数据指纹比对：值不变不重写（读命令不应触碰文件）
-    const meta = {
-      lastTime: state.lastTime,
-      ...(collectMeta?.() ?? {}),
-    };
-    const metaJson = stringifySorted(meta);
-    if (metaJson !== lastMetaJson) {
-      await store.writeMeta(meta);
-      lastMetaJson = metaJson;
+    // 元数据分片：本端 + 本会话代写过流的来源（布局 v2：board.json 创建后只读，
+    // 各写端只写自己负责的 meta/<source>.json；指纹比对，值不变不重写）
+    const own = boardCore.source;
+    const all = collectMeta?.() ?? {};
+    for (const source of new Set([own, ...state.flushedSources])) {
+      const meta = { lastTime: state.lastTime };
+      const coreCounter = all.coreIdCounters?.[source];
+      if (Number.isInteger(coreCounter)) {
+        meta.coreIdCounters = { [source]: coreCounter };
+      }
+      const objectCounter = all.objectIdCounters?.[source];
+      if (Number.isInteger(objectCounter)) {
+        meta.objectIdCounters = { [source]: objectCounter };
+      }
+      const metaJson = stringifySorted(meta);
+      if (metaJson !== lastMetaJson.get(source)) {
+        await store.writeSourceMeta(source, meta);
+        lastMetaJson.set(source, metaJson);
+      }
     }
   };
 
@@ -227,17 +244,18 @@ function createJournaler({ boardCore, store, collectMeta, persistStream, writeMe
      * @param {number} [options.lastTime=0] - 已落盘的最晚时间标记
      * @param {Object[]} [options.knownObjects=[]] - 盘上已有活动对象数据（指纹种子，避免首 flush 重写）
      * @param {Object[]} [options.knownTrash=[]] - 盘上已有 trash 条目（指纹种子）
-     * @param {Object} [options.knownMeta=null] - 盘上板元数据（含 formatVersion，剥离后作首轮比对种子）
+     * @param {Object<string, Object>} [options.knownSourceMeta=null] - 盘上各来源的元数据分片（首轮比对种子）
      * @param {Array<{chunkId: number, tierGraph: Array, objectCoverIndex: Array}>} [options.knownChunkMetadata=[]] - 盘上区块元数据（指纹种子，避免首 flush 重写）
      * @returns {void}
      */
-    attach({ nextSegmentSeqBySource = {}, lastTime = 0, knownObjects = [], knownTrash = [], knownMeta = null, knownChunkMetadata = [] } = {}) {
+    attach({ nextSegmentSeqBySource = {}, lastTime = 0, knownObjects = [], knownTrash = [], knownSourceMeta = null, knownChunkMetadata = [] } = {}) {
       if (unsubscribe !== null) {
         throw new Error("journaler 已挂接");
       }
       state = {
         nextSegmentSeqBySource: new Map(Object.entries(nextSegmentSeqBySource)),
         lastTime,
+        flushedSources: new Set(),
       };
       for (const data of knownObjects) {
         lastSync.set(data.id, { location: "objects", json: JSON.stringify(data) });
@@ -249,10 +267,11 @@ function createJournaler({ boardCore, store, collectMeta, persistStream, writeMe
           json: JSON.stringify(entry),
         });
       }
-      if (knownMeta !== null && typeof knownMeta === "object") {
-        // 盘上读出的 meta 含 formatVersion 键，剥离后与待写形状对齐
-        const { formatVersion: _formatVersion, ...rest } = knownMeta;
-        lastMetaJson = stringifySorted(rest);
+      if (knownSourceMeta !== null && typeof knownSourceMeta === "object") {
+        lastMetaJson.clear();
+        for (const [source, meta] of Object.entries(knownSourceMeta)) {
+          lastMetaJson.set(source, stringifySorted(meta));
+        }
       }
       for (const metadata of knownChunkMetadata) {
         // 种子与写入形状一致（键序固定），避免首 flush 因键序差异重写

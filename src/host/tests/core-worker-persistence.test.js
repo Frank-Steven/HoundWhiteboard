@@ -358,6 +358,62 @@ describe("CoreWorker 持久化接线", () => {
     void driver;
   });
 
+  test("daemon 关闭后 worker 继续落盘本端流与 meta 分片（断线不锁编辑）", async () => {
+    const { host, handler, driver, daemon } = await setup();
+    try {
+      await createStroke(host, handler, "demo/1");
+      const landed = await waitFor(async () => {
+        await pumpIo(host, handler);
+        const seg = await driver.read("mem", "hit/core/seg-000000.jsonl");
+        return typeof seg === "string" && seg.includes('"core/op-1"');
+      });
+      expect(landed).toBe(true);
+
+      // 杀死 daemon：worker 不丢编辑能力，继续落自己的分片
+      await daemon.close();
+      await createStroke(host, handler, "demo/2");
+      const landedOffline = await waitFor(async () => {
+        await pumpIo(host, handler);
+        const seg = await driver.read("mem", "hit/core/seg-000001.jsonl");
+        const meta = await driver.read("mem", "meta/core.json");
+        return typeof seg === "string" && seg.includes('"core/op-')
+          && typeof meta === "string" && meta.includes('"lastTime"');
+      });
+      expect(landedOffline).toBe(true);
+      await rpcCall(host, handler, "destroyBoard");
+    } finally {
+      rmSync(daemon.rootPath, { recursive: true, force: true });
+    }
+  });
+
+  test("daemon 拉起失败时降级单机模式开板（盘即兜底）", async () => {
+    const host = new FakeWorkerHost();
+    const runtime = new CoreWorkerRuntime(host);
+    runtime.start();
+    const { handler, driver } = createMemoryCommandHandler();
+    // mock 盘无 .daemon.json：spawn 幂等探测读不到描述，handler 抛错模拟拉起失败
+    const boardDir = mkdtempSync(path.join(tmpdir(), "hwb-worker-standalone-"));
+    try {
+      await rpcCall(host, handler, "createBoard", {
+        width: 800,
+        height: 600,
+        rootPath: "/boards/standalone",
+      });
+      await createStroke(host, handler, "demo/1");
+      const landed = await waitFor(async () => {
+        await pumpIo(host, handler);
+        const seg = await driver.read("mem", "hit/core/seg-000000.jsonl");
+        const obj = await driver.read("mem", "objects/demo%2F1.json");
+        const meta = await driver.read("mem", "meta/core.json");
+        return typeof seg === "string" && typeof obj === "string" && typeof meta === "string";
+      });
+      expect(landed).toBe(true);
+      await rpcCall(host, handler, "destroyBoard");
+    } finally {
+      rmSync(boardDir, { recursive: true, force: true });
+    }
+  });
+
   test("rootPath 缺省保持内存模式（无 io 转发）", async () => {
     const host = new FakeWorkerHost();
     const runtime = new CoreWorkerRuntime(host);
