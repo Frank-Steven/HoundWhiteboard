@@ -60,7 +60,7 @@ function send(ws, message) {
  *
  * @description
  * 无状态纯转发：房间成员管理、房间内广播（不回发发送者）、request-init 广播、
- * respond-init 定向。记录本身不经服务器缓存；迟到与离线合并由 K6 负责。
+ * respond-init 定向。记录本身不经服务器缓存；迟到与离线合并由各端重连对账负责。
  */
 function createRelayServer(options = {}) {
   const wss = new WebSocketServer({ port: options.port ?? 0, host: options.host });

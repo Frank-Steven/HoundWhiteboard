@@ -20,7 +20,8 @@
 
 ```text
 {board}/
-  board.json                        # 板元数据
+  board.json                        # 板级元数据（创建时写一次，之后只读）
+  meta/{source}.json                # per-source 元数据分片（计数与时间水位）
   objects/{objectId}.json           # 活动对象快照
   trash/{objectId}.json             # trash 条目
   chunks/{chunkId}.json             # 区块元数据
@@ -31,14 +32,11 @@
 
 ### `board.json`
 
-板元数据文件。每次落盘批次末尾整体重写。
+板级元数据文件。**创建时写一次，之后只读**（多写者共板的冲突面由此归零）。
 
 ```json
 {
   "formatVersion": 1,
-  "lastTime": 1786009532137,
-  "coreIdCounters": { "demo": 2 },
-  "objectIdCounters": { "demo": 17 },
   "boardConfig": { "width": 4096, "height": 4096 }
 }
 ```
@@ -46,11 +44,24 @@
 字段含义：
 
 - `formatVersion`：布局版本号
-- `lastTime`：已落盘记录的最晚时间标记，重开时续给 commit 边界
-- `nextSegmentSeq`（已退役）：v1 单流的全局段序号；v2 per-source 流的下一段序号由各流目录内最大段序直接恢复，不再入元数据
-- `coreIdCounters`：各来源的 Core 侧对象 id 已分配最大计数（如擦除分裂段 id），重开时续号防碰撞
-- `objectIdCounters`：各来源的 UI 侧对象 id 池已分配最大计数（UI 经 `reportObjectIdCounter` 上报），重开时续种防碰撞
 - `boardConfig`：板宽高；板尺寸是文档数据（决定区块划分），恢复时以盘上配置为准
+- `lastTime` / `coreIdCounters` / `objectIdCounters`（存量兜底）：新写入落在 `meta/{source}.json` 分片；读取时板级字段与分片归并（计数按 key 并入，lastTime 取全源最大）
+- `nextSegmentSeq`（已退役）：v1 单流的全局段序号；per-source 流的下一段序号由各流目录内最大段序直接恢复
+
+### `meta/{source}.json`
+
+per-source 元数据分片（原子写）。各写端只写自己负责的分片：本端 + 本会话代写过日志流的来源（daemon 代写 relay 远端来源）。
+
+```json
+{
+  "lastTime": 1786009532137,
+  "coreIdCounters": { "dev-8f3a": 2 },
+  "objectIdCounters": { "dev-8f3a": 17 }
+}
+```
+
+- `lastTime`：该写端已落盘记录的最晚时间标记
+- `coreIdCounters` / `objectIdCounters`：仅该 source 的计数切片，重开时续号防碰撞
 
 ### `objects/{objectId}.json`
 
@@ -94,7 +105,7 @@ trash 条目文件，文件名编码规则与活动对象相同。内容为完�
 
 > [!NOTE]
 >
-> **S4 决策（2026-08-15，保留 chunks/ 落盘）**：曾评估「chunks/ 停止落盘、加载时从对象与日志派生重建」（分片存储布局 v2 的写冲突消除动议）。万级对象实测（`yarn bench:chunk`，10,000 对象 / 11,351 条记录）：基线（chunks/ 直读 + restoreSession）409ms，全量回放派生 3625ms（约 9 倍，且随历史长度无限增长，违反「打开耗时与历史操作数脱钩」）；chunks/ 读取本身仅 3.3ms，零收益。且 z-order 精确派生需要层位效果重放（实况提交与重放在非相交对象的层位语义上存在「居上 vs 原位」差异）。双写软冲突由原子写与收敛内容兜底。
+> **chunks/ 保留落盘（2026-08-15 实测定夺）**：曾评估「chunks/ 停止落盘、加载时从对象与日志派生重建」（分片布局的写冲突消除动议）。万级对象实测（`yarn bench:chunk`，10,000 对象 / 11,351 条记录）：基线（chunks/ 直读 + restoreSession）409ms，全量回放派生 3625ms（约 9 倍，且随历史长度无限增长，违反「打开耗时与历史操作数脱钩」）；chunks/ 读取本身仅 3.3ms，零收益。且 z-order 精确派生需要层位效果重放（实况提交与重放在非相交对象的层位语义上存在「居上 vs 原位」差异）。双写软冲突由原子写与收敛内容兜底。
 
 ### `hit/{source}/seg-{NNNNNN}.jsonl`
 
@@ -113,7 +124,7 @@ trash 条目文件，文件名编码规则与活动对象相同。内容为完�
 1. 队列中的新记录按 record.source 分组，每组写为一段 `hit/{source}/seg-{N}.jsonl`（各写端只写自己的流；daemon 代写 relay 远端来源的流）
 2. 对象文件调和：活动对象写 `objects/`，trash 条目写 `trash/`，既非活动亦非 trash 的对象从盘上移除；**写权仲裁**——远程活动对象（AOM `isRemoteActive`）跳过不写不移除（写权属活动方）；部分驻留写端（GUI 开 chunkUnload）以 `removeMissing:false` 关闭缺失移除，防止误删未加载对象的文件
 3. 区块元数据调和：层叠图与覆盖索引指纹比对，仅写差异
-4. 重写 `board.json`（多写者共板时仅 daemon 写，GUI 以 `writeMeta:false` 跳过）
+4. 写本端（与代写来源）的 `meta/{source}.json` 分片；读会话以 `writeMeta:false` 保持零写盘
 
 调和以板当前状态为准，撤销/重做/远端记录引起的任意状态迁移统一收敛，无逐类型效果逻辑。
 
@@ -121,7 +132,8 @@ trash 条目文件，文件名编码规则与活动对象相同。内容为完�
 
 | 文件 | 谁写 | 冲突兜底 |
 | --- | --- | --- |
-| `board.json` | daemon 单写 | — |
+| `board.json` | 创建者一次，之后只读 | — |
+| `meta/{source}.json` | 该 source 的写端（含代写其流的 daemon） | 硬隔离零冲突；原子写 |
 | `objects/{id}.json` / `trash/{id}.json` | 活动方（AOM 仲裁，远程活动跳过）；静态对象双侧指纹调和 | 原子写 + digest 对账 |
 | `hit/{source}/` | 仅该 source 进程 | 硬隔离零冲突；段序号占用时递增自愈 |
 | `chunks/{chunkId}.json` | 各写端指纹调和（收敛后内容相同） | 原子写 |

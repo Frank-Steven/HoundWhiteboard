@@ -1,5 +1,5 @@
 /**
- * @file 区块元数据派生重建基准（S4）
+ * @file 区块元数据派生重建基准
  * @description 万级对象板冷启动：现状（chunks/ 直读）与全量回放派生的耗时对比，并校验两条路径的层叠图一致性。
  * @module benchmarks/chunk-rebuild
  */
@@ -206,7 +206,7 @@ async function timeRounds(label, rounds, fn) {
   return { mean, min };
 }
 
-printHeader("Chunk 派生重建基准（S4：万级对象板冷启动）");
+printHeader("Chunk 派生重建基准（万级对象板冷启动）");
 
 await ensureFixture();
 

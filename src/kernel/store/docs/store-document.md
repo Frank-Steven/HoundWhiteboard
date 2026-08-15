@@ -4,7 +4,7 @@
 
 > [!NOTE]
 >
-> **实现状态**：per-source 日志流存储（journaler 按 record.source 写 `hit/{source}/`，加载时多流归并重建 hit 树）、对象文件写权仲裁（S3：远程活动对象跳过、部分驻留写端关闭缺失移除、board.json 由 daemon 单写、对象与日志文件原子写）、会话恢复（树重放 + 层叠图回填 + id/时间续号）与跨会话撤销均已落地并固化为回归测试。chunks/ 经 S4 实测定夺**保留落盘**（万级对象：chunks/ 直读 409ms vs 回放派生 3625ms，详见文件结构文档的 S4 决策注记）。待落地：WS 加速器化与离线语义（S5）；大板场景的区块懒加载接入演示流程。
+> **实现状态**：per-source 日志流存储（journaler 按 record.source 写 `hit/{source}/`，加载时多流归并重建 hit 树）、对象文件写权仲裁（远程活动对象跳过、部分驻留写端关闭缺失移除、对象与日志文件原子写）、元数据分片与离线语义（`meta/{source}.json` 按写端分片、board.json 创建后只读、GUI 断线续编与单机降级开板、CLI 无 daemon 自治写）、会话恢复（树重放 + 层叠图回填 + id/时间续号）与跨会话撤销均已落地并固化为回归测试。chunks/ 经实测定夺**保留落盘**（万级对象：chunks/ 直读 409ms vs 回放派生 3625ms，详见文件结构文档的决策注记）。待落地：大板场景的区块懒加载接入演示流程。
 
 ## 模块定位
 
@@ -27,7 +27,8 @@ kernel 以结构化 typedef 定义最小文件操作接口，不 import io 包�
 
 ```text
 {board}/
-  board.json                       # 板元数据（格式版本、lastTime、id 计数器）
+  board.json                       # 板级元数据（格式版本、boardConfig；创建时写一次，之后只读）
+  meta/{source}.json               # per-source 元数据分片（计数与时间水位）
   objects/{objectId}.json          # 存活对象快照
   trash/{objectId}.json            # trash 条目（含层位边）
   chunks/{chunkId}.json            # 区块元数据（层叠图与覆盖索引）
@@ -46,7 +47,7 @@ journaler 订阅操作日志的 append 事件——本地 commit 与远端应用
 - **flush 编排**：新记录按 record.source 分组写为各源流的日志段（原子写：临时文件 + rename）→ 对象文件调和 → 区块元数据调和 → 重写 board.json。
 - **流归并**：打开板时各 per-source 流按「source 分组、组内操作序号升序、id 去重、组按 source 字典序拼接」归并——满足操作日志 per-source 序号连续与时间单调的准入校验；树重建按 (时间, author) 确定性定序，与归并顺序无关。
 - **指纹调和**：对象与区块文件按板当前状态对齐——序列化指纹（JSON 串）比对，仅写差异；全部存活对象（objectLoaded 全量）写 `objects/`，trash 条目写 `trash/`（层位边集合归一化为数组），既不存活亦非 trash 的对象从盘上移除。撤销/重做/远端记录引起的任意状态迁移统一收敛。注意此处的「活动对象」指内存中在场对象，与 AOM 三态术语中的「活动对象」不是一回事（AOM 活动态是被选中、正在操作的对象）。
-- **写权仲裁**：远程活动对象（AOM `isRemoteActive`）跳过不写不移除——写权属活动方；部分驻留写端（GUI 开 chunkUnload）以 `removeMissing:false` 关闭缺失移除；多写者共板时 `board.json` 仅 daemon 写（`writeMeta:false`）；对象与日志段文件均为原子写（临时文件 + rename）。
+- **写权仲裁**：远程活动对象（AOM `isRemoteActive`）跳过不写不移除——写权属活动方；部分驻留写端（GUI 开 chunkUnload）以 `removeMissing:false` 关闭缺失移除；元数据按 source 分片（`meta/{source}.json`：本端 + 本会话代写过流的来源），board.json 创建时写一次后只读；读会话以 `writeMeta:false` 保持零写盘；对象与日志段文件均为原子写（临时文件 + rename）。
 - **指纹种子**：打开既有板时以盘上内容为种子挂接（含各源流的下一段序号 `nextSegmentSeqBySource`，由各流目录内最大段序恢复），首轮 flush 不做无谓重写。
 
 ## 会话恢复

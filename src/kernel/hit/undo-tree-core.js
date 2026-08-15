@@ -266,7 +266,7 @@ class UndoTree {
 
   /**
    * 应用一个旧形态超分子操作（全部成员凝聚为一个节点）
-   * @description 兼容 K1.5 日志形态：节点 shareId 为超分子 id（首分子 id），时间标记取末分子（完成时刻）；
+   * @description 兼容旧日志形态（草稿凝聚）：节点 shareId 为超分子 id（首分子 id），时间标记取末分子（完成时刻）；
    * 晚于 HEAD 时追加并推进 HEAD，否则插入活动链对应位置。空成员组不产生节点。
    * @param {import("./operation.js").OperationRecord[]} members - 超分子成员记录（按追加序）
    * @returns {?MolecularNode} 超分子节点；空组返回 null

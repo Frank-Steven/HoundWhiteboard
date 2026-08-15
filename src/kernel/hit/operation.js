@@ -92,7 +92,7 @@ const EFFECT_KIND_OF_TYPE = Object.freeze({
  * @property {string} source - 发起者标识，即 hit 节点的 author
  * @property {number} time - 毫秒时间标记（unix 纪元），操作级 CRDT 重建的排序依据
  * @property {?string} parentId - 记录时刻本地视角的父节点 id；首个操作为 null
- * @property {?string} supraOpId - 旧日志形态（K1.5 草稿凝聚）的超分子关联；三级容器模型新记录不写，恒为 null
+ * @property {?string} supraOpId - 旧日志形态（草稿凝聚）的超分子关联；三级容器模型新记录不写，恒为 null
  * @property {?string} molId - 增量式分子标识，形如 `"{source}/mol-{n}"`；即时分子与 choose/unchoose 为 null
  * @property {?string} supraId - 归属超分子 id，形如 `"{source}/supra-{n}"`；独立分子为 null
  * @property {boolean} discard - 放弃型闭合标志（仅 unchoose-object 有意义：true 表示放弃修改回选择前快照）

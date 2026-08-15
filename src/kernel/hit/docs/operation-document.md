@@ -68,7 +68,7 @@ flowchart LR
 - `source`：发起者标识，即 hit 节点的 author。
 - `time`：毫秒物理时间标记；全序按（时间, author）时钟环决胜，同 author 再按操作序号决胜。
 - `parentId`：创建时本地视角的父节点 id（根为 `null`）；建树以时间序为准。
-- `supraOpId`：旧日志形态（K1.5 草稿凝聚）的超分子关联（首分子自指），只读兼容；三级容器模型的新记录不写，恒为 `null`。
+- `supraOpId`：旧日志形态（草稿凝聚）的超分子关联（首分子自指），只读兼容；三级容器模型的新记录不写，恒为 `null`。
 - `molId`：增量式分子 id，形如 `"{source}/mol-{n}"`；仅增量式分子的增加/修改对象记录携带，即时式分子为 `null`。
 - `supraId`：归属超分子 id，形如 `"{source}/supra-{n}"`；独立分子为 `null`；仅增加节点类操作可携带。
 - `discard`：放弃型闭合标志，仅取消选择有意义：`true` 表示放弃修改、回选择前快照（载荷携带 `restore` 还原点）；缺省 `false`。

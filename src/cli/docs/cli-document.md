@@ -112,8 +112,8 @@ hwb <命令> [--daemon <名> | --path <板目录>] [--标志 值]
 
 通用标志：
 
-- `--daemon <名>`：目标 daemon（写命令必填；读命令与 `--path` 二选一）
-- `--path <板目录>`：读命令直读板文件（不接 daemon，零写盘）；`create` 与 `daemon start` 指定板位置
+- `--daemon <名>`：目标 daemon（写命令优先；读命令与 `--path` 二选一）
+- `--path <板目录>`：读命令直读板文件（零写盘）；写命令探测持有 daemon 直走快路径，无 daemon 时自治直写自己分片（身份取 `~/.hound-whiteboard/cli-identity.json`，首启生成 `cli-*` 持久化）；`create` 与 `daemon start` 指定板位置
 - `--source <来源>`：daemon 启动时的协作身份（省略时按注册表 name→source 映射解析：首启生成 `daemon-*` 并持久化，重启后身份稳定），决定新对象 id 前缀（`<source>/<n>`）与操作记录 source
 - `--json`：输出为纯 JSON（见下文输出契约）
 - `-h` / `--help`：打印用法；`--version`：打印版本号
@@ -160,8 +160,8 @@ choice 全量修改（--position/--transform/--property/--data）仅单成员 ch
 
 ## 会话生命周期
 
-- **写命令**：CLI 进程按 name 查注册表 → 连持板 daemon → 经 RPC 执行（持板侧同步完成 + 响应前落盘）→ 断开。每次调用都是「连接 → 执行 → 落盘（daemon 侧）→ 关闭」的薄客户端循环
-- **读命令直读**：CLI 进程内开 BoardApi 会话加载板 → 查询 → flush（指纹种子保证零写盘）→ 关闭。这个形态使每次直读都走一遍恢复路径——撤销、trash、id 续号在跨进程场景下的正确性被持续检验
+- **写命令**：CLI 进程按 name 查注册表 → 连持板 daemon → 经 RPC 执行（持板侧同步完成 + 响应前落盘）→ 断开；`--path` 形态先探测板目录持有 daemon（活则同走 RPC），无 daemon 时**自治**：自己加载（对象直读 + 各流归并）→ 执行 → 落自己分片（`hit/<cli-*>/` + `meta/<cli-*>.json` + 影响的对象文件）→ 关闭。自治身份取 `~/.hound-whiteboard/cli-identity.json`（首启生成 `cli-*` 持久化）
+- **读命令直读**：CLI 进程内开 BoardApi 会话加载板（`writeMeta:false` 保持零写盘）→ 查询 → flush（指纹种子保证零写盘）→ 关闭。这个形态使每次直读都走一遍恢复路径——撤销、trash、id 续号在跨进程场景下的正确性被持续检验
 
 ## 关键设计点
 
@@ -174,7 +174,7 @@ choice 全量修改（--position/--transform/--property/--data）仅单成员 ch
 
 - 无交互与渲染能力：CLI 面向文档操作，不表达视口、选择与 overlay 状态
 - 写路径多写端分片（布局 v2）：各写端（GUI / daemon）只写自己 source 的日志流与自己影响的对象文件（AOM 活动性仲裁），board.json 仍由 daemon 单写；读命令直读只读已落盘状态，与持板者无竞态
-- daemon 是写路径单点：daemon 未启动时写命令报错提示 `daemon start`；读命令仍可用 `--path` 直读
+- daemon 是协作枢纽而非写路径单点：写命令优先经 daemon RPC（快路径），daemon 不在时 CLI 自治直写自己分片（慢路径，零依赖）；GUI 断线同样继续落盘（各自分片 + 原子写 + 重开归并兜底）
 - 板尺寸未知的板（`boardConfig` 缺失且未传 `--width/--height`）上执行 `add` 会因无法解析区块而失败，需显式指定尺寸
 
 ## 相关文档

@@ -44,7 +44,7 @@
 
 ## 中继服务器
 
-- **无状态纯转发**：不缓存任何记录，离线与迟到合并由 K6 负责；房间成员表是唯一状态。
+- **无状态纯转发**：不缓存任何记录，离线与迟到合并由各端重连对账负责；房间成员表是唯一状态。
 - **广播语义**：records/aom/awareness/digest 广播给房间内除发送者外全部成员；request-init 同广播；respond-init 定向。awareness 是 volatile 通道：不经 operationLog / applyRemoteOperations，无持久化、无确认重发、不参与哈希校验。
 - **连接生命周期**：close/error 移出房间并广播 peer-left；房间空则销毁。
 - **非法消息**：join 前非 join 消息、格式非法消息一律忽略。
@@ -56,7 +56,7 @@
 - 订阅 `operationLog.onAppend`：仅广播本端 source 的记录（远程应用的记录过滤，防回环放大）。
 - **微任务合批**：同一同步行程内连续产生的记录合为一批发出（如 endSupra 强制闭合在途分子并追加 close-supra 的同步连发），接收端同批接入；成员记录本就独立有效，合批只为同批美观（接入侧按 supraId 成组同批应用，见下）。
 - 订阅 `activityEventBus`：手势内 choose/commit 事件即时广播（choose 记录即时入日志挂 supraId、随记录通道收敛；此通道提供手势内的即时互斥与实时可见性，不等记录通道）。choose 事件携带 `choice`（命名选择名，匿名缺省）；unchoose/commit 事件按（来源，对象）注销，无需携带。
-- **awareness（K5）**：光标位置经 `sendAwareness` 走 volatile 通道广播，接收端由 `onAwareness` 回调转发宿主（只画不存）；peer-left 以 `{kind:"peer-left"}` 通知，供接收端清理远程光标。远程选择的装饰走 aom 可靠通道与 remote-activity 通知，不经 volatile 通道。
+- **awareness 通道**：光标位置经 `sendAwareness` 走 volatile 通道广播，接收端由 `onAwareness` 回调转发宿主（只画不存）；peer-left 以 `{kind:"peer-left"}` 通知，供接收端清理远程光标。远程选择的装饰走 aom 可靠通道与 remote-activity 通知，不经 volatile 通道。
 - **分子中间帧预览**：分子写入口在内核事件总线发射 amend 事件（begin-mol / amend / end-mol / abort-mol），`amend-forwarder` 负责转发：begin-mol 即时发出（不合批）；amend 按 33ms 间隔节流合批（position/transform/data 绝对值后帧盖前帧、append items 按序累积、seq 取批内最大）打包为 mol-amend 发出；end-mol 先冲出残余缓冲再即时发 mol-end，abort-mol 丢弃该分子缓冲后即时发 mol-abort。均经 volatile 通道广播；接收端只画不存，丢了不补，分子记录经可靠通道到达后按记录定格归位。本端断线时协调器经 `onDisconnect` 通知 UI 清空全部预览与光标（对端手势状态不可信），重连后各自重建。
 
 ### 远端 → 本地

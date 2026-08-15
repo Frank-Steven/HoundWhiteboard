@@ -44,7 +44,7 @@ src/
 │   ├── chunk/               # 区块（空间分区）
 │   ├── board/               # Board 权威状态（BoardCore 静态图 / AOM / render-hooks 缝）
 │   ├── hit/                 # 操作日志与时间回溯树
-│   ├── store/               # 会话存储（per-source 日志流、写权仲裁落盘、恢复）
+│   ├── store/               # 会话存储（per-source 日志流与 meta 分片、写权仲裁落盘、恢复）
 │   ├── api/                 # BoardApi 契约面
 │   ├── utils/               # 内核工具（id 池、图、数学）
 │   └── types/               # 类型定义
@@ -116,6 +116,7 @@ applyModifiedObjects(modificationContext, objects) { ... }
 
 - 私有成员以 `_` 开头，标记 `@private`
 - 常量用 `UPPER_SNAKE_CASE`
+- **开发期路线编号（Kx/Px/Sx 等阶段代号）不进入代码库**：提交信息、代码注释、文档一律写机制语义本身，路线追踪留在私有计划文档
 - 详细规范见 `.agent/skills/comment-writer/SKILL.md`，文档规范见 `.agent/skills/doc-writer/SKILL.md`
 
 ## 测试
