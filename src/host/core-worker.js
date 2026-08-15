@@ -577,10 +577,16 @@ class CoreWorkerRuntime {
       },
     );
     // hit 变更下行：远程文档变化通知 UI（工具清理失效选中）
+    // 携带对象 id 计数表：远端 add-object（如 CLI 经 daemon 写入）推进后，
+    // 主线程 id 池随之取大，GUI 创建对象不与远端撞号
     this.#unsubscribeHitChanged = this.#boardCore.activityEventBus.on(
       "hit-changed",
       () => {
-        this.#postMessage({ type: "awareness", awarenessType: "hit-changed" });
+        this.#postMessage({
+          type: "awareness",
+          awarenessType: "hit-changed",
+          objectIdCounters: this.#boardCore.getObjectIdCounters(),
+        });
       },
     );
 
