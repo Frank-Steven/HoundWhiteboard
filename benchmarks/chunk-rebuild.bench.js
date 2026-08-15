@@ -13,10 +13,11 @@ import { bindRoot } from "../src/io/driver/io-driver.js";
 import { createSessionStore } from "../src/kernel/store/session-store.js";
 import { BoardCore } from "../src/kernel/board/board-core.js";
 import { BoardApi } from "../src/kernel/api/board-api.js";
+import { intersectsRanges, RectangleRange } from "../src/kernel/range/index.js";
 import { printHeader, printFooter } from "./helpers.js";
 
 /** 夹具板目录（含对象数与历史规模的版本戳，变了就重建） */
-const FIXTURE_DIR = path.join(os.tmpdir(), "hwb-bench-chunk-board-v2");
+const FIXTURE_DIR = path.join(os.tmpdir(), "hwb-bench-chunk-board-v3");
 
 /** 夹具对象数 */
 const OBJECT_COUNT = 10_000;
@@ -206,6 +207,68 @@ async function timeRounds(label, rounds, fn) {
   return { mean, min };
 }
 
+/**
+ * 对象的世界包围矩形（带实例缓存）
+ * @param {BoardCore} boardCore - 白板核心
+ * @param {Map<string, ?>} cache - 对象 id → 矩形缓存
+ * @param {string} objectId - 对象 id
+ * @returns {?RectangleRange} 世界包围矩形
+ */
+function worldRectOf(boardCore, cache, objectId) {
+  if (cache.has(objectId)) return cache.get(objectId);
+  const obj = boardCore.getObjectById(objectId);
+  let rect = null;
+  if (typeof obj?.getRange === "function" && obj.position) {
+    const range = obj.getRange();
+    const positioned = range?.withPosition?.(obj.position);
+    rect = positioned ? RectangleRange.from(positioned) : null;
+  }
+  cache.set(objectId, rect);
+  return rect;
+}
+
+/**
+ * 逐对比较两路绘制序的相对方位，按视觉可观测性分级
+ * @description painters' algorithm 下只有相交对象的相对方位影响输出：
+ * 相交对反转是真层位分叉（inversions），非相交对换位是插入序副产物（cosmetic，视觉无关）。
+ * @param {BoardCore} baseline - 基线白板核心
+ * @param {BoardCore} replayed - 回放派生白板核心
+ * @returns {{ inversions: string[], cosmetic: number }} 相交对反转明细与非相交对换位计数
+ */
+function compareLayerOrientations(baseline, replayed) {
+  const inversions = [];
+  let cosmetic = 0;
+  const rectCache = new Map();
+  for (const { chunk } of baseline.chunkLoaded.values()) {
+    const baseGraph = chunk?.objectManager?.staticGraph;
+    if (!baseGraph) continue;
+    const replayGraph = replayed.getChunkById(chunk.id)?.objectManager?.staticGraph;
+    if (!replayGraph) continue;
+    const baseOrder = baseGraph.getTopologicalOrder().map(String);
+    const replayPosition = new Map(
+      replayGraph.getTopologicalOrder().map((id, index) => [String(id), index]),
+    );
+    for (let i = 0; i < baseOrder.length; i++) {
+      for (let j = i + 1; j < baseOrder.length; j++) {
+        const x = baseOrder[i];
+        const y = baseOrder[j];
+        const rxPos = replayPosition.get(x);
+        const ryPos = replayPosition.get(y);
+        if (rxPos === undefined || ryPos === undefined || rxPos < ryPos) continue;
+        // 换位：仅相交对构成视觉可观测的层位反转
+        const rx = worldRectOf(baseline, rectCache, x);
+        const ry = worldRectOf(baseline, rectCache, y);
+        if (rx && ry && intersectsRanges(rx, ry)) {
+          inversions.push(`chunk ${chunk.id}: ${x} 与 ${y} 方位反转`);
+        } else {
+          cosmetic += 1;
+        }
+      }
+    }
+  }
+  return { inversions, cosmetic };
+}
+
 printHeader("Chunk 派生重建基准（万级对象板冷启动）");
 
 await ensureFixture();
@@ -234,20 +297,20 @@ for (const chunkId of replayOrders.keys()) {
   if (!baseOrders.has(chunkId)) orderMismatch += 1;
 }
 console.log(`图形状分叉区块：${shapeMismatch}（仅参考，渲染不依赖边形状）`);
-if (orderMismatch > 0) {
+// 语义判定以相交对反转为准：非相交对的绘制序换位是插入序副产物，视觉无关
+const { inversions, cosmetic } = compareLayerOrientations(baseline, replayed);
+console.log(`非相交对换位（视觉无关，仅参考）：${cosmetic}`);
+if (inversions.length > 0) {
   // 语义告警但不阻断计时：分叉细节是决策依据的一部分（派生保真度成本）
-  console.error(`绘制序分叉区块：${orderMismatch}（层位保真详见上表；计时继续）`);
-  for (const [chunkId, order] of baseOrders) {
-    const other = replayOrders.get(chunkId) ?? "";
-    if (other === order) continue;
-    // 定位首个分叉点
-    let k = 0;
-    while (k < order.length && k < other.length && order[k] === other[k]) k++;
-    console.error(`  chunk ${chunkId} 分叉@char ${k}:`);
-    console.error(`    基线 …${order.slice(Math.max(0, k - 40), k + 80)}`);
-    console.error(`    回放 …${other.slice(Math.max(0, k - 40), k + 80)}`);
-    console.error(`    长度 基线 ${order.length} 回放 ${other.length}`);
+  console.error(`相交对层位反转：${inversions.length} 处（真分叉；计时继续）`);
+  for (const detail of inversions.slice(0, 20)) {
+    console.error(`  ${detail}`);
   }
+  if (inversions.length > 20) {
+    console.error(`  … 其余 ${inversions.length - 20} 处略`);
+  }
+} else if (orderMismatch > 0) {
+  console.log(`绘制序存在换位但相交对方位一致 ✓（层位视觉等价）`);
 } else {
   console.log(
     `绘制序一致 ✓（对象数：基线 ${baseline.getAllObjects().length}，回放 ${replayed.getAllObjects().length}）`,

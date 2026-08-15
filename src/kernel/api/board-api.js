@@ -67,6 +67,34 @@ function getObjectWorldRect(obj) {
 }
 
 /**
+ * 在静态状态图中加边（防御成环）
+ * @description 记录携带的层位边来自真实 DAG、缝合边来自后到者居上规则，理论上不成环；
+ * 但跨端交错与撤销过渡的中间态图可能短暂偏离，加边前以可达性检查兜底（成环则跳过该边）。
+ * @param {import("../utils/directed-graph.js").DirectedGraph<string>} graph - 静态状态图
+ * @param {string} from - 起点（在下者）
+ * @param {string} to - 终点（在上者）
+ * @returns {boolean} 是否实际写入
+ */
+function addLayerEdgeIfAcyclic(graph, from, to) {
+  if (from === to || !graph.hasNode(from) || !graph.hasNode(to)) return false;
+  if (graph.hasEdge(from, to)) return false;
+  const stack = [to];
+  const visited = new Set([to]);
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (current === from) return false;
+    for (const next of graph.neighborsUnsafe(current) ?? []) {
+      if (!visited.has(next)) {
+        visited.add(next);
+        stack.push(next);
+      }
+    }
+  }
+  graph.addEdgeUnsafe(from, to);
+  return true;
+}
+
+/**
  * Engine 侧 BoardApi
  * @class
  * @description
@@ -166,19 +194,26 @@ class BoardApi {
   }
 
   /**
-   * 捕获区块的层栈快照（静态状态图的拓扑序，即完整 z-order）
-   * @description 已加载区块的 id 未必是字符串，按字符串化后的 id 匹配。
-   * @param {string} chunkId - 区块 id（字符串）
-   * @returns {string[]} 层栈快照；区块未加载时为空数组
+   * 捕获对象在各已加载区块静态图中的层位边
+   * @description below = 主体之下的对象（前驱），above = 主体之上的对象（后继）；id 按字典序排序，保证跨端序列化确定。
+   * 主体节点不在任何静态图（如创建手势物化时对象仍在 AOM）时返回 undefined——
+   * 区别于「在图但无边」的空数组形态：undefined 表示无权威层位可采，消费端回退几何居上。
+   * @param {string} objectId - 对象 id
+   * @returns {?Array<{chunkId: string, below: string[], above: string[]}>} 层位边集合
    * @private
    */
-  #captureLayerStackSnapshot(chunkId) {
+  #captureLayerEdges(objectId) {
+    const chunks = [];
     for (const { chunk } of this.#boardCore.chunkLoaded.values()) {
-      if (String(chunk?.id) === chunkId) {
-        return chunk?.objectManager?.staticGraph?.topoSort?.() ?? [];
-      }
+      const graph = chunk?.objectManager?.staticGraph;
+      if (!graph?.hasNode?.(objectId)) continue;
+      chunks.push({
+        chunkId: String(chunk.id),
+        below: [...graph.predecessors(objectId)].sort(),
+        above: [...graph.neighbors(objectId)].sort(),
+      });
     }
-    return [];
+    return chunks.length > 0 ? chunks : undefined;
   }
 
   /**
@@ -434,13 +469,12 @@ class BoardApi {
       if (!obj) continue;
       const chunkId = this.#resolveObjectChunkId(objectId);
       const after = obj.serialize();
-      const layerStackSnapshot = this.#captureLayerStackSnapshot(chunkId);
       if (state.before === null) {
+        // 创建型物化：主体仍在 AOM 未入静态图，无权威层位边可采（省略 chunks，重放按后到者居上）
         committer.commitAdd({
           chunkId,
           objectId,
           data: after,
-          layerStackSnapshot,
           supraKey: mol.supraKey ?? undefined,
           molId,
         });
@@ -450,13 +484,13 @@ class BoardApi {
       }
       const properties = this.#diffProperties(state.before, after);
       if (properties.length === 0) continue;
+      // 手势修改的层位变化由配对的 choose/unchoose 记录承载，分子记录不携带层位边
       committer.commitModify({
         chunkId,
         objectId,
         properties,
         before: state.before,
         after,
-        layerStackSnapshot,
         supraKey: mol.supraKey ?? undefined,
         molId,
       });
@@ -599,15 +633,10 @@ class BoardApi {
         activeToDiscard.push(obj);
       }
 
-      const trashChunks = [];
+      // 删除记录与 trash 条目携带删除时刻的层位边：接收端与跨会话撤销凭以恢复
+      const trashChunks = this.#captureLayerEdges(objectId) ?? [];
       for (const { chunk } of boardCore.chunkLoaded.values()) {
-        const graph = chunk?.objectManager?.staticGraph;
-        if (!graph?.hasNode?.(objectId)) continue;
-        trashChunks.push({
-          chunkId: String(chunk.id),
-          below: new Set(graph.predecessors(objectId)),
-          above: new Set(graph.neighbors(objectId)),
-        });
+        if (!chunk?.objectManager?.staticGraph?.hasNode?.(objectId)) continue;
         chunk.removeObject(objectId);
         affectedChunks.add(chunk);
       }
@@ -876,6 +905,7 @@ class BoardApi {
     const modifiedStaticObjects = [];
     const previousWorldRects = new Map();
     const splitRebuilds = [];
+    const modifiedInfos = [];
     for (const objectId of candidateIds) {
       const obj = boardCore.getObjectById(objectId);
       if (!obj) continue;
@@ -909,16 +939,8 @@ class BoardApi {
       const beforeErase = obj.serialize();
       // 内核复合操作通道：擦除回写是切割效果的原子表达，非用户更改，不经活动对象准入
       this.#applyObjectPatch(obj, { data: { points: runs[0] } });
-      const erasedChunkId = this.#resolveObjectChunkId(objectId);
-      boardCore.hitCommitter.commitModify({
-        chunkId: erasedChunkId,
-        objectId,
-        properties: ["data"],
-        before: beforeErase,
-        after: obj.serialize(),
-        layerStackSnapshot: this.#captureLayerStackSnapshot(erasedChunkId),
-        supraKey,
-      });
+      // 记录延迟到层位边重建完毕后统一物化：modify 携带前后层位边，分裂段 add 携带重建后的实际边
+      modifiedInfos.push({ objectId, beforeErase, zSnapshot });
       result.modified.push(objectId);
       modifiedStaticObjects.push(obj);
 
@@ -947,7 +969,12 @@ class BoardApi {
       this.deleteObjects(result.deleted, { supraKey });
     }
     if (result.created.length > 0) {
-      await this.commitObjects(result.created, { supraKey });
+      // 分裂段直接提交静态图（不经 commitObjects）：层位边待分裂重建后才确定，
+      // 记录统一在重建后物化，携带重建后的实际边
+      const splitObjects = result.created
+        .map((id) => boardCore.getObjectById(id))
+        .filter(Boolean);
+      await boardCore.activeObjectManager.apply(new Set(splitObjects));
     }
 
     const correctedChunks = new Set();
@@ -956,6 +983,42 @@ class BoardApi {
         correctedChunks.add(chunk);
       }
     }
+
+    // 层位边重建完毕，统一物化记录：擦除回写（modify，携带前后层位边）+
+    // 分裂段（add，携带提交后的实际层位边），重放/远端凭记录边精确应用
+    const committer = boardCore.hitCommitter;
+    for (const { objectId, beforeErase, zSnapshot } of modifiedInfos) {
+      const obj = boardCore.getObjectById(objectId);
+      if (!obj) continue;
+      committer.commitModify({
+        chunkId: this.#resolveObjectChunkId(objectId),
+        objectId,
+        properties: ["data"],
+        before: beforeErase,
+        after: obj.serialize(),
+        chunks: {
+          before: zSnapshot.chunks.map((entry) => ({
+            chunkId: String(entry.chunk.id),
+            below: [...entry.in],
+            above: [...entry.out],
+          })),
+          after: this.#captureLayerEdges(objectId),
+        },
+        supraKey,
+      });
+    }
+    for (const splitId of result.created) {
+      const obj = boardCore.getObjectById(splitId);
+      if (!obj) continue;
+      committer.commitAdd({
+        chunkId: this.#resolveObjectChunkId(splitId),
+        objectId: splitId,
+        data: obj.serialize(),
+        chunks: this.#captureLayerEdges(splitId),
+        supraKey,
+      });
+    }
+
     if (correctedChunks.size > 0) {
       boardCore.aomRenderHooks?.requestStaticRender?.([...correctedChunks]);
     }
@@ -1019,14 +1082,16 @@ class BoardApi {
       for (const obj of committable) {
         const chunkId = this.#resolveObjectChunkId(obj.id);
         const after = obj.serialize();
-        const layerStackSnapshot = this.#captureLayerStackSnapshot(chunkId);
+        // apply 已把全部提交对象的层位边写入静态图：逐对象捕获提交后的实际边
+        //（同批对象的相互关系已就位），重放/远端凭记录边应用，不经本地重算
+        const chunks = this.#captureLayerEdges(obj.id);
         if (wasStatic.get(obj.id)) {
           const before = this.#chooseSnapshots.get(obj.id);
           if (before === undefined) {
             throw new Error(`对象 ${obj.id} 缺选择前快照`);
           }
           const properties = this.#diffProperties(before, after);
-          // 无实际差异时不产生修改分子；层位调整（置顶/置底等）不经 serialize 差异表达，落地时需另行保证不被跳过
+          // 无实际差异时不产生修改分子；层位变化由 choose/unchoose 记录的层位边承载
           // 已被 endMol 物化覆盖（已物化水位）的对象不重复产生修改分子，只产取消选择分子
           if (properties.length > 0 && !this.#materializedMarks.has(obj.id)) {
             committer.commitModify({
@@ -1035,7 +1100,6 @@ class BoardApi {
               properties,
               before,
               after,
-              layerStackSnapshot,
               supraKey,
             });
           }
@@ -1044,6 +1108,7 @@ class BoardApi {
             objectId: obj.id,
             supraKey,
             choice: choiceOfObject.get(obj.id),
+            chunks,
           });
           this.#chooseSnapshots.delete(obj.id);
           this.#materializedMarks.delete(obj.id);
@@ -1054,7 +1119,7 @@ class BoardApi {
             chunkId,
             objectId: obj.id,
             data: after,
-            layerStackSnapshot,
+            chunks,
             supraKey,
           });
         }
@@ -1114,6 +1179,8 @@ class BoardApi {
           objectId: obj.id,
           supraKey,
           choice: options.choice,
+          // 提取边：选择不改变静态图，选择时刻的层位边是撤销会话时的恢复依据
+          chunks: this.#captureLayerEdges(obj.id),
         });
       }
       await boardCore.activeObjectManager.choose(new Set(objects));
@@ -1205,6 +1272,8 @@ class BoardApi {
               property: snapshot.property,
               data: snapshot.data,
             },
+            // 提交边：discard 写回静态图后的实际层位边（实况如何，记录即如何）
+            chunks: this.#captureLayerEdges(obj.id),
           });
           this.#chooseSnapshots.delete(obj.id);
           this.#materializedMarks.delete(obj.id);
@@ -2016,6 +2085,13 @@ class BoardApi {
           this.#collectObjectChunks(obj, affectedChunks);
           // 跨区块移动：迁移静态图节点与覆盖索引（重放/远端应用的归属维护）
           this.#syncObjectChunkMembership(obj, affectedChunks);
+          // 擦除回写等绕过 AOM 会话的修改：层位边以记录为准（手势会话的层位由 unchoose 记录承载）
+          if (
+            payload.chunks?.after !== undefined &&
+            !boardCore.activeObjectManager?.has?.(payload.objectId)
+          ) {
+            this.#applyRecordedLayerEdges(payload.objectId, payload.chunks.after, affectedChunks);
+          }
           this.#markRemoteChoicesDirtyIfRemoteActive(payload.objectId);
         } else {
           // 对象在 trash 中：快照随链上修改滚动，恢复时拿到的是当前状态
@@ -2049,6 +2125,14 @@ class BoardApi {
           affectedChunks,
           record.source,
         );
+        // 提交边以记录为准：覆盖本地 discard 的重算结果，远程来源的提交边同样落实到静态图；
+        // 本地活动中的对象（会话冲突由链序收敛）不动边
+        if (
+          payload.chunks !== undefined &&
+          !boardCore.activeObjectManager?.isActive?.(payload.objectId)
+        ) {
+          this.#applyRecordedLayerEdges(payload.objectId, payload.chunks, affectedChunks);
+        }
         break;
       }
       default:
@@ -2076,6 +2160,13 @@ class BoardApi {
           this.#collectObjectChunks(obj, affectedChunks);
           // 跨区块移动的逆放：同步迁移静态图节点与覆盖索引
           this.#syncObjectChunkMembership(obj, affectedChunks);
+          // 携带层位边的修改（擦除回写）：逆放恢复修改前的边并按后到者居上缝合
+          if (
+            payload.chunks?.before !== undefined &&
+            !this.#boardCore.activeObjectManager?.has?.(payload.objectId)
+          ) {
+            this.#restoreRecordedLayerEdges(payload.objectId, payload.chunks.before, affectedChunks);
+          }
           this.#markRemoteChoicesDirtyIfRemoteActive(payload.objectId);
         } else {
           this.#patchTrashSnapshot(payload.objectId, payload.before);
@@ -2091,6 +2182,13 @@ class BoardApi {
           affectedChunks,
           record.source,
         );
+        // 恢复选择时刻的提取边并缝合：撤销选择（或整个会话）后对象回到选择前的层位
+        if (
+          payload.chunks !== undefined &&
+          !this.#boardCore.activeObjectManager?.has?.(payload.objectId)
+        ) {
+          this.#restoreRecordedLayerEdges(payload.objectId, payload.chunks, affectedChunks);
+        }
         break;
       case OPERATION_TYPES.UNCHOOSE_OBJECT:
         this.#enterAomEffect(
@@ -2182,7 +2280,9 @@ class BoardApi {
   }
 
   /**
-   * 增加对象效果：重建实例并按后到者居上写入相交区块
+   * 增加对象效果：重建实例并写入覆盖区块
+   * @description 层位边以记录为准（发送端提交时刻的实际写边，含橡皮分裂的层位继承）；
+   * 旧记录未携带时回退几何派生——按后到者居上写入相交区块。
    * @param {Object} payload - 增加对象分子载荷
    * @param {Set<import("../chunk/chunk.js").Chunk>} affectedChunks - 受影响区块集合（输出参数）
    * @returns {void}
@@ -2205,10 +2305,21 @@ class BoardApi {
       boardCore.height,
     );
     boardCore.setObjectCoverChunks(obj.id, covered);
+    if (payload.chunks !== undefined) {
+      // 节点先按覆盖区块就位（不设边），层位边以记录为准
+      for (const chunkId of covered) {
+        const chunk = boardCore.getChunkById(chunkId);
+        if (!chunk) continue;
+        chunk.addObject(obj);
+      }
+      this.#applyRecordedLayerEdges(payload.objectId, payload.chunks, affectedChunks);
+      // 缝合：此刻在册但记录时刻不在静态图的相交对象（trash 中或会话中），新对象居上
+      this.#stitchUnrecordedIntersections(obj, payload.chunks, affectedChunks, "above");
+      return;
+    }
     for (const chunkId of covered) {
       const chunk = boardCore.getChunkById(chunkId);
       if (!chunk) continue;
-      // 新区块的 objectManager 尚未创建时静态图为空，below 为空即可（addObject 会创建管理器）
       const graph = chunk.objectManager?.staticGraph;
       const below = graph
         ? graph.getNodes().filter((nodeId) => {
@@ -2278,14 +2389,97 @@ class BoardApi {
     if (!boardCore.trash.has(payload.objectId)) {
       boardCore.trash.set(payload.objectId, {
         data: payload.data,
+        // 层位边统一为数组形态（与本地删除路径的 trash 条目一致，状态校验和跨端可比）
         chunks: (payload.chunks ?? []).map((entry) => ({
           chunkId: entry.chunkId,
-          below: new Set(entry.below),
-          above: new Set(entry.above),
+          below: [...(entry.below ?? [])],
+          above: [...(entry.above ?? [])],
         })),
       });
     }
     this.#removeObjectEffect(payload.objectId, affectedChunks);
+  }
+
+  /**
+   * 应用记录携带的层位边（after 语义）
+   * @description 清主体在各记录区块的旧边，按记录写回（过滤已不存在的节点）——
+   * 重放/远端/重做的层位效果以记录为准，不经本地几何重算：复制的是效果而非重执行。
+   * 记录区块未加载时跳过（加载后由后续对账收敛）。
+   * @param {string} objectId - 对象 id
+   * @param {Array<{chunkId: string, below: Iterable<string>, above: Iterable<string>}>} chunksEntries - 层位边集合
+   * @param {Set<import("../chunk/chunk.js").Chunk>} [affectedChunks] - 受影响区块集合（输出参数）
+   * @returns {void}
+   * @private
+   */
+  #applyRecordedLayerEdges(objectId, chunksEntries, affectedChunks) {
+    const boardCore = this.#boardCore;
+    for (const entry of chunksEntries ?? []) {
+      const chunk = boardCore.getChunkById(Number(entry.chunkId));
+      const graph = chunk?.objectManager?.staticGraph;
+      if (!graph) continue;
+      if (!graph.hasNode(objectId)) graph.addNodeUnsafe(objectId);
+      graph.deleteAllEdgesOfNode(objectId);
+      for (const id of entry.below ?? []) {
+        addLayerEdgeIfAcyclic(graph, id, objectId);
+      }
+      for (const id of entry.above ?? []) {
+        addLayerEdgeIfAcyclic(graph, objectId, id);
+      }
+      affectedChunks?.add(chunk);
+    }
+  }
+
+  /**
+   * 缝合记录之外的相交对象（后到者居上）
+   * @description 记录时刻不在静态图中的对象（trash 中或会话中）不可能出现在记录的层位边里；
+   * 它们与主体的相对方位按「后到者居上」补齐：较晚物化的一方居上。
+   * AOM 成员的层位边由其自身会话的记录管理，不参与缝合。
+   * @param {import("../objects/basic-obj.js").BasicObject} obj - 主体对象实例
+   * @param {Array<{chunkId: string, below: Iterable<string>, above: Iterable<string>}>} chunksEntries - 记录携带的层位边集合
+   * @param {Set<import("../chunk/chunk.js").Chunk>} [affectedChunks] - 受影响区块集合（输出参数）
+   * @param {"above"|"below"} position - 主体相对缝合对象的方位：正放新增为 above（新对象居上），历史恢复为 below
+   * @returns {void}
+   * @private
+   */
+  #stitchUnrecordedIntersections(obj, chunksEntries, affectedChunks, position) {
+    const boardCore = this.#boardCore;
+    const rect = getObjectWorldRect(obj);
+    if (!rect) return;
+    const aom = boardCore.activeObjectManager;
+    for (const entry of chunksEntries ?? []) {
+      const chunk = boardCore.getChunkById(Number(entry.chunkId));
+      const graph = chunk?.objectManager?.staticGraph;
+      if (!graph?.hasNode?.(obj.id)) continue;
+      const recorded = new Set([...(entry.below ?? []), ...(entry.above ?? [])]);
+      for (const nodeId of graph.getNodes()) {
+        if (nodeId === obj.id || recorded.has(nodeId)) continue;
+        if (aom?.has?.(nodeId)) continue;
+        const nodeRect = getObjectWorldRect(boardCore.getObjectById(nodeId));
+        if (!nodeRect || !intersectsRanges(rect, nodeRect)) continue;
+        const [from, to] = position === "above" ? [nodeId, obj.id] : [obj.id, nodeId];
+        if (addLayerEdgeIfAcyclic(graph, from, to)) {
+          affectedChunks?.add(chunk);
+        }
+      }
+    }
+  }
+
+  /**
+   * 恢复历史层位边并缝合（before 语义）
+   * @description 写回记录边后，对不在记录中的当前相交对象补「主体居下」边——
+   * 这些对象在该历史时刻之后物化，按后到者居上缝合。
+   * @param {string} objectId - 对象 id
+   * @param {Array<{chunkId: string, below: Iterable<string>, above: Iterable<string>}>} chunksEntries - 层位边集合
+   * @param {Set<import("../chunk/chunk.js").Chunk>} [affectedChunks] - 受影响区块集合（输出参数）
+   * @returns {void}
+   * @private
+   */
+  #restoreRecordedLayerEdges(objectId, chunksEntries, affectedChunks) {
+    const boardCore = this.#boardCore;
+    const obj = boardCore.getObjectById(objectId);
+    if (!obj) return;
+    this.#applyRecordedLayerEdges(objectId, chunksEntries, affectedChunks);
+    this.#stitchUnrecordedIntersections(obj, chunksEntries, affectedChunks, "below");
   }
 
   /**
@@ -2302,16 +2496,8 @@ class BoardApi {
     const obj = deserialize(entry.data);
     boardCore.registerObjectInstance(obj);
     this.#collectObjectChunks(obj, affectedChunks);
-    for (const { chunkId, below, above } of entry.chunks) {
-      const chunk = boardCore.getChunkById(Number(chunkId));
-      const graph = chunk?.objectManager?.staticGraph;
-      if (!graph) continue;
-      chunk.addObject(
-        obj,
-        [...below].filter((id) => graph.hasNode(id)),
-        [...above].filter((id) => graph.hasNode(id)),
-      );
-    }
+    // 恢复删除时刻的层位边；删除窗口期创建（或当时仍在会话中）的相交对象按后到者居上缝合
+    this.#restoreRecordedLayerEdges(objectId, entry.chunks, affectedChunks);
     boardCore.trash.delete(objectId);
   }
 

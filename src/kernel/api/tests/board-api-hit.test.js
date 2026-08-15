@@ -118,7 +118,13 @@ describe("hit commit 边界", () => {
     expect(add.payload.chunkId).not.toBe("");
     expect(add.payload.data.type).toBe("StrokeObject");
     expect(add.payload.data.data.points).toHaveLength(5);
-    expect(add.payload.layerStackSnapshot).toContain("s1");
+    // 提交时刻的层位边随记录落位（新对象入图，无边但有归属区块条目）
+    expect(add.payload.chunks).toBeDefined();
+    expect(
+      add.payload.chunks.some(
+        (entry) => entry.chunkId === add.payload.chunkId && entry.below.length === 0 && entry.above.length === 0,
+      ),
+    ).toBe(true);
     // 生于 AOM 的对象没有配对的选择/取消选择
     expect(recordTypes(boardCore)).toEqual(["add-object"]);
     // 树与日志一致：HEAD 即最新记录

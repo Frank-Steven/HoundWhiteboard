@@ -209,7 +209,7 @@ class HitCommitter {
    * @param {string} effect.chunkId - 区块 id
    * @param {string} effect.objectId - 对象 id
    * @param {Object} effect.data - 对象全量内容（可 JSON 序列化）
-   * @param {string[]} effect.layerStackSnapshot - 操作时刻的完整层栈快照（z-order）
+   * @param {Array<{chunkId: string, below: Iterable<string>, above: Iterable<string>}>} [effect.chunks] - 提交时刻主体的层位边（创建手势物化时主体未入图则省略，重放回退后到者居上）
    * @param {string} [effect.supraKey] - 指定进入的超分子 key（缺省独立成录）
    * @param {string} [effect.molId] - 增量式分子 id（创建手势的 endMol 物化携带）
    * @returns {import("./operation.js").OperationRecord} 分子操作记录
@@ -226,7 +226,7 @@ class HitCommitter {
    * @param {string[]} effect.properties - 涉及属性的集合
    * @param {Object} effect.before - 修改前快照
    * @param {Object} effect.after - 修改后快照
-   * @param {string[]} effect.layerStackSnapshot - 操作时刻的完整层栈快照（z-order）
+   * @param {{before: Array, after: Array}} [effect.chunks] - 修改前后的层位边（仅擦除回写等绕过 AOM 会话且伴随边变更的修改携带）
    * @param {string} [effect.supraKey] - 指定进入的超分子 key（缺省独立成录）
    * @param {string} [effect.molId] - 增量式分子 id（endMol 物化携带）
    * @returns {import("./operation.js").OperationRecord} 分子操作记录
@@ -254,6 +254,7 @@ class HitCommitter {
    * @param {string} effect.objectId - 对象 id
    * @param {string} [effect.supraKey] - 指定进入的超分子 key（缺省独立成录）
    * @param {string} [effect.choice] - 命名选择名（缺省匿名，不记录）
+   * @param {Array<{chunkId: string, below: Iterable<string>, above: Iterable<string>}>} [effect.chunks] - 选择时刻主体的层位边（提取边，撤销时凭以恢复）
    * @returns {import("./operation.js").OperationRecord} 分子操作记录
    */
   commitChoose(effect) {
@@ -268,6 +269,7 @@ class HitCommitter {
    * @param {string} [effect.supraKey] - 指定进入的超分子 key（缺省独立成录）
    * @param {string} [effect.choice] - 命名选择名（缺省匿名，不记录）
    * @param {boolean} [effect.discard] - 放弃型闭合标志（放弃修改、回选择前快照）
+   * @param {Array<{chunkId: string, below: Iterable<string>, above: Iterable<string>}>} [effect.chunks] - 写回静态图后主体的层位边（提交边，重放/远端凭以应用）
    * @returns {import("./operation.js").OperationRecord} 分子操作记录
    */
   commitUnchoose(effect) {

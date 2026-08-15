@@ -251,12 +251,30 @@ function _buildRecord(fields, payload) {
 }
 
 /**
+ * 归一化层位边集合（逐区块的主体前驱/后继）
+ * @description below = 主体之下的对象（前驱），above = 主体之上的对象（后继）；归一化为可 JSON 序列化的数组形态。
+ * @param {Array<{chunkId: string, below: Iterable<string>, above: Iterable<string>}>} [chunks] - 层位边集合
+ * @returns {?Array<{chunkId: string, below: string[], above: string[]}>} 归一化结果；未提供时为 undefined
+ * @private
+ */
+function _normalizeLayerEdgeChunks(chunks) {
+  if (chunks === undefined) {
+    return undefined;
+  }
+  return (chunks ?? []).map((entry) => ({
+    chunkId: String(entry.chunkId),
+    below: [...(entry.below ?? [])],
+    above: [...(entry.above ?? [])],
+  }));
+}
+
+/**
  * 构造增加对象操作记录
  * @param {Object} fields - 公共属性，同 _buildRecord 的 fields
  * @param {string} fields.chunkId - 区块 id
  * @param {string} fields.objectId - 对象 id
  * @param {Object} fields.data - 对象全量内容（可 JSON 序列化）
- * @param {string[]} fields.layerStackSnapshot - 操作时刻的完整层栈快照（z-order）
+ * @param {Array<{chunkId: string, below: Iterable<string>, above: Iterable<string>}>} [fields.chunks] - 提交时刻主体在各覆盖区块的层位边（撤销与层位修复的依据；创建手势物化时主体未入图则省略，重放回退后到者居上）
  * @returns {OperationRecord} 增加对象操作记录
  */
 function createAddObjectOperation(fields) {
@@ -264,7 +282,9 @@ function createAddObjectOperation(fields) {
     chunkId: fields.chunkId,
     objectId: fields.objectId,
     data: fields.data,
-    layerStackSnapshot: fields.layerStackSnapshot,
+    ...(fields.chunks !== undefined
+      ? { chunks: _normalizeLayerEdgeChunks(fields.chunks) }
+      : {}),
   });
 }
 
@@ -275,7 +295,7 @@ function createAddObjectOperation(fields) {
  * @param {string} fields.objectId - 对象 id
  * @param {Object} fields.before - 修改前快照，undo 用前快照回退（可 JSON 序列化）
  * @param {Object} fields.after - 修改后快照，协作用后快照传播（可 JSON 序列化）
- * @param {string[]} fields.layerStackSnapshot - 操作时刻的完整层栈快照（z-order）
+ * @param {{before: Array, after: Array}} [fields.chunks] - 修改前后的层位边（仅绕过 AOM 会话直接改静态图且伴随边变更时携带，如擦除回写；手势会话的层位变化由 choose/unchoose 记录承载）
  * @returns {OperationRecord} 修改对象操作记录
  */
 function createModifyObjectOperation(fields) {
@@ -284,7 +304,14 @@ function createModifyObjectOperation(fields) {
     objectId: fields.objectId,
     before: fields.before,
     after: fields.after,
-    layerStackSnapshot: fields.layerStackSnapshot,
+    ...(fields.chunks !== undefined
+      ? {
+          chunks: {
+            before: _normalizeLayerEdgeChunks(fields.chunks.before) ?? [],
+            after: _normalizeLayerEdgeChunks(fields.chunks.after) ?? [],
+          },
+        }
+      : {}),
   });
 }
 
@@ -303,11 +330,7 @@ function createDeleteObjectOperation(fields) {
     chunkId: fields.chunkId,
     objectId: fields.objectId,
     data: fields.data,
-    chunks: (fields.chunks ?? []).map((entry) => ({
-      chunkId: entry.chunkId,
-      below: [...(entry.below ?? [])],
-      above: [...(entry.above ?? [])],
-    })),
+    chunks: _normalizeLayerEdgeChunks(fields.chunks) ?? [],
   });
 }
 
@@ -317,6 +340,7 @@ function createDeleteObjectOperation(fields) {
  * @param {string} fields.chunkId - 区块 id
  * @param {string} fields.objectId - 对象 id
  * @param {string} [fields.choice] - 命名选择名；缺省为匿名选择（不记录）
+ * @param {Array<{chunkId: string, below: Iterable<string>, above: Iterable<string>}>} [fields.chunks] - 选择时刻主体在各覆盖区块的层位边（提取边：撤销选择或撤销整个会话时凭以恢复）
  * @returns {OperationRecord} 选择对象操作记录
  */
 function createChooseObjectOperation(fields) {
@@ -325,6 +349,9 @@ function createChooseObjectOperation(fields) {
     objectId: fields.objectId,
     // 命名选择名；匿名选择不记录（旧记录无此字段即匿名）
     ...(fields.choice !== undefined ? { choice: fields.choice } : {}),
+    ...(fields.chunks !== undefined
+      ? { chunks: _normalizeLayerEdgeChunks(fields.chunks) }
+      : {}),
   });
 }
 
@@ -335,6 +362,7 @@ function createChooseObjectOperation(fields) {
  * @param {string} fields.objectId - 对象 id
  * @param {string} [fields.choice] - 命名选择名；缺省为匿名选择（不记录）
  * @param {Object} [fields.restore] - discard 型闭合的选择前快照（重放/重做时凭以还原实例）
+ * @param {Array<{chunkId: string, below: Iterable<string>, above: Iterable<string>}>} [fields.chunks] - 写回静态图后主体在各覆盖区块的层位边（提交边：重放/远端凭以应用，不经本地重算）
  * @returns {OperationRecord} 取消选择操作记录
  */
 function createUnchooseObjectOperation(fields) {
@@ -345,6 +373,9 @@ function createUnchooseObjectOperation(fields) {
     ...(fields.choice !== undefined ? { choice: fields.choice } : {}),
     // discard 型闭合的还原点：选择前快照（仅 discard 时携带）
     ...(fields.restore !== undefined ? { restore: fields.restore } : {}),
+    ...(fields.chunks !== undefined
+      ? { chunks: _normalizeLayerEdgeChunks(fields.chunks) }
+      : {}),
   });
 }
 
@@ -515,6 +546,7 @@ function _validatePayload(record, errors) {
         errors.push("add-object 载荷缺 data");
       }
       _validateLayerStackSnapshot(payload, errors);
+      _validateLayerEdgeChunks(payload.chunks, errors, "add-object");
       break;
     case OPERATION_TYPES.MODIFY_OBJECT:
       requireString("chunkId");
@@ -523,6 +555,14 @@ function _validatePayload(record, errors) {
         errors.push("modify-object 载荷缺 before/after 快照");
       }
       _validateLayerStackSnapshot(payload, errors);
+      if (payload.chunks !== undefined) {
+        if (payload.chunks === null || typeof payload.chunks !== "object" || Array.isArray(payload.chunks)) {
+          errors.push("modify-object 载荷的 chunks 必须是 {before, after} 形态");
+        } else {
+          _validateLayerEdgeChunks(payload.chunks.before, errors, "modify-object chunks.before");
+          _validateLayerEdgeChunks(payload.chunks.after, errors, "modify-object chunks.after");
+        }
+      }
       break;
     case OPERATION_TYPES.DELETE_OBJECT:
       requireString("chunkId");
@@ -532,6 +572,8 @@ function _validatePayload(record, errors) {
       }
       if (!Array.isArray(payload.chunks)) {
         errors.push("delete-object 载荷缺 chunks 层位边");
+      } else {
+        _validateLayerEdgeChunks(payload.chunks, errors, "delete-object");
       }
       break;
     case OPERATION_TYPES.CHOOSE_OBJECT:
@@ -544,6 +586,7 @@ function _validatePayload(record, errors) {
       ) {
         errors.push(`${type} 载荷的 choice 必须是字符串`);
       }
+      _validateLayerEdgeChunks(payload.chunks, errors, type);
       break;
     case OPERATION_TYPES.MOVE_HEAD:
       requireNodeId("targetNodeId");
@@ -565,14 +608,50 @@ function _validatePayload(record, errors) {
 }
 
 /**
- * 校验层栈快照字段
+ * 校验层栈快照字段（旧日志形态）
+ * @description 层栈快照已退役：新记录不再携带（层位信息由层位边承载）；旧记录存在该字段时仍须为字符串数组。
  * @param {Object} payload - 类型载荷
  * @param {string[]} errors - 错误收集列表
  * @private
  */
 function _validateLayerStackSnapshot(payload, errors) {
+  if (payload.layerStackSnapshot === undefined) {
+    return;
+  }
   if (!Array.isArray(payload.layerStackSnapshot) || payload.layerStackSnapshot.some((id) => typeof id !== "string")) {
     errors.push("layerStackSnapshot 必须是字符串数组");
+  }
+}
+
+/**
+ * 校验层位边集合字段（可选）
+ * @param {?Array<{chunkId: string, below: string[], above: string[]}>} chunks - 层位边集合；undefined 合法（未携带）
+ * @param {string[]} errors - 错误收集列表
+ * @param {string} label - 错误信息的字段前缀
+ * @returns {void}
+ * @private
+ */
+function _validateLayerEdgeChunks(chunks, errors, label) {
+  if (chunks === undefined) {
+    return;
+  }
+  if (!Array.isArray(chunks)) {
+    errors.push(`${label} 的 chunks 必须是数组`);
+    return;
+  }
+  for (const entry of chunks) {
+    if (
+      entry === null ||
+      typeof entry !== "object" ||
+      typeof entry.chunkId !== "string" ||
+      !Array.isArray(entry.below) ||
+      entry.below.some((id) => typeof id !== "string") ||
+      !Array.isArray(entry.above) ||
+      entry.above.some((id) => typeof id !== "string")
+    ) {
+      errors.push(`${label} 的 chunks 条目必须是 {chunkId, below: string[], above: string[]} 形态`);
+      return;
+    }
   }
 }
 

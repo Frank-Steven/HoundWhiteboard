@@ -97,21 +97,21 @@ describe("分子操作记录构造", () => {
     expect(record.type).toBe(OPERATION_TYPES.REDO);
   });
 
-  test("增加对象：携带对象全量与层栈快照", () => {
+  test("增加对象：携带对象全量与层位边", () => {
     const record = createAddObjectOperation({
       ...BASE_FIELDS,
       chunkId: "chunk-1",
       objectId: "obj-1",
       data: { type: "stroke", points: [[0, 0], [1, 1]] },
-      layerStackSnapshot: ["obj-0", "obj-1"],
+      chunks: [{ chunkId: "chunk-1", below: ["obj-0"], above: [] }],
     });
     expect(record.type).toBe(OPERATION_TYPES.ADD_OBJECT);
     expect(record.payload.chunkId).toBe("chunk-1");
     expect(record.payload.data).toEqual({ type: "stroke", points: [[0, 0], [1, 1]] });
-    expect(record.payload.layerStackSnapshot).toEqual(["obj-0", "obj-1"]);
+    expect(record.payload.chunks).toEqual([{ chunkId: "chunk-1", below: ["obj-0"], above: [] }]);
   });
 
-  test("修改对象：携带前后快照与层栈快照", () => {
+  test("修改对象：携带前后快照，层位边可选（前后两组）", () => {
     const record = createModifyObjectOperation({
       ...BASE_FIELDS,
       properties: ["position"],
@@ -119,12 +119,19 @@ describe("分子操作记录构造", () => {
       objectId: "obj-1",
       before: { x: 0 },
       after: { x: 10 },
-      layerStackSnapshot: ["obj-1"],
+      chunks: {
+        before: [{ chunkId: "chunk-1", below: [], above: ["obj-0"] }],
+        after: [{ chunkId: "chunk-1", below: ["obj-0"], above: [] }],
+      },
     });
     expect(record.type).toBe(OPERATION_TYPES.MODIFY_OBJECT);
     expect(record.properties).toEqual(["position"]);
     expect(record.payload.before).toEqual({ x: 0 });
     expect(record.payload.after).toEqual({ x: 10 });
+    expect(record.payload.chunks).toEqual({
+      before: [{ chunkId: "chunk-1", below: [], above: ["obj-0"] }],
+      after: [{ chunkId: "chunk-1", below: ["obj-0"], above: [] }],
+    });
   });
 
   test("删除：携带快照与层位边；选择/取消选择：只携带定位信息", () => {
@@ -185,7 +192,10 @@ describe("分子操作记录构造", () => {
       objectId: "obj-1",
       before: { points: [[0, 0]] },
       after: { points: [[0, 0], [1, 1]] },
-      layerStackSnapshot: ["obj-1"],
+      chunks: {
+        before: [{ chunkId: "chunk-1", below: [], above: [] }],
+        after: [{ chunkId: "chunk-1", below: ["obj-0"], above: [] }],
+      },
     });
     expect(JSON.parse(JSON.stringify(record))).toEqual(record);
   });
@@ -193,8 +203,8 @@ describe("分子操作记录构造", () => {
 
 describe("validateOperation", () => {
   const validRecords = () => [
-    createAddObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", data: {}, layerStackSnapshot: ["o"] }),
-    createModifyObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", before: {}, after: {}, layerStackSnapshot: [] }),
+    createAddObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", data: {}, chunks: [{ chunkId: "c", below: [], above: [] }] }),
+    createModifyObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", before: {}, after: {} }),
     createDeleteObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", data: { id: "o" }, chunks: [] }),
     createChooseObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o" }),
     createUnchooseObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o" }),
@@ -233,15 +243,21 @@ describe("validateOperation", () => {
     expect(errors).toContain("properties 必须是字符串数组");
   });
 
-  test("增加对象缺 data 或层栈快照非法", () => {
-    const missing = createAddObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", layerStackSnapshot: [] });
+  test("增加对象缺 data 或携带非法字段", () => {
+    const missing = createAddObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o" });
     expect(validateOperation(missing)).toContain("add-object 载荷缺 data");
-    const badStack = createAddObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", data: {}, layerStackSnapshot: [1] });
-    expect(validateOperation(badStack)).toContain("layerStackSnapshot 必须是字符串数组");
+    // 旧日志形态（layerStackSnapshot）只读兼容：存在时仍须为字符串数组
+    const legacy = {
+      ...createAddObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", data: {} }),
+      payload: { chunkId: "c", objectId: "o", data: {}, layerStackSnapshot: [1] },
+    };
+    expect(validateOperation(legacy)).toContain("layerStackSnapshot 必须是字符串数组");
+    const badChunks = createAddObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", data: {}, chunks: [{ chunkId: "c", below: [1], above: [] }] });
+    expect(validateOperation(badChunks).length).toBeGreaterThan(0);
   });
 
   test("修改对象缺快照", () => {
-    const record = createModifyObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", after: {}, layerStackSnapshot: [] });
+    const record = createModifyObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o", after: {} });
     expect(validateOperation(record)).toContain("modify-object 载荷缺 before/after 快照");
   });
 
