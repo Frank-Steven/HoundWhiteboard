@@ -553,12 +553,18 @@ class ViewportCore {
       return false;
     }
 
+    // 零尺寸画布（浏览器布局就绪前）整帧跳过：调度 flush 与 transferToImageBitmap
+    // 都会对 0×0 画布抛错；保留 frameDirty，resize 后正常出帧
+    const outputCanvas = this.#renderer?.outputCanvas;
+    if (!outputCanvas || outputCanvas.width === 0 || outputCanvas.height === 0) {
+      return false;
+    }
+
     if (this.#renderer?._scheduler?.framePending) {
       this.#renderer._scheduler.flush();
     }
 
-    const outputCanvas = this.#renderer?.outputCanvas;
-    const liveBitmap = outputCanvas?.transferToImageBitmap?.();
+    const liveBitmap = outputCanvas.transferToImageBitmap?.();
 
     this.#restoreTransferredBitmapToCanvas(outputCanvas, liveBitmap);
 

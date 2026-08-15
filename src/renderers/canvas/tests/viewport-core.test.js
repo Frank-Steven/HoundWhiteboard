@@ -127,6 +127,22 @@ describe("ViewportCore", () => {
     expect(liveContext.drawImage).toHaveBeenCalledWith(liveBitmap, 0, 0);
   });
 
+  test("零尺寸视口（浏览器布局就绪前）flushRenderFrame 不出帧不抛错", () => {
+    const { viewportCore, postedFrames } = createViewportCoreContext({
+      width: 0,
+      height: 0,
+    });
+    const liveCanvas = viewportCore.renderer.canvas;
+    liveCanvas.transferToImageBitmap = jest.fn(() => {
+      throw new Error("0x0 canvas 不应触发 transferToImageBitmap");
+    });
+
+    viewportCore.requestRenderLayersRefresh();
+    expect(viewportCore.flushRenderFrame()).toBe(false);
+    expect(postedFrames).toHaveLength(0);
+    expect(liveCanvas.transferToImageBitmap).not.toHaveBeenCalled();
+  });
+
   test("worldToChunk 应按 BoardCore 的区块尺寸解析目标区块", () => {
     const { viewportCore } = createViewportCoreContext();
 

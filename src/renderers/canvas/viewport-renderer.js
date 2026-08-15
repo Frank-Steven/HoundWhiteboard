@@ -638,6 +638,8 @@ class ViewportRenderer extends Renderer {
   #copyCache(ctx) {
     const cacheCanvas = this.#cache;
     if (!ctx || !cacheCanvas) return;
+    // 零尺寸缓存（浏览器布局就绪前）跳过：drawImage 对 0×0 画布抛错，resize 后自愈
+    if (cacheCanvas.width === 0 || cacheCanvas.height === 0) return;
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -654,6 +656,8 @@ class ViewportRenderer extends Renderer {
   #copyCacheRects(ctx, rects) {
     const cacheCanvas = this.#cache;
     if (!ctx || !cacheCanvas || !Array.isArray(rects)) return;
+    // 零尺寸缓存（浏览器布局就绪前）跳过：drawImage 对 0×0 画布抛错，resize 后自愈
+    if (cacheCanvas.width === 0 || cacheCanvas.height === 0) return;
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
