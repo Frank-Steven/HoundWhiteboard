@@ -2014,6 +2014,8 @@ class BoardApi {
           this.#collectObjectChunks(obj, affectedChunks);
           this.#applyObjectPatch(obj, payload.after);
           this.#collectObjectChunks(obj, affectedChunks);
+          // 跨区块移动：迁移静态图节点与覆盖索引（重放/远端应用的归属维护）
+          this.#syncObjectChunkMembership(obj, affectedChunks);
           this.#markRemoteChoicesDirtyIfRemoteActive(payload.objectId);
         } else {
           // 对象在 trash 中：快照随链上修改滚动，恢复时拿到的是当前状态
@@ -2072,6 +2074,8 @@ class BoardApi {
           this.#collectObjectChunks(obj, affectedChunks);
           this.#applyObjectPatch(obj, payload.before);
           this.#collectObjectChunks(obj, affectedChunks);
+          // 跨区块移动的逆放：同步迁移静态图节点与覆盖索引
+          this.#syncObjectChunkMembership(obj, affectedChunks);
           this.#markRemoteChoicesDirtyIfRemoteActive(payload.objectId);
         } else {
           this.#patchTrashSnapshot(payload.objectId, payload.before);
@@ -2124,6 +2128,57 @@ class BoardApi {
         affectedChunks.add(chunk);
       }
     }
+  }
+
+  /**
+   * 同步对象的区块归属（远端修改/逆放跨区块移动时调用）
+   * @param {import("../objects/basic-obj.js").BasicObject} obj - 对象实例（补丁已应用）
+   * @param {Set<import("../chunk/chunk.js").Chunk>} affectedChunks - 受影响区块集合（输出参数）
+   * @returns {void}
+   * @private
+   *
+   * @description
+   * 按对象当前几何重算覆盖区块，与覆盖索引（权威副本）比较后迁移静态图节点：
+   * 退出不再覆盖的区块、加入新覆盖的区块（below 取相交节点，与增加对象效果同款）。
+   * AOM 成员的归属由 AOM 自己管理，不在此同步。
+   */
+  #syncObjectChunkMembership(obj, affectedChunks) {
+    const boardCore = this.#boardCore;
+    if (boardCore.width <= 0 || boardCore.height <= 0) return;
+    if (boardCore.activeObjectManager?.has?.(obj.id)) return;
+    const rect = getObjectWorldRect(obj);
+    if (!rect) return;
+    const next = ChunkObjectManager.calculateCoveredChunkIdsForRange(
+      rect,
+      boardCore.width,
+      boardCore.height,
+    );
+    if (next.size === 0) return;
+    const prev = boardCore.getObjectCoverChunks(obj.id) ?? new Set();
+    for (const chunkId of prev) {
+      if (next.has(chunkId)) continue;
+      const chunk = boardCore.getChunkById(chunkId);
+      if (chunk?.objectManager?.staticGraph?.hasNode?.(obj.id)) {
+        chunk.removeObject(obj.id);
+        affectedChunks.add(chunk);
+      }
+    }
+    for (const chunkId of next) {
+      const chunk = boardCore.getChunkById(chunkId);
+      if (!chunk) continue;
+      const graph = chunk.objectManager?.staticGraph;
+      if (graph?.hasNode?.(obj.id)) continue;
+      const below = graph
+        ? graph.getNodes().filter((nodeId) => {
+            const nodeRect = getObjectWorldRect(boardCore.getObjectById(nodeId));
+            return nodeRect && intersectsRanges(rect, nodeRect);
+          })
+        : [];
+      chunk.addObject(obj, below, []);
+      affectedChunks.add(chunk);
+    }
+    // chunk.removeObject 会顺带清掉覆盖索引条目，统一在最后重写
+    boardCore.setObjectCoverChunks(obj.id, next);
   }
 
   /**

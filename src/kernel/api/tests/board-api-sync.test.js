@@ -10,6 +10,7 @@ import {
   createRedoOperation,
   makeOperationId,
 } from "../../hit/operation.js";
+import { Chunk } from "../../chunk/chunk.js";
 
 /**
  * 双端同步回归：完全按 docs/undo-tree-kernel-example.md 各端的到达顺序互喂记录，
@@ -381,5 +382,94 @@ describe("远端会话全序列应用（实时双端驱动）", () => {
     pump(A, B);
     expect(B.api.queryObject("a/1").position).toEqual({ x: 100, y: 100 });
     expect(B.api.queryObject("a/2").position).toEqual({ x: 100, y: 300 });
+  });
+});
+
+describe("远端修改的区块归属同步", () => {
+  /**
+   * 对象在已加载区块静态图中的归属
+   * @param {BoardCore} boardCore - 白板核心
+   * @param {string} objectId - 对象 id
+   * @returns {number[]} 区块 id 数组
+   */
+  const chunksOf = (boardCore, objectId) => {
+    const out = [];
+    for (const { chunk } of boardCore.chunkLoaded.values()) {
+      if (chunk?.objectManager?.staticGraph?.hasNode?.(objectId)) {
+        out.push(chunk.id);
+      }
+    }
+    return out;
+  };
+
+  /**
+   * 双端泵：把 from 的新记录喂给 to
+   * @param {{ boardCore: BoardCore, api: BoardApi }} from - 来源端
+   * @param {{ boardCore: BoardCore, api: BoardApi }} to - 目标端
+   * @returns {void}
+   */
+  const pump = (from, to) => {
+    const seen = new Set(to.boardCore.operationLog.toJSON().map((r) => r.id));
+    const fresh = from.boardCore.operationLog
+      .toJSON()
+      .filter((r) => !seen.has(r.id));
+    if (fresh.length > 0) {
+      to.api.applyRemoteOperations(JSON.parse(JSON.stringify(fresh)));
+    }
+  };
+
+  /**
+   * 建立含两个对象的 A 端并把记录喂给 B
+   * @returns {Promise<{ A: Object, B: Object }>} 双端
+   */
+  const setupEnds = async () => {
+    const A = createEnd("a");
+    const B = createEnd("b");
+    A.api.createObject("StrokeObject", {
+      id: "a/1",
+      position: { x: 100, y: 100 },
+      property: { width: 2 },
+      data: { points: [{ x: 0, y: 0 }, { x: 10, y: 0 }] },
+    });
+    await A.api.commitObjects(["a/1"]);
+    pump(A, B);
+    return { A, B };
+  };
+
+  test("远端 modify 跨区块移动：静态图归属与覆盖索引随补丁迁移", async () => {
+    const { A, B } = await setupEnds();
+    const fromChunk = Chunk.worldToChunkId({ x: 100, y: 100 }, 800, 600);
+    const toChunk = Chunk.worldToChunkId({ x: 950, y: 150 }, 800, 600);
+    expect(chunksOf(B.boardCore, "a/1")).toEqual([fromChunk]);
+
+    await A.api.addActiveObjects(["a/1"]);
+    A.api.modifyObject("a/1", { position: { x: 950, y: 150 } });
+    await A.api.commitObjects(["a/1"]);
+    pump(A, B);
+
+    // 远端应用 modify 后：对象从原区块静态图迁出、迁入目标区块，覆盖索引同步
+    expect(chunksOf(B.boardCore, "a/1")).toEqual([toChunk]);
+    expect([...(B.boardCore.getObjectCoverChunks("a/1") ?? [])]).toEqual([
+      toChunk,
+    ]);
+  });
+
+  test("远端撤销跨区块移动：逆放同样迁移归属", async () => {
+    const { A, B } = await setupEnds();
+    const fromChunk = Chunk.worldToChunkId({ x: 100, y: 100 }, 800, 600);
+    const toChunk = Chunk.worldToChunkId({ x: 950, y: 150 }, 800, 600);
+
+    await A.api.addActiveObjects(["a/1"]);
+    A.api.modifyObject("a/1", { position: { x: 950, y: 150 } });
+    await A.api.commitObjects(["a/1"]);
+    pump(A, B);
+    expect(chunksOf(B.boardCore, "a/1")).toEqual([toChunk]);
+
+    A.api.undo();
+    pump(A, B);
+    expect(chunksOf(B.boardCore, "a/1")).toEqual([fromChunk]);
+    expect([...(B.boardCore.getObjectCoverChunks("a/1") ?? [])]).toEqual([
+      fromChunk,
+    ]);
   });
 });
