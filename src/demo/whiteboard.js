@@ -48,9 +48,16 @@ async function bootstrapWhiteboard() {
     query.get("source") ?? storage?.getItem?.("hwb-source") ?? undefined;
   const boardPath =
     query.get("board") ?? storage?.getItem?.("hwb-board") ?? undefined;
+  // 无 Tauri（浏览器 web demo）：无文件系统能力，降级为内存模式 + relay 同步，
+  // 落盘由持板 daemon 承担（relay 来源的记录由 daemon 落盘）；?board= 在 web 下随之失效
+  const tauriAvailable = Boolean(
+    globalThis.__TAURI__?.core?.invoke ?? globalThis.__TAURI_INTERNALS__?.invoke,
+  );
   const board = new Board({
     idSource: sourceOverride ?? resolveDeviceSource(),
-    rootPath: boardPath ?? "~/hound-whiteboard/demo-board",
+    rootPath: tauriAvailable
+      ? (boardPath ?? "~/hound-whiteboard/demo-board")
+      : undefined,
     syncUrl: relayUrl,
     boardId: "demo-board",
   });
