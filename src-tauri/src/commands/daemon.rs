@@ -5,27 +5,12 @@
 //! - 轮询板目录 `.daemon.json` 直到 daemon 就绪（端口已写入）
 //! - 返回 { name, port }，供 GUI 经协作通道连接
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
-
-/// spawn_board_daemon 的入参
-#[derive(Deserialize)]
-pub struct SpawnDaemonArgs {
-    /// 板目录绝对路径
-    pub path: String,
-    /// daemon 名（注册表唯一标识）
-    pub name: String,
-    /// 协作身份
-    pub source: Option<String>,
-    /// 建板骨架时的板宽（板已存在时忽略）
-    pub width: Option<f64>,
-    /// 建板骨架时的板高（板已存在时忽略）
-    pub height: Option<f64>,
-}
 
 /// spawn_board_daemon 的返回
 #[derive(Serialize)]
@@ -79,14 +64,65 @@ fn ensure_board_skeleton(board_path: &Path, width: Option<f64>, height: Option<f
     let _ = fs::write(&meta_file, serde_json::to_string_pretty(&meta).unwrap_or_default());
 }
 
-/// 拉起板 daemon 进程并等待就绪
+/// 探测本机端口上是否有活 daemon（TCP 短连接）
+fn port_alive(port: u16) -> bool {
+    use std::net::TcpStream;
+    let addr = format!("127.0.0.1:{port}");
+    let Ok(addr) = addr.parse() else {
+        return false;
+    };
+    TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_ok()
+}
+
+/// 拉起板 daemon 进程并等待就绪（幂等：已有活 daemon 直接返回现有实例）
 #[tauri::command]
-pub fn spawn_board_daemon(args: SpawnDaemonArgs) -> Result<SpawnDaemonResult, String> {
-    let board_path = Path::new(&args.path);
-    if !board_path.is_dir() {
-        return Err(format!("板目录不存在：{}", args.path));
+pub async fn spawn_board_daemon(
+    path: String,
+    name: String,
+    source: Option<String>,
+    width: Option<f64>,
+    height: Option<f64>,
+) -> Result<SpawnDaemonResult, String> {
+    // 同步命令会在主线程执行（15s 就绪轮询会卡死 UI 与 IPC 泵送），
+    // 改为阻塞线程池执行，主线程保持响应
+    let path = crate::commands::registry::expand_home(&path)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        spawn_board_daemon_blocking(path, name, source, width, height)
+    })
+    .await
+    .map_err(|e| format!("daemon 启动任务失败：{e}"))?
+}
+
+/// 建骨架、拉起持板 daemon 进程并轮询就绪（在阻塞线程池执行）
+fn spawn_board_daemon_blocking(
+    path: String,
+    name: String,
+    source: Option<String>,
+    width: Option<f64>,
+    height: Option<f64>,
+) -> Result<SpawnDaemonResult, String> {
+    let board_path = Path::new(&path);
+    // 幂等探测：板目录已有活 daemon（描述端口可连通）则直接返回，不重复拉起
+    if let Ok(text) = fs::read_to_string(board_path.join(".daemon.json")) {
+        if let Ok(desc) = serde_json::from_str::<serde_json::Value>(&text) {
+            let port = desc.get("port").and_then(|p| p.as_u64());
+            let existing = desc
+                .get("name")
+                .and_then(|n| n.as_str())
+                .map(String::from);
+            if let (Some(port), Some(existing)) = (port, existing) {
+                if port > 0 && port <= u64::from(u16::MAX) && port_alive(port as u16) {
+                    return Ok(SpawnDaemonResult {
+                        name: existing,
+                        port: port as u16,
+                    });
+                }
+            }
+        }
     }
-    ensure_board_skeleton(board_path, args.width, args.height);
+    // 板目录不存在时先建目录再建骨架（board.json + 目录布局）
+    fs::create_dir_all(board_path).map_err(|e| format!("创建板目录失败：{}（{e}）", path))?;
+    ensure_board_skeleton(board_path, width, height);
 
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let daemon_js = Path::new(manifest_dir)
@@ -97,10 +133,10 @@ pub fn spawn_board_daemon(args: SpawnDaemonArgs) -> Result<SpawnDaemonResult, St
     let mut cmd = Command::new("node");
     cmd.arg(&daemon_js)
         .arg("--name")
-        .arg(&args.name)
+        .arg(&name)
         .arg("--path")
-        .arg(&args.path);
-    if let Some(source) = &args.source {
+        .arg(&path);
+    if let Some(source) = &source {
         if !source.is_empty() {
             cmd.arg("--source").arg(source);
         }
@@ -117,9 +153,6 @@ pub fn spawn_board_daemon(args: SpawnDaemonArgs) -> Result<SpawnDaemonResult, St
     drop(child);
 
     let port = wait_for_daemon(&board_path, Duration::from_secs(15))
-        .ok_or_else(|| format!("daemon {} 启动超时（15s 内未就绪）", args.name))?;
-    Ok(SpawnDaemonResult {
-        name: args.name,
-        port,
-    })
+        .ok_or_else(|| format!("daemon {name} 启动超时（15s 内未就绪）"))?;
+    Ok(SpawnDaemonResult { name, port })
 }

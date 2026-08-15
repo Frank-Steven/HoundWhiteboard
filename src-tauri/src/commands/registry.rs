@@ -198,7 +198,7 @@ pub fn safe_io_register_root(
 }
 
 /// 展开路径开头的 `~` 为家目录
-fn expand_home(path: &str) -> Result<String, String> {
+pub fn expand_home(path: &str) -> Result<String, String> {
     if path == "~" || path.starts_with("~/") || path.starts_with("~\\") {
         let home = std::env::home_dir()
             .ok_or_else(|| "home directory unavailable".to_string())?;
