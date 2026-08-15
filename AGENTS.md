@@ -44,7 +44,7 @@ src/
 │   ├── chunk/               # 区块（空间分区）
 │   ├── board/               # Board 权威状态（BoardCore 静态图 / AOM / render-hooks 缝）
 │   ├── hit/                 # 操作日志与时间回溯树
-│   ├── store/               # 会话存储（布局 v1、日志跟随者落盘、恢复）
+│   ├── store/               # 会话存储（per-source 日志流、写权仲裁落盘、恢复）
 │   ├── api/                 # BoardApi 契约面
 │   ├── utils/               # 内核工具（id 池、图、数学）
 │   └── types/               # 类型定义

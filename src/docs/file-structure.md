@@ -16,15 +16,15 @@
 2. **io 包实现缝**：`io/driver/`（memory / node / tauri 三实现）、`io/adapter/persistence`（PersistenceAdapter 实现）
 3. **host 组合根接线**：core-worker `createBoard` 注册根目录、构造 BoardCore、恢复会话并挂接日志跟随者
 
-板目录结构（布局 v1）：
+板目录结构（formatVersion 1）：
 
 ```text
 {board}/
-  board.json               # 板元数据
-  objects/{objectId}.json  # 活动对象快照
-  trash/{objectId}.json    # trash 条目
-  chunks/{chunkId}.json    # 区块元数据
-  hit/seg-{NNNNNN}.jsonl   # 操作日志段
+  board.json                        # 板元数据
+  objects/{objectId}.json           # 活动对象快照
+  trash/{objectId}.json             # trash 条目
+  chunks/{chunkId}.json             # 区块元数据
+  hit/{source}/seg-{NNNNNN}.jsonl   # per-source 操作日志流
 ```
 
 ## 各文件与目录说明
@@ -37,7 +37,6 @@
 {
   "formatVersion": 1,
   "lastTime": 1786009532137,
-  "nextSegmentSeq": 5,
   "coreIdCounters": { "demo": 2 },
   "objectIdCounters": { "demo": 17 },
   "boardConfig": { "width": 4096, "height": 4096 }
@@ -48,7 +47,7 @@
 
 - `formatVersion`：布局版本号
 - `lastTime`：已落盘记录的最晚时间标记，重开时续给 commit 边界
-- `nextSegmentSeq`：下一个可用日志段序号
+- `nextSegmentSeq`（已退役）：v1 单流的全局段序号；v2 per-source 流的下一段序号由各流目录内最大段序直接恢复，不再入元数据
 - `coreIdCounters`：各来源的 Core 侧对象 id 已分配最大计数（如擦除分裂段 id），重开时续号防碰撞
 - `objectIdCounters`：各来源的 UI 侧对象 id 池已分配最大计数（UI 经 `reportObjectIdCounter` 上报），重开时续种防碰撞
 - `boardConfig`：板宽高；板尺寸是文档数据（决定区块划分），恢复时以盘上配置为准
@@ -59,7 +58,7 @@
 
 对象 id 含斜杠（如 `demo/1`），文件名经 `encodeURIComponent` 编码（如 `demo%2F1.json`）。
 
-内容由日志跟随者按当前板状态调和写入：序列化指纹比对，仅写差异。
+内容由日志跟随者按当前板状态调和写入：序列化指纹比对，仅写差异。写权属活动方（AOM 仲裁）：远程活动对象跳过不写，等待其作者落盘。
 
 ### `trash/{objectId}.json`
 
@@ -93,13 +92,13 @@ trash 条目文件，文件名编码规则与活动对象相同。内容为完�
 
 由日志跟随者按当前层叠图状态调和写入（指纹比对，仅写差异）。
 
-### `hit/seg-{NNNNNN}.jsonl`
+### `hit/{source}/seg-{NNNNNN}.jsonl`
 
-操作日志段文件。每个落盘批次追加一段，段序号为六位十进制零填充，单调递增。
+操作日志流：每个写端进程按自己的 source 独占一个流目录（目录名经 `encodeURIComponent` 编码），只追加自己的段，流内段序号独立递增。段写入为原子写（临时文件 + rename），崩溃不留撕裂段。`hit/` 下的散文件（非流目录）一律不读。
 
 段内容为 JSONL：一行一条序列化操作记录（分子操作记录结构见 [operation-document.md](../kernel/hit/docs/operation-document.md)）。
 
-打开板时按段序号升序拼接，经 `OperationLog.fromJSON` 重建日志、`UndoTree.rebuild()` 重建时间回溯树，撤销历史由此穿越重开。
+打开板时归并全部流：按 record.source 分组、组内按操作序号升序、按 id 去重，组按 source 字典序拼接，经 `OperationLog.fromJSON` 重建日志、`UndoTree.rebuild()` 重建时间回溯树（树按 (时间, author) 确定性定序，与归并顺序无关），撤销历史由此穿越重开。
 
 ## 落盘语义
 
@@ -107,12 +106,21 @@ trash 条目文件，文件名编码规则与活动对象相同。内容为完�
 
 `kernel/store/journaler` 订阅操作日志的 append 事件（本地 commit 与远端应用共用同一入日志通道），微任务合批后自动落盘。每轮 flush 按序执行：
 
-1. 队列中的新记录写为一段 `hit/seg-{N}.jsonl`
-2. 对象文件调和：活动对象写 `objects/`，trash 条目写 `trash/`，既非活动亦非 trash 的对象从盘上移除
+1. 队列中的新记录按 record.source 分组，每组写为一段 `hit/{source}/seg-{N}.jsonl`（各写端只写自己的流；daemon 代写 relay 远端来源的流）
+2. 对象文件调和：活动对象写 `objects/`，trash 条目写 `trash/`，既非活动亦非 trash 的对象从盘上移除；**写权仲裁**——远程活动对象（AOM `isRemoteActive`）跳过不写不移除（写权属活动方）；部分驻留写端（GUI 开 chunkUnload）以 `removeMissing:false` 关闭缺失移除，防止误删未加载对象的文件
 3. 区块元数据调和：层叠图与覆盖索引指纹比对，仅写差异
-4. 重写 `board.json`
+4. 重写 `board.json`（多写者共板时仅 daemon 写，GUI 以 `writeMeta:false` 跳过）
 
 调和以板当前状态为准，撤销/重做/远端记录引起的任意状态迁移统一收敛，无逐类型效果逻辑。
+
+### 写权矩阵（布局 v2）
+
+| 文件 | 谁写 | 冲突兜底 |
+| --- | --- | --- |
+| `board.json` | daemon 单写 | — |
+| `objects/{id}.json` / `trash/{id}.json` | 活动方（AOM 仲裁，远程活动跳过）；静态对象双侧指纹调和 | 原子写 + digest 对账 |
+| `hit/{source}/` | 仅该 source 进程 | 硬隔离零冲突；段序号占用时递增自愈 |
+| `chunks/{chunkId}.json` | 各写端指纹调和（收敛后内容相同） | 原子写 |
 
 ### 会话恢复
 

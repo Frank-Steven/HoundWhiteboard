@@ -12,18 +12,21 @@ import { BoardCore } from "../../board/board-core.js";
 import { BoardApi } from "../../api/board-api.js";
 import { createDefaultAomRenderHooks } from "../../board/aom-render-hooks.js";
 import { createDefaultPersistenceAdapter } from "../../board/persistence-adapter.js";
-import { createAddObjectOperation } from "../../hit/operation.js";
+import { createAddObjectOperation, createModifyObjectOperation } from "../../hit/operation.js";
 import { createSessionStore } from "../session-store.js";
 import { createJournaler } from "../journaler.js";
 
 /**
  * 装配内核、会话存储与跟随者
+ * @param {Object} [options] - 装配选项
+ * @param {() => number} [options.now] - 时间源（默认真实时钟；测试可注入递增时钟保证时间单调）
  * @returns {Object} 测试上下文
  */
-function setup() {
+function setup(options = {}) {
   const boardCore = new BoardCore({
     width: 800,
     height: 600,
+    now: options.now,
     aomRenderHooks: createDefaultAomRenderHooks(),
     persistenceAdapter: createDefaultPersistenceAdapter(),
   });
@@ -77,8 +80,11 @@ describe("Journaler", () => {
     expect(objects[0].id).toBe("demo/1");
 
     const meta = await store.readMeta();
-    expect(meta.nextSegmentSeq).toBe(1);
+    expect(meta.nextSegmentSeq).toBeUndefined();
     expect(meta.lastTime).toBe(records[0].time);
+    // 段落入 per-source 流目录
+    const { nextSegmentSeqBySource } = await store.readAllRecords();
+    expect(nextSegmentSeqBySource).toEqual({ core: 1 });
   });
 
   test("modify 后对象文件内容更新", async () => {
@@ -173,7 +179,11 @@ describe("Journaler", () => {
     await journaler.flush();
 
     const records = await readRecords(store);
-    expect(records.map((r) => r.id)).toEqual(["core/op-1", "b/op-1"]);
+    // 归并按 source 字典序分组：b 流在 core 流之前
+    expect(records.map((r) => r.id)).toEqual(["b/op-1", "core/op-1"]);
+    // 远端记录落作者源流，本地记录落本端流
+    const { nextSegmentSeqBySource } = await store.readAllRecords();
+    expect(nextSegmentSeqBySource).toEqual({ b: 1, core: 1 });
     expect((await store.readAllObjects()).map((o) => o.id).sort()).toEqual([
       "remote/1",
       "s1",
@@ -200,7 +210,8 @@ describe("Journaler", () => {
       store: countingStore,
     });
     journaler2.attach({
-      nextSegmentSeq: 1,
+      nextSegmentSeqBySource: (await store.readAllRecords())
+        .nextSegmentSeqBySource,
       lastTime: 0,
       knownObjects: await store.readAllObjects(),
       knownTrash: [],
@@ -210,7 +221,9 @@ describe("Journaler", () => {
   });
 
   test("knownMeta 种子：无变化 flush 不重写板元数据与区块元数据", async () => {
-    const { boardCore, api, store } = setup();
+    // 递增时钟：meta 不再携带段序号后，lastTime 必须真实推进才能触发重写
+    let tick = 1000;
+    const { boardCore, api, store } = setup({ now: () => ++tick });
     await store.create();
     const journaler = createJournaler({ boardCore, store });
     journaler.attach();
@@ -232,7 +245,8 @@ describe("Journaler", () => {
     };
     const journaler2 = createJournaler({ boardCore, store: countingStore });
     journaler2.attach({
-      nextSegmentSeq: meta.nextSegmentSeq,
+      nextSegmentSeqBySource: (await store.readAllRecords())
+        .nextSegmentSeqBySource,
       lastTime: meta.lastTime ?? 0,
       knownObjects: await store.readAllObjects(),
       knownTrash: [],
@@ -275,7 +289,8 @@ describe("Journaler", () => {
     const api2 = new BoardApi(boardCore2);
     const journaler2 = createJournaler({ boardCore: boardCore2, store });
     journaler2.attach({
-      nextSegmentSeq: 10,
+      nextSegmentSeqBySource: (await store.readAllRecords())
+        .nextSegmentSeqBySource,
       lastTime: 0,
       knownObjects: session2.objects,
       knownTrash: session2.trash,
@@ -326,5 +341,205 @@ describe("Journaler", () => {
       "s1",
       "s2",
     ]);
+  });
+
+  test("双写端顺序落各自源流，重开后树完整且各撤各的", async () => {
+    const driver = createMemoryDriver({ rootId: "mem" });
+    const d = bindRoot(driver, "mem");
+    const store = createSessionStore(d);
+    await store.create();
+
+    // 会话 A（source=a）：创建对象并落盘
+    const coreA = new BoardCore({
+      width: 800,
+      height: 600,
+      source: "a",
+      aomRenderHooks: createDefaultAomRenderHooks(),
+      persistenceAdapter: createDefaultPersistenceAdapter(),
+    });
+    const apiA = new BoardApi(coreA);
+    const journalerA = createJournaler({ boardCore: coreA, store });
+    journalerA.attach();
+    await createStaticStroke(apiA, "a/1");
+    await journalerA.detach();
+
+    // 会话 B（source=b）：从盘上恢复后继续写自己的流
+    const loaded = await store.readAllRecords();
+    const coreB = new BoardCore({
+      width: 800,
+      height: 600,
+      source: "b",
+      hitRecords: loaded.records,
+      aomRenderHooks: createDefaultAomRenderHooks(),
+      persistenceAdapter: createDefaultPersistenceAdapter(),
+    });
+    coreB.restoreSession({
+      chunkMetadataList: await store.readAllChunkMetadata(),
+      objects: await store.readAllObjects(),
+      trash: await store.readAllTrash(),
+    });
+    const apiB = new BoardApi(coreB);
+    const journalerB = createJournaler({ boardCore: coreB, store });
+    journalerB.attach({
+      nextSegmentSeqBySource: loaded.nextSegmentSeqBySource,
+      knownObjects: await store.readAllObjects(),
+    });
+    await createStaticStroke(apiB, "b/1");
+    await journalerB.detach();
+
+    // 双流各自落盘、序号各自推进
+    const after = await store.readAllRecords();
+    expect(after.nextSegmentSeqBySource).toEqual({ a: 1, b: 1 });
+    expect(after.records.map((r) => r.id)).toEqual(["a/op-1", "b/op-1"]);
+
+    // 重开：树完整；各撤各的命中本端最近节点
+    const coreC = new BoardCore({
+      width: 800,
+      height: 600,
+      source: "b",
+      hitRecords: after.records,
+      aomRenderHooks: createDefaultAomRenderHooks(),
+      persistenceAdapter: createDefaultPersistenceAdapter(),
+    });
+    coreC.restoreSession({
+      chunkMetadataList: await store.readAllChunkMetadata(),
+      objects: await store.readAllObjects(),
+      trash: await store.readAllTrash(),
+    });
+    const apiC = new BoardApi(coreC);
+    expect(coreC.getAllObjects().map((o) => o.id).sort()).toEqual([
+      "a/1",
+      "b/1",
+    ]);
+    // source=b 视角：撤销命中 b 的创建，a 的对象保留
+    expect(apiC.undo().undone).toBe(true);
+    expect(coreC.getAllObjects().map((o) => o.id)).toEqual(["a/1"]);
+  });
+
+  test("persistStream 过滤：只允许本端 source 的流落盘", async () => {
+    const { boardCore, api, store } = setup();
+    await store.create();
+    const journaler = createJournaler({
+      boardCore,
+      store,
+      persistStream: (s) => s === "core",
+    });
+    journaler.attach();
+
+    await createStaticStroke(api, "s1");
+    await api.applyRemoteOperations([
+      createAddObjectOperation({
+        id: "b/op-1",
+        source: "b",
+        time: Date.now() + 1000,
+        parentId: null,
+        chunkId: "1",
+        objectId: "remote/1",
+        data: {
+          id: "remote/1",
+          type: "StrokeObject",
+          position: { x: 0, y: 0 },
+          property: { width: 2 },
+          data: { points: [{ x: 0, y: 0 }] },
+          transform: { a: 1, b: 0, c: 0, d: 1 },
+        },
+        layerStackSnapshot: ["s1", "remote/1"],
+      }),
+    ]);
+    await journaler.flush();
+
+    // b 的流被过滤不落盘（作者自写）；本端 core 流正常
+    const { records, nextSegmentSeqBySource } = await store.readAllRecords();
+    expect(records.map((r) => r.id)).toEqual(["core/op-1"]);
+    expect(nextSegmentSeqBySource).toEqual({ core: 1 });
+  });
+
+  test("远程活动对象不写不移除（写权属活动方），解除后恢复调和", async () => {
+    const { boardCore, api, store } = setup();
+    await store.create();
+    const journaler = createJournaler({ boardCore, store });
+    journaler.attach();
+
+    await createStaticStroke(api, "s1");
+    await journaler.flush();
+    expect(
+      (await store.readAllObjects())[0].position,
+    ).toEqual({ x: 0, y: 0 });
+
+    // 远程端 b 持有 s1（活动）并修改它
+    boardCore.activeObjectManager.applyRemoteChoose(["s1"], "b");
+    await api.applyRemoteOperations([
+      createModifyObjectOperation({
+        id: "b/op-1",
+        source: "b",
+        time: Date.now() + 1000,
+        parentId: null,
+        chunkId: "1",
+        objectId: "s1",
+        before: { position: { x: 0, y: 0 } },
+        after: { position: { x: 99, y: 0 } },
+        layerStackSnapshot: ["s1"],
+      }),
+    ]);
+    await journaler.flush();
+    // 远程活动期间：本端不写对象文件（b 端自写），盘上仍是旧内容
+    expect(
+      (await store.readAllObjects())[0].position,
+    ).toEqual({ x: 0, y: 0 });
+
+    // 远程释放后恢复调和：下一次 flush 把收敛后的内容落盘
+    boardCore.activeObjectManager.revokeRemoteActive("s1");
+    await journaler.flush();
+    expect(
+      (await store.readAllObjects())[0].position,
+    ).toEqual({ x: 99, y: 0 });
+  });
+
+  test("removeMissing:false 时既非活动亦非 trash 的对象文件不移除", async () => {
+    const { boardCore, store } = setup();
+    await store.create();
+    // 盘上预置对象文件（模拟已被 chunk 卸载逐出内存的对象）
+    const data = {
+      id: "s1",
+      type: "StrokeObject",
+      position: { x: 0, y: 0 },
+      property: { width: 2 },
+      data: { points: [{ x: 0, y: 0 }] },
+      transform: { a: 1, b: 0, c: 0, d: 1 },
+    };
+    await store.writeObject(data);
+
+    // 默认行为（removeMissing:true）：空板上调和会移除缺失对象文件
+    const journaler1 = createJournaler({ boardCore, store });
+    journaler1.attach({ knownObjects: [data] });
+    await journaler1.flush();
+    expect(await store.readAllObjects()).toHaveLength(0);
+
+    // 部分驻留写端（removeMissing:false）：不移除，防误删未加载对象
+    await store.writeObject(data);
+    const journaler2 = createJournaler({
+      boardCore,
+      store,
+      removeMissing: false,
+    });
+    journaler2.attach({ knownObjects: [data] });
+    await journaler2.flush();
+    expect((await store.readAllObjects()).map((o) => o.id)).toEqual(["s1"]);
+  });
+
+  test("writeMeta:false 时 flush 不重写 board.json", async () => {
+    const { boardCore, api, store } = setup();
+    await store.create();
+    const before = await store.readMeta();
+    const journaler = createJournaler({ boardCore, store, writeMeta: false });
+    journaler.attach();
+
+    await createStaticStroke(api, "s1");
+    await journaler.flush();
+
+    expect(await store.readMeta()).toEqual(before);
+    // 流与对象照常落盘
+    expect((await store.readAllRecords()).records).toHaveLength(1);
+    expect((await store.readAllObjects()).map((o) => o.id)).toEqual(["s1"]);
   });
 });

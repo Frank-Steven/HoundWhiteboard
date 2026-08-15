@@ -4,7 +4,7 @@
 
 > [!NOTE]
 >
-> **实现状态**：存储布局 v1（board.json / objects / trash / chunks / hit 日志段）、日志跟随者增量落盘、会话恢复（树重放 + 层叠图回填 + id/时间续号）与跨会话撤销均已落地并固化为回归测试。待落地：大板场景的区块懒加载接入演示流程。
+> **实现状态**：per-source 日志流存储（journaler 按 record.source 写 `hit/{source}/`，加载时多流归并重建 hit 树）、对象文件写权仲裁（S3：远程活动对象跳过、部分驻留写端关闭缺失移除、board.json 由 daemon 单写、对象与日志文件原子写）、会话恢复（树重放 + 层叠图回填 + id/时间续号）与跨会话撤销均已落地并固化为回归测试。待落地：chunk 决策（S4）、WS 加速器化与离线语义（S5）；大板场景的区块懒加载接入演示流程。
 
 ## 模块定位
 
@@ -23,18 +23,18 @@ kernel 以结构化 typedef 定义最小文件操作接口，不 import io 包�
 
 ## 存储布局
 
-布局 v1（详见[文件结构文档](../../../docs/file-structure.md)）：
+布局（详见[文件结构文档](../../../docs/file-structure.md)）：
 
 ```text
 {board}/
-  board.json               # 板元数据（格式版本、lastTime、nextSegmentSeq、id 计数器）
-  objects/{objectId}.json  # 存活对象快照
-  trash/{objectId}.json    # trash 条目（含层位边）
-  chunks/{chunkId}.json    # 区块元数据（层叠图与覆盖索引）
-  hit/seg-{NNNNNN}.jsonl   # 操作日志段
+  board.json                       # 板元数据（格式版本、lastTime、id 计数器）
+  objects/{objectId}.json          # 存活对象快照
+  trash/{objectId}.json            # trash 条目（含层位边）
+  chunks/{chunkId}.json            # 区块元数据（层叠图与覆盖索引）
+  hit/{source}/seg-{NNNNNN}.jsonl  # per-source 操作日志流
 ```
 
-对象 id 含斜杠，文件名经 `encodeURIComponent` 编码。段序号为六位十进制零填充，单调递增。
+对象 id 含斜杠，文件名经 `encodeURIComponent` 编码；source 流目录名同样编码。段序号为六位十进制零填充，各流内单调递增、跨流独立。
 
 CLI 在板目录另维护 `.cli-choices.json`（choice 驻留种子），不属内核布局，不进日志也不进 board.json。
 
@@ -43,9 +43,11 @@ CLI 在板目录另维护 `.cli-choices.json`（choice 驻留种子），不属�
 journaler 订阅操作日志的 append 事件——本地 commit 与远端应用共用同一入日志通道，订阅者由此观察到全部新增记录，无需逐类型效果逻辑。
 
 - **合批**：记录入队后经微任务合批自动落盘；`flush()` 提供可等待的排空洞；`detach()` 退订并排空。
-- **flush 编排**：新记录写为一段日志段 → 对象文件调和 → 区块元数据调和 → 重写 board.json。
+- **flush 编排**：新记录按 record.source 分组写为各源流的日志段（原子写：临时文件 + rename）→ 对象文件调和 → 区块元数据调和 → 重写 board.json。
+- **流归并**：打开板时各 per-source 流按「source 分组、组内操作序号升序、id 去重、组按 source 字典序拼接」归并——满足操作日志 per-source 序号连续与时间单调的准入校验；树重建按 (时间, author) 确定性定序，与归并顺序无关。
 - **指纹调和**：对象与区块文件按板当前状态对齐——序列化指纹（JSON 串）比对，仅写差异；全部存活对象（objectLoaded 全量）写 `objects/`，trash 条目写 `trash/`（层位边集合归一化为数组），既不存活亦非 trash 的对象从盘上移除。撤销/重做/远端记录引起的任意状态迁移统一收敛。注意此处的「活动对象」指内存中在场对象，与 AOM 三态术语中的「活动对象」不是一回事（AOM 活动态是被选中、正在操作的对象）。
-- **指纹种子**：打开既有板时以盘上内容为种子挂接，首轮 flush 不做无谓重写。
+- **写权仲裁**：远程活动对象（AOM `isRemoteActive`）跳过不写不移除——写权属活动方；部分驻留写端（GUI 开 chunkUnload）以 `removeMissing:false` 关闭缺失移除；多写者共板时 `board.json` 仅 daemon 写（`writeMeta:false`）；对象与日志段文件均为原子写（临时文件 + rename）。
+- **指纹种子**：打开既有板时以盘上内容为种子挂接（含各源流的下一段序号 `nextSegmentSeqBySource`，由各流目录内最大段序恢复），首轮 flush 不做无谓重写。
 
 ## 会话恢复
 

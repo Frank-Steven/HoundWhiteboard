@@ -127,7 +127,19 @@ async function startBoardDaemon(options) {
     typeof options.source === "string" && options.source !== ""
       ? options.source
       : await resolveDaemonIdentity(name);
-  const session = await openBoardSession(rootPath, { source });
+
+  /**
+   * 协作客户端表（WS 连接 → 来源标识；GUI 直连协作通道）
+   * @type {Map<Object, string>}
+   */
+  const collabClients = new Map();
+
+  // 日志流落盘判定：直连协作客户端的流由其自写（布局 v2 各写端只写自己的流），
+  // daemon 落自己与 relay 远端来源的流
+  const session = await openBoardSession(rootPath, {
+    source,
+    persistStream: (s) => ![...collabClients.values()].includes(s),
+  });
 
   // 可选连中继：失败降级单机并每 3s 自动重试（中继可能后于 daemon 启动）；断线后同周期自动重连
   let coordinator = null;
@@ -208,11 +220,6 @@ async function startBoardDaemon(options) {
    */
   let clientRefs = 0;
 
-  /**
-   * 协作客户端表（WS 连接 → 来源标识；GUI 直连协作通道）
-   * @type {Map<Object, string>}
-   */
-  const collabClients = new Map();
   /** @type {Function|null} 协作广播的本地记录订阅 */
   let unsubscribeCollabAppend = null;
   /** @type {Function|null} 协作广播的 activity 订阅 */

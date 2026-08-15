@@ -129,4 +129,54 @@ describe("CLI 查询命令", () => {
       cleanup();
     }
   });
+
+  test("双流分片板上 ops 与 tree 输出跨流一致且重开不变", async () => {
+    const { dir, cleanup } = tempBoardDir();
+    let daemonA = null;
+    let daemonB = null;
+    try {
+      await runCli(["create", "--path", dir, "--width", "800", "--height", "600"]);
+      // 两个不同身份的 daemon 顺序持板各写一条记录（各自源流）
+      daemonA = await startTestDaemon("inspect-shard-a", dir, { source: "sa" });
+      await runCli([
+        "add",
+        "--daemon",
+        "inspect-shard-a",
+        "--type",
+        "StrokeObject",
+        "--data",
+        STROKE_DATA,
+      ]);
+      await daemonA.close();
+      daemonA = null;
+      daemonB = await startTestDaemon("inspect-shard-b", dir, { source: "sb" });
+      await runCli([
+        "add",
+        "--daemon",
+        "inspect-shard-b",
+        "--type",
+        "StrokeObject",
+        "--data",
+        STROKE_DATA,
+      ]);
+      await daemonB.close();
+      daemonB = null;
+
+      const ops1 = await runCliJson(["ops", "--path", dir]);
+      expect(ops1.map((r) => r.id)).toEqual(["sa/op-1", "sb/op-1"]);
+      // 直读重开（每次调用完整走恢复路径）输出不变
+      const ops2 = await runCliJson(["ops", "--path", dir]);
+      expect(ops2).toEqual(ops1);
+
+      const { stdout: tree1 } = await runCli(["tree", "--path", dir]);
+      expect(tree1).toContain("sa/op-1");
+      expect(tree1).toContain("sb/op-1");
+      const { stdout: tree2 } = await runCli(["tree", "--path", dir]);
+      expect(tree2).toBe(tree1);
+    } finally {
+      if (daemonA) await daemonA.close();
+      if (daemonB) await daemonB.close();
+      cleanup();
+    }
+  });
 });

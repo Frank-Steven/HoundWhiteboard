@@ -173,7 +173,7 @@ choice 全量修改（--position/--transform/--property/--data）仅单成员 ch
 ## 设计约束
 
 - 无交互与渲染能力：CLI 面向文档操作，不表达视口、选择与 overlay 状态
-- 写路径单一持板者：板由 daemon 独占持有，GUI 打开同一板时应检测 `.daemon.json` 持有标记转客户端或拒绝（所有权模型落地中）；读命令直读只读已落盘状态，与持板者无竞态
+- 写路径多写端分片（布局 v2）：各写端（GUI / daemon）只写自己 source 的日志流与自己影响的对象文件（AOM 活动性仲裁），board.json 仍由 daemon 单写；读命令直读只读已落盘状态，与持板者无竞态
 - daemon 是写路径单点：daemon 未启动时写命令报错提示 `daemon start`；读命令仍可用 `--path` 直读
 - 板尺寸未知的板（`boardConfig` 缺失且未传 `--width/--height`）上执行 `add` 会因无法解析区块而失败，需显式指定尺寸
 

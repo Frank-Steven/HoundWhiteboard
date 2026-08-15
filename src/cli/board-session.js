@@ -22,6 +22,7 @@ import { resolveBoardPath } from "./board-path.js";
  * @param {number} [options.width=0] - 新建板的宽度（重开时以盘上配置为准）
  * @param {number} [options.height=0] - 新建板的高度
  * @param {string} [options.source="cli"] - 协作身份（记录的 source 与新对象 id 前缀）
+ * @param {(source: string) => boolean} [options.persistStream] - 日志流落盘判定（daemon 用：不落直连客户端的流）
  * @returns {Promise<{api: BoardApi, boardCore: BoardCore, store: Object, journaler: Object, meta: Object|null, flush: Function, close: Function}>} 板会话
  *
  * @description
@@ -70,9 +71,10 @@ async function openBoardSession(rootPath, options = {}) {
     boardCore,
     store,
     collectMeta: () => boardCore.collectSessionMeta(),
+    persistStream: options.persistStream,
   });
   journaler.attach({
-    nextSegmentSeq: meta?.nextSegmentSeq ?? 1,
+    nextSegmentSeqBySource: session.nextSegmentSeqBySource ?? {},
     lastTime: meta?.lastTime ?? 0,
     knownObjects: session.objects,
     knownTrash: session.trash,

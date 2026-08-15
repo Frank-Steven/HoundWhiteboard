@@ -98,32 +98,35 @@ describe("SessionStore", () => {
     expect(chunk1.objectCoverIndex).toEqual([["a", [1]]]);
   });
 
-  test("日志段追加与全量读取（段序拼接、序号推进）", async () => {
+  test("日志段追加与全量读取（per-source 流、流内序号推进）", async () => {
     const store = setup();
     await store.create();
 
     const empty = await store.readAllRecords();
     expect(empty.records).toEqual([]);
-    expect(empty.nextSegmentSeq).toBe(0);
+    expect(empty.nextSegmentSeqBySource).toEqual({});
 
-    await store.appendSegment(0, [
-      { id: "a/op-1", type: "add-object" },
-      { id: "a/op-2", type: "modify-object" },
+    await store.appendSegment("a", 0, [
+      { id: "a/op-1", type: "add-object", source: "a" },
+      { id: "a/op-2", type: "modify-object", source: "a" },
     ]);
-    await store.appendSegment(1, [{ id: "a/op-3", type: "delete-object" }]);
+    await store.appendSegment("a", 1, [
+      { id: "a/op-3", type: "delete-object", source: "a" },
+    ]);
 
-    const { records, nextSegmentSeq } = await store.readAllRecords();
+    const { records, nextSegmentSeqBySource } = await store.readAllRecords();
     expect(records.map((r) => r.id)).toEqual(["a/op-1", "a/op-2", "a/op-3"]);
-    expect(nextSegmentSeq).toBe(2);
+    expect(nextSegmentSeqBySource).toEqual({ a: 2 });
   });
 
-  test("空段不落成文件；非法段序号与记录被拒绝", async () => {
+  test("空段不落成文件；非法来源、段序号与记录被拒绝", async () => {
     const store = setup();
     await store.create();
-    expect(await store.appendSegment(0, [])).toBe(true);
-    expect((await store.readAllRecords()).nextSegmentSeq).toBe(0);
-    expect(await store.appendSegment(-1, [{ id: "x" }])).toBe(false);
-    expect(await store.appendSegment(0, null)).toBe(false);
+    expect(await store.appendSegment("a", 0, [])).toBe(0);
+    expect((await store.readAllRecords()).nextSegmentSeqBySource).toEqual({});
+    expect(await store.appendSegment("", 0, [{ id: "x" }])).toBe(false);
+    expect(await store.appendSegment("a", -1, [{ id: "x" }])).toBe(false);
+    expect(await store.appendSegment("a", 0, null)).toBe(false);
   });
 
   test("段内损坏行被跳过，合法行保留", async () => {
@@ -131,8 +134,70 @@ describe("SessionStore", () => {
     const d = bindRoot(driver, "mem2");
     const store = createSessionStore(d);
     await store.create();
-    await d.write("hit/seg-000000.jsonl", '{"id":"a/op-1"}\n{bad json\n{"id":"a/op-2"}\n');
+    await d.write(
+      "hit/a/seg-000000.jsonl",
+      '{"id":"a/op-1","source":"a"}\n{bad json\n{"id":"a/op-2","source":"a"}\n',
+    );
     const { records } = await store.readAllRecords();
     expect(records.map((r) => r.id)).toEqual(["a/op-1", "a/op-2"]);
+  });
+
+  test("多流归并：按来源分组定序并按 id 去重", async () => {
+    const driver = createMemoryDriver({ rootId: "mem3" });
+    const d = bindRoot(driver, "mem3");
+    const store = createSessionStore(d);
+    await store.create();
+    // a 的流（两段，含一条重复记录）与 c 的流
+    await store.appendSegment("a", 0, [
+      { id: "a/op-1", source: "a", time: 1 },
+      { id: "a/op-2", source: "a", time: 3 },
+    ]);
+    await store.appendSegment("a", 1, [
+      { id: "a/op-2", source: "a", time: 3 },
+      { id: "a/op-3", source: "a", time: 4 },
+    ]);
+    await store.appendSegment("c", 0, [{ id: "c/op-1", source: "c", time: 5 }]);
+    // hit/ 下的散文件（非流目录）一律不读
+    await d.write("hit/seg-000000.jsonl", '{"id":"x/op-1","source":"x"}\n');
+
+    const { records, nextSegmentSeqBySource } = await store.readAllRecords();
+    // 组按 source 字典序拼接，组内按操作序号升序，重复 id 只保留首现
+    expect(records.map((r) => r.id)).toEqual([
+      "a/op-1",
+      "a/op-2",
+      "a/op-3",
+      "c/op-1",
+    ]);
+    expect(nextSegmentSeqBySource).toEqual({ a: 2, c: 1 });
+  });
+
+  test("段序号自愈：期望序号被占用时递增到空位并返回实际序号", async () => {
+    const store = setup();
+    await store.create();
+    await store.appendSegment("a", 0, [{ id: "a/op-1", source: "a" }]);
+    // 另一个写端持有落后的序号：占用冲突时避让而不是覆盖
+    const used = await store.appendSegment("a", 0, [
+      { id: "a/op-2", source: "a" },
+    ]);
+    expect(used).toBe(1);
+    const { records } = await store.readAllRecords();
+    expect(records.map((r) => r.id)).toEqual(["a/op-1", "a/op-2"]);
+  });
+
+  test("对象文件原子写：盘上无临时文件残留", async () => {
+    const driver = createMemoryDriver({ rootId: "mem" });
+    const d = bindRoot(driver, "mem");
+    const store = createSessionStore(d);
+    await store.create();
+    await store.writeObject({ id: "a/1", type: "StrokeObject" });
+    await store.writeTrashEntry({ data: { id: "a/2", type: "StrokeObject" }, chunks: [] });
+    for (const dir of ["objects", "trash"]) {
+      const names = (await d.ls(dir)).map((e) => e.name);
+      expect(names.every((n) => !n.startsWith(".tmp-"))).toBe(true);
+    }
+    expect((await store.readAllObjects()).map((o) => o.id)).toEqual(["a/1"]);
+    expect((await store.readAllTrash()).map((e) => e.data.id)).toEqual([
+      "a/2",
+    ]);
   });
 });

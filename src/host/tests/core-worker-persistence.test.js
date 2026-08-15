@@ -167,6 +167,36 @@ async function rpcCall(host, handler, method, params = {}) {
 }
 
 /**
+ * 泵送 worker 的 io-invoke 转发直到排空（journaler 微任务合批的落盘由此完成）
+ * @param {FakeWorkerHost} host - 假宿主
+ * @param {(command: string, args: Object) => Promise<*>} handler - Rust command 处理器
+ * @returns {Promise<void>}
+ */
+async function pumpIo(host, handler) {
+  for (let i = 0; i < 50; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    let handledAny = false;
+    for (const message of host.postedMessages) {
+      if (message.type !== "io-invoke" || message.__handled) continue;
+      message.__handled = true;
+      handledAny = true;
+      try {
+        const result = await handler(message.command, message.args);
+        host.emit({ type: "io-response", msgId: message.msgId, ok: true, result });
+      } catch (error) {
+        host.emit({
+          type: "io-response",
+          msgId: message.msgId,
+          ok: false,
+          error: String(error?.message ?? error),
+        });
+      }
+    }
+    if (!handledAny) return;
+  }
+}
+
+/**
  * 创建一笔静态笔画
  * @param {FakeWorkerHost} host - 假宿主
  * @param {Function} handler - Rust command 处理器
@@ -210,7 +240,7 @@ async function setup() {
   const runtime = new CoreWorkerRuntime(host);
   runtime.start();
   const { handler, driver } = createMemoryCommandHandler();
-  // 真 daemon：临时板目录 + startBoardDaemon（协作通道对端，唯一落盘者）
+  // 真 daemon：临时板目录 + startBoardDaemon（协作通道对端，relay 远端与自身流的落盘者）
   const boardDir = mkdtempSync(path.join(tmpdir(), "hwb-worker-collab-"));
   const session = await openBoardSession(boardDir, {
     create: true,
@@ -243,7 +273,7 @@ async function setup() {
 }
 
 describe("CoreWorker 持久化接线", () => {
-  test("rootPath 有效时经协作通道落盘在 daemon（worker 零写盘）", async () => {
+  test("rootPath 有效时经协作通道同步 daemon，worker 自写本端流与对象文件（布局 v2）", async () => {
     const { host, handler, driver, daemon } = await setup();
     try {
       await createStroke(host, handler, "demo/1");
@@ -258,13 +288,23 @@ describe("CoreWorker 持久化接线", () => {
       });
       expect(landed).toBe(true);
 
-      // worker 侧 mock 盘零写：无 write/mkdir/rm 类 io 命令
-      const writes = host.postedMessages.filter(
+      // 布局 v2：worker 自己落盘（本端 source 的日志流 + 对象文件，原子写经 mv 就位）
+      const landedLocal = await waitFor(async () => {
+        await pumpIo(host, handler);
+        const seg = await driver.read("mem", "hit/core/seg-000000.jsonl");
+        const obj = await driver.read("mem", "objects/demo%2F1.json");
+        return typeof seg === "string" && seg.includes('"core/op-1"')
+          && typeof obj === "string" && obj.includes('"demo/1"');
+      });
+      expect(landedLocal).toBe(true);
+      // worker 不写 board.json（daemon 单写）
+      const metaWrites = host.postedMessages.filter(
         (m) =>
           m.type === "io-invoke" &&
-          /write|mkdir|rm|cp|mv/.test(m.command),
+          m.command === "safe_io_fs_mv" &&
+          m.args?.destRel === "board.json",
       );
-      expect(writes).toHaveLength(0);
+      expect(metaWrites).toHaveLength(0);
     } finally {
       await daemon.close();
       rmSync(daemon.rootPath, { recursive: true, force: true });

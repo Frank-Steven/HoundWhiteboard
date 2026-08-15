@@ -195,7 +195,7 @@ class CoreWorkerRuntime {
   #coordinatorRetryTimer = null;
 
   /**
-   * GUI 协作协调器（板 daemon 直连；协作模式非空，journaler 不挂）
+   * GUI 协作协调器（板 daemon 直连；协作模式非空）
    * @type {Object | null}
    */
   #guiCoordinator = null;
@@ -524,8 +524,8 @@ class CoreWorkerRuntime {
  * @returns {Promise<{ ok: boolean }>} 创建结果
  *
  * @description
- * rootPath 有效时进入持久化协作模式：只读挂载板目录（落盘在持板 daemon），
- * 探测或拉起板 daemon 后经协作通道双向同步；既有板从会话存储恢复（树、对象、trash、层叠图、计数器）。
+ * rootPath 有效时进入持久化协作模式：可写挂载板目录（GUI 落自己的日志流与活动对象文件，
+ * board.json 由 daemon 单写），探测或拉起板 daemon 后经协作通道双向同步；既有板从会话存储恢复（树、对象、trash、层叠图、计数器）。
  */
   async createBoard(options = {}) {
     if (this.#boardCore) {
@@ -583,8 +583,24 @@ class CoreWorkerRuntime {
 
     if (persistence) {
       this.#boardCore.restoreSession(persistence.session);
-      // 协作模式：journaler 不挂接（零写盘，落盘在 daemon），直连 daemon 协作通道
       if (persistence.daemon) {
+        // 协作模式（布局 v2）：GUI 自己落盘——只落本端 source 的日志流（persistStream），
+        // 对象文件按 AOM 活动性仲裁（journaler 内跳过远程活动对象）；
+        // 不写 board.json（daemon 单写）；chunkUnload 部分驻留下不移除缺失对象文件
+        this.#journaler = createJournaler({
+          boardCore: this.#boardCore,
+          store: persistence.store,
+          persistStream: (s) => s === this.#boardCore.source,
+          writeMeta: false,
+          removeMissing: false,
+        });
+        this.#journaler.attach({
+          nextSegmentSeqBySource: persistence.session.nextSegmentSeqBySource,
+          lastTime: persistence.session.meta?.lastTime ?? 0,
+          knownObjects: persistence.session.objects,
+          knownTrash: persistence.session.trash,
+          knownChunkMetadata: persistence.session.chunkMetadataList,
+        });
         this.#guiDaemon = persistence.daemon;
         await this.#connectGuiDaemon();
       } else {
@@ -594,7 +610,7 @@ class CoreWorkerRuntime {
           collectMeta: () => this.#boardCore.collectSessionMeta(),
         });
         this.#journaler.attach({
-          nextSegmentSeq: persistence.session.nextSegmentSeq,
+          nextSegmentSeqBySource: persistence.session.nextSegmentSeqBySource,
           lastTime: persistence.session.meta?.lastTime ?? 0,
           knownObjects: persistence.session.objects,
           knownTrash: persistence.session.trash,
@@ -988,8 +1004,9 @@ class CoreWorkerRuntime {
    * @returns {Promise<{ adapter: Object, store: Object, session: Object, daemon: Object } | null>} 持久化上下文，内存模式为 null
    *
    * @description
-   * 协作模式：只读挂载（read/ls/stat，无写权限）+ 探测或 spawn 板 daemon（GUI 一律经 daemon 落盘），
-   * journaler 由 createBoard 决定不挂接（零写盘）。板不存在时由 spawn 侧建骨架。
+   * 协作模式：可写挂载（布局 v2：GUI 落自己的日志流与活动对象文件）+ 探测或 spawn 板 daemon，
+   * journaler 由 createBoard 挂接（persistStream 只落本端流、不写 board.json、不移除缺失对象文件）。
+   * 板不存在时由 spawn 侧建骨架。
    * @private
    */
   async #setupPersistence(rootPath) {
@@ -1006,13 +1023,13 @@ class CoreWorkerRuntime {
         `板 daemon 不可用：${rootPath}（无法连接或启动持板 daemon）`,
       );
     }
-    // 再只读挂载（daemon 已建骨架，目录必然存在；落盘在 daemon）
+    // 再可写挂载（daemon 已建骨架，目录必然存在）
     const registered = await driver.registerRoot(rootPath, {
       read: true,
-      write: false,
+      write: true,
       ls: true,
-      mkdir: false,
-      rm: false,
+      mkdir: true,
+      rm: true,
       hide: false,
       zip: false,
     });

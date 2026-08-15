@@ -405,6 +405,14 @@ class BoardCore {
   }
 
   /**
+   * 本端来源标识（操作记录 source 与对象 id 前缀；写端身份）
+   * @type {string}
+   */
+  get source() {
+    return this.hitCommitter.source;
+  }
+
+  /**
    * 恢复会话状态（对象、trash 与区块层叠图）
    * @param {Object} session - 会话数据
    * @param {Array<{chunkId: number, tierGraph: any[], objectCoverIndex: any[]}>} [session.chunkMetadataList] - 区块元数据列表
