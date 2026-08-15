@@ -88,9 +88,13 @@ trash 条目文件，文件名编码规则与活动对象相同。内容为完�
 ```
 
 - `tierGraph`：区块静态层叠图的数组化结果（`DirectedGraph.toArray()`）
-- `objectCoverIndex`：对象覆盖区块索引，`Array<[objectId, number[]]>`
+- `objectCoverIndex`：对象覆盖区块索引，`Array<[objectId, number[]]>`（盘上恒为空——覆盖索引权威副本在 BoardCore，重开时由 tierGraph 节点集表达归属）
 
 由日志跟随者按当前层叠图状态调和写入（指纹比对，仅写差异）。
+
+> [!NOTE]
+>
+> **S4 决策（2026-08-15，保留 chunks/ 落盘）**：曾评估「chunks/ 停止落盘、加载时从对象与日志派生重建」（分片存储布局 v2 的写冲突消除动议）。万级对象实测（`yarn bench:chunk`，10,000 对象 / 11,351 条记录）：基线（chunks/ 直读 + restoreSession）409ms，全量回放派生 3625ms（约 9 倍，且随历史长度无限增长，违反「打开耗时与历史操作数脱钩」）；chunks/ 读取本身仅 3.3ms，零收益。且 z-order 精确派生需要层位效果重放（实况提交与重放在非相交对象的层位语义上存在「居上 vs 原位」差异）。双写软冲突由原子写与收敛内容兜底。
 
 ### `hit/{source}/seg-{NNNNNN}.jsonl`
 

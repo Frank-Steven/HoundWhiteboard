@@ -21,6 +21,7 @@ const benchmarks = [
   { name: "IO File Granularity", file: "io-file-granularity.bench.js" },
   { name: "Worker RPC", file: "worker-rpc.bench.js" },
   { name: "Worker Render", file: "worker-render.bench.js" },
+  { name: "Chunk Rebuild", file: "chunk-rebuild.bench.js" },
 ];
 
 benchmarks.forEach((bench, index) => {
