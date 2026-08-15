@@ -789,6 +789,11 @@ class CoreWorkerRuntime {
     if (this.#guiDaemon && (await this.#probeWs(this.#guiDaemon.port))) {
       return this.#guiDaemon;
     }
+    // 探测不到活 daemon（崩溃/被 stop）：重新拉起，幂等（活 daemon 直返）
+    const rootPath = this.#boardCore?.rootPath;
+    if (typeof rootPath === "string" && rootPath !== "") {
+      return await this.#resolveBoardDaemon(rootPath);
+    }
     return null;
   }
 
