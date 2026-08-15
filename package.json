@@ -38,7 +38,6 @@
     "build:mobile": "htb build mobile",
     "build:all": "htb build all",
     "cli": "node src/cli/index.js",
-    "daemon": "node src/cli/start-daemon.js",
     "relay": "node src/host/sync/start-relay.js",
     "demo:web": "node scripts/serve-demo.mjs",
     "test": "node --experimental-vm-modules --localstorage-file=/tmp/jest-localstorage node_modules/jest/bin/jest.js --passWithNoTests",
