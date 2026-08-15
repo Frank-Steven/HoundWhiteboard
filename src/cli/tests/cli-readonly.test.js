@@ -111,7 +111,10 @@ describe("CLI 只读命令", () => {
       expect(Object.keys(after).length).toBeGreaterThan(
         Object.keys(before).length,
       );
-      expect(after["board.json"]).not.toBe(before["board.json"]);
+      // 布局 v2：board.json 创建后只读；写命令的计数与时间水位落 meta/<source>.json 分片
+      expect(after["board.json"]).toBe(before["board.json"]);
+      expect(after["meta/cli.json"]).toBeDefined();
+      expect(after["meta/cli.json"]).not.toBe(before["meta/cli.json"]);
     } finally {
       if (daemon) await daemon.close();
       cleanup();

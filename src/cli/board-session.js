@@ -23,6 +23,7 @@ import { resolveBoardPath } from "./board-path.js";
  * @param {number} [options.height=0] - 新建板的高度
  * @param {string} [options.source="cli"] - 协作身份（记录的 source 与新对象 id 前缀）
  * @param {(source: string) => boolean} [options.persistStream] - 日志流落盘判定（daemon 用：不落直连客户端的流）
+ * @param {boolean} [options.writeMeta=true] - 是否写本端元数据分片（读会话置 false 保持零写盘）
  * @returns {Promise<{api: BoardApi, boardCore: BoardCore, store: Object, journaler: Object, meta: Object|null, flush: Function, close: Function}>} 板会话
  *
  * @description
@@ -45,7 +46,13 @@ async function openBoardSession(rootPath, options = {}) {
     throw new Error(`板已存在：${rootPath}`);
   }
   if (!exists) {
-    await store.create();
+    // 布局 v2：board.json 创建时写一次（含 boardConfig），之后只读；
+    // 计数与时间水位归 meta/<source>.json 分片
+    const width = options.width || 0;
+    const height = options.height || 0;
+    await store.create(
+      width > 0 && height > 0 ? { boardConfig: { width, height } } : {},
+    );
   }
 
   const session = await store.loadAll();
@@ -72,13 +79,14 @@ async function openBoardSession(rootPath, options = {}) {
     store,
     collectMeta: () => boardCore.collectSessionMeta(),
     persistStream: options.persistStream,
+    writeMeta: options.writeMeta,
   });
   journaler.attach({
     nextSegmentSeqBySource: session.nextSegmentSeqBySource ?? {},
     lastTime: meta?.lastTime ?? 0,
     knownObjects: session.objects,
     knownTrash: session.trash,
-    knownMeta: meta,
+    knownSourceMeta: session.sourceMeta ?? null,
     knownChunkMetadata: session.chunkMetadataList,
   });
 

@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 /**
  * @file Hound Whiteboard CLI 入口
- * @description 命令行前端：读命令直读板文件或经 daemon 查询，写命令一律经 daemon 执行。
+ * @description 命令行前端：读命令直读板文件或经 daemon 查询；写命令经 daemon 执行，daemon 不在时按 --path 自治直写（布局 v2 分片）。
  * @module cli/index
  * @author Zhou Chenyu
  */
 
 import { openBoardSession } from "./board-session.js";
-import { connectDaemonByName, shutdownDaemon } from "./daemon-client.js";
+import {
+  connectDaemonByName,
+  connectDaemonByPath,
+  shutdownDaemon,
+} from "./daemon-client.js";
+import { resolveCliIdentity } from "./cli-identity.js";
 import {
   isValidDaemonName,
   readEntry,
@@ -66,7 +71,7 @@ daemon 管理：
   tree                                    以缩进树打印时间回溯树（HEAD 与已撤销分支）
   choices                                 列出全部 choice buffer 及成员状态
 
-写命令（仅 --daemon <名>）：
+写命令（--daemon <名> 经 daemon 执行；--path <板目录> 时优先走持有 daemon，无 daemon 则自治直写分片）：
   add --type <类型> [--data '<json>'|"@文件"] [--property '<json>'] [--position x,y]   创建并提交对象
   delete <对象id...>                      删除对象（可撤销）
   undo [<操作id>]                         撤销；指定操作 id 时撤销该操作，省略时撤销本端最近操作
@@ -85,8 +90,8 @@ daemon 管理：
   --data '<json>'|"@文件"     全量数据（choice 仅单成员允许）
 
 通用标志：
-  --daemon <名>   目标 daemon（写命令必填；读命令与 --path 二选一）
-  --path <板目录>  读命令直读板文件（不接 daemon，零写盘）；daemon start 指定板位置
+  --daemon <名>   目标 daemon（写命令优先；读命令与 --path 二选一）
+  --path <板目录>  读命令直读板文件（零写盘）；写命令无 daemon 时自治直写分片（身份取 ~/.hound-whiteboard/cli-identity.json）；daemon start 指定板位置
   --source <来源>  操作作者命名空间（默认 cli），决定新对象 id 前缀
   --json          输出为纯 JSON（默认输出为人类可读文本）
   -h, --help      打印用法
@@ -371,30 +376,50 @@ async function main() {
     console.error("--daemon 与 --path 互斥，只能二选一。");
     process.exit(1);
   }
-  if (!isRead && hasPath) {
-    console.error(
-      `--path 仅读命令可用；写命令 ${command} 请用 --daemon <名> 指定目标 daemon。`,
-    );
-    process.exit(1);
-  }
   if (!hasName && !hasPath) {
     console.error(
       isRead
         ? "缺少目标：读命令可用 --daemon <名> 或 --path <板目录>。"
-        : `写命令 ${command} 需要 --daemon <名> 指定目标 daemon。`,
+        : `写命令 ${command} 需要 --daemon <名> 或 --path <板目录> 指定目标。`,
     );
     process.exit(1);
   }
 
-  let session;
-  if (isRead && hasPath) {
-    // 直读板文件：不接 daemon，指纹种子保证 flush 零写盘
+  if (hasPath) {
     const board = resolveBoardPath(flags.path);
-    session = await openBoardSession(board, {
+    if (isRead) {
+      // 直读板文件：不接 daemon，指纹种子保证 flush 零写盘
+      const session = await openBoardSession(board, {
+        create: false,
+        source: flags.source ?? "cli",
+        writeMeta: false,
+      });
+      session.rootPath = board;
+      try {
+        await spec.run(session, args, flags);
+        await session.flush();
+      } finally {
+        await session.close();
+      }
+      return;
+    }
+    // 写命令：优先走持有 daemon（快路径）；无 daemon 则自治直写自己分片（布局 v2 离线语义）
+    const live = await connectDaemonByPath(board);
+    if (live !== null) {
+      live.mode = "daemon";
+      try {
+        await spec.run(live, args, flags);
+      } finally {
+        live.close();
+      }
+      return;
+    }
+    const session = await openBoardSession(board, {
       create: false,
-      source: flags.source ?? "cli",
+      source: flags.source ?? (await resolveCliIdentity()),
     });
     session.rootPath = board;
+    session.mode = "file";
     try {
       await spec.run(session, args, flags);
       await session.flush();
@@ -404,7 +429,7 @@ async function main() {
     return;
   }
 
-  session = await connectDaemonByName(flags.daemon);
+  const session = await connectDaemonByName(flags.daemon);
   if (session === null) {
     console.error(
       `daemon ${flags.daemon} 不可用：注册表无条目或端口不可连通，请先 hwb daemon start --name ${flags.daemon} --path <板目录>。`,
