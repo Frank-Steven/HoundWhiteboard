@@ -999,7 +999,14 @@ class CoreWorkerRuntime {
     const driver = createTauriDriver({
       invoke: (command, args) => this.#forwardIoInvoke(command, args),
     });
-    // 协作模式只读挂载：板存储需要读、列目录、状态与存在检查（落盘在 daemon）
+    // 先确保板 daemon（Rust 侧幂等：有活 daemon 直接返回，无则建骨架并拉起）
+    const daemon = await this.#resolveBoardDaemon(rootPath);
+    if (daemon === null) {
+      throw new Error(
+        `板 daemon 不可用：${rootPath}（无法连接或启动持板 daemon）`,
+      );
+    }
+    // 再只读挂载（daemon 已建骨架，目录必然存在；落盘在 daemon）
     const registered = await driver.registerRoot(rootPath, {
       read: true,
       write: false,
@@ -1010,20 +1017,12 @@ class CoreWorkerRuntime {
       zip: false,
     });
     if (!registered?.rootId) {
-      this.#log.warn(`持久化根目录注册失败，回退内存模式：${rootPath}`);
-      return null;
+      throw new Error(`持久化根目录注册失败：${rootPath}`);
     }
     const { rootId } = registered;
     const store = createSessionStore(bindRoot(driver, rootId));
     this.#persistenceDriver = driver;
     this.#persistenceRootId = rootId;
-    // 板 daemon：探测活 daemon 或 spawn（板不存在时 spawn 侧建骨架）；失败则拒绝持久打开
-    const daemon = await this.#resolveBoardDaemon(driver, rootId, rootPath);
-    if (daemon === null) {
-      throw new Error(
-        `板 daemon 不可用：${rootPath}（无法连接或启动持板 daemon）`,
-      );
-    }
     const session = await store.loadAll();
     return {
       adapter: createPersistenceAdapter({ driver, rootId }),
@@ -1041,21 +1040,8 @@ class CoreWorkerRuntime {
    * @returns {Promise<{name: string, port: number}|null>} daemon 信息；不可用时为 null
    * @private
    */
-  async #resolveBoardDaemon(driver, rootId, rootPath) {
-    let desc = null;
-    try {
-      const text = await driver.read(rootId, ".daemon.json");
-      if (typeof text === "string" && text !== "") {
-        desc = JSON.parse(text);
-      }
-    } catch {
-      // 无描述文件
-    }
-    if (desc && typeof desc?.port === "number" && (await this.#probeWs(desc.port))) {
-      this.#log.info(`板 daemon 已存在：${desc.name}（端口 ${desc.port}）`);
-      return { name: desc.name, port: desc.port };
-    }
-    // 无活 daemon：请求 Rust 侧 spawn（含建板骨架与就绪等待）
+  async #resolveBoardDaemon(rootPath) {
+    // 无条件请求 Rust 侧拉起（幂等：已有活 daemon 直接返回现有实例，无则建骨架并 spawn）
     const name = `gui-${guiDaemonNameFromPath(rootPath)}`;
     const spawned = await this.#forwardIoInvoke("spawn_board_daemon", {
       path: rootPath,
@@ -1065,7 +1051,7 @@ class CoreWorkerRuntime {
       height: this.#boardSize.height ?? 0,
     });
     if (spawned && typeof spawned?.port === "number") {
-      this.#log.info(`已拉起板 daemon：${spawned.name}（端口 ${spawned.port}）`);
+      this.#log.info(`板 daemon 就绪：${spawned.name}（端口 ${spawned.port}）`);
       return { name: spawned.name, port: spawned.port };
     }
     return null;

@@ -110,6 +110,13 @@ function createMemoryCommandHandler() {
         return driver.mv(args.rootId, args.srcRel, args.destRel);
       case "safe_io_fs_mkdir":
         return driver.mkdir(args.rootId, args.relPath);
+      case "spawn_board_daemon":
+        // 模拟 Rust 幂等探测：mock 盘 .daemon.json 里的活 daemon 直接返回
+        {
+          const text = await driver.read("mem", ".daemon.json");
+          const desc = JSON.parse(text);
+          return { name: desc.name, port: desc.port };
+        }
       default:
         throw new Error(`unknown command ${command}`);
     }
@@ -195,7 +202,7 @@ async function waitFor(probe, timeoutMs = 2000) {
 }
 
 /**
- * 装配协作模式的 runtime：真 daemon（持板落盘）+ mock 盘预置 .daemon.json（探测命中，不 spawn）
+ * 装配协作模式的 runtime：真 daemon（持板落盘）+ mock 盘预置 .daemon.json（spawn 幂等探测命中，不重复拉起）
  * @returns {{ host: FakeWorkerHost, runtime: CoreWorkerRuntime, handler: Function, driver: Object, daemon: Object, boardDir: string }} 测试上下文
  */
 async function setup() {
@@ -217,7 +224,7 @@ async function setup() {
     rootPath: boardDir,
     source: "worker-test",
   });
-  // mock 盘预置 .daemon.json：worker 探测命中（不触发 spawn）
+  // mock 盘预置 .daemon.json：spawn 幂等探测命中（不触发真实 spawn）
   await driver.write(
     "mem",
     ".daemon.json",
