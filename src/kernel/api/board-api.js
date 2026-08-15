@@ -2384,6 +2384,26 @@ class BoardApi {
         if (errors.length > 0) {
           throw new Error(errors.join("；"));
         }
+        // 远端 add-object 属于本地 source 时推进对象 id 计数：
+        // 同 source 双写端（GUI 直连 + daemon 托管的 CLI add）各自从计数续号，
+        // 不推进则 daemon 侧从 0 分配与 GUI 已创建对象撞号
+        if (record.type === "add-object") {
+          const objectId = record?.payload?.objectId;
+          if (typeof objectId === "string") {
+            const slash = objectId.lastIndexOf("/");
+            const seq = Number(objectId.slice(slash + 1));
+            if (
+              slash > 0 &&
+              Number.isInteger(seq) &&
+              objectId.slice(0, slash) === boardCore.hitCommitter.source
+            ) {
+              boardCore.reportObjectIdCounter(
+                boardCore.hitCommitter.source,
+                seq,
+              );
+            }
+          }
+        }
       }
       const beforeRecords = this.#recordsOfChain(tree.getActiveChain());
       if (this.#needsReplay(group[group.length - 1])) {
