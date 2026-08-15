@@ -1340,7 +1340,12 @@ class BoardApi {
     const source = boardCore.hitCommitter.source;
     const counters = boardCore.getObjectIdCounters();
     const pool = new IncrementalIdPool(source, counters[source] ?? 0);
-    const id = pool.allocate();
+    // 防撞循环：计数可能滞后（远端 ingest 未推进/重开后盘上计数表滞后），
+    // 分配后检查对象是否已存在，撞号则续到下一个空位
+    let id = pool.allocate();
+    while (boardCore.getObjectById(id)) {
+      id = pool.allocate();
+    }
     this.createObject(type, { ...props, id });
     // 计数在 commit 的异步让出前上报：并发调用分配时读到已上报的最新计数，避免撞号
     this.reportObjectIdCounter(source, pool.counter);
@@ -2384,7 +2389,7 @@ class BoardApi {
         if (errors.length > 0) {
           throw new Error(errors.join("；"));
         }
-        // 远端 add-object 属于本地 source 时推进对象 id 计数：
+        // 远端 add-object 推进对象 id 计数（单调取大）：
         // 同 source 双写端（GUI 直连 + daemon 托管的 CLI add）各自从计数续号，
         // 不推进则 daemon 侧从 0 分配与 GUI 已创建对象撞号
         if (record.type === "add-object") {
@@ -2392,15 +2397,8 @@ class BoardApi {
           if (typeof objectId === "string") {
             const slash = objectId.lastIndexOf("/");
             const seq = Number(objectId.slice(slash + 1));
-            if (
-              slash > 0 &&
-              Number.isInteger(seq) &&
-              objectId.slice(0, slash) === boardCore.hitCommitter.source
-            ) {
-              boardCore.reportObjectIdCounter(
-                boardCore.hitCommitter.source,
-                seq,
-              );
+            if (slash > 0 && Number.isInteger(seq)) {
+              boardCore.reportObjectIdCounter(objectId.slice(0, slash), seq);
             }
           }
         }
