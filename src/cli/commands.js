@@ -53,7 +53,7 @@ function relaxJsonText(text) {
  * PowerShell/cmd 手写 JSON 转义繁琐，宽松模式兼容 `'{radius: 20}'`、`{'a':1}`、
  * `{color: #000}`（引号被 shell 吃掉）这类写法。复杂结构仍建议写标准 JSON 或用 --data @文件。
  */
-function parseLenientJson(text) {
+function parseLenientJson(text, flagName = "--data") {
   try {
     return JSON.parse(text);
   } catch {
@@ -61,7 +61,7 @@ function parseLenientJson(text) {
       return JSON.parse(relaxJsonText(text));
     } catch (error) {
       throw new Error(
-        `--data 不是合法 JSON：${error.message}（复杂数据建议写标准 JSON 或用 --data @文件）`,
+        `${flagName} 不是合法 JSON：${error.message}（复杂数据建议写标准 JSON 或用 ${flagName} @文件）`,
       );
     }
   }
@@ -264,7 +264,7 @@ async function cmdAdd(session, _args, flags) {
   const position = parsePosition(flags.position);
   const props = { position, data };
   if (typeof flags.property === "string") {
-    props.property = parseLenientJson(flags.property);
+    props.property = parseLenientJson(flags.property, "--property");
   }
   const id = await session.api.addObject(type, props);
   printResult(flags, { id }, id);
@@ -480,7 +480,7 @@ async function buildModifyPatch(flags, current) {
     patch.transform = parseMatrix(flags.transform, "transform");
   }
   if (typeof flags.property === "string") {
-    patch.property = parseLenientJson(flags.property);
+    patch.property = parseLenientJson(flags.property, "--property");
   }
   if (typeof flags.data === "string") {
     patch.data = await parseDataArgument(flags.data);
