@@ -76,6 +76,7 @@ DAG 内经 `services.sharedState` 注入，图外代码持 `Board` 引用直接�
 ### 对象写入
 
 - `createObject(type, props)`
+- `addObject(type, props)` — 创建并提交一个对象：持板侧串行完成 id 分配与提交（CLI / daemon 客户端主路径）
 - `modifyObject(objectId, patch)`
 - `modifyObjects(patches)`
 - `appendListItem(objectId, key, items)`
@@ -99,6 +100,9 @@ DAG 内经 `services.sharedState` 注入，图外代码持 `Board` 引用直接�
 - `hitTest(range, mode?)`
 - `queryChoices()` / `queryRemoteChoices()`
 - `queryOpenMols()`
+- `queryMolAmendSince(molId, sinceSeq)` — 取指定分子在 seq 水位之后的 amend 段（断线重连对账重发用）
+- `queryStateHash()` — 对象状态确定性校验和（digest 比对用）
+- `repairStateFromLog()` — 从本端日志重放派生对象状态并对齐活体（digest 分歧自愈）
 - `requestDebug(query, extra?)`
 
 ### 撤销/重做与其他

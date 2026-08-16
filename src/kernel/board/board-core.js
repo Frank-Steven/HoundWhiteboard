@@ -149,7 +149,7 @@ class BoardCore {
   hitCommitter;
 
   /**
-   * 已删除对象的回收站（history/trash/ 的内存态）
+   * 已删除对象的回收站（板根 trash/ 的内存态）
    * @description
    * 对象 id -> { data（删除时刻的全量序列化）, chunks（各区块层位边集） }；
    * 撤销删除时恢复对象与层位的依据，落盘随持久化落地。
@@ -478,7 +478,11 @@ class BoardCore {
    * @returns {boolean} 是否接受（单调取大，回拨拒绝）
    */
   reportObjectIdCounter(source, counter) {
-    if (typeof source !== "string" || !Number.isInteger(counter) || counter < 0) {
+    if (
+      typeof source !== "string" ||
+      !Number.isInteger(counter) ||
+      counter < 0
+    ) {
       return false;
     }
     const current = this.#objectIdCounters.get(source) ?? 0;

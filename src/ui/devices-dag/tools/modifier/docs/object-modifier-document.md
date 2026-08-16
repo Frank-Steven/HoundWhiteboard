@@ -57,7 +57,9 @@ boardApi.commitObjects(objectIds, { supraKey: context?.services?.supraKey });
 ### 撤销当前活动对象
 
 ```js
-boardApi.discardActiveObjects(objectIds, { supraKey: context?.services?.supraKey });
+boardApi.discardActiveObjects(objectIds, {
+  supraKey: context?.services?.supraKey,
+});
 ```
 
 两个调用都携带 handoff 注入槽位上下文的 `supraKey`，把本次动作挂入会话超分子
@@ -214,10 +216,12 @@ receiveHandoffObjects(objects, context = {}) {
 
 ## overlay
 
-modifier 默认 overlay 入口：
+modifier 默认 overlay 入口直接调用 `ui-overlay-factory.js` 导出的纯函数：
 
 ```js
-renderer.createCompatSelectionEntriesForSummaries(objects, "modifier");
+import { createCompatSelectionEntriesForSummaries } from "../../../components/renderer/ui-overlay-factory.js";
+
+createCompatSelectionEntriesForSummaries(objects, "modifier", viewport);
 ```
 
 因此即使 handoff 桥接过来的是 summary-like 条目，也可以继续显示选择框。

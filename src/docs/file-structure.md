@@ -26,7 +26,12 @@
   trash/{objectId}.json             # trash 条目
   chunks/{chunkId}.json             # 区块元数据
   hit/{source}/seg-{NNNNNN}.jsonl   # per-source 操作日志流
+  .daemon.json                      # 持板 daemon 探测文件（daemon 运行时存在）
 ```
+
+> [!NOTE]
+>
+> `.daemon.json` 由持板 daemon 进程维护（name/port 等连接信息，停止时清理），不属于 kernel store 布局本身；GUI 开板时由 core-worker 读取（core-worker.js:779）探测活 daemon，读者在板目录中会碰到。
 
 ## 各文件与目录说明
 
@@ -132,13 +137,13 @@ trash 条目文件，文件名编码规则与活动对象相同。内容为完�
 
 ### 写权矩阵（布局 v2）
 
-| 文件 | 谁写 | 冲突兜底 |
-| --- | --- | --- |
-| `board.json` | 创建者一次，之后只读 | — |
-| `meta/{source}.json` | 该 source 的写端（含代写其流的 daemon） | 硬隔离零冲突；原子写 |
-| `objects/{id}.json` / `trash/{id}.json` | 活动方（AOM 仲裁，远程活动跳过）；静态对象双侧指纹调和 | 原子写 + digest 对账 |
-| `hit/{source}/` | 仅该 source 进程 | 硬隔离零冲突；段序号占用时递增自愈 |
-| `chunks/{chunkId}.json` | 各写端指纹调和（收敛后内容相同） | 原子写 |
+| 文件                                    | 谁写                                                   | 冲突兜底                           |
+| --------------------------------------- | ------------------------------------------------------ | ---------------------------------- |
+| `board.json`                            | 创建者一次，之后只读                                   | —                                  |
+| `meta/{source}.json`                    | 该 source 的写端（含代写其流的 daemon）                | 硬隔离零冲突；原子写               |
+| `objects/{id}.json` / `trash/{id}.json` | 活动方（AOM 仲裁，远程活动跳过）；静态对象双侧指纹调和 | 原子写 + digest 对账               |
+| `hit/{source}/`                         | 仅该 source 进程                                       | 硬隔离零冲突；段序号占用时递增自愈 |
+| `chunks/{chunkId}.json`                 | 各写端指纹调和（收敛后内容相同）                       | 原子写                             |
 
 ### 会话恢复
 

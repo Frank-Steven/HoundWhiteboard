@@ -14,7 +14,8 @@ import { ObjectEraserTool } from "./object-eraser.js";
  * @extends ObjectEraserTool
  * @description
  * FD（For Data）橡皮：把增量轨迹段经 `boardApi.eraseData` 发往 Core，
- * 由 Core 完成命中、切割、分裂与删除。调用为 fire-and-forget。
+ * 由 Core 完成命中、切割、分裂与删除。eraseData 是确认式调用（轨迹段有序、
+ * 不进批处理合并），工具侧不逐段等待，闭合前等待最后一次调用兑现。
  * @author Zhou Chenyu
  */
 class DataObjectEraserTool extends ObjectEraserTool {
@@ -86,7 +87,7 @@ class DataObjectEraserTool extends ObjectEraserTool {
     this.#sessionKey = null;
     const boardApi = interaction?.context?.services?.boardApi;
     Promise.resolve(this.#lastErase)
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => {
         boardApi?.endSupra?.(key);
       });
@@ -108,20 +109,23 @@ class DataObjectEraserTool extends ObjectEraserTool {
     const points = Vector.nearlyEq(from, to)
       ? [{ x: from.x, y: from.y }]
       : [
-        { x: from.x, y: from.y },
-        { x: to.x, y: to.y },
-      ];
+          { x: from.x, y: from.y },
+          { x: to.x, y: to.y },
+        ];
 
-    const result = boardApi.eraseData({
-      points,
-      radius: this.eraserSize / 2,
-      source: services?.board?.idSource ?? "",
-    }, {
-      supraKey: this.#sessionKey ?? undefined,
-    });
+    const result = boardApi.eraseData(
+      {
+        points,
+        radius: this.eraserSize / 2,
+        source: services?.board?.idSource ?? "",
+      },
+      {
+        supraKey: this.#sessionKey ?? undefined,
+      },
+    );
     this.#lastErase = result;
     if (result && typeof result.catch === "function") {
-      result.catch(() => { });
+      result.catch(() => {});
     }
   }
 }

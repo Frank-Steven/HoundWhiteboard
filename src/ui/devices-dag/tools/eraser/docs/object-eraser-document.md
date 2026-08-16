@@ -90,21 +90,21 @@ classDiagram
 
 ### 处理流程
 
-擦除计算在 Core 侧完成，由 `boardApi.eraseData({ points, radius, source })` 触发（fire-and-forget）：
+擦除计算在 Core 侧完成，由 `boardApi.eraseData({ points, radius, source }, { supraKey })` 触发（确认式 `#call`）：
 
-1. UI 线程在手势期间累积轨迹，按手势增量分段发送，fire-and-forget；单段 payload 小，可走 `BoardApiRpc` 的批量合并
+1. UI 线程在手势期间累积轨迹，按手势增量分段发送；`eraseData` 是确认式 `#call`——轨迹段有序且语义不可交换，不进 `BoardApiRpc` 的批处理合并（作为非批处理 `#call` 会先同步清空批处理队列保序）。工具侧不逐段等待往返，只记录最近一次调用的 Promise
 2. Core 在合并视图上命中查询，只处理 `isErasable()` 为 `true` 且不是活动对象的对象
 3. Core 按轨迹切割命中对象的 `data`——对笔画即切割 `data.points`；切割算法以多态方法挂在对象类上，与 rich 几何同处 Core 侧
 4. 切割结果分三种：整笔擦没则删除对象；剩单段则回写原对象；剩多段则首段保留原 id 回写，其余段新建对象并继承原 `property` 与 `transform`
-5. 一次手势的全部修改 / 新建 / 删除记为一次分子操作，撤销粒度是一次完整擦除手势（分子操作模型见操作文档）
+5. 一次手势的全部修改 / 新建 / 删除按会话 `supraKey` 凝聚为一个超分子（`beginGesture` 经 `beginSupra` 开启会话，`completeGesture` / `cancelGesture` / `umount` 在等待最后一次 `eraseData` 兑现后经 `endSupra` 闭合，保证提交先于闭合到达内核），撤销粒度是一次完整擦除手势（分子操作模型见操作文档）
 6. Core 侧 mutation 后自动 `requestActiveRender` + flush，视觉反馈与拖拽同一回环
 
 ### 为什么在 Core 侧擦除
 
-- **单次触发**：一段轨迹一次 fire-and-forget 调用即完成命中与修改，拖动中实时擦除不等待往返
+- **单次触发**：一段轨迹一次调用即完成命中与修改；工具侧不逐段等待往返（仅记录最近一次 Promise 供闭合前等待），拖动中实时擦除不被 RPC 阻塞
 - **几何就地可用**：切割需要的 `worldPathRange` 等 rich 数据就在 Core 侧，`points` 无需跨桥搬运
 - **原子修改**：命中、切割、分裂、删除在 Core 内一步完成，不存在过期快照
-- **撤销天然成组**：一次手势的全部变更在 Core 内记为一次分子操作
+- **撤销天然成组**：一次手势的全部变更在 Core 内按会话 `supraKey` 凝聚为一个超分子
 - **职责匹配**：chooser / modifier 把 `ObjectSummary` 取到 UI 是因为 UI 要显示选择框、拖拽对象；FD 只销毁 / 分裂命中对象，UI 不需要持有对象本体
 
 ### 分裂对象的 id 分配

@@ -27,6 +27,11 @@ src/io/
 - **安全判断下沉可信执行面**：Tauri 模式下 root 注册表、路径校验、符号链接边界与权限强制全部在 Rust（`src-tauri/src/commands/`）；webview/worker 只构造受限意图（rootId + relPath）。
 - **不抛业务错误**：driver 失败返回 null/false/[]；Rust command 返回 `Err` 时 JS 驱动捕获转为安全值。
 
+## Web / Worker 边界
+
+- **无 Tauri 环境抛错**：`createTauriDriver()` 默认从 `window.__TAURI__` 解析 invoke；纯浏览器（web demo）等无 Tauri 环境下解析失败直接抛错（`tauri.js` 的 `getDefaultInvoke`），此时应注入自定义 transport 或换用 memory/node 驱动。
+- **worker 内转发**：worker 线程没有主线程的 Tauri invoke。worker 内驱动注入转发 transport，把调用打包为 `io-invoke` 消息发给主线程；主线程由 `attachIoInvokeForwarder`（`src/host/bridges/io-invoke-forwarder.js`）监听，经 Tauri invoke 执行后回传 `io-response`。invoke 惰性解析：内存模式永不触发 `io-invoke`，无 Tauri 环境下挂接无害。
+
 ## 使用
 
 ```js

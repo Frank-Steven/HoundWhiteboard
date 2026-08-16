@@ -30,7 +30,7 @@
 
 | 名称        | 描述                     | 类型                  |
 | ----------- | ------------------------ | --------------------- |
-| `id`        | 对象 id                  | `number`              |
+| `id`        | 对象 id（来源命名空间字符串，形如 `"{source}/{n}"`） | `string`              |
 | `position`  | 对象世界坐标位置         | `Vector`              |
 | `transform` | 对象变换矩阵             | `Matrix`              |
 | `property`  | 渲染与行为属性字典       | `Record<string, any>` |
@@ -54,6 +54,7 @@
 | `setProperty(property)`             | 合并属性                                     |
 | `getRenderPadding()`                | 从属性动态推导渲染留白（描边宽度一半 × transform 最大轴向缩放） |
 | `isErasable()`                      | 是否可擦                                     |
+| `eraseData(trailPoints, radius)`    | 按橡皮轨迹擦除对象数据；与 `isErasable` 配对，返回剩余数据片段（`null` 未命中、空数组整体擦没），供 Core 侧分流回写 / 分裂 / 删除 |
 | `isDirected()`                      | 是否有向                                     |
 | `render(ctx)`                       | 渲染对象                                     |
 | `serialize()`                       | 序列化对象                                   |
@@ -104,6 +105,7 @@
 具体子类会在此基础上追加 `type`，例如：
 
 - `CircleObject` → `type: "CircleObject"`
+- `EllipseObject` → `type: "EllipseObject"`
 - `PolygonObject` → `type: "PolygonObject"`
 - `StrokeObject` → `type: "StrokeObject"`
 
@@ -127,6 +129,7 @@ src/kernel/objects/object-deserializer.js
 - `PolygonObject`
 - `StrokeObject`
 - `CircleObject`
+- `EllipseObject`
 
 ## `Container` / `OneDimensionObject` / `TwoDimensionObject`
 
@@ -144,7 +147,7 @@ src/kernel/objects/object-deserializer.js
 ## 当前状态
 
 - `BasicObject` 是当前对象体系最稳定的公共根类
-- `deserialize()` 已接通 Circle / Polygon / Stroke 三类对象
+- `deserialize()` 已接通 Circle / Ellipse / Polygon / Stroke 四类对象
 - Container / 一维 / 二维对象基类仍主要承担类型层级与概念承载作用
 
 ## 相关文档

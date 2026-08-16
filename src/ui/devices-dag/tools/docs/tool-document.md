@@ -102,20 +102,25 @@ Tool 与 prefix 可以在同一条链路上协作，但边界不同：
 
 对应路径是：
 
-- `/keyboard/code/Space/create-circle`
-- `/keyboard/code/Space/create-circle/params`
-- `/keyboard/code/Space/create-circle/params/tool`
+- `/workflows/create-circle`
+- `/workflows/create-circle/params`
+- `/workflows/create-circle/params/tool`
+
+`code/Space` 键位节点仅经边级 prefix 接入该子树，不再是子树的挂载父级。
 
 ## 挂载方式
 
 当前推荐把工具作为 workflow 入口挂在 `/<viewportId>/workflows/` 下，再通过设备节点的出边连接过去，例如：
 
 ```js
-viewport.mountWorkflow("/workflows/pointer", pointerTool);
-viewport.mountWorkflow("/workflows/move", moveTool);
+viewport.inputScope.mountWorkflow("pointer", pointerTool);
+viewport.inputScope.mountWorkflow("move", moveTool);
 
-viewport.addEdge("/mouse/pointer", "tool", "/workflows/pointer");
-viewport.addEdge("/keyboard/code/KeyW", "tool", "/workflows/move");
+viewport.inputScope.addEdge({ from: "mouse/pointer", to: "workflows/pointer" });
+viewport.inputScope.addEdge({
+  from: "keyboard/code/KeyW",
+  to: "workflows/move",
+});
 ```
 
 或直接对 DevicesDAG 调用：

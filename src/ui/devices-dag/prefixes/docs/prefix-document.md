@@ -94,7 +94,7 @@ const handler = createRepeaterPrefixHandler({
 
 ## 子树构建
 
-修饰节点工作流通常通过 `createSubDAG` DSL 构建，再通过 `viewport.mountSubDAG()` 注册到 DevicesDAG。
+修饰节点工作流通常通过 `createSubDAG` DSL 构建，再通过 `viewport.inputScope.mountDevice()` 注册到 DevicesDAG。
 
 ```js
 const builder = createSubDAG("/mouse/primary/tool");
@@ -106,7 +106,7 @@ const toolNode = builder
 
 builder.edge("tool", null, toolNode);
 
-viewport.mountSubDAG("", builder.build());
+viewport.inputScope.mountDevice("mouse/primary/tool", builder.build());
 ```
 
 ## 设计约束

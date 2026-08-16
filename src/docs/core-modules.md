@@ -12,11 +12,33 @@
 | `renderers/`    | 渲染插件                | canvas 渲染器、绘制策略注册表                                         |
 | `host/`         | 组合根与通道            | core-worker、bridges（RPC、IO 转发）、sync（协作同步）              |
 | `io/`           | 安全文件操作            | 路径 DSL 与权限策略、driver 三实现、PersistenceAdapter 实现、对外 api |
-| `cli/`          | 命令行第二前端          | node 直读直写板文件，全程经 BoardApi 契约                             |
+| `cli/`          | 命令行第二前端          | 写命令经持板 daemon 的 WebSocket RPC 执行，读命令可直读板文件         |
 | `ui/`           | UI 线程运行时           | Board、Viewport、DevicesDAG、UiRenderer                               |
+| `demo/`         | 白板 HTML/CSS/JS 入口   | 桌面与 web 两种模式的演示宿主（输入绑定、工具装配、workflow 挂载）    |
+| `benchmarks/`   | 性能基准                | I/O 桥接、队列、Worker 渲染与 RPC 等基准（`yarn bench`）              |
 | `test-support/` | 测试支撑                | canvas mock、worker-mode fixture、AOM fixture                         |
 | `tests/`        | 跨模块冒烟测试          | Board 输入流、Worker smoke、共享模块 smoke                            |
 | `docs/`         | 架构总览文档            | 当前这组顶层说明文档                                                  |
+
+## 模块分层
+
+```mermaid
+flowchart BT
+    kernel["kernel/（纯逻辑：对象、range、hit、store、api）"]
+    renderers["renderers/（canvas 渲染插件）"]
+    host["host/（组合根：core-worker、bridges、sync）"]
+    ui["ui/（UI 线程：Board、Viewport、DevicesDAG）"]
+    io["io/（安全文件操作）"]
+    cli["cli/（命令行第二前端）"]
+
+    renderers --> kernel
+    host --> renderers
+    ui --> host
+    io -. 注入 PersistenceAdapter .-> host
+    cli -. 经 BoardApi 契约 .-> host
+```
+
+依赖方向自下而上：`kernel/` 零 canvas/DOM，被各层复用；`renderers/` 与 `host/` 依次构建其上；`ui/` 经 `host/bridges/` 的 RPC 触达 Worker 权威。`io/` 与 `cli/` 不参与分层主干，作为旁挂包在 host 组合根处接线（io 注入持久化缝，cli 复用 BoardApi 契约面）。
 
 ## `ui/`
 
@@ -52,6 +74,7 @@
 - `dag-node-edge.js`：节点与边定义
 - `dag-utils.js`：handler result 规整、类型判断
 - `signal.js`：`SignalPacket` 抽象
+- `signal-types.js`：稳定信号类型常量（`SIGNAL_TYPES`）
 - `dag-debug.js`：DAG 调试输出
 
 #### `devices/`
@@ -93,6 +116,8 @@
 - `viewport-change` / `request-render-flush` 处理
 - `render-frame` 回传
 - 持久化装配：rootPath 有效时注册根目录、恢复会话并挂接日志跟随者
+- daemon 探测：开板时读板目录 `.daemon.json` 探测持板 daemon，有活 daemon 直连协作（只读挂载、零写盘），无则请求宿主 spawn 并周期重试
+- 中继连接装配：`syncUrl` 存在时经 `network-coordinator` 连接协作中继，失败自动重试
 
 ### `host/bridges/`
 
@@ -112,7 +137,7 @@
 
 ## `cli/`
 
-`cli/` 是命令行第二前端：node driver 直读直写板文件，每次调用完整走完「装配 → 恢复 → 执行 → 落盘」循环，证明 BoardApi 契约面的完整边界。与 GUI 不同步：GUI 运行期间操作同一板目录会互相覆盖，只应在 GUI 未运行时使用。详见 [../cli/docs/cli-document.md](../cli/docs/cli-document.md)。
+`cli/` 是命令行第二前端：写命令（add/delete/undo/redo/choose/unchoose/modify）一律经持板 daemon 的 WebSocket RPC 执行——与 GUI 调 BoardApi 同一条路，天然并发安全、与 GUI 实时互见；读命令既可经 daemon 查询，也可 `--path` 直读板文件（零写盘，不依赖 daemon 存活）。本机所有权模型为「一个板文件夹一个持板 daemon，CLI/TUI/MCP/GUI 均为其客户端」。详见 [../cli/docs/cli-document.md](../cli/docs/cli-document.md)。
 
 ## `kernel/`
 
@@ -148,7 +173,7 @@
 
 ### `kernel/hit/`
 
-- `operation.js`：九类分子操作记录模型（载荷、校验、id 构造、时钟环比较；含 `close-supra`，触发超分子折叠）
+- `operation.js`：八类分子操作 + 闭合超分子记录 `close-supra`（载荷、校验、id 构造、时钟环比较；`close-supra` 触发超分子折叠）
 - `operation-log.js`：append-only 操作日志（序号连续与时间单调把关、追加事件订阅、序列化往返）
 - `undo-tree-core.js`：时间回溯树（f(日志) 派生、统一撤销三形态与截断、重做栈派生投影、超分子节点）
 - `hit-committer.js`：commit 边界单管线（记录构造、时间标记、指定式超分子与简并）

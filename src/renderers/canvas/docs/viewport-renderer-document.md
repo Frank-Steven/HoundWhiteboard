@@ -53,6 +53,23 @@
 - `#flushCacheScheduler()` 在输出渲染前被调用：若有积压脏区则调用 `#cacheScheduler.flush()`，否则全量重建缓存
 - 双调度器独立安排各自的 rAF，但输出帧总是先保证缓存最新
 
+```mermaid
+flowchart TD
+  INV1["invalidateActiveObjects"] --> OS["#outputScheduler<br/>（仅输出层）"]
+  INV2["invalidateCachedObjects"] --> CS["#cacheScheduler"]
+  INV2 --> OS
+  INV3["invalidateChunks"] --> CS
+  INV3 --> OS
+
+  CS -->|rAF| CF["#cacheFlush<br/>静态图对象绘制到 #cache"]
+  OS -->|rAF| OF["#outputFlush"]
+  OF --> FCS["#flushCacheScheduler<br/>先缓存后输出"]
+  FCS --> CF
+  FCS --> COPY["cache 拷贝<br/>#copyCache / #copyCacheRects"]
+  COPY --> AOM["AOM 对象叠画到 #output"]
+  AOM --> BMP["ViewportCore.flushRenderFrame<br/>transferToImageBitmap 回传 UI"]
+```
+
 ## 对象收集
 
 ### 缓存层（`#collectCacheDrawables()`）
@@ -132,7 +149,7 @@ const renderer = new ViewportRenderer(viewport, activeObjectManager, {
 ## 当前实现状态
 
 - 已实现：单渲染器合成、双调度器（缓存层 + 输出层）、缓存更新、输出合成、AOM 对象收集、AOM 排除过滤、对象级脏区失效、区块级脏区失效、快照追踪、调试 API
-- 已接入：`ViewportCore`、`core-worker.js` 渲染钩子、`board-render-hooks.js`、`object-modifier.js`
+- 已接入：`ViewportCore`、`core-worker.js` 渲染钩子、`kernel/board/aom-render-hooks.js`（kernel 侧钩子接口）、`ui/components/orchestration/board-render-hooks.js`（UI 侧 standalone 工厂）、`object-modifier.js`
 
 ## 相关文档
 

@@ -47,6 +47,16 @@ sequenceDiagram
 | `rpc-batch-error` | Worker → UI | 批处理失败条目回执，仅在有条目失败时回传    |
 | `ready`           | Worker → UI | Worker 初始化完成通知                       |
 
+### 非 RPC 的 core-worker 通道
+
+以下消息类型同属 core-worker 通道，但不经 `BoardApiRpc` 的 RPC 协议（无 msgId、无响应路由）：
+
+- `awareness-send`（UI → Worker）：awareness 广播请求（光标上报、分子中间帧等 volatile 数据），Worker 经同步协调器的 volatile 通道发出
+- `awareness`（Worker → UI）：远程 awareness 到达与断线通知，由 UI 侧 `addAwarenessListener` 订阅者消费（只画不存）
+- `worker-log`（Worker → UI）：Worker 侧日志转发，由 UI 侧日志总线接收
+
+这些通道与 RPC 并行存在，互不经过对方的封装。
+
 ## API 面
 
 所有方法返回 `Promise`。参数格式见 [board-api-types.js](../../../kernel/types/board-api-types.js)。
@@ -131,11 +141,11 @@ Worker 侧分发由路由表 [board-api-routes.js](../../../kernel/api/board-api
 
 ### 超分子会话
 
-| 方法              | 说明                                                                                              |
-| ----------------- | ------------------------------------------------------------------------------------------------- |
-| `beginSupra(key)` | 按 key 开启超分子：成员记录即时物化上链（携带 supraId），不缓冲草稿                               |
-| `endSupra(key)`   | 先强制闭合在途分子，再追加 close-supra 记录；活动链上同 supraId 连续段（≥2 成员）折叠为聚合节点   |
-| `abortSupra(key)` | 丢弃未闭合分子，并逐个撤销已物化成员                                                              |
+| 方法              | 说明                                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| `beginSupra(key)` | 按 key 开启超分子：成员记录即时物化上链（携带 supraId），不缓冲草稿                             |
+| `endSupra(key)`   | 先强制闭合在途分子，再追加 close-supra 记录；活动链上同 supraId 连续段（≥2 成员）折叠为聚合节点 |
+| `abortSupra(key)` | 丢弃未闭合分子，并逐个撤销已物化成员                                                            |
 
 ### 会话元数据
 

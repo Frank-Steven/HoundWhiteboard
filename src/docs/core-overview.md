@@ -15,6 +15,29 @@
 
 其中 `src/kernel/` + `src/ui/` + `src/host/bridges/` 主要覆盖后 3 层。
 
+四层之外有两个独立包：`src/io/`（安全文件操作，core / driver / adapter / api 分层，经 PersistenceAdapter 缝注入组合根）与 `src/cli/`（命令行第二前端，独立 Node 进程，写命令经持板 daemon 的 WebSocket RPC 执行）。
+
+### 四端一板部署全景
+
+```mermaid
+flowchart LR
+    GUI["GUI（Core Worker）"]
+    CLI["CLI"]
+    TUIMCP["TUI / MCP"]
+    WEB["web demo（浏览器）"]
+    DM["持板 daemon（唯一落盘方）"]
+    RS["relay（仅跨机协作）"]
+
+    GUI -->|"本机直连：WebSocket 协作通道"| DM
+    CLI -->|"本机直连：WebSocket RPC"| DM
+    TUIMCP -->|"本机直连：WebSocket RPC"| DM
+    WEB -->|"经 relay 房间"| RS
+    DM -->|"跨机时桥接"| RS
+    GUI -->|"跨机时 syncUrl"| RS
+```
+
+本机各端（GUI / CLI / TUI / MCP）都直连持板 daemon，不经过 relay；relay 只承载跨机协作。
+
 ### UI 线程层
 
 UI 线程负责：
@@ -61,6 +84,12 @@ Kernel 不依赖 DOM，也不依赖 Worker 宿主：
 5. `Board.createViewport(...)` 创建 UI 侧 `Viewport`
 6. `BoardApiRpc.createViewport(...)` 在 Worker 中创建 `ViewportCore`
 7. `Viewport.startWorkerSync()` 启动 `viewport-change` 与 `request-render-flush` 循环
+
+`createBoard` 携带有效 `rootPath` 时，Worker 侧先探测板目录 `.daemon.json`（core-worker.js:779）：有活 daemon 则只读挂载、零写盘，经协作通道直连；无则装配 tauri driver 自行落盘并请求宿主 spawn daemon（周期重试探测）。`syncUrl` 存在时装配 `network-coordinator` 连接协作中继（core-worker.js:614-615，失败自动重试，不阻塞开板）。web demo（浏览器无 Tauri）无文件系统能力，`rootPath` 为空降级内存模式 + relay 同步（whiteboard.js:51-52）。
+
+### demo web 模式
+
+web 模式以 `yarn relay`（启动 WebSocket 中继）+ `yarn demo:web`（静态托管 demo 页）运行：浏览器双开 demo 页即两个协作端，经 relay 房间交换操作记录与 amend / awareness 消息；板落盘由连同一房间的持板 daemon 承担（无 daemon 则各端仅存内存）。
 
 ### 输入与工具
 
@@ -109,6 +138,27 @@ Kernel 不依赖 DOM，也不依赖 Worker 宿主：
 - JSDoc typedef 与协议约定
 - 文档与操作的权威模型（hit）与持久化逻辑（store，文件原理由外部注入）
 
+## 协作同步
+
+```mermaid
+sequenceDiagram
+    participant A as 本端 BoardCore
+    participant R as relay
+    participant B as 对端 BoardCore
+
+    A->>R: 本地 commit → 操作记录广播
+    R->>B: 转发记录
+    B->>B: 500ms 延迟容忍窗内接入 applyRemoteOperations
+    A->>R: 30s 周期 digest（{logSize, head, objects, stateHash, openMols}）
+    R->>B: 转发 digest
+    B->>B: stateHash 比对
+    alt 分歧
+        B->>B: repairStateFromLog 效果层自愈
+    end
+```
+
+本地操作 commit 后经中继广播；对端在 500ms 延迟容忍窗内把远程记录接入 `applyRemoteOperations`（窗内乱序按确定性定序吸收）。每 30s 周期交换 digest 对账，`stateHash` 分歧时经 `repairStateFromLog` 从本端日志重放派生状态并对齐活体（效果层修复，不改写日志）。
+
 ## 当前实现状态
 
 - Worker mode 是当前主路径
@@ -127,6 +177,10 @@ Kernel 不依赖 DOM，也不依赖 Worker 宿主：
 - **动态图 / AOM**：交互态对象与临时层关系，由 `ActiveObjectManager` 维护
 - **LightweightObjectEntry**：UI 工具链里传递的轻量对象协议，定义于 `kernel/types/types.js`
 - **render hook**：AOM / BoardCore 通知视口重绘的注入式桥
+- **choice（命名选择）**：活动对象的命名分组，跨端以 `"{source}/{choice}"` 区分同名 choice
+- **分子 / 超分子**：手势高频写的记录单位（`beginMol` / `amendMol` / `endMol` / `abortMol`）与会话归组单位（`supraId`，`close-supra` 折叠）
+- **层位边**：对象操作记录与 trash 条目携带的 `below` / `above` 前驱后继，回图与回放的层位依据
+- **digest / 自愈**：协作对账摘要 `{logSize, head, objects, stateHash, openMols}`，分歧经 `repairStateFromLog` 效果层自愈
 
 ## 相关文档
 

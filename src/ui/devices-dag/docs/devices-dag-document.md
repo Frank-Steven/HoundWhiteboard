@@ -221,6 +221,17 @@ Unix 类比：管线 `a | b | c` 组合出来本身仍是一条命令，可以�
 prefix 与 processor 是同构的信号编译器——都是纯函数式的「信号流 → 语义输出」——
 分别住在图节点与工具内部。选址判据：**需要路由与跨节点复用选 prefix，绑定单一工具选 processor。**
 
+```mermaid
+flowchart TD
+  S["信号解释需求"] --> Q1{"只做工具组合编排<br/>（顺序 / 互斥）？"}
+  Q1 -->|是| W["wrapper<br/>handoff / tool-switcher"]
+  Q1 -->|否| Q2{"需要参与路由，或<br/>被多个下游复用？"}
+  Q2 -->|是| P["prefix<br/>图级信号流变换"]
+  Q2 -->|否| PR["processor<br/>工具内手势解释"]
+  P -.->|"例：trigger → position 序列"| E1["random-circle"]
+  PR -.->|"例：position 流 → 补丁"| E2["circle 圆心半径手势"]
+```
+
 ## 信号类型注册表
 
 信道上跑的信号类型有单一事实源：`dag-core/signal-types.js` 的 `SIGNAL_TYPES`。
@@ -362,11 +373,12 @@ const subDAG = builder.build();
 这个子图通过一条边挂在 `code/Space` 下：
 
 ```js
-viewport.addEdge(
-  "/keyboard/code/Space",
-  "create-circle",
-  "/workflows/create-circle",
-);
+viewport.inputScope.addEdge({
+  from: "keyboard/code/Space",
+  to: "workflows/create-circle",
+  name: "create-circle",
+  prefix: createEdgePrefix(buildKeyboardTriggerForwardNodeConfig()),
+});
 ```
 
 键位节点收到的 `trigger` 信号会沿 `create-circle` 边进入 workflow 子树，经 prefix 处理后由末端工具消费。

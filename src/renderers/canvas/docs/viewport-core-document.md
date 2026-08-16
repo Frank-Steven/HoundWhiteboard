@@ -63,6 +63,8 @@ request-render-flush ──→ flushRenderFrame()
 
 失效路径分两类：`invalidateActiveObjects`（AOM 变更，仅刷新输出层）和 `invalidateCachedObjects` / `invalidateChunks`（静态图或区块变更，标记缓存脏 + 输出层刷新）。
 
+远程手势预览经 `renderer.setPreviewPosition(objectId, position)` 写入预览坐标、断线时 `renderer.clearAllPreviewPositions()` 清空（由 core-worker 的 awareness / disconnect 消息驱动），只影响渲染视图不改对象数据。
+
 详见 [viewport-renderer-document.md](./viewport-renderer-document.md)。
 
 ## 视口同步

@@ -4,7 +4,7 @@
 
 > [!NOTE]
 >
-> **实现状态**：分子操作记录结构、commit 边界单管线（`HitCommitter` + `BoardApi` 记录化）、三级容器模型（增量式分子 `molId`、超分子 `supraId` 即时物化与 close-supra 聚合折叠、discard 型取消选择）、撤销与重做的运行时语义均已落地（`src/kernel/hit/`）；旧日志形态（`supraOpId` 草稿凝聚）只读兼容。trash 已随布局 v1 持久化（板根 `trash/`，日志跟随者指纹调和，见[文件结构文档](../../../docs/file-structure.md)）；`move-head` 的应用入口待后续落地。
+> **实现状态**：分子操作记录结构、commit 边界单管线（`HitCommitter` + `BoardApi` 记录化）、三级容器模型（增量式分子 `molId`、超分子 `supraId` 即时物化与 close-supra 聚合折叠、discard 型取消选择）、撤销与重做的运行时语义均已落地（`src/kernel/hit/`）；旧日志形态（`supraOpId` 草稿凝聚）只读兼容。trash 已随布局 v2 持久化（板根 `trash/{objectId}.json`，日志按 source 分片 `hit/{source}/seg-{NNNNNN}.jsonl`、元数据分片 `meta/{source}.json`，日志跟随者指纹调和，见[文件结构文档](../../../docs/file-structure.md)）；`move-head` 的应用入口待后续落地。
 
 ## 操作层级
 
@@ -51,6 +51,24 @@ flowchart LR
 分子操作有两种物化形态：
 
 - **增量式分子**：以 `beginMol → amendMol → endMol/abortMol` 生命周期承载一次手势；开启时分配 molId，进行中只产生 amend 流（原子，永不落盘），`endMol` 物化为分子记录（每对象一条、同 molId），`abortMol` 丢弃 amend 流不留痕。同 molId 且同 supraId 的相邻记录在树上归并为一个分子节点。
+
+```mermaid
+sequenceDiagram
+    participant T as 调用方（工具）
+    participant H as HitCommitter
+    participant L as 操作日志 / hit 树
+    T->>H: beginMol（分配 molId）
+    loop 手势帧 × N
+        T->>H: amendMol（原子帧增量）
+        Note over H: amend 走 volatile 通道<br/>只画不存、永不落盘
+    end
+    alt 正常结束
+        T->>H: endMol
+        H->>L: 物化分子记录上链（每对象一条、同 molId）
+    else 取消
+        T->>H: abortMol（丢弃 amend 流，不留痕）
+    end
+```
 - **即时式分子**：无生命周期，提交即物化上链（无 molId），与旧日志形态一致；选择、取消选择等单步操作为此形态。
 
 ### 操作无法撤消
@@ -125,7 +143,7 @@ HEAD 指向当前状态对应的节点。按「所有用户一致」原则：网
 
 撤消操作 D 在白板上的效果，D 缺省为本端来源最近的活动链节点（各撤各的），可显式指定。撤销本身也记录于日志——操作无法撤消，撤销抵消的是效果，D 本身仍留在日志中、可溯源。撤销记录**目标节点**；HEAD 移动是应用时算出的效果。应用规则：
 
-1. 在 D 的父节点处分叉：把 D 与 HEAD 之间的链（不含 D）改挂到分叉点；原位置按 (时间, author) 截断保留——不晚于撤销操作的节点留下共享数据，晚于的只存在于撤消分支。
+1. 在 D 的父节点处分叉：把 D 与 HEAD 之间的链（不含 D）改挂到分叉点；原位置按 (时间, author, 操作序号) 截断保留——不晚于撤销操作的节点留下共享数据，晚于的只存在于撤消分支。
 2. HEAD 移到新末端。
 3. D 是活动链末端时，没有可改挂的节点，效果退化为 HEAD 回退到 D 的父节点。
 4. D 不在活动链上（已被撤消）时，撤销无效，被吸收。

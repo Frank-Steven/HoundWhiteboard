@@ -129,11 +129,11 @@ const workflow = builder.build();
 然后通过 `addEdge` 将键位节点连接到工具子树：
 
 ```js
-viewport.addEdge(
-  "/keyboard/code/Space",
-  "create-circle",
-  "/workflows/create-circle",
-);
+viewport.inputScope.addEdge({
+  from: "keyboard/code/Space",
+  to: "workflows/create-circle",
+  name: "create-circle",
+});
 ```
 
 ## 设备 → Workflow 连接模式
@@ -212,16 +212,16 @@ workflow 负责：
 
 ## 设备挂载
 
-业务侧应优先通过 Viewport 挂载设备：
+业务侧应优先通过 Viewport 的 `inputScope` 挂载设备：
 
 ```js
-viewport.mountSubDAG("", createKeyboardDevice());
+viewport.inputScope.mountDevice("keyboard", createKeyboardDevice());
 ```
 
 也可以指定额外挂载前缀：
 
 ```js
-viewport.mountSubDAG("/presentation", createKeyboardDevice());
+viewport.inputScope.mountDevice("presentation/keyboard", createKeyboardDevice());
 ```
 
 最终仍会由 Board 持有的 `DevicesDAG` 执行 `mountSubDAG(basePath, subDAGDefinition, mountContext)`。
@@ -248,14 +248,13 @@ viewport.mountSubDAG("/presentation", createKeyboardDevice());
 
 ## 当前实践
 
-当前仓库内的 debugger、touchscreen、mouse、keyboard 都已经迁移到 `createSubDAG(rootPath)` 新模型。
+当前仓库内的 button-group、keyboard、mouse、touchscreen 四台设备都基于 `createSubDAG(rootPath)` 模型构建，并由 `devices/index.js` 统一导出（含 button-group 的 `createButtonGroupDevice` 登记）。
 
 它们的共同特点是：
 
 - 根节点只做设备态更新与初始分流
 - 设备通过 `defaultRoute` + 出边连接到 `/<viewportId>/workflows/` 下的 workflow 节点
 - 设备状态通过 `expose()` 对外暴露
-- debugger 的根节点是修饰节点语义，用于记录经过该节点的信号并继续下传
 
 ## 相关文档
 

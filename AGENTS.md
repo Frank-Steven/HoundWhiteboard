@@ -25,11 +25,16 @@ yarn ci-check                   # 文档链接 + @module 路径一致性检查
 
 # 基准测试
 yarn bench                      # 全部基准
-yarn bench:io                   # I/O 桥接基准
 yarn bench:io:direct            # I/O 直连基准
+yarn bench:io:granularity       # I/O 文件粒度基准
+
+# 协作同步
+yarn relay                      # 启动同步中继（默认 8377 端口）
+yarn demo:web                   # 启动 demo 静态服务（默认 8000 端口，浏览器双端协作冒烟）
 
 # CLI
-yarn cli <命令> <板目录>        # 直读直写板文件（见 src/cli/docs/cli-document.md）
+yarn cli <命令> [--daemon <名> | --path <板目录>]   # 读写板文件（见 src/cli/docs/cli-document.md）
+yarn cli daemon start --name <名> --path <板目录>   # 启动板 daemon（持板 + RPC）
 ```
 
 运行测试需要 `NODE_OPTIONS='--experimental-vm-modules --localstorage-file=/tmp/jest-localstorage'`（`package.json` 已配好）。
@@ -50,20 +55,19 @@ src/
 │   └── types/               # 类型定义
 ├── renderers/
 │   └── canvas/              # canvas 渲染插件（viewport-renderer、绘制策略注册表）
-├── host/                    # 组合根 + 通道（core-worker、debug-helper、bridges/）
+├── host/                    # 组合根 + 通道（core-worker、debug-helper、bridges/、sync/ 协作同步）
 ├── io/                      # 安全文件操作（core 契约 / driver / adapter / api）
-├── cli/                     # 命令行第二前端（node 直读直写板文件）
+├── cli/                     # 命令行第二前端（板 daemon 持板，读写经 BoardApi 契约）
 ├── ui/                      # UI front（Board / Viewport / DevicesDAG / Tools / overlay）
 ├── utils/                   # 应用级工具（log）
 ├── docs/                    # 架构文档
 ├── test-support/            # 测试 mock 支撑
 ├── tests/                   # 跨包冒烟 / 集成测试
-├── demo/                    # 白板 HTML/CSS/JS 入口
-├── src-tauri/               # Rust 后端（Cargo workspace）
-├── benchmarks/              # 性能基准
-└── scripts/                 # 构建脚本系统
-    ├── build/               # 构建入口、task-runner、任务定义、TUI
-    └── ci/                  # 文档链接 / @module 路径检查
+└── demo/                    # 白板 HTML/CSS/JS 入口（桌面与 web 模式）
+src-tauri/                   # Rust 后端（Cargo workspace）
+benchmarks/                  # 性能基准
+scripts/                     # CI 检查与 demo 静态服务脚本
+└── ci/                      # 文档链接 / @module 路径检查
 ```
 
 核心模块下有 `docs/{name}-document.md` 和 `tests/` 目录。

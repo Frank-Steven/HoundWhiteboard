@@ -155,10 +155,12 @@ sequenceDiagram
 
 ## overlay
 
-父类默认 overlay 路径：
+父类默认 overlay 路径直接调用 `ui-overlay-factory.js` 导出的纯函数：
 
 ```js
-renderer.createCompatSelectionEntriesForSummaries(objects, "chooser");
+import { createCompatSelectionEntriesForSummaries } from "../../../components/renderer/ui-overlay-factory.js";
+
+createCompatSelectionEntriesForSummaries(objects, "chooser", viewport);
 ```
 
 兼容 summary-like 条目和 plain `boundingBox` / `worldRect`。子类可在 `collectUiOverlayEntries` 中通过 `super.collectUiOverlayEntries()` 组合基类结果后附加自己的区域 overlay。

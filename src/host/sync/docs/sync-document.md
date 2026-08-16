@@ -22,25 +22,51 @@
 
 同一房间内以 source 标识成员；**同 source 重复加入会覆盖旧连接**（后到者顶替，先到者不再被转发）。同机多窗口共享 localStorage 时身份可能冲突，demo 提供 `hwb.setSource` 显式区分。
 
+```mermaid
+flowchart LR
+  subgraph 端
+    GUI["GUI worker<br/>（core-worker）"]
+    CLI["CLI daemon<br/>（board-daemon）"]
+    WEB["浏览器端<br/>（web demo）"]
+  end
+  RELAY["relay-server<br/>（星型房间，板即房间）"]
+
+  GUI <-->|"ws"| RELAY
+  CLI <-->|"ws"| RELAY
+  WEB <-->|"ws"| RELAY
+  GUI <-->|"ws 直连协作通道<br/>（同协议单客户端版）"| CLI
+  CLI -.->|"sendRecords 桥接<br/>GUI 记录进房间"| RELAY
+```
+
+### GUI 直连 daemon 拓扑
+
+除 relay 星型房间外，GUI worker 还会直连持板 daemon 的协作通道（`core-worker` 的 `#connectGuiDaemon`）：
+
+- **探测与重连**：每次尝试先重新探测 daemon（重启后端口可能变化，经 `.daemon.json` 描述文件发现）；失败起每 3s 重试（`#scheduleGuiReconnect`）。
+- **boardId = rootPath**：直连协调器以板根路径作 boardId，与 relay 房间协议同构（join/records/aom/awareness/digest 的单客户端版）。
+- **桥接进房间**：daemon 侧把 GUI 写入的记录经 `sendRecords` 桥进 relay 房间（`board-daemon.js` 的 records 分支），GUI 的操作对远端可见；daemon 连了中继才桥接。
+- **单机降级**：无 daemon（或 daemon 不可达）时 GUI 按单机自治运行，写权仲裁落盘兜底（见会话存储文档），协作通道断开仅按 3s 重试，不阻塞开板。
+- 断线重连后的全量收敛沿用同步机制的 digest / request-init 对账。
+
 ## 消息协议（JSON over WebSocket）
 
-| 方向            | 消息                                                          | 语义                             |
-| --------------- | ------------------------------------------------------------- | -------------------------------- |
-| 客户端 → 服务器 | `{type:"join", boardId, source}`                              | 加入房间（首条消息必须为 join）  |
-| 服务器 → 客户端 | `{type:"joined", source, peers:[...]}`                        | 加入确认 + 现有成员列表          |
-| 服务器 → 客户端 | `{type:"peer-joined", source}` / `{type:"peer-left", source}` | 成员变动广播                     |
-| 客户端 → 服务器 | `{type:"records", records:[...]}`                             | 操作记录广播（微任务合批）       |
-| 服务器 → 客户端 | `{type:"records", source, records:[...]}`                     | 记录转发（附来源，不回发发送者） |
-| 客户端 → 服务器 | `{type:"aom", event:{kind, ids, choice?, ...}}`                | AOM 活动事件广播（choose 携带命名选择名） |
-| 服务器 → 客户端 | `{type:"aom", source, event}`                                 | 活动事件转发                     |
-| 客户端 → 服务器 | `{type:"awareness", data}`                                       | awareness 广播（volatile） |
-| 服务器 → 客户端 | `{type:"awareness", source, data}`                              | awareness 转发（可丢、不进日志） |
-| 客户端 → 服务器 | `{type:"request-init", lastSeen?, openMols?}`             | 请求增量日志（无 lastSeen 为全量；openMols 供对账） |
-| 服务器 → 客户端 | `{type:"request-init", source, lastSeen?, openMols?}`   | 增量请求转发                     |
-| 客户端 → 服务器 | `{type:"respond-init", to, records, meta, openMols?}`     | 定向全量响应                     |
-| 服务器 → 客户端 | `{type:"respond-init", source, records, meta, openMols?}` | 定向转发（仅目标收到）           |
-| 客户端 → 服务器 | `{type:"digest", digest}`                                     | 周期状态摘要（默认 30s）         |
-| 服务器 → 客户端 | `{type:"digest", source, digest}`                             | 摘要转发                         |
+| 方向            | 消息                                                          | 语义                                                |
+| --------------- | ------------------------------------------------------------- | --------------------------------------------------- |
+| 客户端 → 服务器 | `{type:"join", boardId, source}`                              | 加入房间（首条消息必须为 join）                     |
+| 服务器 → 客户端 | `{type:"joined", source, peers:[...]}`                        | 加入确认 + 现有成员列表                             |
+| 服务器 → 客户端 | `{type:"peer-joined", source}` / `{type:"peer-left", source}` | 成员变动广播                                        |
+| 客户端 → 服务器 | `{type:"records", records:[...]}`                             | 操作记录广播（微任务合批）                          |
+| 服务器 → 客户端 | `{type:"records", source, records:[...]}`                     | 记录转发（附来源，不回发发送者）                    |
+| 客户端 → 服务器 | `{type:"aom", event:{kind, ids, choice?, ...}}`               | AOM 活动事件广播（choose 携带命名选择名）           |
+| 服务器 → 客户端 | `{type:"aom", source, event}`                                 | 活动事件转发                                        |
+| 客户端 → 服务器 | `{type:"awareness", data}`                                    | awareness 广播（volatile）                          |
+| 服务器 → 客户端 | `{type:"awareness", source, data}`                            | awareness 转发（可丢、不进日志）                    |
+| 客户端 → 服务器 | `{type:"request-init", lastSeen?, openMols?}`                 | 请求增量日志（无 lastSeen 为全量；openMols 供对账） |
+| 服务器 → 客户端 | `{type:"request-init", source, lastSeen?, openMols?}`         | 增量请求转发                                        |
+| 客户端 → 服务器 | `{type:"respond-init", to, records, meta, openMols?}`         | 定向全量响应                                        |
+| 服务器 → 客户端 | `{type:"respond-init", source, records, meta, openMols?}`     | 定向转发（仅目标收到）                              |
+| 客户端 → 服务器 | `{type:"digest", digest}`                                     | 周期状态摘要（默认 30s）                            |
+| 服务器 → 客户端 | `{type:"digest", source, digest}`                             | 摘要转发                                            |
 
 ## 中继服务器
 
@@ -67,6 +93,28 @@
 - **增量 INIT（lastSeen 握手）**：join 与 peer-joined 时互发 request-init 携带各来源最大序号（lastSeen）；respond-init 仅携带缺口记录（增量请求无缺口时不回应，无 lastSeen 时全量回应供新成员与 id 续种）。离线期间的操作是本地日志的未同步段，重连后双向补发缺口即收敛，增量 anti-entropy 之外的兜底仍是周期摘要。
 - **在途分子对账**：request-init 与 respond-init 各携带本端未闭合分子清单（openMols，queryOpenMols 形态）；收到 request-init 时按对方清单对账——对方缺此 molId 则经 sendAwareness 重发 mol-begin（entries 含 create 快照）与全部 amend 段，对方 seq 落后则只补其后的 amend 段（不重发 begin）；只在 request-init 上对账，respond-init 的清单仅供协议完备（避免同一清单触发重复重放）。重放走 volatile 通道，对端经 mol-begin/mol-amend 正常路径消费。
 - **重连与 AOM 重同步**：socket 断开（非主动）时协调器自清理（订阅、定时器）并回调 onDisconnect，宿主每 3s 自动重连；断线即清空远程选择登记，重连后各端按 hold 重广播 choose 活动，互斥状态重建。
+
+接入时序（新成员 B 加入已有成员 A 的房间）：
+
+```mermaid
+sequenceDiagram
+  participant B as 新成员 B
+  participant R as relay
+  participant A as 老成员 A
+
+  B->>R: join(boardId, source)
+  R->>B: joined(source, peers)
+  R->>A: peer-joined(source)
+  B->>R: request-init(lastSeen, openMols)
+  A->>R: request-init(lastSeen, openMols)
+  R-->>A: 转发 B 的请求
+  R-->>B: 转发 A 的请求
+  A->>R: respond-init(to: B, 缺口记录, meta, openMols)
+  B->>R: respond-init(to: A, 缺口记录, meta, openMols)
+  Note over B,A: 对账：按对方 openMols 清单重放在途分子<br/>（mol-begin / mol-amend，volatile 通道）
+  Note over B: 乱序记录入缓冲，500ms 窗×3 仍未补齐<br/>→ 广播 request-init 全量兜底
+```
+
 - **周期摘要**：30s 广播 `{logSize, head, objects, stateHash, openMols}`；落后或同长分歧时 request-init（全量重建兜底）。日志与 HEAD 一致但 stateHash 分歧为效果层分歧（记录都在但效果未放全）：f(日志) 确定，分歧端经 `repairStateFromLog` 本地重放日志对齐活体（remove+add 按派生态重落座，trash 全量对齐，层位边逐已载区块比对重写），无需额外传输通道；任一端 openMols > 0（手势在途，活体合法偏离派生态）时跳过本轮比对。校验和口径为对象数据与 trash，不含区块层序（各端已载区块集随视口懒加载不同，纳入会误报；边级分歧随 repair 触发愈合）。
 - **断线清理**：peer-left 到达时清除该来源的远程活动登记（解锁其选择的对象）。
 
@@ -86,7 +134,7 @@
 - 中继无状态：断线期间的消息不缓存，重连后靠 lastSeen 增量握手补齐，周期摘要全量重建兜底。
 - 同 source 覆盖：中继按 source 唯一定位成员，同 source 并发连接会互相顶替（同机双开需显式区分身份）。
 - 远程选择经 awareness overlay 呈现：按来源着色的选中框与来源标签，装饰刷新由 remote-activity 通知驱动（不经 volatile 通道）。
-- 浏览器（无 Tauri）打开 demo 为内存板：同步照常，内容不落盘。
+- 浏览器（无 Tauri）打开 demo 为内存板：同步照常，浏览器端自身内容不落盘；落盘由持板 daemon 兜底承担（relay 来源的记录经 daemon 接入时落盘）。
 
 ## 相关文档
 

@@ -207,6 +207,32 @@ AOM 内部关键结构包括：
 - `baseObjectSnapshotWorldRanges`
 - `baseObjectSnapshotCoverChunks`
 
+命名选择（choice）跨端以 `"{source}/{choice}"` 形式的引用区分同名 choice（不同来源可同时选择同一对象），choice 名因此禁止含 `/`。
+
+## 分子与超分子
+
+分子（mol）是手势高频写的记录单位：一次交互经 `beginMol(objectIds)` 开口，中间帧经 `amendMol(molId, patchesByObject)` 累积增量，`endMol(molId)` 闭合落一条效果记录，`abortMol(molId)` 丢弃。操作记录共八类分子操作，外加闭合超分子记录 `close-supra`（见 [operation-document.md](../kernel/hit/docs/operation-document.md)）。
+
+超分子（supra）以 `supraId` 把同会话的分子记录即时归组：`beginSupra(key)` / `endSupra(key)` 对应工具层一次完整工作流，`endSupra` 在成员不少于 2 条时追加 `close-supra` 记录，时间回溯树据此把连续成员段折叠为聚合节点（撤销/重做的粒度单位）。`discard` 型分子用于取消选择这类无白板效果的会话。
+
+对象操作记录携带提交/提取时刻的层位边效果（`below` / `above`），回放与远端直接应用记录边而不做几何重算；`delete-object` 记录的 `chunks` 层位边使跨会话撤销删除能按原层位关系回图。
+
+### 对象生命周期
+
+```mermaid
+stateDiagram-v2
+    [*] --> 活动对象: createObject / beginMol
+    活动对象 --> 静态图: endMol 闭合 / commitObjects
+    静态图 --> 活动对象: addActiveObjects（choose / modify 提取）
+    静态图 --> 非活动层成员: pickup 随活动对象一并纳入 AOM
+    非活动层成员 --> 静态图: commitObjects
+    静态图 --> trash: deleteObjects（delete-object 记录）
+    trash --> 静态图: 撤销删除（按 chunks 层位边回图）
+    活动对象 --> 静态图: abortMol / discard（无效果落回）
+```
+
+活动与非活动对象都在 AOM 中（`aom.has(id) === true`），分子会话的 begin/amend/end/abort 驱动各态之间的迁移；trash 条目删除时刻的层位边是回图依据。
+
 ## 视口与渲染模型
 
 ### UI 侧 `Viewport`
@@ -252,13 +278,30 @@ AOM 内部关键结构包括：
 
 ### 默认运行时现状
 
-- demo 以 `~/hound-whiteboard/demo-board` 为板目录运行于持久化模式
+- demo 以 `~/hound-whiteboard/demo-board` 为板目录运行于持久化模式（Tauri 可用时；浏览器 web demo 无文件系统能力，降级内存模式）
 - 落盘主结构是：
   - `chunks/{chunkId}.json`：`{ tierGraph, objectCoverIndex }`
   - `objects/{objectId}.json`：扁平对象文件（id 经百分号编码）
   - `trash/{objectId}.json`：trash 条目（含层位边）
-  - `hit/seg-{NNNNNN}.jsonl`：操作日志段
+  - `hit/{source}/seg-{NNNNNN}.jsonl`：per-source 操作日志流
+  - `meta/{source}.json`：per-source 元数据分片（计数与时间水位）
   - `board.json`：板元数据
+
+### digest 与自愈
+
+协作端周期交换 digest（`{logSize, head, objects, stateHash, openMols}`）做对账：`logSize` / `head` 比对日志水位，`openMols` 对账未闭合分子，`stateHash` 是对象状态的确定性校验和。`stateHash` 分歧时经 `repairStateFromLog` 自愈——从本端日志重放派生对象状态并对齐活体（效果层修复，不改写日志）。
+
+落盘权威属于持板方：每块板由一个持板 daemon 独占落盘（进程内 BoardCore + 日志跟随者）；GUI 打开有 daemon 的板时只读挂载、零写盘，经协作通道与 daemon 双向同步。无 daemon 的单机场景由 Worker 内装配的日志跟随者直接落盘。
+
+```mermaid
+flowchart LR
+    BC["BoardCore（权威状态）"] -->|append 事件| JR["journaler（微任务合批、指纹调和）"]
+    JR -->|新记录按 source 分组| HIT["hit/{source}/seg-*.jsonl"]
+    JR -->|对象调和（写权仲裁：远程活动跳过）| OBJ["objects/*.json"]
+    JR -->|trash 条目| TRASH["trash/*.json"]
+    JR -->|层叠图指纹比对| CHUNK["chunks/*.json"]
+    JR -->|本端与代写来源| META["meta/{source}.json"]
+```
 
 ### 当前不要过度假设的语义
 
@@ -266,9 +309,13 @@ AOM 内部关键结构包括：
 
 - 每个对象 JSON 一定包含 `ownerChunkId`
 - 对象一定按 `objects/chunk{chunkId}/{objectId}.json` 组织
-- 默认 demo 已完整接通文件模式
 
 这些更接近设计目标或局部桥接语义，而不是当前所有运行时场景下的统一现实。
+
+相对地，以下已是代码保证的稳定事实：
+
+- `delete-object` 记录必须携带 `chunks` 层位边（删除时刻各区块的 `below` / `above` 前驱后继）
+- `trash/{objectId}.json` 条目含同样的 `chunks` 层位边，跨会话撤销删除据此按原层位回图
 
 ## 关键术语
 
@@ -278,6 +325,11 @@ AOM 内部关键结构包括：
 - **动态图 / AOM**：交互态对象与动态层关系
 - **ObjectSummary**：跨线程查询返回的对象摘要
 - **render hook**：BoardCore / AOM 到 ViewportCore 渲染失效的桥接协议
+- **分子（mol）**：手势高频写的记录单位，`beginMol` / `amendMol` / `endMol` / `abortMol` 驱动
+- **超分子（supra）**：以 `supraId` 归组同会话分子记录，`close-supra` 触发树级折叠
+- **层位边**：对象操作记录与 trash 条目携带的 `below` / `above` 前驱后继，回图与回放的层位依据
+- **choice（命名选择）**：活动对象的命名分组，跨端以 `"{source}/{choice}"` 区分同名 choice
+- **digest**：协作对账摘要 `{logSize, head, objects, stateHash, openMols}`，分歧经 `repairStateFromLog` 自愈
 
 ## 相关文档
 

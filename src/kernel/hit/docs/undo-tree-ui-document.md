@@ -120,7 +120,7 @@
 
 > [!NOTE]
 >
-> 本章描述的是早期设计目标，未落地。现行落盘布局 v1 见[文件结构文档](../../../docs/file-structure.md)：板根下 `board.json`、`objects/`、`trash/`、`chunks/`、`hit/seg-*.jsonl`，无 `history/` 包裹、无 `edition/`。
+> 本章描述的是早期设计目标，未落地。现行落盘布局 v2 见[文件结构文档](../../../docs/file-structure.md)：板根下 `board.json`、`meta/{source}.json`、`objects/`、`trash/`、`chunks/`、`hit/{source}/seg-{NNNNNN}.jsonl`（per-source 分片），无 `history/` 包裹、无 `edition/`。
 
 在 [`.hwb` 文件](../../../docs/file-structure.md)里，其根目录下的 `history/` 文件夹用以专门存放与时间回溯树有关的文件。
 

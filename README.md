@@ -8,10 +8,34 @@
 
 - **Kernel** — 对象模型、几何、区块、BoardCore 静态图、AOM 动态图、操作日志（hit）、会话存储（store）与 BoardApi 契约；零 canvas/DOM，可运行于 Worker、UI 线程或 Node 环境
 - **Renderer 插件** — canvas 渲染器贴附内核同宿运行：脏区渲染、位图合成、对象绘制策略注册表；渲染过程不过桥，RPC 只过操作与帧
-- **Host** — 组合根与通道：Core Worker 宿主与 bridges，决定内核与渲染器进程内直连（standalone）还是 RPC 绑定（Worker）
-- **CLI** — 命令行第二前端：Node 环境直读直写板文件，全程经 BoardApi 契约
+- **Host** — 组合根与通道：Core Worker 宿主与 bridges，决定内核与渲染器进程内直连（standalone）还是 RPC 绑定（Worker）；`sync/` 协作同步层（network-coordinator 协调器、relay-server 无状态中继、amend-forwarder 中间帧转发）
+- **CLI** — 命令行第二前端：Node 环境经 BoardApi 契约读写板文件，写命令经持板 daemon 执行（与 GUI 实时互见、并发安全）
 - **Devices DAG** — 输入设备路由图，将鼠标/键盘/触摸等输入信号路由到对应的工具处理器
 - **Tool System** — 创建、选择、修改、擦除等交互工具
+
+```mermaid
+graph TD
+  subgraph 桌面端
+    UI["UI 线程（Board / Viewport / DevicesDAG / Tools / overlay）"]
+    CW["Core Worker（kernel + canvas 渲染器）"]
+    RS["Rust 后端（src-tauri）"]
+    UI <-->|"io invoke 转发"| RS
+    UI <-->|"BoardApiRpc / 帧"| CW
+  end
+  subgraph 协作层
+    NC["network-coordinator（host/sync）"]
+    RELAY["relay-server 无状态中继"]
+    DAEMON["板 daemon（cli，持板 + RPC）"]
+  end
+  CLI["CLI / 其他客户端"]
+  CW -->|"tauri driver"| RS
+  CW <-->|"ws 操作记录 / amend"| RELAY
+  UI <-.->|"组合根装配"| NC
+  CLI <-->|"WebSocket RPC"| DAEMON
+  DAEMON <-->|"记录桥接"| RELAY
+  DAEMON -->|"node driver 直写"| BOARD[("板目录（hit/meta/objects/chunks/trash）")]
+  RS --> BOARD
+```
 
 UI Kit 另由 [HoundTek/hound-react-ui-kit](https://github.com/HoundTek/hound-react-ui-kit) 独立开发，使用 Cell DSL 构建 UI，为后续 React UI 迁移做准备。
 
@@ -21,14 +45,18 @@ UI Kit 另由 [HoundTek/hound-react-ui-kit](https://github.com/HoundTek/hound-re
 src/
 ├── kernel/        # 内核包（零 canvas/DOM：对象、几何、区块、BoardCore、AOM、hit、store、BoardApi）
 ├── renderers/     # 渲染插件（canvas 渲染器、绘制策略注册表）
-├── host/          # 组合根与通道（core-worker、bridges/RPC、IO 转发）
+├── host/          # 组合根与通道（core-worker、bridges/RPC、IO 转发、sync/ 协作同步）
 ├── io/            # 安全文件操作（core 契约 / driver / adapter / api）
-├── cli/           # 命令行第二前端（node 直读直写板文件）
+├── cli/           # 命令行第二前端（板 daemon 持板，读写经 BoardApi 契约）
 ├── ui/            # UI front（Board、Viewport、DevicesDAG、Tools、overlay）
 ├── docs/          # 架构文档
-├── demo/          # 白板 HTML/CSS/JS 入口
-├── utils/         # 应用级工具（log）
-└── src-tauri/     # Rust 后端（Cargo workspace）
+├── demo/          # 白板 HTML/CSS/JS 入口（桌面与 web 模式）
+├── test-support/  # 测试 mock 支撑
+├── tests/         # 跨包冒烟 / 集成测试
+└── utils/         # 应用级工具（log）
+src-tauri/         # Rust 后端（Cargo workspace）
+benchmarks/        # 性能基准
+scripts/           # CI 检查与 demo 静态服务脚本
 ```
 
 ## 准备工作
@@ -70,10 +98,10 @@ yarn build
 
 ### CLI
 
-| 命令                        | 说明                              |
-| --------------------------- | --------------------------------- |
-| `yarn cli <命令> [--path <板目录>]`  | 以 CLI 读写板文件                 |
-| `yarn daemon --path <板目录>`      | 启动板 daemon（持板 + RPC + 可选中继） |
+| 命令                                                | 说明                                   |
+| --------------------------------------------------- | -------------------------------------- |
+| `yarn cli <命令> [--path <板目录>]`                 | 以 CLI 读写板文件                      |
+| `yarn cli daemon start --name <名> --path <板目录>` | 启动板 daemon（持板 + RPC + 可选中继） |
 
 详细命令面与使用说明见 [src/cli/docs/cli-document.md](src/cli/docs/cli-document.md)。
 
@@ -81,10 +109,10 @@ yarn build
 
 ### 协作同步
 
-| 命令             | 说明                                   |
-| ---------------- | -------------------------------------- |
-| `yarn relay`     | 启动同步中继服务器（默认 8377 端口）   |
-| `yarn demo:web`  | 启动 demo 静态服务（默认 8000 端口）   |
+| 命令            | 说明                                 |
+| --------------- | ------------------------------------ |
+| `yarn relay`    | 启动同步中继服务器（默认 8377 端口） |
+| `yarn demo:web` | 启动 demo 静态服务（默认 8000 端口） |
 
 多端共享同一板目录：各端连上中继后，操作经中继互相广播（新增/修改/删除/擦除/撤销），远程活跃对象不可擦除，迟到端自动全量补齐。
 
@@ -107,11 +135,11 @@ http://127.0.0.1:8000/demo/whiteboard.html?relay=ws://127.0.0.1:8377&source=B
 **Tauri 窗口验证**（持久化板）：窗口内调出控制台（macOS 为 Command+Option+I），用 `window.hwb` 辅助函数：
 
 ```js
-hwb.setRelay("ws://127.0.0.1:8377");   // 设置中继并刷新
-hwb.setSource("A");                    // 设置身份并刷新（同机多窗口需互不相同）
-hwb.setBoard("~/hound-whiteboard/demo-board-2");  // 设置板目录并刷新（同机多窗口需互不相同）
-hwb.status();                           // 查看当前同步配置
-hwb.off();                              // 清除配置回到离线
+hwb.setRelay("ws://127.0.0.1:8377"); // 设置中继并刷新
+hwb.setSource("A"); // 设置身份并刷新（同机多窗口需互不相同）
+hwb.setBoard("~/hound-whiteboard/demo-board-2"); // 设置板目录并刷新（同机多窗口需互不相同）
+hwb.status(); // 查看当前同步配置
+hwb.off(); // 清除配置回到离线
 ```
 
 **跨设备验证**：中继跑在任意一台机器上，`yarn relay` 启动时会打印局域网地址（如 `ws://192.168.1.5:8377`）；另一台设备连该地址即可。各端身份（设备自动生成 `dev-xxxx`）与板目录相互独立，无需手动区分。
@@ -126,7 +154,7 @@ hwb.off();                              // 清除配置回到离线
 | `yarn check:modules` | 检查文件头 `@module` 路径与实际目录是否一致 |
 | `yarn bench`         | 运行全部性能基准                            |
 
-CI 流水线定义见 `.github/workflows/ci.yml`，提交到 `master` 后自动运行。
+CI 流水线定义见 `.github/workflows/ci.yml`，推送到 `master` / `develop` 或向 `master` 提 PR 时自动运行。
 
 ### 构建
 
@@ -191,7 +219,7 @@ CI 流水线定义见 `.github/workflows/ci.yml`，提交到 `master` 后自动�
 
 ## 图标配置
 
-图标配置文件位于 `scripts/build/icon-config.json`，可自定义各平台的源文件和输出目录。
+构建系统已迁至 `hound-tauri-build` npm 包，图标配置文件位于 `node_modules/hound-tauri-build/icon-config.json`，可自定义各平台的源文件和输出目录。
 
 ### 图标源文件优先级
 
@@ -204,6 +232,13 @@ CI 流水线定义见 `.github/workflows/ci.yml`，提交到 `master` 后自动�
 | Linux   | `icon-linux.png` > `icon-desktop.png` > `icon.png` |
 | Android | `icon-android.png` > `icon.png`                    |
 | iOS     | `icon-ios.png` > `icon.png`                        |
+
+## 文档
+
+- 核心架构文档（[src/docs/](src/docs/)）：[架构总览](src/docs/core-overview.md)、[核心模块](src/docs/core-modules.md)、[数据模型](src/docs/core-data-model.md)、[输入流](src/docs/core-input-flow.md)、[输入编码](src/docs/core-input-encoding.md)、[运行时边界](src/docs/core-runtime-boundaries.md)、[稳定接口](src/docs/core-stable-interfaces.md)、[文件结构](src/docs/file-structure.md)
+- 协作同步：[src/host/sync/docs/sync-document.md](src/host/sync/docs/sync-document.md)
+- CLI：[src/cli/docs/cli-document.md](src/cli/docs/cli-document.md)
+- 模块文档：各核心模块的 `docs/` 目录下有 `*-document.md`（如 `src/kernel/board/docs/`、`src/ui/devices-dag/docs/`）
 
 ## 许可
 

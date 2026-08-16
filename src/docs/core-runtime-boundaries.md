@@ -8,6 +8,7 @@
 - **Worker**：`src/host/core-worker.js` 启动的 Core Worker 线程
 - **Kernel**：可在 UI、Worker、Node 测试环境中复用的纯逻辑
 - **Host**：Tauri / preload / 主进程等宿主桥接层，不属于 Core 运行时本身，但与之交互
+- **CLI / daemon**：独立 Node 进程；daemon 是持板进程（进程内 BoardCore + node driver 落盘 + WebSocket RPC 服务）
 
 ## 总览
 
@@ -37,6 +38,8 @@
 | `renderers/canvas/**` （基类）                              | Kernel   | 渲染器基类、调度器、共享脏区策略                                |
 | `kernel/types/**`                                          | Kernel   | 跨线程共享 typedef 与协议                                       |
 | `kernel/utils/**`                                          | Kernel   | 数学、图结构、事件总线、路径、计数池                            |
+| `io/**`                                                    | 按 driver 分 | core（路径 DSL 与权限策略）任意环境；tauri driver 在 Worker 内经 invoke 转发到主线程；node driver 在 CLI / daemon 进程；memory driver 任意环境 |
+| `cli/**`                                                   | CLI      | 独立 Node 进程；写命令经持板 daemon 的 WebSocket RPC，读命令可直读板文件 |
 | `test-support/**`                                          | Any      | 测试 mock 与 fixture                                            |
 
 ## `ui/`（UI 线程）
@@ -127,7 +130,10 @@ Worker 不解析 DOM 事件，也不持有 DevicesDAG。
 ### 当前默认运行时
 
 - `CoreWorkerRuntime.createBoard()` 在 `rootPath` 有效时装配 tauri driver、会话恢复与日志跟随者
-- demo 以 `~/hound-whiteboard/demo-board` 为板目录运行于持久化模式
+- GUI 开板时探测板目录 `.daemon.json`（core-worker.js:222、:779-801）：有活 daemon 则只读挂载、零写盘，经协作通道直连 daemon；无则请求宿主 spawn 并周期重试
+- 持板 daemon 进程内由 node driver 承担落盘（BoardCore + 日志跟随者），GUI / CLI / TUI / MCP 均为其客户端
+- demo 以 `~/hound-whiteboard/demo-board` 为板目录运行于持久化模式（Tauri 可用时）
+- web demo（浏览器，无 Tauri）无文件系统能力，降级为内存模式 + relay 同步，落盘由持板 daemon 承担（whiteboard.js:51-52）
 - 撤销/重做历史随操作日志段落盘，重开后可跨会话撤销
 
 ## 当前默认运行模式
@@ -139,6 +145,51 @@ Worker 不解析 DOM 事件，也不持有 DevicesDAG。
 3. `Board.createViewport(...)` 创建 UI 侧 `Viewport`
 4. `BoardApiRpc.createViewport(...)` 创建 Worker 侧 `ViewportCore`
 5. tools 保持在 UI 线程，通过 RPC 与 Worker 协作
+
+## CLI daemon 进程（第五种运行边界）
+
+持板 daemon 是独立 Node 进程，每块板同时最多一个：
+
+- 进程内装配完整 Core：`BoardCore` + `BoardApi` + node driver + 日志跟随者落盘 + WebSocket RPC 服务
+- 本机端（CLI / TUI / MCP / GUI）都是其客户端：写命令一律经 daemon 的 WebSocket RPC 串行执行，与 GUI 实时互见
+- daemon 连了中继时，本机端的操作经 daemon 桥接进 relay 房间；relay 只承载跨机协作
+- 无 daemon 时 CLI 读命令以 `--path` 自治直读板文件（node driver，零写盘）
+
+## demo web 模式边界
+
+web demo（`yarn demo:web` + `yarn relay`）运行在纯浏览器环境，无 Tauri 宿主层：
+
+- 浏览器主线程承担 UI 边界，Core Worker 仍在 Worker 线程，kernel 边界不变
+- 无文件系统能力，`rootPath` 为空降级内存模式；落盘由连同一 relay 房间的持板 daemon 承担
+- 同步通道是 relay 的 WebSocket：双端经中继交换操作记录与 amend / awareness 消息
+
+```mermaid
+flowchart LR
+    subgraph TauriMain["Tauri 主进程（Rust 可信执行面）"]
+        IO["safe-io commands"]
+    end
+    subgraph UIThread["UI 线程"]
+        DAG["DevicesDAG / tools"]
+        VP["Viewport / UiRenderer"]
+    end
+    subgraph CoreWorker["Core Worker"]
+        CW["CoreWorkerRuntime / BoardCore"]
+    end
+    subgraph DaemonProc["CLI daemon 进程"]
+        DM["BoardCore + node driver + 日志跟随者"]
+    end
+    subgraph RelayProc["relay 进程"]
+        RS["relay-server（板即房间）"]
+    end
+
+    DAG -->|"rpc / rpc-batch"| CW
+    CW -->|"invoke 转发（tauri driver）"| IO
+    CW -.->|"WebSocket（协作通道，本机直连）"| DM
+    DM -->|"WebSocket（跨机协作）"| RS
+    CW -->|"WebSocket（syncUrl 中继）"| RS
+```
+
+CLI / TUI / MCP 作为独立 Node 进程位于图外，写命令经 WebSocket RPC 进 daemon 泳道。
 
 ## 相关文档
 
