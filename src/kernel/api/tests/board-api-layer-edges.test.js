@@ -9,13 +9,15 @@ import { Vector } from "../../utils/math.js";
 /**
  * 创建一个端（独立的 BoardCore 与 BoardApi）
  * @param {string} [source] - 端标识
+ * @param {() => number} [now] - 确定性时间源（并发场景各端共享逻辑时钟）
  * @returns {{ boardCore: BoardCore, api: BoardApi }} 端
  */
-function createEnd(source) {
+function createEnd(source, now) {
   const boardCore = new BoardCore({
     width: 800,
     height: 600,
     source,
+    now,
     aomRenderHooks: createDefaultAomRenderHooks(),
     persistenceAdapter: createDefaultPersistenceAdapter(),
   });
@@ -269,5 +271,171 @@ describe("层位边效果记录与重放", () => {
     expect(B.boardCore.getObjectById("y")).toBeDefined();
     expect(hasLayerEdge(B.boardCore, "x", "y")).toBe(true);
     expect(collectLayerEdges(B.boardCore)).toEqual(collectLayerEdges(A.boardCore));
+  });
+
+  test("延迟并发：提交捕获后到达的相交对象经 unchoose 正放缝合居上，两端一致", async () => {
+    let tick = 0;
+    const now = () => (tick += 1000);
+    const A = createEnd("a", now);
+    const B = createEnd("b", now);
+    await createStaticStroke(A.api, "y");
+    B.api.applyRemoteOperations(A.boardCore.operationLog.toJSON());
+
+    // A 选择 y 并移动（会话期间 B 并发创建 z，A 提交时不知道 z）
+    A.api.beginSupra("S");
+    await A.api.addActiveObjects(["y"], { supraKey: "S" });
+    A.api.modifyObject("y", { position: { x: 5, y: 0 } });
+    // B 并发创建与 y 相交的 z：z 居上（边 y→z）
+    await createStaticStroke(B.api, "z", [
+      { x: 10, y: 100 },
+      { x: 30, y: 100 },
+    ]);
+    expect(hasLayerEdge(B.boardCore, "y", "z")).toBe(true);
+    // A 提交：提交边不含 z（A 尚未见到 z）
+    await A.api.commitObjects(["y"], { supraKey: "S" });
+    A.api.endSupra("S");
+    const unchoose = A.boardCore.operationLog
+      .toArray()
+      .find((record) => record.type === "unchoose-object");
+    expect(
+      unchoose.payload.chunks.every(
+        (entry) => !entry.below.includes("z") && !entry.above.includes("z"),
+      ),
+    ).toBe(true);
+
+    // 交换日志：z.add 的日志序先于 A 的 unchoose（A 侧触发尾段过渡，B 侧纯追加）；
+    // 各端只投递对方未见的记录（按 source 过滤避免重复投递）
+    A.api.applyRemoteOperations(
+      B.boardCore.operationLog.toJSON().filter((record) => record.source === "b"),
+    );
+    B.api.applyRemoteOperations(
+      A.boardCore.operationLog.toJSON().filter((record) => record.source === "a").slice(1),
+    );
+
+    // LLWW：A 的 unchoose 是日志序更晚的写，y 居上（边 z→y）；两端逐边一致
+    for (const end of [A, B]) {
+      expect(hasLayerEdge(end.boardCore, "z", "y")).toBe(true);
+      expect(hasLayerEdge(end.boardCore, "y", "z")).toBe(false);
+    }
+    expect(collectLayerEdges(A.boardCore)).toEqual(collectLayerEdges(B.boardCore));
+  });
+
+  test("延迟并发：同一相交对的反向层位主张按日志序后写者胜，两端一致", async () => {
+    let tick = 0;
+    const now = () => (tick += 1000);
+    const A = createEnd("a", now);
+    const B = createEnd("b", now);
+    await createStaticStroke(A.api, "x");
+    await createStaticStroke(A.api, "y");
+    const baseLength = A.boardCore.operationLog.toJSON().length;
+    B.api.applyRemoteOperations(A.boardCore.operationLog.toJSON());
+    expect(hasLayerEdge(B.boardCore, "x", "y")).toBe(true);
+
+    // A 先把 x 挪走（切断 x→y 的 pickup 关联），再挪回原地压上：x 居上（主张 y→x）
+    A.api.beginSupra("S1");
+    await A.api.addActiveObjects(["x"], { supraKey: "S1" });
+    A.api.modifyObject("x", { position: { x: 500, y: 500 } });
+    await A.api.commitObjects(["x"], { supraKey: "S1" });
+    A.api.endSupra("S1");
+    A.api.beginSupra("S2");
+    await A.api.addActiveObjects(["x"], { supraKey: "S2" });
+    A.api.modifyObject("x", { position: { x: 1, y: 0 } });
+    await A.api.commitObjects(["x"], { supraKey: "S2" });
+    A.api.endSupra("S2");
+    expect(hasLayerEdge(A.boardCore, "y", "x")).toBe(true);
+
+    // B 并发微调 y：x 不在 pickup 下游，原层位保留（主张 x→y），提交时刻更晚
+    B.api.beginSupra("T");
+    await B.api.addActiveObjects(["y"], { supraKey: "T" });
+    B.api.modifyObject("y", { position: { x: 2, y: 0 } });
+    await B.api.commitObjects(["y"], { supraKey: "T" });
+    B.api.endSupra("T");
+    expect(hasLayerEdge(B.boardCore, "x", "y")).toBe(true);
+
+    // 交换日志：B 的 unchoose 日志序更晚，其主张（x→y）在两端胜出（各端只投递对方未见的记录）
+    A.api.applyRemoteOperations(
+      B.boardCore.operationLog.toJSON().filter((record) => record.source === "b"),
+    );
+    B.api.applyRemoteOperations(
+      A.boardCore.operationLog
+        .toJSON()
+        .filter((record) => record.source === "a")
+        .slice(baseLength),
+    );
+
+    for (const end of [A, B]) {
+      expect(hasLayerEdge(end.boardCore, "x", "y")).toBe(true);
+      expect(hasLayerEdge(end.boardCore, "y", "x")).toBe(false);
+    }
+    expect(collectLayerEdges(A.boardCore)).toEqual(collectLayerEdges(B.boardCore));
+  });
+
+  test("修复对账：活体层位边分歧经 repairStateFromLog 对齐派生态", async () => {
+    const { boardCore, api } = createEnd("a");
+    await createStaticStroke(api, "x");
+    await createStaticStroke(api, "y");
+    expect(hasLayerEdge(boardCore, "x", "y")).toBe(true);
+
+    // 人为破坏：删真边、加假边（绕过守卫模拟边级分歧残留）
+    for (const { chunk } of boardCore.chunkLoaded.values()) {
+      const graph = chunk?.objectManager?.staticGraph;
+      if (graph?.hasEdge?.("x", "y")) {
+        graph.deleteEdgeUnsafe("x", "y");
+        graph.addEdgeUnsafe("y", "x");
+      }
+    }
+    expect(hasLayerEdge(boardCore, "y", "x")).toBe(true);
+
+    // 对象数据与 trash 无分歧（digest 口径不可见），层位边由 repair 对齐派生态
+    const { repaired } = api.repairStateFromLog();
+    expect(repaired).toBe(true);
+    expect(hasLayerEdge(boardCore, "x", "y")).toBe(true);
+    expect(hasLayerEdge(boardCore, "y", "x")).toBe(false);
+  });
+
+  test("延迟并发：擦除回写与并发新增交错，记录外相交对象缝合居上", async () => {
+    let tick = 0;
+    const now = () => (tick += 1000);
+    const A = createEnd("a", now);
+    const B = createEnd("b", now);
+    const densePoints = [];
+    for (let x = 0; x <= 80; x += 10) {
+      densePoints.push({ x, y: 100 });
+    }
+    await createStaticStroke(A.api, "s1", densePoints);
+    B.api.applyRemoteOperations(A.boardCore.operationLog.toJSON());
+
+    // B 并发创建跨越刀口的 z（与 s1 的两段都相交）：z 居上（边 s1→z）
+    await createStaticStroke(B.api, "z", [
+      { x: 30, y: 100 },
+      { x: 45, y: 100 },
+      { x: 60, y: 100 },
+    ]);
+    expect(hasLayerEdge(B.boardCore, "s1", "z")).toBe(true);
+
+    // A 在未见 z 时擦除分裂 s1：modify.after 与分裂段 add 的层位边都不含 z
+    const result = await A.api.eraseData({
+      points: [new Vector(45, 95), new Vector(45, 105)],
+      radius: 1,
+      source: "test",
+    });
+    expect(result.created).toHaveLength(1);
+    const [splitId] = result.created;
+
+    // 交换日志：z.add 日志序先于擦除记录（各端只投递对方未见的记录）
+    A.api.applyRemoteOperations(
+      B.boardCore.operationLog.toJSON().filter((record) => record.source === "b"),
+    );
+    B.api.applyRemoteOperations(
+      A.boardCore.operationLog.toJSON().filter((record) => record.source === "a").slice(1),
+    );
+
+    // LLWW：擦除记录日志序更晚，s1 与分裂段居上（边 z→s1、z→splitId）；两端逐边一致
+    for (const end of [A, B]) {
+      expect(hasLayerEdge(end.boardCore, "z", "s1")).toBe(true);
+      expect(hasLayerEdge(end.boardCore, "z", splitId)).toBe(true);
+      expect(hasLayerEdge(end.boardCore, "s1", "z")).toBe(false);
+    }
+    expect(collectLayerEdges(A.boardCore)).toEqual(collectLayerEdges(B.boardCore));
   });
 });

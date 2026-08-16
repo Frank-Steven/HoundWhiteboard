@@ -1639,7 +1639,9 @@ class BoardApi {
    * @description 正确性定义为「对象状态 == f(日志)」：scratch 核心按日志序纯增量重放全部
    * 记录得到派生态（undo/redo/折叠随回放自然呈现，永不触发重建），与活体逐对象比对后以
    * remove+add 对齐（addObjectEffect 自带区块落座与层序，绕开跨区块重排位问题），trash 全量
-   * 对齐。本地有未闭合分子时活体合法偏离派生态（amend 实时改实例），拒绝修复并待下轮。
+   * 对齐，层位边逐已载区块比对重写（digest 口径不含层序，边级分歧借此通道自愈）。
+   * 本地有未闭合分子时活体合法偏离派生态（amend 实时改实例），拒绝修复并待下轮；
+   * 含本地活动对象的区块层位同样合法偏离，跳过对齐。
    * @returns {{ repaired: boolean, fixedIds: string[] }} 修复结果；repaired=false 表示被门拒绝或无分歧
    */
   repairStateFromLog() {
@@ -1694,6 +1696,35 @@ class BoardApi {
       for (const [id, entry] of scratchCore.trash) {
         boardCore.trash.set(id, JSON.parse(JSON.stringify(entry)));
       }
+    }
+
+    // 层位边对齐：派生态的边集是 f(日志) 的权威层位，逐已载区块比对并重写分歧
+    const aom = boardCore.activeObjectManager;
+    for (const { chunk } of boardCore.chunkLoaded.values()) {
+      const graph = chunk?.objectManager?.staticGraph;
+      if (!graph) continue;
+      const nodes = [...graph.getNodes()];
+      // 本地未闭合会话的主体合法偏离派生态（提交时重算居上），其所在区块跳过
+      if (nodes.some((id) => aom?.isActive?.(id))) continue;
+      const derivedGraph = scratchCore.getChunkById(chunk.id)?.objectManager?.staticGraph;
+      const edgesOf = (g) =>
+        [...g.getNodes()]
+          .flatMap((id) => [...(g.neighborsUnsafe(id) ?? [])].map((to) => `${id}${to}`))
+          .sort()
+          .join("");
+      const localEdges = edgesOf(graph);
+      const derivedEdges = derivedGraph ? edgesOf(derivedGraph) : "";
+      if (localEdges === derivedEdges) continue;
+      for (const id of nodes) graph.deleteAllEdgesOfNode(id);
+      if (derivedGraph) {
+        for (const id of derivedGraph.getNodes()) {
+          for (const to of derivedGraph.neighborsUnsafe(id) ?? []) {
+            addLayerEdgeIfAcyclic(graph, id, to);
+          }
+        }
+      }
+      affectedChunks.add(chunk);
+      fixedIds.push(`chunk:${chunk.id}`);
     }
 
     if (affectedChunks.size > 0) {
@@ -2091,6 +2122,8 @@ class BoardApi {
             !boardCore.activeObjectManager?.has?.(payload.objectId)
           ) {
             this.#applyRecordedLayerEdges(payload.objectId, payload.chunks.after, affectedChunks);
+            // 缝合：日志序先于本记录但提交捕获后才到达的相交对象不在记录中，按后写者居上补齐
+            this.#stitchUnrecordedIntersections(obj, payload.chunks.after, affectedChunks, "above");
           }
           this.#markRemoteChoicesDirtyIfRemoteActive(payload.objectId);
         } else {
@@ -2132,6 +2165,11 @@ class BoardApi {
           !boardCore.activeObjectManager?.isActive?.(payload.objectId)
         ) {
           this.#applyRecordedLayerEdges(payload.objectId, payload.chunks, affectedChunks);
+          // 缝合：日志序先于本记录但提交捕获后才到达的相交对象不在记录中，按后写者居上补齐
+          const obj = boardCore.getObjectById(payload.objectId);
+          if (obj) {
+            this.#stitchUnrecordedIntersections(obj, payload.chunks, affectedChunks, "above");
+          }
         }
         break;
       }
