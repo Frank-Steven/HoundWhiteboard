@@ -2329,7 +2329,17 @@ class BoardApi {
   #addObjectEffect(payload, affectedChunks) {
     const boardCore = this.#boardCore;
     if (boardCore.getObjectById(payload.objectId)) return;
-    const obj = deserialize(payload.data);
+    let obj;
+    try {
+      obj = deserialize(payload.data);
+    } catch (error) {
+      // 毒记录降级：记录已入日志即视为接入完成，不可反序列化的载荷跳过效果并告警留痕；
+      // 不抛出——协调器捕获重试会对已入日志的记录再 append，造成「id 序号不连续」死循环
+      console.warn(
+        `[board-api] 跳过不可反序列化的增加对象载荷（${String(payload.objectId)}）：${error?.message ?? error}`,
+      );
+      return;
+    }
     boardCore.registerObjectInstance(obj);
     // 不变量：对象在垍即无 trash 条目（重放/重插入自愈僵尸条目）
     boardCore.trash.delete(payload.objectId);
@@ -2531,7 +2541,16 @@ class BoardApi {
     const boardCore = this.#boardCore;
     const entry = boardCore.trash.get(objectId);
     if (!entry || boardCore.getObjectById(objectId)) return;
-    const obj = deserialize(entry.data);
+    let obj;
+    try {
+      obj = deserialize(entry.data);
+    } catch (error) {
+      // 与 #addObjectEffect 同款降级：毒快照跳过效果并告警，不阻断日志回放
+      console.warn(
+        `[board-api] 跳过不可反序列化的回收站快照（${objectId}）：${error?.message ?? error}`,
+      );
+      return;
+    }
     boardCore.registerObjectInstance(obj);
     this.#collectObjectChunks(obj, affectedChunks);
     // 恢复删除时刻的层位边；删除窗口期创建（或当时仍在会话中）的相交对象按后到者居上缝合

@@ -438,7 +438,15 @@ class BoardCore {
       chunk.isTempLoad = false;
     }
     for (const data of objects) {
-      const obj = deserialize(data);
+      let obj = null;
+      try {
+        obj = deserialize(data);
+      } catch (error) {
+        // 坏对象文件降级：跳过并告警，不阻断会话恢复
+        console.warn(
+          `[board-core] 跳过不可反序列化的持久化对象（${String(data?.id)}）：${error?.message ?? error}`,
+        );
+      }
       if (obj) {
         this.registerObjectInstance(obj);
       }
@@ -628,7 +636,16 @@ class BoardCore {
         : [];
 
     for (const objectData of objectDataList ?? []) {
-      const obj = deserialize(objectData);
+      let obj = null;
+      try {
+        obj = deserialize(objectData);
+      } catch (error) {
+        // 坏对象文件降级：跳过并告警，不阻断区块加载
+        console.warn(
+          `[board-core] 跳过不可反序列化的区块对象（${String(objectData?.id)}）：${error?.message ?? error}`,
+        );
+        continue;
+      }
       const coveredChunkIds = this.getObjectCoverChunks(obj.id);
       this.registerObjectInstance(obj, { coveredChunkIds });
       loadedObjects.set(obj.id, obj);

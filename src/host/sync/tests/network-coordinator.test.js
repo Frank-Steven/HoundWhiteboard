@@ -10,6 +10,7 @@ import { BoardApi } from "../../../kernel/api/board-api.js";
 import { BoardCore } from "../../../kernel/board/board-core.js";
 import { createDefaultAomRenderHooks } from "../../../kernel/board/aom-render-hooks.js";
 import { createDefaultPersistenceAdapter } from "../../../kernel/board/persistence-adapter.js";
+import { createAddObjectOperation } from "../../../kernel/hit/operation.js";
 import { createRelayServer } from "../relay-server.js";
 import { createNetworkCoordinator } from "../network-coordinator.js";
 import { createAmendForwarder } from "../amend-forwarder.js";
@@ -208,6 +209,46 @@ describe("网络协调器", () => {
     );
 
     expect(logIds(a.boardCore).sort()).toEqual(logIds(b.boardCore).sort());
+  });
+
+  test("毒记录不阻塞房间：不可反序列化载荷降级跳过，后续同步照常", async () => {
+    server = createRelayServer({ port: 0 });
+    const a = await connectEnd("a", server.port, "board-1");
+    const b = await connectEnd("b", server.port, "board-1");
+    ends = [a, b];
+
+    const warnings = [];
+    const warnSpy = jest
+      .spyOn(console, "warn")
+      .mockImplementation((...args) => warnings.push(args));
+    try {
+      // a 直接向本端日志追加未知对象类型的 add-object 记录（模拟新版本写入的载荷）：
+      // 校验只看载荷结构不查对象类型表，记录合法入日志并广播
+      a.boardCore.operationLog.append(
+        createAddObjectOperation({
+          id: "a/op-1",
+          source: "a",
+          time: Date.now(),
+          parentId: null,
+          chunkId: "1",
+          objectId: "a/future-1",
+          data: { type: "FutureObject", id: "a/future-1" },
+        }),
+      );
+
+      // 毒记录接入 b 的日志（不可回退），但不产生对象、不抛出；降级告警留痕
+      await until(() => logIds(b.boardCore).includes("a/op-1"), "b 接入毒记录");
+      await until(() => warnings.length > 0, "降级告警留痕");
+      expect(b.boardCore.getObjectById("a/future-1") == null).toBe(true);
+
+      // 后续记录照常双向流动（毒记录未堵死房间）
+      await createStroke(a.api, "a/2");
+      await until(() => b.boardCore.getObjectById("a/2") != null, "b 收到 a/2");
+      await createStroke(b.api, "b/1");
+      await until(() => a.boardCore.getObjectById("b/1") != null, "a 收到 b/1");
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   test("并发创建：两端各自新增后互见对方对象", async () => {
