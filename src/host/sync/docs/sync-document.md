@@ -63,8 +63,8 @@ flowchart LR
 | 服务器 → 客户端 | `{type:"awareness", source, data}`                            | awareness 转发（可丢、不进日志）                    |
 | 客户端 → 服务器 | `{type:"request-init", lastSeen?, openMols?}`                 | 请求增量日志（无 lastSeen 为全量；openMols 供对账） |
 | 服务器 → 客户端 | `{type:"request-init", source, lastSeen?, openMols?}`         | 增量请求转发                                        |
-| 客户端 → 服务器 | `{type:"respond-init", to, records, meta, openMols?}`         | 定向全量响应                                        |
-| 服务器 → 客户端 | `{type:"respond-init", source, records, meta, openMols?}`     | 定向转发（仅目标收到）                              |
+| 客户端 → 服务器 | `{type:"respond-init", to, records, openMols?}`                 | 定向全量响应                                        |
+| 服务器 → 客户端 | `{type:"respond-init", source, records, openMols?}`             | 定向转发（仅目标收到）                              |
 | 客户端 → 服务器 | `{type:"digest", digest}`                                     | 周期状态摘要（默认 30s）                            |
 | 服务器 → 客户端 | `{type:"digest", source, digest}`                             | 摘要转发                                            |
 
@@ -92,7 +92,7 @@ flowchart LR
 - **去重**：按记录 id 跳过日志中已有的与缓冲中待接入的。
 - **预检接入**：按来源序号连续性与父在日志判定，通过后整组交给 `applyRemoteOperations`；超分子成员按 supraId 成组（成员本就独立有效，分组只为同批美观），同来源序号连续段同批应用，段间空洞不阻塞成员各自接入。
 - **延迟容忍窗**：乱序记录（来源序号空洞 / 父未达）入缓冲，500ms 窗到再整理；连续 3 窗仍未补齐则广播 request-init 请求全量。
-- **增量 INIT（lastSeen 握手）**：join 与 peer-joined 时互发 request-init 携带各来源最大序号（lastSeen）；respond-init 仅携带缺口记录（增量请求无缺口时不回应，无 lastSeen 时全量回应供新成员与 id 续种）。离线期间的操作是本地日志的未同步段，重连后双向补发缺口即收敛，增量 anti-entropy 之外的兜底仍是周期摘要。
+- **增量 INIT（lastSeen 握手）**：join 与 peer-joined 时互发 request-init 携带各来源最大序号（lastSeen）；respond-init 仅携带缺口记录（增量请求无缺口时不回应，无 lastSeen 时全量回应供新成员加入）。离线期间的操作是本地日志的未同步段，重连后双向补发缺口即收敛，增量 anti-entropy 之外的兜底仍是周期摘要。
 - **在途分子对账**：request-init 与 respond-init 各携带本端未闭合分子清单（openMols，queryOpenMols 形态）；收到 request-init 时按对方清单对账——对方缺此 molId 则经 sendAwareness 重发 mol-begin（entries 含 create 快照）与全部 amend 段，对方 seq 落后则只补其后的 amend 段（不重发 begin）；只在 request-init 上对账，respond-init 的清单仅供协议完备（避免同一清单触发重复重放）。重放走 volatile 通道，对端经 mol-begin/mol-amend 正常路径消费。
 - **重连与 AOM 重同步**：socket 断开（非主动）时协调器自清理（订阅、定时器）并回调 onDisconnect，宿主每 3s 自动重连；断线即清空远程选择登记，重连后各端按 hold 重广播 choose 活动，互斥状态重建。
 
@@ -111,8 +111,8 @@ sequenceDiagram
   A->>R: request-init(lastSeen, openMols)
   R-->>A: 转发 B 的请求
   R-->>B: 转发 A 的请求
-  A->>R: respond-init(to: B, 缺口记录, meta, openMols)
-  B->>R: respond-init(to: A, 缺口记录, meta, openMols)
+  A->>R: respond-init(to: B, 缺口记录, openMols)
+  B->>R: respond-init(to: A, 缺口记录, openMols)
   Note over B,A: 对账：按对方 openMols 清单重放在途分子<br/>（mol-begin / mol-amend，volatile 通道）
   Note over B: 乱序记录入缓冲，500ms 窗×3 仍未补齐<br/>→ 广播 request-init 全量兜底
 ```

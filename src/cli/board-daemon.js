@@ -566,14 +566,13 @@ async function startBoardDaemonLocked(options) {
       }
       case "request-init": {
         const records = filterGapRecords(message.lastSeen);
-        // 增量请求无缺口时不回应（降噪）；全量请求总是回应（meta 供 id 续种）
+        // 增量请求无缺口时不回应（降噪）；全量请求总是回应
         if (message.lastSeen && records.length === 0) return;
         ws.send(
           JSON.stringify({
             type: "respond-init",
             to: message.source,
             records,
-            meta: session.boardCore.collectSessionMeta(),
             openMols: session.api.queryOpenMols(),
           }),
         );

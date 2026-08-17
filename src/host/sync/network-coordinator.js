@@ -525,13 +525,12 @@ function createNetworkCoordinator(options) {
         // 单向覆盖已完备；respond-init 的 openMols 仅供协议完备，不再对账（避免同一清单触发重复重放）。
         reconcileOpenMols(message.openMols);
         const records = filterGapRecords(message.lastSeen);
-        // 增量请求无缺口时不回应（降噪）；全量请求（无 lastSeen）总是回应（meta 供 id 续种）
+        // 增量请求无缺口时不回应（降噪）；全量请求（无 lastSeen）总是回应
         if (message.lastSeen && records.length === 0) return;
         send({
           type: "respond-init",
           to: message.source,
           records,
-          meta: boardCore.collectSessionMeta(),
           openMols: boardApi.queryOpenMols(),
         });
         return;

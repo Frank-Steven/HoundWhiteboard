@@ -129,7 +129,9 @@ async function bootstrapWhiteboard() {
   });
   awarenessOverlay.start();
 
-  // 远程文档变化：广播 hit:changed 让工具清理失效选中（幽灵选择）
+  // 远程文档变化：广播 hit:changed 让工具清理失效选中（幽灵选择）。
+  // 远端通知不携带 forcedEndMolIds（对端被强制闭合的分子经 amend 通道的 mol-end 另行到达）；
+  // 本地 undo 的 forcedEndMolIds 由 dom-adapters 的 hit:changed 信号携带，勿混淆两条路径。
   viewport.addAwarenessListener((message) => {
     if (message?.awarenessType !== "hit-changed") return;
     const workflows = [
@@ -142,7 +144,7 @@ async function bootstrapWhiteboard() {
         signals: [
           {
             type: "hit:changed",
-            context: { forcedEndMolIds: message.forcedEndMolIds ?? [] },
+            context: {},
           },
         ],
       });
