@@ -29,7 +29,7 @@ yarn bench:io:direct            # I/O 直连基准
 yarn bench:io:granularity       # I/O 文件粒度基准
 
 # 协作同步
-yarn relay                      # 启动同步中继（默认 8377 端口）
+yarn relay                      # 启动同步中继（默认 8377 端口，仅绑 127.0.0.1；跨设备加 --host 0.0.0.0）
 yarn demo:web                   # 启动 demo 静态服务（默认 8000 端口，浏览器双端协作冒烟）
 
 # CLI

@@ -6,6 +6,7 @@
  */
 
 import { jest } from "@jest/globals";
+import { WebSocket as WsClient } from "ws";
 import { createRelayServer } from "../relay-server.js";
 
 /**
@@ -91,6 +92,7 @@ describe("同步中继服务器", () => {
 
   test("加入房间收到确认与现有成员列表", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await joinClient(server.port, "board-1", "dev-a");
     const b = await joinClient(server.port, "board-1", "dev-b");
 
@@ -108,6 +110,7 @@ describe("同步中继服务器", () => {
 
   test("records 广播给房间内其他成员并附来源", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await joinClient(server.port, "board-1", "dev-a");
     const b = await joinClient(server.port, "board-1", "dev-b");
 
@@ -128,6 +131,7 @@ describe("同步中继服务器", () => {
 
   test("aom 事件与 digest 同样按房间广播", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await joinClient(server.port, "board-1", "dev-a");
     const b = await joinClient(server.port, "board-1", "dev-b");
 
@@ -145,6 +149,7 @@ describe("同步中继服务器", () => {
 
   test("request-init 广播到其他成员，respond-init 定向只到请求者", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const newcomer = await joinClient(server.port, "board-1", "dev-new");
     const holderA = await joinClient(server.port, "board-1", "dev-a");
     const holderB = await joinClient(server.port, "board-1", "dev-b");
@@ -179,6 +184,7 @@ describe("同步中继服务器", () => {
 
   test("不同房间互不可见", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await joinClient(server.port, "board-1", "dev-a");
     const b = await joinClient(server.port, "board-2", "dev-b");
 
@@ -193,6 +199,7 @@ describe("同步中继服务器", () => {
 
   test("断开后广播 peer-left 并释放房间", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await joinClient(server.port, "board-1", "dev-a");
     const b = await joinClient(server.port, "board-1", "dev-b");
 
@@ -203,5 +210,84 @@ describe("同步中继服务器", () => {
     await a.close();
     await a.waitFor(() => server.roomSize("board-1") === 0).catch(() => {});
     expect(server.roomSize("board-1")).toBe(0);
+  });
+
+  test("同 source 重复加入踢旧迎新", async () => {
+    server = createRelayServer({ port: 0 });
+    await server.ready;
+    const oldClient = await joinClient(server.port, "board-1", "dev-a");
+    const bystander = await joinClient(server.port, "board-1", "dev-b");
+
+    const oldClosed = new Promise((resolve) => {
+      oldClient.ws.addEventListener("close", resolve, { once: true });
+    });
+    const fresh = await joinClient(server.port, "board-1", "dev-a");
+    await oldClosed;
+
+    // 新连接正常 joined，peers 不含自身 source
+    const joined = fresh.messages.find((m) => m.type === "joined");
+    expect(joined.peers).toEqual(["dev-b"]);
+    expect(server.roomSize("board-1")).toBe(2);
+
+    // 顶替不广播 peer-left（成员关系由 peer-joined 覆盖）
+    await expect(
+      bystander.waitFor((m) => m.type === "peer-left", 300),
+    ).rejects.toThrow("waitFor 超时");
+
+    // 新连接可正常收发
+    fresh.send({ type: "records", records: [{ id: "dev-a/op-2" }] });
+    const received = await bystander.waitFor((m) => m.type === "records");
+    expect(received.records).toEqual([{ id: "dev-a/op-2" }]);
+
+    await fresh.close();
+    await bystander.close();
+  });
+
+  test("心跳踢出不应答 pong 的幽灵连接", async () => {
+    server = createRelayServer({ port: 0, heartbeatMs: 100 });
+    await server.ready;
+    const alive = await joinClient(server.port, "board-1", "dev-alive");
+
+    // 幽灵客户端：ws 库关闭 autoPong，收到 ping 不回 pong，模拟半开死连接
+    const ghost = new WsClient(`ws://127.0.0.1:${server.port}`, {
+      autoPong: false,
+    });
+    await new Promise((resolve, reject) => {
+      ghost.once("open", resolve);
+      ghost.once("error", reject);
+    });
+    ghost.send(JSON.stringify({ type: "join", boardId: "board-1", source: "dev-ghost" }));
+    await alive.waitFor(
+      (m) => m.type === "peer-joined" && m.source === "dev-ghost",
+    );
+    expect(server.roomSize("board-1")).toBe(2);
+
+    // 幽灵被心跳 terminate，其他成员收到 peer-left
+    const left = await alive.waitFor(
+      (m) => m.type === "peer-left" && m.source === "dev-ghost",
+    );
+    expect(left.source).toBe("dev-ghost");
+    expect(server.roomSize("board-1")).toBe(1);
+
+    // 正常回 pong 的客户端不受心跳影响，仍可收发
+    alive.send({ type: "digest", digest: { logSize: 1 } });
+    expect(server.roomSize("board-1")).toBe(1);
+
+    await alive.close();
+  });
+
+  test("默认绑定 127.0.0.1，显式 host 生效", async () => {
+    server = createRelayServer({ port: 0 });
+    await server.ready;
+    expect(server.address().address).toBe("127.0.0.1");
+    await server.close();
+
+    server = createRelayServer({ port: 0, host: "0.0.0.0" });
+    await server.ready;
+    expect(server.address().address).toBe("0.0.0.0");
+    // 显式绑全部接口时本机地址仍可连
+    const client = await joinClient(server.port, "board-1", "dev-a");
+    expect(server.roomSize("board-1")).toBe(1);
+    await client.close();
   });
 });

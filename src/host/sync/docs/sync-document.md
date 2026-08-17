@@ -12,7 +12,7 @@
 
 - `network-coordinator.js`：BoardApi 的同步薄包装，订阅日志与活动事件、接入远程记录
 - `relay-server.js`：无状态中继，房间成员管理与房间内广播
-- `start-relay.js`：启动入口（`yarn relay`，打印本机与局域网地址）
+- `start-relay.js`：启动入口（`yarn relay`，默认仅绑 127.0.0.1；`--host 0.0.0.0` 时打印局域网地址）
 
 数据流：端（GUI worker / CLI / 测试对等端）经 WebSocket（JSON 消息）连接中继，本地操作由协调器广播，远程消息经协调器接入内核。
 
@@ -20,7 +20,7 @@
 
 星型拓扑：各端连接同一中继，消息经中继转发，端与端不直连。**板即房间**：join 时携带 boardId，中继按 boardId 分组，不同房间互不可见。demo 固定房间 `demo-board`，无认证（信任本机/局域网）。
 
-同一房间内以 source 标识成员；**同 source 重复加入会覆盖旧连接**（后到者顶替，先到者不再被转发）。同机多窗口共享 localStorage 时身份可能冲突，demo 提供 `hwb.setSource` 显式区分。
+同一房间内以 source 标识成员；**同 source 重复加入踢旧迎新**（旧连接被 terminate，新连接正常 joined；顶替不广播 peer-left，成员关系由 peer-joined 覆盖）。合法重连借此快速顶替半开死连接；同机多窗口共享 localStorage 时身份可能冲突，demo 提供 `hwb.setSource` 显式区分。
 
 ```mermaid
 flowchart LR
@@ -72,7 +72,9 @@ flowchart LR
 
 - **无状态纯转发**：不缓存任何记录，离线与迟到合并由各端重连对账负责；房间成员表是唯一状态。
 - **广播语义**：records/aom/awareness/digest 广播给房间内除发送者外全部成员；request-init 同广播；respond-init 定向。awareness 是 volatile 通道：不经 operationLog / applyRemoteOperations，无持久化、无确认重发、不参与哈希校验。
+- **心跳踢幽灵**：按 heartbeatMs（默认 30s）周期 ping 全部连接，一轮未回 pong 的连接被 terminate（走与 close 相同的移出路径，广播 peer-left）；进程被杀、网络分区、合盖等半开死连接借此及时清出房间，不再占成员表与广播面。ws 客户端与浏览器/undici WebSocket 均按协议自动回 pong，正常端无感。
 - **连接生命周期**：close/error 移出房间并广播 peer-left；房间空则销毁。
+- **默认本地绑定**：`createRelayServer` 默认绑 127.0.0.1（仅本机），显式传 host 才绑其他接口；`yarn relay` 默认仅本机，`--host 0.0.0.0` 才绑全部接口并打印局域网地址（零鉴权，仅在可信网络开启）。
 - **非法消息**：join 前非 join 消息、格式非法消息一律忽略。
 
 ## 网络协调器
@@ -132,7 +134,7 @@ sequenceDiagram
 ## 设计约束
 
 - 中继无状态：断线期间的消息不缓存，重连后靠 lastSeen 增量握手补齐，周期摘要全量重建兜底。
-- 同 source 覆盖：中继按 source 唯一定位成员，同 source 并发连接会互相顶替（同机双开需显式区分身份）。
+- 同 source 踢旧迎新：中继按 source 唯一定位成员，同 source 新连接到达时旧连接被 terminate（同机双开需显式区分身份）。
 - 远程选择经 awareness overlay 呈现：按来源着色的选中框与来源标签，装饰刷新由 remote-activity 通知驱动（不经 volatile 通道）。
 - 浏览器（无 Tauri）打开 demo 为内存板：同步照常，浏览器端自身内容不落盘；落盘由持板 daemon 兜底承担（relay 来源的记录经 daemon 接入时落盘）。
 

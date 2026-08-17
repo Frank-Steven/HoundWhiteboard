@@ -1,6 +1,6 @@
 /**
  * @file 同步中继服务器
- * @description 按板房间组织的 WebSocket 无状态中继：成员管理、消息转发、INIT 定向；不缓存任何记录。
+ * @description 按板房间组织的 WebSocket 无状态中继：成员管理、消息转发、INIT 定向、心跳踢幽灵；不缓存任何记录。
  * @module host/sync/relay-server
  * @author Zhou Chenyu
  */
@@ -28,6 +28,14 @@ import { WebSocketServer } from "ws";
  * - `{type:"request-init", source, lastSeen?, openMols?}` 增量请求转发
  * - `{type:"respond-init", source, records, meta, openMols?}` 全量响应转发（定向）
  * - `{type:"digest", source, digest}` 摘要转发
+ *
+ * 连接管理：
+ * - 心跳：服务器按 heartbeatMs 周期 ping 全部连接，一轮未回 pong 的连接被 terminate
+ *   （走与 close 相同的移出路径，广播 peer-left）；ws 客户端与浏览器/undici WebSocket
+ *   均按协议自动回 pong，正常端无感
+ * - 同 source 重复 join：踢旧迎新——旧连接被 terminate（不广播 peer-left，由新连接的
+ *   peer-joined 覆盖成员关系），合法重连可快速顶替半开死连接
+ * - 默认绑定 127.0.0.1（仅本机）；显式传 host 才绑其他接口
  */
 
 /**
@@ -55,15 +63,28 @@ function send(ws, message) {
  * 创建同步中继服务器
  * @param {Object} [options={}] - 服务器选项
  * @param {number} [options.port=0] - 监听端口（0 为随机）
- * @param {string} [options.host] - 监听地址
- * @returns {{port: number, close: () => Promise<void>, roomSize: (boardId: string) => number}} 服务器句柄
+ * @param {string} [options.host="127.0.0.1"] - 监听地址（默认仅本机；跨设备需显式传 "0.0.0.0"）
+ * @param {number} [options.heartbeatMs=30000] - 心跳间隔毫秒数（<=0 关闭心跳）；一轮未回 pong 的连接被 terminate
+ * @returns {{ready: Promise<void>, port: number, address: () => Object|string|null, close: () => Promise<void>, roomSize: (boardId: string) => number}} 服务器句柄
  *
  * @description
  * 无状态纯转发：房间成员管理、房间内广播（不回发发送者）、request-init 广播、
  * respond-init 定向。记录本身不经服务器缓存；迟到与离线合并由各端重连对账负责。
  */
 function createRelayServer(options = {}) {
-  const wss = new WebSocketServer({ port: options.port ?? 0, host: options.host });
+  const heartbeatMs = options.heartbeatMs ?? 30000;
+  const wss = new WebSocketServer({
+    port: options.port ?? 0,
+    host: options.host ?? "127.0.0.1",
+  });
+  /**
+   * 监听就绪承诺：显式 host 时绑定经 DNS 查找为异步，就绪前 port/address 不可用
+   * @type {Promise<void>}
+   */
+  const ready = new Promise((resolve, reject) => {
+    wss.once("listening", resolve);
+    wss.once("error", reject);
+  });
   /**
    * 房间表
    * @type {Map<string, Map<string, WebSocket>>}
@@ -176,6 +197,11 @@ function createRelayServer(options = {}) {
   };
 
   wss.on("connection", (ws) => {
+    // 心跳存活标记：每轮 ping 前置 false，收到 pong 置回 true
+    ws.isAlive = true;
+    ws.on("pong", () => {
+      ws.isAlive = true;
+    });
     ws.on("message", (raw) => {
       let message;
       try {
@@ -201,8 +227,14 @@ function createRelayServer(options = {}) {
           room = new Map();
           rooms.set(message.boardId, room);
         }
-        const peers = [...room.keys()];
+        // 同 source 踢旧迎新：先落新连接再 terminate 旧连接，
+        // 旧连接的 close 因房间表已易主而不再广播 peer-left
+        const previous = room.get(message.source);
+        const peers = [...room.keys()].filter((s) => s !== message.source);
         room.set(message.source, ws);
+        if (previous && previous !== ws) {
+          previous.terminate();
+        }
         send(ws, { type: "joined", source: message.source, peers });
         broadcast(room, message.source, {
           type: "peer-joined",
@@ -217,7 +249,32 @@ function createRelayServer(options = {}) {
     ws.on("error", () => removeConnection(ws));
   });
 
+  /**
+   * 心跳定时器：一轮未回 pong 的连接 terminate（经 close 走 removeConnection 广播 peer-left），
+   * 存活连接置假后 ping 一轮；幽灵连接（进程被杀、网络分区等半开状态）借此及时清出房间
+   * @type {NodeJS.Timeout|null}
+   */
+  const heartbeat =
+    heartbeatMs > 0
+      ? setInterval(() => {
+          for (const ws of wss.clients) {
+            if (!ws.isAlive) {
+              ws.terminate();
+              continue;
+            }
+            ws.isAlive = false;
+            ws.ping();
+          }
+        }, heartbeatMs)
+      : null;
+
   return {
+    /**
+     * 监听就绪承诺（ready 前 port/address 不可用）
+     * @type {Promise<void>}
+     */
+    ready,
+
     /**
      * 实际监听端口
      * @type {number}
@@ -225,6 +282,14 @@ function createRelayServer(options = {}) {
     get port() {
       const address = wss.address();
       return typeof address === "object" && address !== null ? address.port : 0;
+    },
+
+    /**
+     * 实际监听地址（net.Server.address() 原样返回）
+     * @returns {Object|string|null} 地址信息
+     */
+    address() {
+      return wss.address();
     },
 
     /**
@@ -241,6 +306,9 @@ function createRelayServer(options = {}) {
      * @returns {Promise<void>}
      */
     close() {
+      if (heartbeat) {
+        clearInterval(heartbeat);
+      }
       for (const ws of wss.clients) {
         ws.terminate();
       }

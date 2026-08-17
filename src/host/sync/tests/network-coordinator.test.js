@@ -172,6 +172,7 @@ describe("网络协调器", () => {
 
   test("双端基本同步：增、改、撤销跨端收敛", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1");
     const b = await connectEnd("b", server.port, "board-1");
     ends = [a, b];
@@ -213,6 +214,7 @@ describe("网络协调器", () => {
 
   test("毒记录不阻塞房间：不可反序列化载荷降级跳过，后续同步照常", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1");
     const b = await connectEnd("b", server.port, "board-1");
     ends = [a, b];
@@ -253,6 +255,7 @@ describe("网络协调器", () => {
 
   test("并发创建：两端各自新增后互见对方对象", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1");
     const b = await connectEnd("b", server.port, "board-1");
     ends = [a, b];
@@ -273,6 +276,7 @@ describe("网络协调器", () => {
 
   test("迟到加入经 INIT 全量收敛", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1");
     ends = [a];
     await createStroke(a.api, "a/1", 0);
@@ -290,6 +294,7 @@ describe("网络协调器", () => {
 
   test("乱序记录经容忍窗缓冲整理", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1", {
       windowMs: 100,
     });
@@ -320,6 +325,7 @@ describe("网络协调器", () => {
 
   test("持续乱序超窗后请求全量", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1", {
       windowMs: 50,
       maxWindows: 2,
@@ -345,6 +351,7 @@ describe("网络协调器", () => {
 
   test("AOM 远程活动跨端互斥：远程 choose 锁定、unchoose 解锁", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1");
     const b = await connectEnd("b", server.port, "board-1");
     ends = [a, b];
@@ -380,6 +387,7 @@ describe("网络协调器", () => {
 
   test("命名选择经中继同步：choose 事件携带 choice", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1");
     const b = await connectEnd("b", server.port, "board-1");
     ends = [a, b];
@@ -410,6 +418,7 @@ describe("网络协调器", () => {
 
   test("awareness 消息经中继 volatile 转发，不进日志", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     /** @type {Object[]} */
     const received = [];
     const a = await connectEnd("a", server.port, "board-1");
@@ -439,6 +448,7 @@ describe("网络协调器", () => {
 
   test("手势 amend 流经 volatile 通道跨端到达（mol 预览）", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     /** @type {Object[]} */
     const received = [];
     const a = await connectEnd("a", server.port, "board-1");
@@ -502,6 +512,7 @@ describe("网络协调器", () => {
 
   test("创建中对象的 amend 流跨端到达（创建预览）", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     /** @type {Object[]} */
     const received = [];
     const a = await connectEnd("a", server.port, "board-1");
@@ -565,6 +576,7 @@ describe("网络协调器", () => {
 
   test("摘要分歧触发全量重建请求", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1");
     ends = [a];
 
@@ -586,6 +598,7 @@ describe("网络协调器", () => {
 
   test("效果层分歧经 digest 校验和发现并自愈", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1", {
       digestIntervalMs: 50,
     });
@@ -615,6 +628,7 @@ describe("网络协调器", () => {
 
   test("断线触发 onDisconnect 且清理订阅，主动 close 不触发", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     let disconnects = 0;
     const a = await connectEnd("a", server.port, "board-1", {
       onDisconnect: () => {
@@ -649,6 +663,7 @@ describe("网络协调器", () => {
 
   test("离线编辑与重连合并：双端离线增删改撤销后收敛", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1");
     const b = await connectEnd("b", server.port, "board-1");
     ends = [a, b];
@@ -677,6 +692,7 @@ describe("网络协调器", () => {
 
     // 中继恢复，双端重连（新实例）
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const port = server.port;
     ends = [
       { ...a, coordinator: await reconnectEnd(a, port, "board-1") },
@@ -712,6 +728,7 @@ describe("网络协调器", () => {
 
   test("重连后 AOM 远程选择经重广播重建", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1");
     const b = await connectEnd("b", server.port, "board-1");
     ends = [a, b];
@@ -742,6 +759,7 @@ describe("网络协调器", () => {
 
     // 中继恢复重连：b 重广播持有，a 端重建（名字保留）
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const port = server.port;
     ends = [
       { ...a, coordinator: await reconnectEnd(a, port, "board-1") },
@@ -759,6 +777,7 @@ describe("网络协调器", () => {
 
   test("增量 INIT：respond-init 仅携带 lastSeen 之后的缺口记录", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1");
     ends = [a];
 
@@ -783,6 +802,7 @@ describe("网络协调器", () => {
 
   test("未闭合分子清单对账 + amend 重放重建进行时视图", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1");
     ends = [a];
 
@@ -821,6 +841,7 @@ describe("网络协调器", () => {
 
   test("对账只补对端 seq 之后的 amend 段（已持 begin 不重发）", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const a = await connectEnd("a", server.port, "board-1");
     ends = [a];
 

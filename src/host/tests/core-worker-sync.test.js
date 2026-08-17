@@ -147,6 +147,7 @@ describe("CoreWorker 同步接线", () => {
 
   test("createBoard 携带 syncUrl 时连接中继并与对等端互相同步", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const host = new FakeWorkerHost();
     const runtime = new CoreWorkerRuntime(host);
     runtime.start();
@@ -195,6 +196,7 @@ describe("CoreWorker 同步接线", () => {
 
   test("中继断线后自动重连并补齐离线期间的操作", async () => {
     server = createRelayServer({ port: 0 });
+    await server.ready;
     const host = new FakeWorkerHost();
     const runtime = new CoreWorkerRuntime(host);
     runtime.start();
@@ -218,6 +220,7 @@ describe("CoreWorker 同步接线", () => {
 
     // 中继在原地址恢复：worker 每 3s 自动重连，增量补发离线记录
     server = createRelayServer({ port });
+    await server.ready;
     const peer2 = await connectPeer("peer", port);
     peers.push(peer2);
     // 重连后 peer 端重新加入同一房间并请求增量（worker 响应后补齐）；
@@ -287,6 +290,7 @@ describe("CoreWorker 同步接线", () => {
     const restoreCanvas = installNoopOffscreenCanvas();
     try {
       server = createRelayServer({ port: 0 });
+      await server.ready;
       const host = new FakeWorkerHost();
       const runtime = new CoreWorkerRuntime(host);
       runtime.start();
