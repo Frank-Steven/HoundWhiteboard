@@ -126,7 +126,7 @@ flowchart BT
 
 ### `host/sync/`
 
-- `network-coordinator.js`：BoardApi 的同步宿主薄包装——本地操作经中继广播，远程记录经延迟容忍窗接入 `applyRemoteOperations`；周期 digest（`{logSize, head, objects, stateHash, openMols}`）比对、openMols 对账，stateHash 分歧经 `repairStateFromLog` 自愈
+- `network-coordinator.js`：BoardApi 的同步宿主薄包装——本地操作经中继广播，远程记录经延迟容忍窗接入 `applyRemoteOperations`；周期 digest（`{logSize, head, objects, chainHash, stateHash, fullResidency, openMols}`）比对、openMols 对账，chainHash 分歧请求全量重建，stateHash 分歧（仅两端全量驻留时可比）经 `repairStateFromLog` 自愈
 - `relay-server.js`：按板房间组织的 WebSocket 无状态中继（成员管理、消息转发、INIT 定向），不缓存任何记录
 - `amend-forwarder.js`：订阅内核分子生命周期 amend 事件，begin/end/abort 即时转发，中间帧节流合批后经协调器 volatile 通道广播
 - `start-relay.js`：中继启动入口（`node src/host/sync/start-relay.js [端口]`）

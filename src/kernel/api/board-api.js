@@ -1612,9 +1612,10 @@ class BoardApi {
 
   /**
    * 计算对象状态的确定性校验和
-   * @description 口径为对象数据（按 id 排序的 serialize JSON）与 trash 条目；不含 AOM
-   * 成员身份与区块层序（各端已载区块集随视口不同，纳入会误报）。供同步 digest 发现
-   * 效果层分歧（日志一致但效果未放全）。
+   * @description 口径为**已驻留**对象数据（按 id 排序的 serialize JSON）与 trash 条目；不含 AOM
+   * 成员身份与区块层序（各端已载区块集随视口不同，纳入会误报）。只在全量驻留端
+   * （`boardCore.isFullResidency()`）之间可比：部分驻留端的已载集合随视口漂移，跨端比对必误报。
+   * 供同步 digest 发现效果层分歧（日志一致但效果未放全）。
    * @returns {string} 状态校验和
    */
   queryStateHash() {
@@ -1635,11 +1636,28 @@ class BoardApi {
   }
 
   /**
+   * 计算活动链的确定性校验和
+   * @description 口径为活动链全部节点的成员记录 id 序列（链序）。活动链是 f(日志) 的派生态，
+   * 与对象驻留无关，任意两端在日志一致时可比：链校验和分歧说明本地树的派生与对端不一致。
+   * @returns {string} 活动链校验和
+   */
+  queryChainHash() {
+    const parts = [];
+    for (const node of this.#boardCore.undoTree.getActiveChain()) {
+      for (const id of node.memberIds) {
+        parts.push(id);
+      }
+    }
+    return hashString(parts.join(""));
+  }
+
+  /**
    * 从本端日志重放派生对象状态并对齐活体（效果层分歧自愈）
    * @description 正确性定义为「对象状态 == f(日志)」：scratch 核心按日志序纯增量重放全部
    * 记录得到派生态（undo/redo/折叠随回放自然呈现，永不触发重建），与活体逐对象比对后以
    * remove+add 对齐（addObjectEffect 自带区块落座与层序，绕开跨区块重排位问题），trash 全量
    * 对齐，层位边逐已载区块比对重写（digest 口径不含层序，边级分歧借此通道自愈）。
+   * 派生态多出但经卸载路径合法离场（驻留驱逐）的对象不补回内存（部分驻留硬约束，保住 chunkUnload）。
    * 本地有未闭合分子时活体合法偏离派生态（amend 实时改实例），拒绝修复并待下轮；
    * 含本地活动对象的区块层位同样合法偏离，跳过对齐。
    * @returns {{ repaired: boolean, fixedIds: string[] }} 修复结果；repaired=false 表示被门拒绝或无分歧
@@ -1678,6 +1696,9 @@ class BoardApi {
       fixedIds.push(live.id);
     }
     for (const obj of derived.values()) {
+      // 部分驻留硬约束：经卸载路径合法离场的对象不补回内存（保住 chunkUnload）；
+      // 效果缺失（非驱逐）照常补回。digest 通道已按全量驻留门控，本约束兜底直接调用（RPC 面）
+      if (boardCore.isObjectEvicted(obj.id)) continue;
       this.#addObjectEffect(
         { objectId: obj.id, data: obj.serialize() },
         affectedChunks,

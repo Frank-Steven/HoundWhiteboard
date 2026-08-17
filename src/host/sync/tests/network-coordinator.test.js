@@ -626,6 +626,58 @@ describe("网络协调器", () => {
     expect(b.boardCore.getObjectById("a/1").position.x).toBe(5);
   });
 
+  test("派生链校验和分歧触发全量重建请求", async () => {
+    server = createRelayServer({ port: 0 });
+    await server.ready;
+    const a = await connectEnd("a", server.port, "board-1");
+    ends = [a];
+
+    const raw = await connectRawClient(server.port, "board-1", "watcher");
+    raw.send({
+      type: "digest",
+      digest: {
+        logSize: a.boardCore.operationLog.size,
+        head: a.boardCore.undoTree.head?.shareId ?? null,
+        chainHash: "bogus-chain-hash",
+        fullResidency: false,
+        objects: 0,
+      },
+    });
+    await until(
+      () => raw.messages.some((m) => m.type === "request-init"),
+      "链校验和分歧触发 request-init",
+    );
+    await raw.close();
+  });
+
+  test("部分驻留端跳过内容校验和比对：不误报、不物化、不请求全量", async () => {
+    server = createRelayServer({ port: 0 });
+    await server.ready;
+    const a = await connectEnd("a", server.port, "board-1", {
+      digestIntervalMs: 50,
+    });
+    const b = await connectEnd("b", server.port, "board-1", {
+      digestIntervalMs: 50,
+    });
+    ends = [a, b];
+
+    await createStroke(a.api, "a/1", 5);
+    await until(() => b.boardCore.getObjectById("a/1") != null, "b 收到 a/1");
+
+    // b 端模拟区块卸载 → 部分驻留：两端内容校验和必然不同（旧行为会每轮误报并全量物化）
+    const chunkId = [...b.boardCore.chunkLoaded.keys()][0];
+    b.boardCore.chunkLoaded.get(chunkId).fullLoadedCount = 0;
+    b.boardCore.getChunkById(chunkId).isLoad = false;
+    b.boardCore.unloadChunkObjectEntries(chunkId);
+    expect(b.boardCore.isFullResidency()).toBe(false);
+    expect(a.api.queryStateHash()).not.toBe(b.api.queryStateHash());
+
+    // 多轮 digest 后：不触发修复（对象不回内存），两端日志仍一致（未触发全量重建）
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(b.boardCore.getObjectById("a/1") == null).toBe(true);
+    expect(logIds(a.boardCore).sort()).toEqual(logIds(b.boardCore).sort());
+  });
+
   test("断线触发 onDisconnect 且清理订阅，主动 close 不触发", async () => {
     server = createRelayServer({ port: 0 });
     await server.ready;

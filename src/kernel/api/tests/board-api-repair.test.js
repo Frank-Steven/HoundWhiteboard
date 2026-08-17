@@ -112,4 +112,41 @@ describe("日志重放自愈（效果层分歧修复）", () => {
     expect(A.api.queryObject("a/1").position).toEqual({ x: 500, y: 500 });
     A.api.endMol(molId);
   });
+
+  test("部分驻留：修复不把覆盖区块未载的对象补回内存（保住 chunkUnload）", async () => {
+    const A = createEnd("a");
+    await createStaticStroke(A.api, "a/1");
+    expect(A.boardCore.isFullResidency()).toBe(true);
+
+    // 模拟区块卸载：引用计数归零 + 标记卸载后移除对象实例 → 部分驻留
+    const chunkId = [...A.boardCore.chunkLoaded.keys()][0];
+    A.boardCore.chunkLoaded.get(chunkId).fullLoadedCount = 0;
+    A.boardCore.getChunkById(chunkId).isLoad = false;
+    A.boardCore.unloadChunkObjectEntries(chunkId);
+    expect(A.boardCore.getObjectById("a/1")).toBeUndefined();
+    expect(A.boardCore.isFullResidency()).toBe(false);
+
+    const result = A.api.repairStateFromLog();
+    // a/1 的覆盖区块未载：不补回内存，等区块重载时走正常驻留路径
+    expect(A.boardCore.getObjectById("a/1")).toBeUndefined();
+    expect(result.fixedIds).not.toContain("a/1");
+  });
+});
+
+describe("活动链校验和（驻留无关）", () => {
+  test("链校验和随活动链变化，对象驻留变化不影响", async () => {
+    const A = createEnd("a");
+    const B = createEnd("b");
+    await createStaticStroke(A.api, "a/1");
+    B.api.applyRemoteOperations(A.boardCore.operationLog.toJSON());
+    expect(A.api.queryChainHash()).toBe(B.api.queryChainHash());
+
+    // 对象实例离场（驻留变化）不影响链校验和
+    A.boardCore.objectLoaded.delete("a/1");
+    expect(A.api.queryChainHash()).toBe(B.api.queryChainHash());
+
+    // 撤销改变活动链：校验和变化（与内容校验和无关的独立口径）
+    A.api.undo();
+    expect(A.api.queryChainHash()).not.toBe(B.api.queryChainHash());
+  });
 });

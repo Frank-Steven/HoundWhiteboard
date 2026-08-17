@@ -322,18 +322,21 @@ function createNetworkCoordinator(options) {
 
   /**
    * 计算本端状态摘要
-   * @returns {{logSize: number, head: ?string, objects: number, stateHash: string, openMols: number}} 摘要
+   * @returns {{logSize: number, head: ?string, objects: number, chainHash: string, stateHash: string, fullResidency: boolean, openMols: number}} 摘要
    */
   const localDigest = () => ({
     logSize: log.size,
     head: boardCore.undoTree.head?.shareId ?? null,
     objects: boardCore.getAllObjects().length,
+    chainHash: boardApi.queryChainHash(),
     stateHash: boardApi.queryStateHash(),
+    fullResidency: boardCore.isFullResidency(),
     openMols: boardApi.queryOpenMols().length,
   });
 
   /**
-   * 处理远程摘要：落后或同长分歧时请求全量重建；日志与 HEAD 一致但状态校验和分歧时本地自愈
+   * 处理远程摘要：落后或同长分歧时请求全量重建；日志与 HEAD 一致但派生链校验和分歧时
+   * 请求全量重建自愈；两端均全量驻留且内容校验和分歧时本地重放修复
    * @param {Object} digest - 远程摘要
    * @returns {void}
    */
@@ -348,9 +351,23 @@ function createNetworkCoordinator(options) {
       sendRequestInit();
       return;
     }
-    // 效果层分歧（日志逐字节一致但效果未放全）：f(日志) 确定，本地重放即得正确状态；
+    // 派生链分歧（日志逐字节一致但树派生不一致）：f(日志) 确定，全量重建自愈
+    if (
+      typeof digest.chainHash === "string" &&
+      digest.logSize === local.logSize &&
+      digest.head === local.head &&
+      digest.chainHash !== local.chainHash
+    ) {
+      sendRequestInit();
+      return;
+    }
+    // 效果层分歧（日志逐字节一致但效果未放全）：内容校验和口径为已驻留对象，
+    // 仅两端均全量驻留时可比（部分驻留端已载集合随视口漂移，比对必误报并引发
+    // 「全量物化 → 卸载 → 再误报」循环）；f(日志) 确定，本地重放即得正确状态；
     // 任一端有未闭合分子时活体合法偏离派生态，跳过本轮比对
     if (
+      digest.fullResidency === true &&
+      local.fullResidency &&
       typeof digest.stateHash === "string" &&
       digest.logSize === local.logSize &&
       digest.head === local.head &&

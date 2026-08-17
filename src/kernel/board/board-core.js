@@ -537,6 +537,8 @@ class BoardCore {
       obj,
       loadedCount,
     });
+    // 实例回到内存：解除驻留驱逐标记
+    this.#evictedObjectIds.delete(obj.id);
 
     return obj;
   }
@@ -683,6 +685,33 @@ class BoardCore {
   }
 
   /**
+   * 驻留驱逐标记：经卸载路径（chunkUnload）离场的对象 id
+   * @description 「合法缺失」的唯一形态：静态图对象只有经卸载路径离场才不算驻留缺失；
+   * 效果缺失（add 效果未放全）不在此列，仍属全量驻留口径下的可比对分歧。注册实例时解除。
+   * @type {Set<string>}
+   */
+  #evictedObjectIds = new Set();
+
+  /**
+   * 对象是否处于驻留驱逐状态（经卸载路径合法离场）
+   * @param {string} objectId - 对象 id
+   * @returns {boolean} 是否被驱逐
+   */
+  isObjectEvicted(objectId) {
+    return this.#evictedObjectIds.has(objectId);
+  }
+
+  /**
+   * 是否全量驻留（无经卸载路径的合法缺失）
+   * @description 内容校验和（对象数据口径）只在全量驻留端之间可比；
+   * 部分驻留端（chunkUnload 驱逐了对象实例）跳过内容比对，避免「误报 → 全量物化 → 卸载 → 再误报」循环。
+   * @returns {boolean} 是否全量驻留
+   */
+  isFullResidency() {
+    return this.#evictedObjectIds.size === 0;
+  }
+
+  /**
    * 根据区块当前加载状态同步其对象 loadedCount，并清理失活对象
    * @param {Chunk | number} chunkOrId - 区块实例或区块 id
    * @returns {Promise<void>}
@@ -723,6 +752,8 @@ class BoardCore {
         !this.activeObjectManager?.isRemoteActive?.(objectId)
       ) {
         this.objectLoaded.delete(objectId);
+        // 经卸载路径离场：登记驻留驱逐（「合法缺失」，内容校验和比对因此豁免）
+        this.#evictedObjectIds.add(objectId);
       }
     }
   }
@@ -1038,6 +1069,8 @@ class BoardCore {
       !this.activeObjectManager?.isRemoteActive?.(objectId)
     ) {
       this.objectLoaded.delete(objectId);
+      // 经卸载路径离场：登记驻留驱逐（「合法缺失」，内容校验和比对因此豁免）
+      this.#evictedObjectIds.add(objectId);
     }
   }
 }

@@ -121,7 +121,7 @@ pickup（选择对象）与 commit（取消选择、提交）作为事件经可�
 
 - **可靠通道** — 分子 / 超分子操作记录（含 close-supra）与 AOM 活动事件的广播已落地；HEAD 更改（move-head）尚无生产端与应用入口（树应用对 move-head 记录抛错），待落地。[todo]
 - **不可靠通道** — amend 通道（分子中间帧预览：begin-mol / amend / end-mol / abort-mol，33ms 合批、只画不存）、光标等 awareness（volatile：可丢、不进日志）。
-- **定期状态摘要（digest）兜底** — 30s 周期互换 `{logSize, head, objects, stateHash, openMols}`，修补丢包造成的分歧：对端 logSize 领先或同长而 head 分歧时请求全量；stateHash 分歧（日志逐字节一致但效果未放全）经 `repairStateFromLog` 本地重放自愈——f(日志) 确定，重放即得正确状态；repair 同时逐已载区块比对并重写层位边（stateHash 口径不含层序——各端已载区块集随视口不同，纳入会误报——边级分歧借此通道随 repair 触发愈合，无独立发现通道）；任一端 openMols > 0（有未闭合分子，活体合法偏离派生态）时跳过本轮比对。
+- **定期状态摘要（digest）兜底** — 30s 周期互换 `{logSize, head, objects, chainHash, stateHash, fullResidency, openMols}`，修补丢包造成的分歧：对端 logSize 领先或同长而 head 分歧时请求全量；chainHash 分歧（日志逐字节一致但树派生不一致）请求全量自愈；stateHash 分歧（日志逐字节一致但效果未放全；已驻留对象口径，仅两端全量驻留时可比）经 `repairStateFromLog` 本地重放自愈——f(日志) 确定，重放即得正确状态；repair 同时逐已载区块比对并重写层位边（stateHash 口径不含层序——各端已载区块集随视口不同，纳入会误报——边级分歧借此通道随 repair 触发愈合，无独立发现通道）；任一端 openMols > 0（有未闭合分子，活体合法偏离派生态）时跳过本轮比对。
 - **新用户加入** — INIT 握手（request-init / respond-init）：携带 lastSeen 摘要（本端各来源最大操作序号）时按缺口增量回应，无 lastSeen 时全量回应；容忍窗连续超窗未补齐自动转全量。超时回退持久化存储拉取待实现。[todo]
 
 ### 同步边界

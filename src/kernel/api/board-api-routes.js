@@ -347,6 +347,14 @@ const BOARD_API_ROUTES = {
   },
 
   /**
+   * 计算活动链的确定性校验和（驻留无关，同步 digest 用）
+   */
+  queryChainHash: {
+    invoke: (api) => api.queryChainHash(),
+    flush: "none",
+  },
+
+  /**
    * 从本端日志重放派生对象状态并对齐活体（效果层分歧自愈）
    */
   repairStateFromLog: {

@@ -444,7 +444,9 @@ async function startBoardDaemonLocked(options) {
     logSize: session.boardCore.operationLog.size,
     head: session.boardCore.undoTree.head?.shareId ?? null,
     objects: session.boardCore.getAllObjects().length,
+    chainHash: session.api.queryChainHash(),
     stateHash: session.api.queryStateHash(),
+    fullResidency: session.boardCore.isFullResidency(),
     openMols: session.api.queryOpenMols().length,
   });
 
@@ -483,6 +485,22 @@ async function startBoardDaemonLocked(options) {
       return;
     }
     if (digest.logSize === local.logSize && digest.head !== local.head) {
+      ws.send(
+        JSON.stringify({
+          type: "request-init",
+          source,
+          openMols: session.api.queryOpenMols(),
+        }),
+      );
+      return;
+    }
+    // 派生链分歧（日志逐字节一致但树派生不一致）：请求全量重建自愈
+    if (
+      typeof digest.chainHash === "string" &&
+      digest.logSize === local.logSize &&
+      digest.head === local.head &&
+      digest.chainHash !== local.chainHash
+    ) {
       ws.send(
         JSON.stringify({
           type: "request-init",

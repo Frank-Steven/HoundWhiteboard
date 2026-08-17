@@ -117,7 +117,7 @@ sequenceDiagram
   Note over B: 乱序记录入缓冲，500ms 窗×3 仍未补齐<br/>→ 广播 request-init 全量兜底
 ```
 
-- **周期摘要**：30s 广播 `{logSize, head, objects, stateHash, openMols}`；落后或同长分歧时 request-init（全量重建兜底）。日志与 HEAD 一致但 stateHash 分歧为效果层分歧（记录都在但效果未放全）：f(日志) 确定，分歧端经 `repairStateFromLog` 本地重放日志对齐活体（remove+add 按派生态重落座，trash 全量对齐，层位边逐已载区块比对重写），无需额外传输通道；任一端 openMols > 0（手势在途，活体合法偏离派生态）时跳过本轮比对。校验和口径为对象数据与 trash，不含区块层序（各端已载区块集随视口懒加载不同，纳入会误报；边级分歧随 repair 触发愈合）。
+- **周期摘要**：30s 广播 `{logSize, head, objects, chainHash, stateHash, fullResidency, openMols}`；落后或同长分歧时 request-init（全量重建兜底）。日志与 HEAD 一致但 chainHash 分歧为派生链分歧（树派生与对端不一致）：request-init 全量重建自愈。日志与 HEAD 一致但 stateHash 分歧为效果层分歧（记录都在但效果未放全）：f(日志) 确定，分歧端经 `repairStateFromLog` 本地重放日志对齐活体（remove+add 按派生态重落座，trash 全量对齐，层位边逐已载区块比对重写），无需额外传输通道；stateHash 口径为**已驻留**对象数据与 trash，仅两端均全量驻留（`fullResidency`）时可比——部分驻留端已载集合随视口漂移，跳过内容比对与修复（避免「误报 → 全量物化 → 卸载 → 再误报」循环），repair 也不把经卸载路径合法离场的对象补回内存；任一端 openMols > 0（手势在途，活体合法偏离派生态）时跳过本轮比对。校验和不含区块层序（各端已载区块集随视口懒加载不同，纳入会误报；边级分歧随 repair 触发愈合）。
 - **断线清理**：peer-left 到达时清除该来源的远程活动登记（解锁其选择的对象）。
 
 ### 连接生命周期

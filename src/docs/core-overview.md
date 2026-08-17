@@ -61,7 +61,7 @@ Worker 层负责真正的数据与渲染权威：
 - `kernel/hit/`：操作日志与时间回溯树（撤销/重做权威）
 - `kernel/store/`：会话存储（日志跟随者增量落盘与会话恢复）
 - `renderers/canvas/`：`ViewportRenderer` 与 Worker 侧脏区绘制
-- `host/sync/`：协作同步（`network-coordinator` 协调器、`relay-server` 无状态中继、`amend-forwarder` amend 转发）；周期 digest（`{logSize, head, objects, stateHash, openMols}`）与 openMols 对账，stateHash 分歧经 `repairStateFromLog` 效果层自愈
+- `host/sync/`：协作同步（`network-coordinator` 协调器、`relay-server` 无状态中继、`amend-forwarder` amend 转发）；周期 digest（`{logSize, head, objects, chainHash, stateHash, fullResidency, openMols}`）与 openMols 对账，chainHash 分歧请求全量重建，stateHash 分歧（仅两端全量驻留时可比）经 `repairStateFromLog` 效果层自愈
 
 ### Kernel 层
 
@@ -149,7 +149,7 @@ sequenceDiagram
     A->>R: 本地 commit → 操作记录广播
     R->>B: 转发记录
     B->>B: 500ms 延迟容忍窗内接入 applyRemoteOperations
-    A->>R: 30s 周期 digest（{logSize, head, objects, stateHash, openMols}）
+    A->>R: 30s 周期 digest（{logSize, head, objects, chainHash, stateHash, fullResidency, openMols}）
     R->>B: 转发 digest
     B->>B: stateHash 比对
     alt 分歧
@@ -157,7 +157,7 @@ sequenceDiagram
     end
 ```
 
-本地操作 commit 后经中继广播；对端在 500ms 延迟容忍窗内把远程记录接入 `applyRemoteOperations`（窗内乱序按确定性定序吸收）。每 30s 周期交换 digest 对账，`stateHash` 分歧时经 `repairStateFromLog` 从本端日志重放派生状态并对齐活体（效果层修复，不改写日志）。
+本地操作 commit 后经中继广播；对端在 500ms 延迟容忍窗内把远程记录接入 `applyRemoteOperations`（窗内乱序按确定性定序吸收）。每 30s 周期交换 digest 对账，`chainHash`（活动链校验和，驻留无关）分歧时请求全量重建；`stateHash`（已驻留对象口径，仅两端全量驻留时可比）分歧时经 `repairStateFromLog` 从本端日志重放派生状态并对齐活体（效果层修复，不改写日志）。
 
 ## 当前实现状态
 
@@ -180,7 +180,7 @@ sequenceDiagram
 - **choice（命名选择）**：活动对象的命名分组，跨端以 `"{source}/{choice}"` 区分同名 choice
 - **分子 / 超分子**：手势高频写的记录单位（`beginMol` / `amendMol` / `endMol` / `abortMol`）与会话归组单位（`supraId`，`close-supra` 折叠）
 - **层位边**：对象操作记录与 trash 条目携带的 `below` / `above` 前驱后继，回图与回放的层位依据
-- **digest / 自愈**：协作对账摘要 `{logSize, head, objects, stateHash, openMols}`，分歧经 `repairStateFromLog` 效果层自愈
+- **digest / 自愈**：协作对账摘要 `{logSize, head, objects, chainHash, stateHash, fullResidency, openMols}`，chainHash 分歧请求全量重建，stateHash 分歧经 `repairStateFromLog` 效果层自愈
 
 ## 相关文档
 
