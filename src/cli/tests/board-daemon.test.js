@@ -195,6 +195,7 @@ describe("板 daemon", () => {
 
   test("daemon 连中继：CLI 操作与协作端实时互见", async () => {
     const relay = createRelayServer({ port: 0 });
+    await relay.ready;
     const relayUrl = `ws://127.0.0.1:${relay.port}`;
     const { dir, cleanup } = await tempBoard();
     const daemon = await startBoardDaemon({
@@ -407,6 +408,7 @@ describe("板 daemon", () => {
   test("daemon 先于中继启动：自动重连后参与协作", async () => {
     // 先占一个空闲端口再释放，模拟中继未启动
     const probe = createRelayServer({ port: 0 });
+    await probe.ready;
     const port = probe.port;
     await probe.close();
 
@@ -423,6 +425,7 @@ describe("板 daemon", () => {
     try {
       // 中继后启动，daemon 应在重试周期内自动连上
       const relay = createRelayServer({ port });
+      await relay.ready;
       try {
         await waitFor(() => relay.roomSize("room") >= 1, 15000);
 

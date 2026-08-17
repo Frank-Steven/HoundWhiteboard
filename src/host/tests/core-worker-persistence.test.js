@@ -6,7 +6,7 @@
 
 import { CoreWorkerRuntime } from "../core-worker.js";
 import { createMemoryDriver } from "../../io/driver/memory.js";
-import { startBoardDaemon } from "../../cli/board-daemon.js";
+import { startBoardDaemon, readDaemonDescriptor } from "../../cli/board-daemon.js";
 import { openBoardSession } from "../../cli/board-session.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -426,5 +426,74 @@ describe("CoreWorker 持久化接线", () => {
 
     const ioInvokes = host.postedMessages.filter((m) => m.type === "io-invoke");
     expect(ioInvokes).toHaveLength(0);
+  });
+
+  test("attach 既有 daemon 时 destroyBoard 不 release（他人 daemon 不误杀）", async () => {
+    // setup() 的 mock 盘预置 .daemon.json：spawn 前探测命中活 daemon → attach，不记 ownership
+    const { host, handler, daemon } = await setup();
+    try {
+      await rpcCall(host, handler, "destroyBoard");
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      // 未发 release：daemon 描述保留、进程仍活（创建者引用不归本端）
+      expect(await readDaemonDescriptor(daemon.rootPath)).not.toBeNull();
+    } finally {
+      await daemon.close();
+      rmSync(daemon.rootPath, { recursive: true, force: true });
+    }
+  });
+
+  test("本端 spawn 的 daemon 在 destroyBoard 时自动 release（引用归零自退出）", async () => {
+    const host = new FakeWorkerHost();
+    const runtime = new CoreWorkerRuntime(host);
+    runtime.start();
+    const { handler: baseHandler, driver } = createMemoryCommandHandler();
+    const boardDir = mkdtempSync(path.join(tmpdir(), "hwb-worker-spawn-"));
+    const session = await openBoardSession(boardDir, {
+      create: true,
+      width: 800,
+      height: 600,
+    });
+    await session.flush();
+    await session.close();
+    // 模拟 GUI spawn 的 daemon：归零只清理不退出（进程退出会杀掉测试进程）
+    const daemon = await startBoardDaemon({
+      name: "worker-spawn-test",
+      rootPath: boardDir,
+      source: "worker-spawn-test",
+      exitOnZero: false,
+    });
+    // mock 盘不预置 .daemon.json：spawn 前探测无活 daemon → 记 ownership；
+    // spawn 处理器模拟 Rust 就绪（写描述并返回新实例）
+    const handler = async (command, args) => {
+      if (command === "spawn_board_daemon") {
+        await driver.write(
+          "mem",
+          ".daemon.json",
+          JSON.stringify({
+            name: daemon.name,
+            port: daemon.port,
+            source: "worker-spawn-test",
+          }),
+        );
+        return { name: daemon.name, port: daemon.port };
+      }
+      return baseHandler(command, args);
+    };
+    try {
+      await rpcCall(host, handler, "createBoard", {
+        width: 800,
+        height: 600,
+        rootPath: "/boards/spawned",
+      });
+      // destroy：协作 WS 断开（clientRefs 归零）+ release（ownerRefs 归零）→ daemon 自动关闭
+      await rpcCall(host, handler, "destroyBoard");
+      const gone = await waitFor(
+        async () => (await readDaemonDescriptor(boardDir)) === null,
+      );
+      expect(gone).toBe(true);
+    } finally {
+      await daemon.close();
+      rmSync(boardDir, { recursive: true, force: true });
+    }
   });
 });

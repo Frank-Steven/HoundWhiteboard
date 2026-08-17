@@ -25,6 +25,84 @@ import path from "node:path";
 /** daemon 描述文件名（写在板目录下，标记板被哪个 daemon 持有） */
 const DAEMON_FILE = ".daemon.json";
 
+/** daemon 启动锁文件名（写在板目录下，护住启动窗口，内容为持有者 pid） */
+const START_LOCK_FILE = ".daemon-start.lock";
+
+/** 启动锁最大抢锁次数（含 stale 锁回收重试） */
+const START_LOCK_MAX_ATTEMPTS = 3;
+
+/**
+ * 判定 pid 是否存活
+ * @param {number} pid - 进程号
+ * @returns {boolean} 是否存活（EPERM 视为存活：进程在但无权发信号）
+ */
+function isPidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code === "EPERM";
+  }
+}
+
+/**
+ * 读启动锁文件中的持有者 pid
+ * @param {string} lockPath - 锁文件路径
+ * @returns {Promise<number|null>} pid；文件缺失或内容非法时为 null
+ */
+async function readStartLockPid(lockPath) {
+  try {
+    const text = await fs.readFile(lockPath, "utf-8");
+    const pid = Number.parseInt(text.trim(), 10);
+    return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 抢 daemon 启动锁（板目录 .daemon-start.lock，O_EXCL 创建，内容为持有者 pid）
+ * @param {string} rootPath - 板目录
+ * @returns {Promise<() => Promise<void>>} 释放函数（幂等）
+ * @throws {Error} 锁被活进程持有、或多次回收 stale 锁后仍被占用时
+ *
+ * @description
+ * 锁只护「占用检查 → 写 .daemon.json → 写注册表」启动窗口：两个进程同时 start
+ * 同一板目录时只有一个能进入，另一个报错；启动完成后的互斥由既有存活探测承担。
+ * 锁已存在时读 pid 判活：活进程（含 EPERM）拒绝启动；死 pid（ESRCH）或内容
+ * 不可读按崩溃残留的 stale 锁处理，回收后重试。
+ */
+async function acquireStartLock(rootPath) {
+  const lockPath = path.join(rootPath, START_LOCK_FILE);
+  for (let attempt = 0; attempt < START_LOCK_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      await fs.writeFile(lockPath, String(process.pid), { flag: "wx" });
+      let released = false;
+      return async () => {
+        if (released) return;
+        released = true;
+        await fs.rm(lockPath, { force: true });
+      };
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      let holderPid = await readStartLockPid(lockPath);
+      if (holderPid === null) {
+        // 持有者刚创建锁尚未写入 pid 的窗口：稍候重读一次再按 stale 处理
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        holderPid = await readStartLockPid(lockPath);
+      }
+      if (holderPid !== null && isPidAlive(holderPid)) {
+        throw new Error(
+          `另一进程（pid ${holderPid}）正在启动该板目录的 daemon，请稍后重试。`,
+        );
+      }
+      // stale 锁（持有进程已死或内容不可读）：回收后重试
+      await fs.rm(lockPath, { force: true });
+    }
+  }
+  throw new Error("daemon 启动锁竞争失败（回收 stale 锁后仍被占用）。");
+}
+
 /**
  * 创建串行任务队列
  * @returns {{enqueue: Function, drain: Function}} 队列操作面
@@ -92,8 +170,30 @@ async function readDaemonDescriptor(rootPath) {
  * 启动后登记注册表（~/.hound-whiteboard/daemons/<name>.json）并在板目录写入
  * `.daemon.json`（name/pid/port/source/boardId）。name 与存活 daemon 重复、
  * 板目录已被其它活 daemon 持有时拒绝启动。
+ *
+ * 启动全程持有板目录启动锁（.daemon-start.lock），「占用检查 → 写 .daemon.json →
+ * 写注册表」窗口内两个并发 start 只有一个能进入；所有退出路径（含中途失败）都释放锁。
  */
 async function startBoardDaemon(options) {
+  const rootPath = options?.rootPath;
+  if (typeof rootPath !== "string" || rootPath.trim() === "") {
+    throw new Error("缺少板目录路径。");
+  }
+  const releaseStartLock = await acquireStartLock(rootPath);
+  try {
+    return await startBoardDaemonLocked(options);
+  } finally {
+    await releaseStartLock();
+  }
+}
+
+/**
+ * 持锁执行 daemon 启动（startBoardDaemon 的内层，调用方必须已持有启动锁）
+ * @param {Object} options - 启动选项（同 startBoardDaemon）
+ * @returns {Promise<{name: string, rootPath: string, port: number, source: string, close: Function}>} daemon 句柄
+ * @private
+ */
+async function startBoardDaemonLocked(options) {
   const name = options?.name;
   if (!isValidDaemonName(name)) {
     throw new Error(
@@ -625,4 +725,11 @@ async function handleRpcMessage(session, ws, data) {
   }
 }
 
-export { startBoardDaemon, readDaemonDescriptor, DAEMON_FILE, isDaemonAlive };
+export {
+  startBoardDaemon,
+  readDaemonDescriptor,
+  DAEMON_FILE,
+  START_LOCK_FILE,
+  acquireStartLock,
+  isDaemonAlive,
+};

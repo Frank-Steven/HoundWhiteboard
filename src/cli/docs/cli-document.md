@@ -20,7 +20,7 @@ daemon 进程内维护引用计数（创建者引用 1）：
 
 | 动作 | 计数 |
 |---|---|
-| `daemon start`（新创建）/ GUI 打开板时 spawn | 初始 1（创建者引用，需 release 释放） |
+| `daemon start`（新创建）/ GUI 打开板时 spawn | 初始 1（创建者引用，需 release 释放；GUI spawn 的由 GUI 销毁板时自动 release） |
 | `daemon start`（同名同板已存活，幂等） | +1（重复 start 是"增加持有"而非报错） |
 | GUI 长连接建立 / 断开 | +1 / -1 |
 | `hwb daemon release --name <名>` | -1；归零 → daemon 自动退出 |
@@ -40,14 +40,14 @@ hwb daemon stop --name board1            # 强制归零关闭
 ```
 
 - **后台启动**：`daemon start` 以 detached 子进程拉起 daemon 并等待就绪（注册表条目出现 + 端口可连通）后立即返回，终端可继续使用
-- **唯一性**：name 与存活 daemon 重复、板目录已被其它活 daemon 持有，均拒绝启动；僵尸条目（进程已死）可覆盖
+- **唯一性**：name 与存活 daemon 重复、板目录已被其它活 daemon 持有，均拒绝启动；僵尸条目（进程已死）可覆盖。启动窗口由板目录启动锁 `.daemon-start.lock` 互斥（O_EXCL 抢锁、持有者 pid 判活、死 pid 的 stale 锁自动回收），并发 start 只有一个进程能进入，启动完成后锁即释放
 - **板必须已存在**：先用 `create` 离线建板，再 `daemon start`
 - **强制关闭**：`daemon stop` 无条件关闭（排空 in-flight、落盘、清理板目录 `.daemon.json` 与注册表条目）
 - **中继**：daemon 连了中继（`--relay`）时，GUI 的操作经 daemon 桥接进 relay 房间，跨机协作端实时互见
 
 ### GUI 协作
 
-GUI 打开板时检测板目录 `.daemon.json`：有活 daemon 直接作为**协作客户端**（只读挂载板目录、本地 BoardCore 渲染、零写盘、经协作通道与 daemon 双向同步，落盘全在 daemon）；无活 daemon 则请求宿主进程 spawn 一个（name `gui-<板名>-<路径哈希>`，等就绪后连接）。GUI 关闭后 spawn 的 daemon 常驻（创建者引用保留），`daemon release` 才回收。本机端（CLI/TUI/MCP/GUI）之间不走 relay；relay 只承载跨机协作。
+GUI 打开板时检测板目录 `.daemon.json`：有活 daemon 直接作为**协作客户端**（只读挂载板目录、本地 BoardCore 渲染、零写盘、经协作通道与 daemon 双向同步，落盘全在 daemon）；无活 daemon 则请求宿主进程 spawn 一个（name `gui-<板名>-<路径哈希>`，等就绪后连接）。GUI 销毁板时若本端是该 daemon 的 spawn 创建者（本次会话内经宿主 spawn 成功的新实例），断开协作通道后自动发 `daemon release` 回收创建者引用，无其他引用时 daemon 随即自动退出；attach 既有 daemon（CLI 或其他 GUI 启动的）时绝不 release，其创建者引用由 `daemon release` 手动回收。本机端（CLI/TUI/MCP/GUI）之间不走 relay；relay 只承载跨机协作。
 
 ## 命令寻址
 

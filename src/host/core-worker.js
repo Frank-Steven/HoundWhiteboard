@@ -208,6 +208,16 @@ class CoreWorkerRuntime {
   #guiDaemon = null;
 
   /**
+   * 本会话是否持有板 daemon 的创建者引用
+   * @type {boolean}
+   *
+   * @description
+   * 仅「本次会话内经 Rust spawn 成功拉起新实例」记 true（spawn 前探测无活 daemon）；
+   * attach 既有 daemon（CLI 或其他 GUI 启动）一律 false，destroy 时不得 release。
+   */
+  #guiDaemonOwned = false;
+
+  /**
    * GUI 协作 daemon 重连定时器
    * @type {ReturnType<typeof setTimeout> | null}
    */
@@ -274,6 +284,7 @@ class CoreWorkerRuntime {
     this.#coordinatorRetryTimer = null;
     this.#guiCoordinator = null;
     this.#guiDaemon = null;
+    this.#guiDaemonOwned = false;
     this.#guiRetryTimer = null;
     this.#boardSize = { width: 0, height: 0 };
     this.#persistenceDriver = null;
@@ -779,11 +790,11 @@ class CoreWorkerRuntime {
   }
 
   /**
-   * 重连时重新探测板 daemon（重启后端口可能变化；无则返回 null 等待重试）
-   * @returns {Promise<Object|null>} daemon 信息
+   * 探测板目录的活 daemon（先读 .daemon.json，再按内存中的旧记录兜底）
+   * @returns {Promise<{name: string, port: number}|null>} daemon 信息；无活 daemon 时为 null
    * @private
    */
-  async #resolveGuiDaemonForReconnect() {
+  async #probeLiveBoardDaemon() {
     const driver = this.#persistenceDriver;
     if (driver !== null) {
       try {
@@ -804,6 +815,17 @@ class CoreWorkerRuntime {
     if (this.#guiDaemon && (await this.#probeWs(this.#guiDaemon.port))) {
       return this.#guiDaemon;
     }
+    return null;
+  }
+
+  /**
+   * 重连时重新探测板 daemon（重启后端口可能变化；无则返回 null 等待重试）
+   * @returns {Promise<Object|null>} daemon 信息
+   * @private
+   */
+  async #resolveGuiDaemonForReconnect() {
+    const live = await this.#probeLiveBoardDaemon();
+    if (live !== null) return live;
     // 探测不到活 daemon（崩溃/被 stop）：重新拉起，幂等（活 daemon 直返）；
     // 拉起失败（含单机降级期）返回 null 等下轮重试
     const rootPath = this.#boardCore?.rootPath;
@@ -1082,6 +1104,10 @@ class CoreWorkerRuntime {
     // 无条件请求 Rust 侧拉起（幂等：已有活 daemon 直接返回现有实例，无则建骨架并 spawn）
     // 不传 source：daemon 身份按注册表 name→source 映射自持，不与 GUI 共享（撞号结构性排除）
     const name = `gui-${guiDaemonNameFromPath(rootPath)}`;
+    // ownership 保守判定：spawn 前探测到活 daemon 则本次为 attach（创建者引用归原启动方，
+    // destroy 不得 release）；无活 daemon 时 spawn 成功的新实例初始创建者引用归本会话。
+    // 仅「本次会话内经 Rust spawn 成功」记 ownership，其余情况一律不 release
+    const liveBefore = await this.#probeLiveBoardDaemon();
     const spawned = await this.#forwardIoInvoke("spawn_board_daemon", {
       path: rootPath,
       name,
@@ -1089,6 +1115,7 @@ class CoreWorkerRuntime {
       height: this.#boardSize.height ?? 0,
     });
     if (spawned && typeof spawned?.port === "number") {
+      this.#guiDaemonOwned = liveBefore === null;
       this.#log.info(`板 daemon 就绪：${spawned.name}（端口 ${spawned.port}）`);
       return { name: spawned.name, port: spawned.port };
     }
@@ -1130,6 +1157,48 @@ class CoreWorkerRuntime {
         clearTimeout(timer);
         finish(false);
       });
+    });
+  }
+
+  /**
+   * 向本会话 spawn 的板 daemon 发 daemon-release（创建者引用 -1）
+   * @param {{name: string, port: number}} daemon - daemon 信息
+   * @returns {Promise<void>}
+   * @private
+   *
+   * @description
+   * 短连接直发 daemon 协议 route（与 CLI daemon-client 的 release 同一路由；
+   * 不复用 daemon-client 是因为它依赖 node 侧注册表模块，Worker 内不可用）。
+   * 协作 WS 断开后 clientRefs 已归零，此处 ownerRefs 归零即触发 daemon 自动退出；
+   * 失败（daemon 已死/超时）静默收尾，残留 daemon 由 stale 探测与手动 release 兜底。
+   */
+  #releaseOwnedGuiDaemon(daemon) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let ws = null;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try {
+          ws?.close();
+        } catch {
+          /* 忽略 */
+        }
+        resolve();
+      };
+      const timer = setTimeout(finish, 2000);
+      try {
+        ws = new WebSocket(`ws://127.0.0.1:${daemon.port}`);
+      } catch {
+        finish();
+        return;
+      }
+      ws.addEventListener("open", () => {
+        ws.send(JSON.stringify({ id: 1, route: "daemon-release", params: {} }));
+      });
+      ws.addEventListener("message", finish);
+      ws.addEventListener("error", finish);
     });
   }
 
@@ -1178,6 +1247,12 @@ class CoreWorkerRuntime {
       clearTimeout(this.#guiRetryTimer);
       this.#guiRetryTimer = null;
     }
+    // 创建者引用回收：仅本会话 spawn 的 daemon 才 release（attach 他人 daemon 绝不误杀）；
+    // 协作 WS 已断开（clientRefs 归零），ownerRefs 归零即触发 daemon 自动退出
+    if (this.#guiDaemonOwned && this.#guiDaemon !== null) {
+      await this.#releaseOwnedGuiDaemon(this.#guiDaemon);
+    }
+    this.#guiDaemonOwned = false;
     this.#guiDaemon = null;
     this.#persistenceDriver = null;
     this.#persistenceRootId = null;
