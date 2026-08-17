@@ -18,7 +18,8 @@ import { bindRoot } from "../driver/io-driver.js";
  * @description
  * 存储布局：
  * - 区块元数据：{root}/chunks/{chunkId}.json，内容 { tierGraph, objectCoverIndex }
- * - 对象：{root}/objects/{objectId}.json，扁平存储每对象一文件
+ * - 对象：{root}/objects/{encodeURIComponent(objectId)}.json，扁平存储每对象一文件
+ *   （与 session-store 同一命名，布局 v2 下对象文件由日志跟随者代写，本适配器负责区块卸载/重载路径）
  */
 export const createPersistenceAdapter = ({ driver, rootId }) => {
   /** @type {Object} 绑定 rootId 的驱动窄接口 */
@@ -36,12 +37,21 @@ export const createPersistenceAdapter = ({ driver, rootId }) => {
 
   /**
    * 拼接对象相对路径
-   * @param {number} objectId - 对象 id
-   * @returns {string|null} 相对路径或 null
+   * @description 对象 id 是字符串（形如 "{source}/{n}"），文件名经 encodeURIComponent
+   * 与 session-store 同一命名；非法 id 显式抛错（静默 null 曾掩盖契约断裂）。
+   * @param {string} objectId - 对象 id
+   * @returns {string} 相对路径
+   * @throws {TypeError} objectId 不是非空字符串时抛出
    */
   const objectRel = (objectId) => {
-    if (!Number.isInteger(objectId)) return null;
-    return joinRel("objects", { __type: "File", name: String(objectId), ext: "json" });
+    if (typeof objectId !== "string" || objectId.length === 0) {
+      throw new TypeError(`对象 id 必须是非空字符串：${String(objectId)}`);
+    }
+    return joinRel("objects", {
+      __type: "File",
+      name: encodeURIComponent(objectId),
+      ext: "json",
+    });
   };
 
   return {
@@ -94,7 +104,7 @@ export const createPersistenceAdapter = ({ driver, rootId }) => {
 
     /**
      * 按对象 ID 批量加载对象 JSON
-     * @param {number[]} objectIds - 对象 ID 数组
+     * @param {string[]} objectIds - 对象 ID 数组
      * @returns {Promise<object[]>} 对象数组（跳过缺失对象）
      */
     async loadObjects(objectIds) {
@@ -103,7 +113,6 @@ export const createPersistenceAdapter = ({ driver, rootId }) => {
       const results = await Promise.all(
         objectIds.map(async (objectId) => {
           const rel = objectRel(objectId);
-          if (rel === null) return null;
           const content = await d.read(rel);
           if (content === null) return null;
           try {
@@ -119,7 +128,7 @@ export const createPersistenceAdapter = ({ driver, rootId }) => {
 
     /**
      * 批量保存对象 JSON（扁平存储，每对象一文件）
-     * @param {object[]} objects - 对象 plain object 数组，每项必须含数字 id
+     * @param {object[]} objects - 对象 plain object 数组，每项必须含字符串 id
      * @returns {Promise<boolean>} 是否成功
      */
     async saveObjects(objects) {
@@ -128,7 +137,6 @@ export const createPersistenceAdapter = ({ driver, rootId }) => {
       const results = await Promise.all(
         objects.map(async (objectData) => {
           const rel = objectRel(objectData?.id);
-          if (rel === null) return false;
           return d.write(rel, JSON.stringify(objectData));
         })
       );
@@ -138,12 +146,11 @@ export const createPersistenceAdapter = ({ driver, rootId }) => {
 
     /**
      * 删除对象 JSON
-     * @param {number} objectId - 对象 id
+     * @param {string} objectId - 对象 id
      * @returns {Promise<boolean>} 是否成功
      */
     async deleteObject(objectId) {
       const rel = objectRel(objectId);
-      if (rel === null) return false;
       return d.rm(rel);
     },
   };

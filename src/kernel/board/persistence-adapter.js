@@ -11,7 +11,7 @@
  * @description
  * BoardCore 的区块元数据与对象读写注入缝。
  * 内存模式使用 createDefaultPersistenceAdapter()（无操作）；
- * 文件模式由 io 包的 createPersistenceAdapter({ driver, rootId }) 实现，存储布局 chunks/{chunkId}.json、objects/{id}.json。
+ * 文件模式由 io 包的 createPersistenceAdapter({ driver, rootId }) 实现，存储布局 chunks/{chunkId}.json、objects/{encodeURIComponent(id)}.json。
  * @typedef {Object} PersistenceAdapter
  * @property {(chunkId: number) => Promise<{ tierGraph: any[], objectCoverIndex: any[] }>} loadChunkMetadata - 加载区块元数据（层叠图与覆盖索引）
  * @property {(chunkId: number, metadata: { tierGraph: any[], objectCoverIndex: any[] }) => Promise<boolean>} saveChunkMetadata - 保存区块元数据

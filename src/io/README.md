@@ -61,7 +61,7 @@ const adapter = createPersistenceAdapter({ driver, rootId: root.rootId });
 const boardCore = new BoardCore({ persistenceAdapter: adapter, ... });
 ```
 
-存储布局与旧 file-operate-bridge 兼容：`chunks/{chunkId}.json`、`objects/{objectId}.json`。
+存储布局：`chunks/{chunkId}.json`、`objects/{encodeURIComponent(objectId)}.json`（与 session-store 同一命名，见 `src/docs/file-structure.md`）。
 
 ## Rust commands
 
