@@ -11,6 +11,7 @@ import {
   OPERATION_EFFECT_KINDS,
   getOperationEffectKind,
   compareRecords,
+  parseOperationId,
 } from "./operation.js";
 
 /**
@@ -120,10 +121,12 @@ class UndoTree {
   #activeByShareId = new Map();
 
   /**
-   * 重做栈（由日志派生：生效撤销压入，新工作清空，重做弹出）
-   * @type {Array<{ targetId: string, previousHeadId: string }>}
+   * 生效撤销登记表（由日志派生：生效撤销登记，同源新工作洗刷，重做销记）
+   * @description 键为撤销记录 id；重做凭 targetUndoId 查表判定生效，是纯日志谓词，
+   * 不依赖记录投递交错。远端来源的新工作不洗刷本端撤销（各端按同一时间序评估，结论一致）。
+   * @type {Map<string, { targetId: string, previousHeadId: string, source: string, time: number, n: number, redone: boolean, washed: boolean }>}
    */
-  #redoStack = [];
+  #undoRegistry = new Map();
 
   /**
    * 构造时间回溯树
@@ -164,11 +167,32 @@ class UndoTree {
   }
 
   /**
-   * 重做栈快照（派生自日志：生效撤销压入，新工作清空，重做弹出）
-   * @returns {Array<{ targetId: string, previousHeadId: string }>} 栈项序列（栈底在前）
+   * 可重做撤销栈快照（派生自日志：生效撤销登记，同源新工作洗刷，重做销记）
+   * @returns {Array<{ targetId: string, previousHeadId: string }>} 栈项序列（按撤销时间升序，栈底在前）
    */
   getRedoStack() {
-    return this.#redoStack.map((entry) => ({ ...entry }));
+    return [...this.#undoRegistry.values()]
+      .filter((entry) => !entry.redone && !entry.washed)
+      .sort((a, b) => a.time - b.time)
+      .map((entry) => ({ targetId: entry.targetId, previousHeadId: entry.previousHeadId }));
+  }
+
+  /**
+   * 取某来源当前可重做的撤销（栈顶语义：该来源最近一次未洗刷、未重做的生效撤销）
+   * @param {string} source - 发起者标识
+   * @returns {?{ undoId: string, targetId: string }} 可重做的撤销；无可重做时为 null
+   */
+  getRedoTargetForSource(source) {
+    let best = null;
+    for (const [undoId, entry] of this.#undoRegistry) {
+      if (entry.source !== source || entry.redone || entry.washed) {
+        continue;
+      }
+      if (best === null || entry.time > best.entry.time) {
+        best = { undoId, entry };
+      }
+    }
+    return best === null ? null : { undoId: best.undoId, targetId: best.entry.targetId };
   }
 
   /**
@@ -246,6 +270,8 @@ class UndoTree {
     if (record.supraOpId !== null) {
       throw new Error(`旧形态超分子成员不产生独立节点，经 applySupraNode 应用：${record.id}`);
     }
+    // 同源新工作洗刷该来源已登记的重做资格（远端来源不洗刷：各端按同一时间序评估，结论一致）
+    this.#washRegistry(record.source, record.time, parseOperationId(record.id)?.n ?? 0);
     // 增量式分子归并：活动链末端节点与本记录同分子（同 molId 且同 supraId）时并入；
     // 乱序到达或分子被并发操作分隔时各自独立成节点（退化，语义安全）
     if (
@@ -276,6 +302,9 @@ class UndoTree {
       return null;
     }
     const shareId = members[0].supraOpId;
+    // 同源新工作洗刷该来源已登记的重做资格（与 applyRecord 同规则）
+    const lastMember = members[members.length - 1];
+    this.#washRegistry(lastMember.source, lastMember.time, parseOperationId(lastMember.id)?.n ?? 0);
     // 成员增量到达幂等：节点已存在时不重复建节点（成员全集由数据池凭 shareId 提供）
     const existing = this.getActiveNode(shareId);
     if (existing !== null) {
@@ -296,6 +325,7 @@ class UndoTree {
    * 目标在链中段时在目标父节点处分叉：目标与 HEAD 之间的链（不含目标）改挂到分叉点，
    * 原位置按 (时间, author) 截断——不晚于撤销操作的节点留在原位置（凭同一 share id 共享数据），
    * 晚于的只存在于撤消分支；HEAD 移到新末端。撤销本身不产生节点。
+   * 生效撤销登记入册（含来源与时间），作为后续重做生效判定的纯日志谓词依据；被吸收的撤销不登记。
    * @param {import("./operation.js").OperationRecord} record - 撤销操作记录
    * @returns {null}
    * @private
@@ -305,9 +335,14 @@ class UndoTree {
     if (target === null) {
       return null;
     }
-    this.#redoStack.push({
+    this.#undoRegistry.set(record.id, {
       targetId: record.payload.targetNodeId,
       previousHeadId: record.payload.previousHeadId,
+      source: record.source,
+      time: record.time,
+      n: parseOperationId(record.id)?.n ?? 0,
+      redone: false,
+      washed: false,
     });
     if (target === this.#head) {
       this.#head = target.parent;
@@ -458,8 +493,6 @@ class UndoTree {
     const node = new MolecularNode(shareId, this.#head, info);
     this.#insertChildSorted(this.#head, node);
     this.#head = node;
-    // 推进 HEAD 的新工作洗掉可重做的撤销
-    this.#redoStack = [];
     this.#rebuildActiveIndex();
     return node;
   }
@@ -493,79 +526,85 @@ class UndoTree {
 
   /**
    * 应用重做操作记录
-   * @description 重做是纯 HEAD 移动：把 HEAD 移到最近一次生效撤销记录的原 HEAD 位置。
-   * 条件应用——仅当评估时 HEAD 恰为操作起点（parentId）才移动；新工作已洗掉可重做的
-   * 撤销时不生效。被吸收的撤销不产生重做目标。重做本身不产生节点。
+   * @description 重做凭 targetUndoId 查生效撤销登记册，生效是纯日志谓词：撤销已生效登记、
+   * 未重做、未被同源新工作洗刷——不依赖记录投递交错（同源记录保序到达，树级操作乱序
+   * 触发重建，各端评估序同为时间序）。生效效果为把撤销目标节点按时间标记重新激活：
+   * 并发远端工作留在链上不动，被撤节点回到其时间位置。重做本身不产生节点。
    * @param {import("./operation.js").OperationRecord} record - 重做操作记录
    * @returns {null}
    * @private
    */
   #applyRedo(record) {
-    const pending = this.#redoStack.at(-1) ?? null;
-    if (pending === null) {
+    const entry = this.#undoRegistry.get(record.payload.targetUndoId);
+    if (entry === undefined || entry.redone || entry.washed) {
       return null;
     }
-    this.#redoStack.pop();
-    if (this.#head.shareId !== record.parentId) {
-      return null;
-    }
-    const target = this.#resolveRedoTarget(pending);
-    if (target === null) {
-      return null;
-    }
-    this.#head = target;
-    this.#rebuildActiveIndex();
+    entry.redone = true;
+    this.#reactivateNode(entry.targetId);
     return null;
   }
 
   /**
-   * 解析重做的目标节点
-   * @description previousHeadId 有多个节点副本时，取祖先链含撤销目标节点的（原分支）。
-   * @param {{ targetId: string, previousHeadId: string }} pending - 待重做的撤销
-   * @returns {?MolecularNode} 目标节点；无法解析时为 null
+   * 同源新工作洗刷该来源已登记的重做资格
+   * @description 同来源、按记录全序（时钟环 + 同刻同 author 按操作序号决胜）晚于撤销、
+   * 尚未重做的生效撤销被标记为已洗刷；远端来源的新工作不洗刷本端撤销
+   * （各端按同一时间序评估，结论一致，收敛不依赖投递交错）。
+   * @param {string} source - 新工作记录的来源
+   * @param {number} time - 新工作记录的时间标记
+   * @param {number} n - 新工作记录的操作序号（同刻决胜依据）
+   * @returns {void}
    * @private
    */
-  #resolveRedoTarget(pending) {
-    const candidates = [];
-    this.#collectNodes(this.#root, pending.previousHeadId, candidates);
-    if (candidates.length === 1) {
-      return candidates[0];
-    }
-    return (
-      candidates.find((node) => this.#hasAncestorWithShareId(node, pending.targetId)) ?? null
-    );
-  }
-
-  /**
-   * 收集携带某操作的全部节点（含各分支副本）
-   * @param {MolecularNode} node - 当前节点
-   * @param {string} shareId - 数据池共享 id
-   * @param {MolecularNode[]} out - 收集结果
-   * @private
-   */
-  #collectNodes(node, shareId, out) {
-    if (node.shareId === shareId) {
-      out.push(node);
-    }
-    for (const child of node.children) {
-      this.#collectNodes(child, shareId, out);
-    }
-  }
-
-  /**
-   * 判断节点的祖先链上是否存在携带某操作的节点
-   * @param {MolecularNode} node - 当前节点
-   * @param {string} shareId - 数据池共享 id
-   * @returns {boolean} 是否存在
-   * @private
-   */
-  #hasAncestorWithShareId(node, shareId) {
-    for (let current = node.parent; current !== null; current = current.parent) {
-      if (current.shareId === shareId) {
-        return true;
+  #washRegistry(source, time, n) {
+    for (const entry of this.#undoRegistry.values()) {
+      if (
+        entry.source === source &&
+        !entry.redone &&
+        (time > entry.time || (time === entry.time && n > entry.n))
+      ) {
+        entry.washed = true;
       }
     }
-    return false;
+  }
+
+  /**
+   * 重新激活被撤销的节点：从撤销分支摘下，按时间标记插回活动链
+   * @description 插入点由节点时间标记在活动链上的位置决定：晚于链末端时追加并推进 HEAD；
+   * 否则插在对应位置、原后继改挂为其子节点（并发新工作留在链上不动）。节点携既有
+   * 撤销分支子树整体移动，深度同步平移。
+   * @param {string} targetId - 目标节点携带的操作 id
+   * @returns {void}
+   * @private
+   */
+  #reactivateNode(targetId) {
+    if (this.isOnActiveChain(targetId)) {
+      return;
+    }
+    const node = this.findNode(targetId);
+    if (node === null || node.parent === null) {
+      return;
+    }
+    node.parent.children = node.parent.children.filter((child) => child !== node);
+    const timeRecord = this.#timeRecordOfNode(node);
+    const chain = this.getActiveChain();
+    const successor = chain.find(
+      (current) => this.#compareRecords(timeRecord, this.#timeRecordOfNode(current)) < 0,
+    ) ?? null;
+    if (successor === null) {
+      node.parent = this.#head;
+      this.#insertChildSorted(this.#head, node);
+      this.#shiftDepth(node, this.#head.depth + 1 - node.depth);
+      this.#head = node;
+    } else {
+      const parent = successor.parent;
+      node.parent = parent;
+      this.#replaceChild(parent, successor, node);
+      this.#shiftDepth(node, parent.depth + 1 - node.depth);
+      successor.parent = node;
+      this.#insertChildSorted(node, successor);
+      this.#shiftDepth(successor, node.depth + 1 - successor.depth);
+    }
+    this.#rebuildActiveIndex();
   }
 
   /**
@@ -595,7 +634,7 @@ class UndoTree {
     this.#root = new MolecularNode(null, null);
     this.#head = this.#root;
     this.#activeByShareId = new Map();
-    this.#redoStack = [];
+    this.#undoRegistry = new Map();
     const units = [];
     const legacyGroups = new Map();
     for (const record of this.#log.toArray()) {

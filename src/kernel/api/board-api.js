@@ -2616,22 +2616,28 @@ class BoardApi {
 
   /**
    * 执行重做
-   * @description 把 HEAD 移到最近一次生效撤销记录的原 HEAD 位置（条件应用由树侧判定）；
-   * 生效后按分叉点先逆放旧链尾段、再正向重放新链尾段。
+   * @description 发射即生效：先凭树侧登记解析本端可重做的撤销（栈顶语义），无可重做时
+   * 不发记录；发射的记录携带目标撤销 id，各端按纯日志谓词一致生效。生效效果为撤销
+   * 目标节点按时间标记重新激活（插回活动链），再经链过渡对齐白板效果。
    * @returns {{ redone: boolean, targetNodeId: ?string }} 重做结果
    */
   redo() {
-    const tree = this.#boardCore.undoTree;
+    const boardCore = this.#boardCore;
+    const tree = boardCore.undoTree;
+    const target = tree.getRedoTargetForSource(boardCore.hitCommitter.source);
+    if (target === null) {
+      return { redone: false, targetNodeId: null };
+    }
     const beforeRecords = this.#recordsOfChain(tree.getActiveChain());
-    this.#boardCore.hitCommitter.commitRedo();
+    boardCore.hitCommitter.commitRedo({ targetUndoId: target.undoId });
     const afterChain = tree.getActiveChain();
-    const changed = this.#transitionEffects(
+    this.#transitionEffects(
       beforeRecords,
       this.#recordsOfChain(afterChain),
     );
     // 过渡可能正放远端 modify（远程活动对象几何变化）：冲刷选择装饰刷新通知
     this.#flushRemoteChoicesNotification();
-    return { redone: changed, targetNodeId: changed ? (afterChain.at(-1)?.shareId ?? null) : null };
+    return { redone: true, targetNodeId: target.targetId };
   }
 
   /**

@@ -80,7 +80,7 @@ const EFFECT_KIND_OF_TYPE = Object.freeze({
   [OPERATION_TYPES.UNCHOOSE_OBJECT]: OPERATION_EFFECT_KINDS.APPEND_NODE,
   [OPERATION_TYPES.MOVE_HEAD]: OPERATION_EFFECT_KINDS.MOVE_HEAD,
   [OPERATION_TYPES.UNDO]: OPERATION_EFFECT_KINDS.REATTACH,
-  [OPERATION_TYPES.REDO]: OPERATION_EFFECT_KINDS.MOVE_HEAD,
+  [OPERATION_TYPES.REDO]: OPERATION_EFFECT_KINDS.REATTACH,
   [OPERATION_TYPES.CLOSE_SUPRA]: OPERATION_EFFECT_KINDS.FOLD,
 });
 
@@ -395,7 +395,7 @@ function createMoveHeadOperation(fields) {
  * 构造撤销操作记录
  * @param {Object} fields - 公共属性，同 _buildRecord 的 fields
  * @param {string} fields.targetNodeId - 撤消操作的目标节点 id（缺省为活动链末端，由调用方解析后记录）
- * @param {string} fields.previousHeadId - 撤销前的 HEAD 位置，重做的移动目标
+ * @param {string} fields.previousHeadId - 撤销前的 HEAD 位置（视图与可重做栈投影使用）
  * @returns {OperationRecord} 撤销操作记录
  */
 function createUndoOperation(fields) {
@@ -407,12 +407,16 @@ function createUndoOperation(fields) {
 
 /**
  * 构造重做操作记录
- * @description 重做的移动目标由最近一次生效撤销的记录派生，自身不携带目标。
+ * @description 重做携带目标撤销记录 id：生效判定是纯日志谓词（撤销已生效、未重做、未被同源新工作洗刷），
+ * 不依赖投递交错；效果为把撤销目标节点按时间标记重新激活（插回活动链）。
  * @param {Object} fields - 公共属性，同 _buildRecord 的 fields
+ * @param {string} fields.targetUndoId - 被重做的撤销记录 id
  * @returns {OperationRecord} 重做操作记录
  */
 function createRedoOperation(fields) {
-  return _buildRecord({ ...fields, type: OPERATION_TYPES.REDO }, {});
+  return _buildRecord({ ...fields, type: OPERATION_TYPES.REDO }, {
+    targetUndoId: fields.targetUndoId,
+  });
 }
 
 /**
@@ -596,6 +600,7 @@ function _validatePayload(record, errors) {
       requireNodeId("previousHeadId");
       break;
     case OPERATION_TYPES.REDO:
+      requireNodeId("targetUndoId");
       break;
     case OPERATION_TYPES.CLOSE_SUPRA:
       if (parseSupraId(payload.supraId) === null) {

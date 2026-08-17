@@ -80,7 +80,7 @@ describe("操作类型分类", () => {
     expect(getOperationEffectKind(OPERATION_TYPES.CHOOSE_OBJECT)).toBe(OPERATION_EFFECT_KINDS.APPEND_NODE);
     expect(getOperationEffectKind(OPERATION_TYPES.UNCHOOSE_OBJECT)).toBe(OPERATION_EFFECT_KINDS.APPEND_NODE);
     expect(getOperationEffectKind(OPERATION_TYPES.MOVE_HEAD)).toBe(OPERATION_EFFECT_KINDS.MOVE_HEAD);
-    expect(getOperationEffectKind(OPERATION_TYPES.REDO)).toBe(OPERATION_EFFECT_KINDS.MOVE_HEAD);
+    expect(getOperationEffectKind(OPERATION_TYPES.REDO)).toBe(OPERATION_EFFECT_KINDS.REATTACH);
     expect(getOperationEffectKind(OPERATION_TYPES.UNDO)).toBe(OPERATION_EFFECT_KINDS.REATTACH);
     expect(getOperationEffectKind(OPERATION_TYPES.CLOSE_SUPRA)).toBe(OPERATION_EFFECT_KINDS.FOLD);
     expect(getOperationEffectKind("nope")).toBeNull();
@@ -89,11 +89,11 @@ describe("操作类型分类", () => {
 
 describe("分子操作记录构造", () => {
   test("公共属性落位与默认值", () => {
-    const record = createRedoOperation({ id: "alice/op-3", source: "alice", time: 1 });
+    const record = createRedoOperation({ id: "alice/op-3", source: "alice", time: 1, targetUndoId: "alice/op-2" });
     expect(record.parentId).toBeNull();
     expect(record.supraOpId).toBeNull();
     expect(record.properties).toEqual([]);
-    expect(record.payload).toEqual({});
+    expect(record.payload).toEqual({ targetUndoId: "alice/op-2" });
     expect(record.type).toBe(OPERATION_TYPES.REDO);
   });
 
@@ -210,7 +210,7 @@ describe("validateOperation", () => {
     createUnchooseObjectOperation({ ...BASE_FIELDS, chunkId: "c", objectId: "o" }),
     createMoveHeadOperation({ ...BASE_FIELDS, targetNodeId: "alice/op-1" }),
     createUndoOperation({ ...BASE_FIELDS, targetNodeId: "alice/op-1", previousHeadId: "alice/op-1" }),
-    createRedoOperation(BASE_FIELDS),
+    createRedoOperation({ ...BASE_FIELDS, targetUndoId: "alice/op-2" }),
   ];
 
   test("八种分子记录均通过校验", () => {
@@ -225,8 +225,13 @@ describe("validateOperation", () => {
   });
 
   test("id 与 source 不一致", () => {
-    const record = createRedoOperation({ ...BASE_FIELDS, source: "bob" });
+    const record = createRedoOperation({ ...BASE_FIELDS, source: "bob", targetUndoId: "alice/op-1" });
     expect(validateOperation(record)).toContain('id 的 source 段（alice）与 source（bob）不一致');
+  });
+
+  test("重做缺 targetUndoId 被拒绝", () => {
+    const record = createRedoOperation(BASE_FIELDS);
+    expect(validateOperation(record)).toContain("redo 载荷的 targetUndoId 非法：undefined");
   });
 
   test("未知类型与非法时间", () => {

@@ -278,7 +278,7 @@ class HitCommitter {
 
   /**
    * 提交撤销分子操作
-   * @description 记录目标节点与撤销前 HEAD 位置（重做的移动目标）；退化/分叉改挂/被吸收在应用时确定。
+   * @description 记录目标节点与撤销前 HEAD 位置（视图与可重做栈投影使用）；退化/分叉改挂/被吸收在应用时确定。
    * 撤销不属于任何超分子：即使携带 supraKey 也独立成录、即时上树。
    * @param {Object} effect - 效果摘要
    * @param {string} effect.targetNodeId - 撤消操作的目标节点 id（缺省为活动链末端，由调用方解析后传入）
@@ -293,13 +293,15 @@ class HitCommitter {
 
   /**
    * 提交重做分子操作
-   * @description 重做的移动目标由最近一次生效撤销的记录派生，自身不携带目标；
-   * 是否生效由树侧按条件应用判定（新工作洗掉则不移动，记录仍在日志）。
+   * @description 重做携带目标撤销记录 id（targetUndoId），生效判定是纯日志谓词
+   * （撤销已生效、未重做、未被同源新工作洗刷），发射即在各端一致生效。
    * 重做任何时刻都是独立分子，不进入超分子。
+   * @param {Object} effect - 效果摘要
+   * @param {string} effect.targetUndoId - 被重做的撤销记录 id（由调用方凭树侧登记解析）
    * @returns {import("./operation.js").OperationRecord} 重做操作记录
    */
-  commitRedo() {
-    return this.#emit(createRedoOperation, {});
+  commitRedo(effect) {
+    return this.#emit(createRedoOperation, effect);
   }
 
   /**

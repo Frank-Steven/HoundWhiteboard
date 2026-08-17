@@ -175,7 +175,7 @@ flowchart BT
 
 - `operation.js`：八类分子操作 + 闭合超分子记录 `close-supra`（载荷、校验、id 构造、时钟环比较；`close-supra` 触发超分子折叠）
 - `operation-log.js`：append-only 操作日志（序号连续与时间单调把关、追加事件订阅、序列化往返）
-- `undo-tree-core.js`：时间回溯树（f(日志) 派生、统一撤销三形态与截断、重做栈派生投影、超分子节点）
+- `undo-tree-core.js`：时间回溯树（f(日志) 派生、统一撤销三形态与截断、重做登记册派生投影、超分子节点）
 - `hit-committer.js`：commit 边界单管线（记录构造、时间标记、指定式超分子与简并）
 
 详见 `kernel/hit/docs/` 四篇文档。

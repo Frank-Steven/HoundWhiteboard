@@ -10,7 +10,12 @@ import { createAddObjectOperation, createRedoOperation, makeOperationId } from "
  * @returns {import("../operation.js").OperationRecord} 分子操作记录
  */
 const makeRecord = (source, n, time) =>
-  createRedoOperation({ id: makeOperationId(source, n), source, time });
+  createRedoOperation({
+    id: makeOperationId(source, n),
+    source,
+    time,
+    targetUndoId: makeOperationId(source, 0),
+  });
 
 describe("id 分配", () => {
   test("序号从 op-1 开始，逐 source 独立", () => {

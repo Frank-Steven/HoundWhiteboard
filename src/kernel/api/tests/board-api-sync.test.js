@@ -84,15 +84,15 @@ const undo = (source, n, time, targetId, previousHeadId) =>
  * @param {string} source - author 标识
  * @param {number} n - 操作序号
  * @param {number} time - 毫秒时间标记
- * @param {?string} parentId - 记录时刻本地视角的父节点 id
+ * @param {string} targetUndoId - 被重做的撤销记录 id
  * @returns {import("../../hit/operation.js").OperationRecord} 重做操作记录
  */
-const redo = (source, n, time, parentId) =>
+const redo = (source, n, time, targetUndoId) =>
   createRedoOperation({
     id: makeOperationId(source, n),
     source,
     time,
-    parentId,
+    targetUndoId,
   });
 
 /**
@@ -218,7 +218,7 @@ describe("情景八：三方撤销、重做与新增赛跑", () => {
     b1: add("b", 1, 1, "a/op-1"),
     c1: add("c", 1, 2, "b/op-1"),
     o1: undo("a", 2, 3, "c/op-1", "c/op-1"),
-    o2: redo("a", 3, 4, "b/op-1"),
+    o2: redo("a", 3, 4, "a/op-2"),
     o3: undo("b", 2, 5, "c/op-1", "c/op-1"),
     o4: add("c", 2, 6, "c/op-1"),
   });
@@ -241,30 +241,102 @@ describe("情景八：三方撤销、重做与新增赛跑", () => {
 });
 
 describe("情景九：重做与并发新增", () => {
-  // A1 B1 A2 | O1(a/op-3,t3 撤 A2) O2(b/op-2,t4 新增 B2 父 A2) O3(a/op-4,t5 重做)
+  // A1 B1 A2 | O1(a/op-3,t3 撤 A2) O2(b/op-2,t4 新增 B2 父 A2) O3(a/op-4,t5 重做 O1)
   const records = () => ({
     a1: add("a", 1, 0, null),
     b1: add("b", 1, 1, "a/op-1"),
     a2: add("a", 2, 2, "b/op-1"),
     o1: undo("a", 3, 3, "a/op-2", "a/op-2"),
     o2: add("b", 2, 4, "a/op-2"),
-    o3: redo("a", 4, 5, "b/op-1"),
+    o3: redo("a", 4, 5, "a/op-3"),
   });
 
-  test("A 端：本地重做先生效，O2 到达触发重建后重做被冲掉；B 端：纯应用殊途同归", () => {
+  test("A 端：本地重做先生效，O2 到达触发重建后重做仍保持；B 端：纯应用殊途同归", () => {
     const r = records();
     const endA = createEnd("a");
     const endB = createEnd("b");
     feed(endA.api, [r.a1, r.b1, r.a2, r.o1, r.o3, r.o2]);
     feed(endB.api, [r.a1, r.b1, r.a2, r.o2, r.o1, r.o3]);
+    // 远端（b）的并发新工作不洗刷 a 的重做：A2 按时间标记插回 B2 之前
     expectConverged(
       [endA, endB],
-      ["a/op-1", "b/op-1", "b/op-2"],
-      ["a1", "b1", "b2"],
+      ["a/op-1", "b/op-1", "a/op-2", "b/op-2"],
+      ["a1", "b1", "a2", "b2"],
     );
-    // 被冲掉的重做留在日志中
+    // 重做记录留在日志中（携带目标撤销 id，各端凭纯日志谓词一致生效）
     expect(endA.boardCore.operationLog.get("a/op-4").type).toBe("redo");
-    expect(endA.boardCore.undoTree.findNode("a/op-2").children).toEqual([]);
+    expect(endA.boardCore.operationLog.get("a/op-4").payload.targetUndoId).toBe("a/op-3");
+  });
+});
+
+describe("重做与并发新增的投递交错（回归）", () => {
+  /**
+   * 创建并提交一个笔画对象
+   * @param {{ api: BoardApi }} end - 端
+   * @param {string} id - 对象 id
+   * @returns {Promise<void>}
+   */
+  const create = async (end, id) => {
+    end.api.createObject("StrokeObject", {
+      id,
+      position: { x: 0, y: 0 },
+      property: { width: 2 },
+      data: { points: [{ x: 0, y: 0 }, { x: 10, y: 0 }] },
+    });
+    await end.api.commitObjects([id]);
+  };
+
+  /**
+   * 增量泵：把 from 端新记录以线上 JSON 形态投递给 to 端
+   * @param {{ boardCore: BoardCore, api: BoardApi }} from - 发送端
+   * @param {{ boardCore: BoardCore, api: BoardApi }} to - 接收端
+   * @returns {void}
+   */
+  const pump = (from, to) => {
+    const seen = new Set(to.boardCore.operationLog.toJSON().map((r) => r.id));
+    const fresh = from.boardCore.operationLog
+      .toJSON()
+      .filter((r) => !seen.has(r.id));
+    if (fresh.length > 0) {
+      to.api.applyRemoteOperations(JSON.parse(JSON.stringify(fresh)));
+    }
+  };
+
+  test("远端新增先于本地重做到达：本端重做照常生效，两端收敛", async () => {
+    const A = createEnd("a");
+    const B = createEnd("b");
+    await create(A, "a/1");
+    pump(A, B);
+    expect(A.api.undo().undone).toBe(true);
+    await create(B, "b/1");
+    // A 的撤销先到 B（同源保序：重做在其撤销之后到达）；
+    // B 的新增先于 A 的重做到达 A（曾洗掉 A 的重做资格：本端不发效果、对端生效，双端永久分歧）
+    pump(A, B);
+    pump(B, A);
+    expect(A.api.redo().redone).toBe(true);
+    expect(A.boardCore.getObjectById("a/1")).toBeDefined();
+    pump(A, B);
+
+    // 两端收敛：x 与 y 都在，日志与 HEAD 一致
+    const digest = (end) =>
+      JSON.stringify({
+        ids: end.boardCore.getAllObjects().map((o) => o.id).sort(),
+        logIds: end.boardCore.operationLog.toJSON().map((r) => r.id).sort(),
+        head: end.boardCore.undoTree.head?.shareId ?? null,
+      });
+    expect(digest(B)).toBe(digest(A));
+    expect(B.boardCore.getObjectById("a/1")).toBeDefined();
+    expect(B.boardCore.getObjectById("b/1")).toBeDefined();
+  });
+
+  test("本端新工作洗刷重做：不发记录（发射即生效不变式）", async () => {
+    const A = createEnd("a");
+    await create(A, "a/1");
+    A.api.undo();
+    await create(A, "a/2");
+    const before = A.boardCore.operationLog.size;
+    expect(A.api.redo().redone).toBe(false);
+    expect(A.boardCore.operationLog.size).toBe(before);
   });
 });
 

@@ -57,15 +57,15 @@ const undo = (source, n, time, targetId, previousHeadId) =>
  * @param {string} source - author 标识
  * @param {number} n - 操作序号
  * @param {number} time - 毫秒时间标记
- * @param {?string} parentId - 记录时刻本地视角的父节点 id
+ * @param {string} targetUndoId - 被重做的撤销记录 id
  * @returns {import("../operation.js").OperationRecord} 重做操作记录
  */
-const redo = (source, n, time, parentId) =>
+const redo = (source, n, time, targetUndoId) =>
   createRedoOperation({
     id: makeOperationId(source, n),
     source,
     time,
-    parentId,
+    targetUndoId,
   });
 
 /**
@@ -176,7 +176,7 @@ describe("情景二：新增操作有网络延迟", () => {
   });
 });
 
-describe("情景三：并发纯 HEAD 移动", () => {
+describe("情景三：并发撤销与重做", () => {
   const base = () => [
     add("a", 1, 0, null),
     add("b", 1, 1, "a/op-1"),
@@ -206,12 +206,12 @@ describe("情景三：并发纯 HEAD 移动", () => {
     expect(tree.head.shareId).toBe("b/op-1");
   });
 
-  test("情形 3：撤销与重做交错，最晚的意图生效", () => {
+  test("情形 3：被吸收的撤销不产生重做目标，发起方重做自己的撤销生效", () => {
     const tree = replay([
       ...base(),
       undo("a", 3, 4, "b/op-2", "b/op-2"),
       undo("b", 3, 5, "b/op-2", "b/op-2"),
-      redo("b", 4, 5.5, "a/op-2"),
+      redo("a", 4, 5.5, "a/op-3"),
     ]);
     expect(chainOf(tree)).toEqual(["a/op-1", "b/op-1", "a/op-2", "b/op-2"]);
     expect(tree.head.shareId).toBe("b/op-2");
@@ -331,7 +331,7 @@ describe("情景八：三方撤销、重做与新增赛跑", () => {
       add("b", 1, 1, "a/op-1"),
       add("c", 1, 2, "b/op-1"),
       undo("a", 2, 3, "c/op-1", "c/op-1"),
-      redo("a", 3, 4, "b/op-1"),
+      redo("a", 3, 4, "a/op-2"),
       undo("b", 2, 5, "c/op-1", "c/op-1"),
       add("c", 2, 6, "c/op-1"),
     ]);
@@ -350,17 +350,17 @@ describe("情景九：重做与并发新增", () => {
     add("a", 2, 2, "b/op-1"),
     undo("a", 3, 3, "a/op-2", "a/op-2"),
     add("b", 2, 4, "a/op-2"),
-    redo("a", 4, 5, "b/op-1"),
+    redo("a", 4, 5, "a/op-3"),
   ];
 
   const expectTree = (tree) => {
-    expect(chainOf(tree)).toEqual(["a/op-1", "b/op-1", "b/op-2"]);
+    // 远端（b）的新工作不洗刷 a 的重做：a/op-2 按时间标记插回 b/op-2 之前
+    expect(chainOf(tree)).toEqual(["a/op-1", "b/op-1", "a/op-2", "b/op-2"]);
     expect(tree.head.shareId).toBe("b/op-2");
-    expect(tree.isOnActiveChain("a/op-2")).toBe(false);
-    expect(childrenOf(tree, "a/op-2")).toEqual([]);
+    expect(tree.isOnActiveChain("a/op-2")).toBe(true);
   };
 
-  test("回放路径：新工作使重做失效", () => {
+  test("回放路径：远端新工作不洗刷重做，目标按时间标记插回", () => {
     expectTree(replay(records()));
   });
 

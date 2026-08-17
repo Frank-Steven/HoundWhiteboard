@@ -321,11 +321,11 @@ describe("重做", () => {
    * @param {string} source - 发起者标识
    * @param {number} n - 操作序号
    * @param {number} time - 毫秒时间标记
-   * @param {?string} parentId - 记录时刻本地视角的父节点 id
+   * @param {string} targetUndoId - 被重做的撤销记录 id
    * @returns {import("../operation.js").OperationRecord} 重做操作记录
    */
-  const makeRedo = (source, n, time, parentId) =>
-    createRedoOperation({ id: makeOperationId(source, n), source, time, parentId });
+  const makeRedo = (source, n, time, targetUndoId) =>
+    createRedoOperation({ id: makeOperationId(source, n), source, time, targetUndoId });
 
   /**
    * 构造并应用一条撤销记录
@@ -350,17 +350,17 @@ describe("重做", () => {
     tree.applyRecord(undo);
   };
 
-  test("基本重做：HEAD 移回撤销前位置", () => {
+  test("基本重做：撤销目标重新激活并推进 HEAD", () => {
     const { log, tree } = applyAll(makeAdd("alice", 1, 100), makeAdd("alice", 2, 200));
     applyUndo(log, tree, "alice", 3, 300, "alice/op-2", "alice/op-2");
     expect(tree.head.shareId).toBe("alice/op-1");
-    const redo = makeRedo("alice", 4, 400, "alice/op-1");
+    const redo = makeRedo("alice", 4, 400, "alice/op-3");
     log.append(redo);
     tree.applyRecord(redo);
     expect(chainIds(tree)).toEqual(["alice/op-1", "alice/op-2"]);
   });
 
-  test("多级撤销后逐级重做，无可重做时不再移动", () => {
+  test("多级撤销后逐级重做，无可重做时不再生效", () => {
     const { log, tree } = applyAll(
       makeAdd("alice", 1, 100),
       makeAdd("alice", 2, 200),
@@ -369,35 +369,51 @@ describe("重做", () => {
     applyUndo(log, tree, "alice", 4, 400, "alice/op-3", "alice/op-3");
     applyUndo(log, tree, "alice", 5, 500, "alice/op-2", "alice/op-2");
     expect(tree.head.shareId).toBe("alice/op-1");
-    for (const [n, time, parent, expected] of [
-      [6, 600, "alice/op-1", "alice/op-2"],
-      [7, 700, "alice/op-2", "alice/op-3"],
+    for (const [n, time, targetUndoId, expected] of [
+      [6, 600, "alice/op-5", "alice/op-2"],
+      [7, 700, "alice/op-4", "alice/op-3"],
     ]) {
-      const redo = makeRedo("alice", n, time, parent);
+      const redo = makeRedo("alice", n, time, targetUndoId);
       log.append(redo);
       tree.applyRecord(redo);
       expect(tree.head.shareId).toBe(expected);
     }
-    const extra = makeRedo("alice", 8, 800, "alice/op-3");
+    const extra = makeRedo("alice", 8, 800, "alice/op-4");
     log.append(extra);
     tree.applyRecord(extra);
     expect(tree.head.shareId).toBe("alice/op-3");
   });
 
-  test("撤销后的新工作洗掉重做", () => {
+  test("撤销后的同源新工作洗掉重做", () => {
     const { log, tree } = applyAll(makeAdd("alice", 1, 100), makeAdd("alice", 2, 200));
     applyUndo(log, tree, "alice", 3, 300, "alice/op-2", "alice/op-2");
     const newWork = makeAdd("alice", 4, 400);
     log.append(newWork);
     tree.applyRecord(newWork);
-    const redo = makeRedo("alice", 5, 500, "alice/op-4");
+    const redo = makeRedo("alice", 5, 500, "alice/op-3");
     log.append(redo);
     tree.applyRecord(redo);
     expect(chainIds(tree)).toEqual(["alice/op-1", "alice/op-4"]);
     expect(tree.isOnActiveChain("alice/op-2")).toBe(false);
   });
 
-  test("一般形态撤销的重做解析回原分支", () => {
+  test("远端来源的新工作不洗刷重做：目标按时间标记插回、并发工作留在链上", () => {
+    const { log, tree } = applyAll(makeAdd("alice", 1, 100), makeAdd("alice", 2, 200));
+    applyUndo(log, tree, "alice", 3, 300, "alice/op-2", "alice/op-2");
+    // 远端 bob 的并发新工作（晚于撤销）不洗刷 alice 的重做资格
+    const remoteWork = makeAdd("bob", 1, 400);
+    log.append(remoteWork);
+    tree.applyRecord(remoteWork);
+    expect(chainIds(tree)).toEqual(["alice/op-1", "bob/op-1"]);
+    const redo = makeRedo("alice", 4, 500, "alice/op-3");
+    log.append(redo);
+    tree.applyRecord(redo);
+    // op-2 回到其时间位置（bob/op-1 之前），并发工作留在链上
+    expect(chainIds(tree)).toEqual(["alice/op-1", "alice/op-2", "bob/op-1"]);
+    expect(tree.head.shareId).toBe("bob/op-1");
+  });
+
+  test("一般形态撤销的重做：目标按时间标记插回活动链", () => {
     const { log, tree } = applyAll(
       makeAdd("alice", 1, 100),
       makeAdd("alice", 2, 200),
@@ -406,10 +422,10 @@ describe("重做", () => {
     applyUndo(log, tree, "alice", 4, 400, "alice/op-2", "alice/op-3");
     // 撤销后 HEAD 是 op-3 的副本（挂在 op-1 下）
     expect(tree.head.parent.shareId).toBe("alice/op-1");
-    const redo = makeRedo("alice", 5, 500, "alice/op-3");
+    const redo = makeRedo("alice", 5, 500, "alice/op-4");
     log.append(redo);
     tree.applyRecord(redo);
-    // 重做回到原分支的 op-3（挂在 op-2 下）
+    // op-2 按时间标记插回 op-1 与 op-3 之间，HEAD 不动
     expect(tree.head.shareId).toBe("alice/op-3");
     expect(tree.head.parent.shareId).toBe("alice/op-2");
     expect(tree.isOnActiveChain("alice/op-2")).toBe(true);
