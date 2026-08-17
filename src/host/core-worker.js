@@ -26,6 +26,7 @@ import { createSessionStore } from "../kernel/store/session-store.js";
 import { createNetworkCoordinator } from "./sync/network-coordinator.js";
 import { createAmendForwarder } from "./sync/amend-forwarder.js";
 import { createJournaler } from "../kernel/store/journaler.js";
+import { hashString } from "../kernel/utils/hash.js";
 
 /**
  * 判断值是否可作为 Worker 消息宿主
@@ -671,6 +672,11 @@ class CoreWorkerRuntime {
     });
     try {
       await coordinator.connect();
+      if (this.#boardCore === null) {
+        // connect 期间板已销毁：协调器无处挂接，直接关闭防泄漏
+        await coordinator.close();
+        return;
+      }
       this.#coordinator = coordinator;
       this.#amendForwarder?.close();
       this.#amendForwarder = createAmendForwarder({
@@ -738,6 +744,11 @@ class CoreWorkerRuntime {
     });
     try {
       await coordinator.connect();
+      if (this.#boardCore === null) {
+        // connect 期间板已销毁：协调器无处挂接，直接关闭防泄漏
+        await coordinator.close();
+        return;
+      }
       this.#guiCoordinator = coordinator;
       this.#amendForwarder?.close();
       this.#amendForwarder = createAmendForwarder({
@@ -1503,14 +1514,16 @@ class CoreWorkerRuntime {
 }
 
 /**
- * 由板目录路径派生 GUI daemon 名（清洗为注册表字符集 [A-Za-z0-9._-]）
+ * 由板目录路径派生 GUI daemon 名后缀（清洗为注册表字符集 [A-Za-z0-9._-]，附路径哈希防同 basename 撞名）
  * @param {string} rootPath - 板目录
- * @returns {string} 清洗后的板名
+ * @returns {string} 清洗后的板名与 8 位路径哈希（`{base}-{hash8}`）
  */
 function guiDaemonNameFromPath(rootPath) {
-  const base = String(rootPath).split(/[\\/]/).filter(Boolean).pop() ?? "board";
+  const raw = String(rootPath);
+  const base = raw.split(/[\\/]/).filter(Boolean).pop() ?? "board";
   const cleaned = base.replace(/[^A-Za-z0-9._-]/g, "-").replace(/^-+|-+$/g, "");
-  return cleaned !== "" ? cleaned : "board";
+  const name = cleaned !== "" ? cleaned : "board";
+  return `${name}-${hashString(raw)}`;
 }
 
 /**
@@ -1527,4 +1540,4 @@ if (isWorkerGlobalScopeInstance(defaultWorkerHost)) {
   createCoreWorkerRuntime(defaultWorkerHost).start();
 }
 
-export { CoreWorkerRuntime, createCoreWorkerRuntime };
+export { CoreWorkerRuntime, createCoreWorkerRuntime, guiDaemonNameFromPath };

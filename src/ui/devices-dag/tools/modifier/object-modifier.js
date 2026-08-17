@@ -81,6 +81,8 @@ class ObjectModifierTool extends GestureTool {
    * @description Worker 模式下 beginMol 经 RPC 确认异步返回 molId；挂起期间
    * `applyGesturePatch` 的补丁只落本地条目（渲染不等内核），molId 到达后由
    * `#resolveMol` 补发最新绝对坐标并执行延迟的闭合/中止。
+   * abort 时挂起状态立即与手势解绑（本字段置空），stale pending 由
+   * `#resolveMol` 走 abort 分支自决，不阻塞新手势的 beginMol。
    * @type {?{ closing: "end"|"abort"|null, context: Object, objects: Array }}
    * @protected
    */
@@ -665,22 +667,28 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
 
   /**
    * molId 确认到达：补发挂起期间的最新位置并执行延迟的闭合/中止
+   * @description
+   * 已被 abort 解绑的 stale pending（`this._molPending !== pending`）同样走 abort
+   * 分支自决，但不得触碰当前手势的 `_molId`。
    * @param {{ closing: "end"|"abort"|null, context: Object, objects: Array }} pending - 挂起状态
    * @param {*} molId - beginMol 确认的分子 id（非字符串时视为分配失败）
    * @returns {void}
    * @private
    */
   #resolveMol(pending, molId) {
-    if (this._molPending !== pending) return;
-    this._molPending = null;
+    const isCurrent = this._molPending === pending;
+    if (!isCurrent && pending.closing !== "abort") return;
+    if (isCurrent) {
+      this._molPending = null;
+    }
     const boardApi = pending.context?.services?.boardApi;
     if (typeof molId !== "string" || molId === "") return;
-    this._molId = molId;
     if (pending.closing === "abort") {
       // 挂起期间无补丁到达内核，abort 还原 before 幂等无害
-      this.#abortMol(pending.context);
+      boardApi?.abortMol?.(molId);
       return;
     }
+    this._molId = molId;
     const patches = {};
     for (const obj of pending.objects) {
       const objectId = this.resolveObjectId(obj);
@@ -758,14 +766,18 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
   /**
    * 中止当前手势分子：丢弃 amend 流，内核实例还原到手势 before
    * @description 无在途分子时为空操作并返回 false。
-   * molId 确认中（Worker 模式）时标记延迟中止，确认后由 `#resolveMol` 执行。
+   * molId 确认中（Worker 模式）时标记延迟中止并立即与当前手势解绑
+   * （`_molPending` 置空，新手势可重新 beginMol），
+   * 确认后由 `#resolveMol` 对 stale pending 走 abort 分支自决。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
    * @returns {boolean} 是否中止了一个在途分子
    * @private
    */
   #abortMol(context) {
     if (this._molPending !== null) {
-      this._molPending.closing = "abort";
+      const pending = this._molPending;
+      this._molPending = null;
+      pending.closing = "abort";
       return true;
     }
     if (this._molId === null) return false;

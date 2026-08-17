@@ -101,6 +101,8 @@ class ObjectCreatorTool extends GestureTool {
    * Worker 模式下 beginMol 经 RPC 确认异步返回 molId；挂起期间 append 条目按序
    * 入 `queue` 缓冲（增量必须保序），绝对量补丁合并入 `patch`（覆盖即最新），
    * molId 到达后由 `_resolveCreateMol` 按序补发并执行延迟的闭合/中止/提交。
+   * abort 时挂起状态立即与手势解绑（本字段置空），stale pending 由
+   * `_resolveCreateMol` 走 abort 分支自决，不阻塞新手势的 beginMol。
    * @type {?{ closing: "end"|"abort"|null, context: Object, objectId: number|string, queue: Array<Object>, patch: Object|null, commit: boolean }}
    * @protected
    */
@@ -706,8 +708,9 @@ class ObjectCreatorTool extends GestureTool {
         () => {
           if (this._molPending === pending) {
             this._molPending = null;
-            this._flushPendingMolLegacy(pending);
           }
+          // 已被 abort 解绑的挂起缓冲同样按旧路径自决（discardActiveObjects 移除暂存对象）
+          this._flushPendingMolLegacy(pending);
         },
       );
       return;
@@ -720,14 +723,20 @@ class ObjectCreatorTool extends GestureTool {
 
   /**
    * molId 确认到达：按序补发挂起缓冲并执行延迟的闭合/中止/提交
+   * @description
+   * 已被 abort 解绑的 stale pending（`this._molPending !== pending`）同样走 abort
+   * 分支自决（缓冲不补发），但不得接管当前手势的分子状态。
    * @param {Object} pending - 挂起状态
    * @param {*} molId - beginMol 确认的分子 id（非字符串时视为分配失败，回退旧路径补发）
    * @returns {void}
    * @protected
    */
   _resolveCreateMol(pending, molId) {
-    if (this._molPending !== pending) return;
-    this._molPending = null;
+    const isCurrent = this._molPending === pending;
+    if (!isCurrent && pending.closing !== "abort") return;
+    if (isCurrent) {
+      this._molPending = null;
+    }
     const boardApi = pending.context?.services?.boardApi;
     if (typeof molId !== "string" || molId === "") {
       this._flushPendingMolLegacy(pending);
@@ -906,14 +915,18 @@ class ObjectCreatorTool extends GestureTool {
    * 中止当前创建分子：丢弃 amend 流，暂存对象随分子移除
    * @description
    * 无在途分子时返回 false（调用方走旧 discardActiveObjects 路径）；
-   * molId 确认中（Worker 模式）时标记延迟中止，确认后由 `_resolveCreateMol` 执行。
+   * molId 确认中（Worker 模式）时标记延迟中止并立即与当前手势解绑
+   * （`_molPending` 置空，新手势可重新 beginMol），
+   * 确认后由 `_resolveCreateMol` 对 stale pending 走 abort 分支自决。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {boolean} 是否有在途分子接管了本次丢弃
    * @protected
    */
   _abortCreatedMol(context = {}) {
     if (this._molPending !== null) {
-      this._molPending.closing = "abort";
+      const pending = this._molPending;
+      this._molPending = null;
+      pending.closing = "abort";
       return true;
     }
     if (this._molId === null) return false;

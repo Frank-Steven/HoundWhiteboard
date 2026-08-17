@@ -1006,15 +1006,26 @@ class ActiveObjectManager {
             const chunk = this.board.getChunkById(chunkId);
             if (!chunk || chunk.isLoad) return;
             loader.trackChunk(chunk);
-            loader.emitLoadRequest(chunk, { strategy: "temp" });
-            await new Promise((resolve) => {
-              this.board.chunkLoadEventBus.once(
+            // 先注册监听再触发加载（加载可能同步完成，事件先于注册会错过）。
+            // 不能用 once：多区块并发加载时首个 LOAD_COMPLETE 会消耗全部 once 监听，
+            // 仅匹配者 resolve、其余监听已被移除而永久挂起。
+            const promise = new Promise((resolve) => {
+              const handler = (payload) => {
+                if (payload.chunkId === chunkId) {
+                  this.board.chunkLoadEventBus.off(
+                    CHUNK_LOAD_EVENTS.LOAD_COMPLETE,
+                    handler,
+                  );
+                  resolve();
+                }
+              };
+              this.board.chunkLoadEventBus.on(
                 CHUNK_LOAD_EVENTS.LOAD_COMPLETE,
-                (payload) => {
-                  if (payload.chunkId === chunkId) resolve();
-                },
+                handler,
               );
             });
+            loader.emitLoadRequest(chunk, { strategy: "temp" });
+            await promise;
           }),
         );
         // 全部移入 loadedQueue

@@ -1865,6 +1865,68 @@ describe("CommonObjectModifierTool", () => {
       expect(boardApi.endMol).not.toHaveBeenCalled();
     });
 
+    test("Worker 挂起期 cancel 后新手势不被 stale pending 阻塞：B 的分子独立成立", async () => {
+      const object = { id: "1", position: new Vector(10, 20) };
+      const beginDeferreds = [];
+      const boardApi = createMolBoardApi({
+        beginMol: jest.fn(
+          () =>
+            new Promise((resolve) => {
+              beginDeferreds.push(resolve);
+            }),
+        ),
+      });
+      const tool = new CommonObjectModifierTool({
+        processor: new DragGestureProcessor(),
+      });
+      const context = aomCtx(tool, object, { boardApi });
+
+      // 手势 A：beginMol RPC 悬起，拖一帧后 cancel（本地回滚，挂起状态随即解绑）
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 12, y: 20 } } }] },
+        context,
+      );
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 14, y: 22 } } }] },
+        context,
+      );
+      expect(beginDeferreds).toHaveLength(1);
+      expect(object.position).toEqual(new Vector(12, 22));
+      tool.process({ signals: [{ type: "cancel", context: {} }] }, context);
+      expect(object.position).toEqual(new Vector(10, 20));
+      expect(tool._molPending).toBeNull();
+
+      // 手势 B：stale pending 已解绑，beginMol 不被阻塞
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 12, y: 20 } } }] },
+        context,
+      );
+      expect(boardApi.beginMol).toHaveBeenCalledTimes(2);
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 16, y: 24 } } }] },
+        context,
+      );
+      expect(object.position).toEqual(new Vector(14, 24));
+      tool.process({ signals: [{ type: "end", context: {} }] }, context);
+
+      // A 的 RPC 落定：stale pending 走 abort 分支自决，不触碰 B 的分子
+      beginDeferreds[0]("demo/mol-a");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(boardApi.abortMol).toHaveBeenCalledWith("demo/mol-a");
+      expect(boardApi.amendMol).not.toHaveBeenCalled();
+      expect(boardApi.endMol).not.toHaveBeenCalled();
+
+      // B 的 RPC 落定：补发最新位置并延迟闭合，拖动数据不丢失
+      beginDeferreds[1]("demo/mol-b");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(boardApi.amendMol).toHaveBeenCalledTimes(1);
+      expect(boardApi.amendMol).toHaveBeenCalledWith("demo/mol-b", {
+        "1": { position: { x: 14, y: 24 } },
+      });
+      expect(boardApi.endMol).toHaveBeenCalledWith("demo/mol-b");
+      expect(boardApi.abortMol).toHaveBeenCalledTimes(1);
+    });
+
     test("集成：真实内核拖动松手后 undo 回退位置且选择保留", async () => {
       const { BoardApi } = await import(
         "../../../../../kernel/api/board-api.js"

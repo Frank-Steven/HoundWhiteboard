@@ -786,4 +786,72 @@ describe("ObjectCreatorTool — 分子管线", () => {
       "commitObjects",
     ]);
   });
+
+  test("Worker 挂起期 abort 后新手势不被 stale pending 阻塞：追点与提交不丢失", async () => {
+    const beginDeferreds = [];
+    const { boardApi, deviceContext } = createMolBoardDeviceContext("203", {
+      boardApiOverrides: {
+        beginMol: jest.fn(
+          () =>
+            new Promise((resolve) => {
+              beginDeferreds.push(resolve);
+            }),
+        ),
+      },
+    });
+    const tool = new CircleDataCreatorTool({
+      processor: createCircleRadiusProcessor(),
+    });
+
+    // 手势 A：beginMol RPC 悬起，追点缓冲后被 abort（挂起状态随即解绑）
+    tool.process(
+      { signals: [{ type: "position", context: { value: new Vector(0, 0) } }] },
+      deviceContext,
+    );
+    tool.process(
+      { signals: [{ type: "position", context: { value: new Vector(3, 4) } }] },
+      deviceContext,
+    );
+    expect(beginDeferreds).toHaveLength(1);
+    tool.process({ signals: [{ type: "cancel", context: {} }] }, deviceContext);
+    expect(tool._molPending).toBeNull();
+
+    // 手势 B：stale pending 已解绑，beginMol 不被阻塞
+    tool.process(
+      { signals: [{ type: "position", context: { value: new Vector(0, 0) } }] },
+      deviceContext,
+    );
+    expect(boardApi.beginMol).toHaveBeenCalledTimes(2);
+    tool.process(
+      { signals: [{ type: "position", context: { value: new Vector(6, 8) } }] },
+      deviceContext,
+    );
+    tool.process(
+      {
+        signals: [
+          { type: "position", context: { value: new Vector(6, 8) } },
+          { type: "end", context: {} },
+        ],
+      },
+      deviceContext,
+    );
+
+    // A 的 RPC 落定：stale pending 走 abort 分支自决，缓冲不补发
+    beginDeferreds[0]("demo/mol-a");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(boardApi.abortMol).toHaveBeenCalledWith("demo/mol-a");
+    expect(boardApi.amendMol).not.toHaveBeenCalled();
+    expect(boardApi.endMol).not.toHaveBeenCalled();
+    expect(boardApi.commitObjects).not.toHaveBeenCalled();
+
+    // B 的 RPC 落定：补发最新补丁、物化并提交，数据不丢失
+    beginDeferreds[1]("demo/mol-b");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(boardApi.amendMol).toHaveBeenCalledTimes(1);
+    expect(boardApi.amendMol).toHaveBeenCalledWith("demo/mol-b", {
+      "203": { data: { radius: 10 } },
+    });
+    expect(boardApi.endMol).toHaveBeenCalledWith("demo/mol-b");
+    expect(boardApi.commitObjects).toHaveBeenCalledWith(["203"]);
+  });
 });
