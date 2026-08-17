@@ -152,15 +152,23 @@ function createJournaler({ boardCore, store, collectMeta, persistStream, writeMe
     }
   };
 
+  /** @type {Set<string>} 处于连续写失败状态的日志流来源（进入时告警一次，恢复时告警一次） */
+  const failedSources = new Set();
+
   /**
    * 执行一轮落盘：日志段（按 record.source 分流，persistStream 过滤）→ 对象调和 → 区块调和 → 板元数据
    * @returns {Promise<void>}
+   * @throws {Error} 任一日志流写失败时抛出（记录保留在队列中下轮重试，调用方可显式上报）
    *
    * @description
    * 落盘归属由 record.source 决定并经 persistStream 判定：daemon 落自己与 relay 远端来源的流
    * （直连客户端的流由其自写），GUI 只落本端流。
+   * 写成功的记录才出队：写失败（返回 false 或抛错）的记录保留在队首下轮重试，
+   * 不产生 per-source op-id 空洞（空洞会让重开时日志准入校验失败、板无法打开）。
    */
   const doFlush = async () => {
+    /** @type {Error[]} 本轮写失败的明细 */
+    const failures = [];
     if (pendingRecords.length > 0) {
       const records = pendingRecords;
       pendingRecords = [];
@@ -173,15 +181,36 @@ function createJournaler({ boardCore, store, collectMeta, persistStream, writeMe
         }
         group.push(record);
       }
+      /** @type {Object[]} 写失败、留待下轮重试的记录（保持原序置于队首） */
+      const retry = [];
       for (const [source, group] of bySource) {
         if (persistStream && !persistStream(source)) continue;
         const seq = state.nextSegmentSeqBySource.get(source) ?? 0;
-        const used = await store.appendSegment(source, seq, group);
-        if (used !== false) {
+        try {
+          const used = await store.appendSegment(source, seq, group);
+          if (used === false) {
+            throw new Error("存储驱动写段失败");
+          }
           state.nextSegmentSeqBySource.set(source, used + 1);
           // 代写该来源的流即承担其元数据分片（本盘上的计数与时间水位由此续号）
           state.flushedSources.add(source);
+          if (failedSources.delete(source)) {
+            console.error(`[journaler] 日志流 ${source} 落盘恢复`);
+          }
+        } catch (error) {
+          retry.push(...group);
+          failures.push(error instanceof Error ? error : new Error(String(error)));
+          if (!failedSources.has(source)) {
+            failedSources.add(source);
+            console.error(
+              `[journaler] 日志流 ${source} 写段失败，${group.length} 条记录保留下轮重试：${error?.message ?? error}`,
+            );
+          }
         }
+      }
+      // 失败记录回到队首（早于本轮 await 期间新到的记录），保持 per-source 序号连续
+      if (retry.length > 0) {
+        pendingRecords = retry.concat(pendingRecords);
       }
       for (const record of records) {
         if (typeof record.time === "number" && record.time > state.lastTime) {
@@ -189,11 +218,31 @@ function createJournaler({ boardCore, store, collectMeta, persistStream, writeMe
         }
       }
     }
-    await reconcileObjects();
-    await reconcileChunks();
+    // 调和与元数据阶段各自独立容错：指纹未更新的项下轮自然重试，不阻断日志段落盘
+    for (const [label, stage] of [
+      ["对象调和", reconcileObjects],
+      ["区块调和", reconcileChunks],
+      ["元数据", writeSourceMetas],
+    ]) {
+      try {
+        await stage();
+      } catch (error) {
+        console.error(`[journaler] ${label}失败，下轮重试：${error?.message ?? error}`);
+      }
+    }
+    if (failures.length > 0) {
+      throw new Error(failures.map((error) => error.message).join("；"));
+    }
+  };
+
+  /**
+   * 元数据分片落盘：本端 + 本会话代写过流的来源
+   * @description 布局 v2：board.json 创建后只读，各写端只写自己负责的 meta/<source>.json；
+   * 指纹比对，值不变不重写。
+   * @returns {Promise<void>}
+   */
+  const writeSourceMetas = async () => {
     if (!writeMeta) return;
-    // 元数据分片：本端 + 本会话代写过流的来源（布局 v2：board.json 创建后只读，
-    // 各写端只写自己负责的 meta/<source>.json；指纹比对，值不变不重写）
     const own = boardCore.source;
     const all = collectMeta?.() ?? {};
     for (const source of new Set([own, ...state.flushedSources])) {
@@ -216,11 +265,14 @@ function createJournaler({ boardCore, store, collectMeta, persistStream, writeMe
 
   /**
    * 显式排空：等待已排队的落盘完成
+   * @description 内部串行链永不毒化：本轮失败经返回的 Promise 上抛给调用方，
+   * 链本身捕获后续接（失败明细见 doFlush 的告警与返回值）。
    * @returns {Promise<void>}
    */
   const flush = () => {
-    flushing = flushing.then(doFlush);
-    return flushing;
+    const round = flushing.then(doFlush);
+    flushing = round.catch(() => {});
+    return round;
   };
 
   /**
@@ -232,7 +284,9 @@ function createJournaler({ boardCore, store, collectMeta, persistStream, writeMe
     flushScheduled = true;
     queueMicrotask(() => {
       flushScheduled = false;
-      void flush();
+      void flush().catch((error) => {
+        console.error(`[journaler] 自动落盘失败：${error?.message ?? error}`);
+      });
     });
   };
 

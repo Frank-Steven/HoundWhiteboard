@@ -6,6 +6,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { jest } from "@jest/globals";
 import { createMemoryDriver } from "../../../io/driver/memory.js";
 import { bindRoot } from "../../../io/driver/io-driver.js";
 import { BoardCore } from "../../board/board-core.js";
@@ -585,5 +586,77 @@ describe("Journaler", () => {
     // 合并视图：两源计数并入
     const session = await store.loadAll();
     expect(session.meta.objectIdCounters).toEqual({ b: 1 });
+  });
+
+  test("写段失败：记录保留队首重试，恢复后无序号空洞，flush 链不毒化", async () => {
+    const { boardCore, api, store } = setup();
+    await store.create();
+    const journaler = createJournaler({ boardCore, store });
+    journaler.attach();
+
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const originalAppend = store.appendSegment.bind(store);
+    let failNext = true;
+    store.appendSegment = async (source, seq, records) => {
+      if (failNext) return false;
+      return originalAppend(source, seq, records);
+    };
+    try {
+      // 第一轮写段失败（驱动层 false）：记录不出队，flush 上抛，告警留痕
+      await createStaticStroke(api, "demo/1");
+      await expect(journaler.flush()).rejects.toThrow("写段失败");
+      expect(errorSpy).toHaveBeenCalled();
+      expect(await readRecords(store)).toHaveLength(0);
+
+      // 恢复后继续操作：失败记录带新记录一起落盘，per-source 序号连续无空洞，
+      // 且串行链未被上一轮的拒绝毒化
+      failNext = false;
+      await createStaticStroke(api, "demo/2");
+      await journaler.flush();
+      const records = await readRecords(store);
+      expect(records.map((r) => r.id)).toEqual(["core/op-1", "core/op-2"]);
+      expect((await store.readAllObjects()).map((o) => o.id).sort()).toEqual([
+        "demo/1",
+        "demo/2",
+      ]);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  test("写段抛错：同款保留重试，失败与恢复各告警一次", async () => {
+    const { boardCore, api, store } = setup();
+    await store.create();
+    const journaler = createJournaler({ boardCore, store });
+    journaler.attach();
+
+    const messages = [];
+    const errorSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation((...args) => messages.push(args.join(" ")));
+    const originalAppend = store.appendSegment.bind(store);
+    // 自动合批 flush 也会消耗失败次数：三次失败 = 自动一轮 + 显式两轮
+    let failCount = 3;
+    store.appendSegment = async (source, seq, records) => {
+      if (failCount > 0) {
+        failCount -= 1;
+        throw new Error("disk full");
+      }
+      return originalAppend(source, seq, records);
+    };
+    try {
+      await createStaticStroke(api, "demo/1");
+      await expect(journaler.flush()).rejects.toThrow("disk full");
+      await expect(journaler.flush()).rejects.toThrow("disk full");
+      // 进入失败状态只告警一次（连续失败不刷屏）
+      expect(messages.filter((m) => m.includes("写段失败"))).toHaveLength(1);
+
+      await journaler.flush();
+      expect((await readRecords(store)).map((r) => r.id)).toEqual(["core/op-1"]);
+      // 恢复上报告警
+      expect(messages.some((m) => m.includes("落盘恢复"))).toBe(true);
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });
