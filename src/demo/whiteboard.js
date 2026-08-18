@@ -35,7 +35,9 @@ createConsolePrinter(logBus, { timestamps: true });
  * @returns {Promise<void>}
  */
 async function bootstrapWhiteboard() {
-  installSyncConsole();
+  // hwb 控制台命令的 board 惰性引用（install 早于 board 创建，调试命令在用时才取值）
+  let boardRef = null;
+  installSyncConsole({ getBoard: () => boardRef });
   // demo 板目录：家目录下 hound-whiteboard/demo-board（首次运行自动创建）
   // 同步中继：URL ?relay= 或 localStorage hwb-relay（双开时第二窗口用 localStorage 设不同值）
   // 身份：URL ?source= 或 localStorage hwb-source（同机双开需不同身份）
@@ -61,6 +63,7 @@ async function bootstrapWhiteboard() {
     syncUrl: relayUrl,
     boardId: "demo-board",
   });
+  boardRef = board;
   board.width = 800;
   board.height = 600;
 

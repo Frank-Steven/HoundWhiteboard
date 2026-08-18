@@ -130,13 +130,12 @@ yarn demo:web   # 静态伺服 src/demo，浏览器打开 whiteboard.html
 
 ## 同步控制台
 
-`sync-console.js` 在页面加载时安装 `window.hwb` 控制台命令，供运行时切换同步配置：
+`sync-console.js` 在页面加载时安装 `window.hwb` 控制台命令（`hwb.help()` 打印全部用法）：
 
-- `hwb.setRelay(url)` — 设置中继地址（形如 `ws://192.168.1.5:8377`）
-- `hwb.setSource(source)` — 设置本端身份
-- `hwb.setBoard(board)` — 设置板目录路径
-- `hwb.status()` — 只读打印当前同步配置
-- `hwb.off()` — 清除配置回离线
+- 同步配置：`hwb.setRelay(url)` / `hwb.setSource(source)` / `hwb.setBoard(board)`（设置后自动刷新）、`hwb.status()`（只读打印）、`hwb.off()`（清除回离线）
+- 操作：`hwb.undo()` / `hwb.redo()`（经 BoardApi，完成后广播 hit 变更清理失效选中）
+- 同步调试：`hwb.digest()`（stateHash / chainHash / openMols 摘要）、`hwb.tree()`（queryUndoTree 树结构）、`hwb.repair()`（手动 repairStateFromLog）、`hwb.reconnect()`（关闭并重建全部同步通道）
+- 调试查询（与调试工具同能力，Worker 侧输出）：`hwb.chunkLoad()` / `hwb.chunks(ids?)` / `hwb.objectLoad()` / `hwb.objects(ids?, chunks?)` / `hwb.aom()` / `hwb.hit()` / `hwb.board()`；UI 侧直接打印：`hwb.viewport(ids?)` / `hwb.devices(mode?)`（`"mermaid"` 输出 Mermaid）
 
 前三项设置后自动刷新页面生效。
 

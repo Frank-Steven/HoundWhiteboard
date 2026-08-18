@@ -673,6 +673,38 @@ class BoardApiRpc {
   }
 
   /**
+   * 计算对象状态的确定性校验和（已驻留口径，同步 digest 用）
+   * @returns {Promise<string>} 状态校验和
+   */
+  async queryStateHash() {
+    return this.#call("queryStateHash", {});
+  }
+
+  /**
+   * 计算活动链的确定性校验和（驻留无关，同步 digest 用）
+   * @returns {Promise<string>} 活动链校验和
+   */
+  async queryChainHash() {
+    return this.#call("queryChainHash", {});
+  }
+
+  /**
+   * 查询时间回溯树结构（活动链、HEAD、可重做栈与节点视图）
+   * @returns {Promise<Object>} 树结构
+   */
+  async queryUndoTree() {
+    return this.#call("queryUndoTree", {});
+  }
+
+  /**
+   * 从本端日志重放派生对象状态并对齐活体（效果层分歧自愈）
+   * @returns {Promise<{ repaired: boolean, fixedIds: string[] }>} 修复结果
+   */
+  async repairStateFromLog() {
+    return this.#call("repairStateFromLog", {});
+  }
+
+  /**
    * 发送调试请求到 Worker（fire-and-forget，不等待响应）
    * @param {string} query - 调试查询名（如 "chunkLoadState"）
    * @param {Record<string, any>} [extra={}] - 附加参数

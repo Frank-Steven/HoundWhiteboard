@@ -167,6 +167,41 @@ describe("CoreWorker connect/destroy 竞态", () => {
   });
 });
 
+describe("调试重连", () => {
+  test("debug-request reconnect 关闭旧协调器并重建挂接", async () => {
+    const host = new FakeWorkerHost();
+    const runtime = new CoreWorkerRuntime(host);
+    runtime.start();
+
+    const base = coordinatorInstances.length;
+    const createBoardPromise = rpc(host, "createBoard", {
+      width: 800,
+      height: 600,
+      source: "worker",
+      syncUrl: "ws://127.0.0.1:1",
+      boardId: "race-room",
+    });
+    await until(() => coordinatorInstances.length === base + 1, "协调器已创建");
+    coordinatorInstances[base]._resolveConnect();
+    await createBoardPromise;
+
+    host.emit({ type: "debug-request", query: "reconnect" });
+    await until(
+      () => coordinatorInstances.length === base + 2,
+      "协调器已重建",
+    );
+    const [oldOne, newOne] = coordinatorInstances.slice(base, base + 2);
+    expect(oldOne.closed).toBe(true);
+
+    // 新实例 connect 兑现后挂接：awareness 送达新协调器而非旧的
+    newOne._resolveConnect();
+    await until(() => newOne.closed === false, "新协调器在役");
+    host.emit({ type: "awareness-send", data: { kind: "cursor" } });
+    await until(() => newOne.awarenessSent.length === 1, "awareness 送达新协调器");
+    expect(oldOne.awarenessSent).toHaveLength(0);
+  });
+});
+
 describe("guiDaemonNameFromPath", () => {
   test("同 basename 不同完整路径派生不同 daemon 名，且名字合法", () => {
     const nameA = `gui-${guiDaemonNameFromPath("/home/user/a/board")}`;

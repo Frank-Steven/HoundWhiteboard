@@ -1583,8 +1583,40 @@ class CoreWorkerRuntime {
    */
   #handleDebugRequest(message) {
     const { query, ...params } = message;
+    if (query === "reconnect") {
+      void this.#reconnectSyncChannels();
+      return;
+    }
     const boardCore = this.#requireBoardCore();
     handleDebugQuery(boardCore, query, params);
+  }
+
+  /**
+   * 关闭并重建全部同步通道（relay 协调器与 GUI daemon 协作通道）
+   * @description 调试动作：通道卡死或状态可疑时手动重建，不走 3s 重连等待。
+   * 通道不存在（离线/单机）时仅记录日志。
+   * @returns {Promise<void>}
+   * @private
+   */
+  async #reconnectSyncChannels() {
+    let acted = false;
+    if (this.#coordinator !== null) {
+      acted = true;
+      await this.#coordinator.close().catch(() => {});
+      this.#coordinator = null;
+      this.#log.info("调试重连：重建 relay 协调器");
+      await this.#connectCoordinator();
+    }
+    if (this.#guiCoordinator !== null) {
+      acted = true;
+      await this.#guiCoordinator.close().catch(() => {});
+      this.#guiCoordinator = null;
+      this.#log.info("调试重连：重建板 daemon 协作通道");
+      await this.#connectGuiDaemon();
+    }
+    if (!acted) {
+      this.#log.info("调试重连：当前无同步通道（离线/单机）");
+    }
   }
 }
 

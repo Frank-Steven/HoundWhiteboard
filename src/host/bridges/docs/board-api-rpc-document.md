@@ -121,6 +121,10 @@ Worker 侧分发由路由表 [board-api-routes.js](../../../kernel/api/board-api
 | `hitTest(range, mode)`        | 执行命中检测，返回与指定范围相交的对象 id 列表     |
 | `queryChoices()`              | 列出本端的命名选择（choice）                       |
 | `queryRemoteChoices()`        | 列出全部远程命名选择（awareness 查询面）           |
+| `queryStateHash()`            | 对象状态的确定性校验和（已驻留口径，同步 digest 用） |
+| `queryChainHash()`            | 活动链的确定性校验和（驻留无关，同步 digest 用）   |
+| `queryUndoTree()`             | 时间回溯树结构（活动链 / HEAD / 可重做栈 / 节点视图） |
+| `repairStateFromLog()`        | 从本端日志重放派生状态并对齐活体（效果层自愈）     |
 
 ### 撤销 / 重做
 
