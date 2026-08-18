@@ -25,6 +25,13 @@ import { logBus } from "../../../utils/log/log-bus.js";
 const boardLog = new Logger("Board", "WARN", logBus);
 
 /**
+ * createBoard 默认超时（毫秒）
+ * @description 持久化首开要拉起板 daemon，Rust 侧就绪轮询上限 15s，此处留足余量。
+ * @type {number}
+ */
+const CREATE_BOARD_TIMEOUT_MS = 20000;
+
+/**
  * Board 运行时节点配置事件载荷。
  * @typedef {Object} BoardConfigureEventPayload
  * @property {string} to - 目标设备图节点绝对路径，必须包含 viewportId
@@ -226,7 +233,7 @@ class Board {
    * 创建 BoardApiRpc 并在 Worker 中初始化 BoardCore。
    * 必须在创建任何 viewport 之前调用。
    * @param {{ postMessage: Function, addEventListener: Function, removeEventListener: Function }} worker - Worker 或兼容端点
-   * @param {{ timeoutMs?: number, readyTimeoutMs?: number }} [options={}] - RPC 选项
+   * @param {{ timeoutMs?: number, readyTimeoutMs?: number, createBoardTimeoutMs?: number }} [options={}] - RPC 选项
    * @returns {Promise<BoardApiRpc>} 已就绪的 BoardApiRpc
    */
   async enableWorkerMode(worker, options = {}) {
@@ -253,14 +260,17 @@ class Board {
       await boardApi.waitUntilReady(
         options.readyTimeoutMs ?? options.timeoutMs,
       );
-      await boardApi.createBoard({
-        width: this.width,
-        height: this.height,
-        rootPath: this.rootPath,
-        source: this.idSource || undefined,
-        syncUrl: this.syncUrl,
-        boardId: this.boardId ?? this.rootPath,
-      });
+      await boardApi.createBoard(
+        {
+          width: this.width,
+          height: this.height,
+          rootPath: this.rootPath,
+          source: this.idSource || undefined,
+          syncUrl: this.syncUrl,
+          boardId: this.boardId ?? this.rootPath,
+        },
+        options.createBoardTimeoutMs ?? CREATE_BOARD_TIMEOUT_MS,
+      );
       // 按会话元数据续种对象 id 池，避免重开后分配碰撞
       const counters = await boardApi.getObjectIdCounters();
       this.#reseedIdPool(counters);

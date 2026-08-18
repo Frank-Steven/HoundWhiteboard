@@ -65,10 +65,10 @@ Worker 侧分发由路由表 [board-api-routes.js](../../../kernel/api/board-api
 
 ### 板面生命周期
 
-| 方法                   | 说明                                                               |
-| ---------------------- | ------------------------------------------------------------------ |
-| `createBoard(options)` | 初始化 Worker 侧 `BoardCore`，可选 `width` / `height` / `rootPath` |
-| `destroyBoard()`       | 销毁 BoardCore，清理所有 ViewportCore                              |
+| 方法                            | 说明                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------ |
+| `createBoard(options, timeoutMs?)` | 初始化 Worker 侧 `BoardCore`，可选 `width` / `height` / `rootPath`；`timeoutMs` 覆盖单次超时 |
+| `destroyBoard()`                | 销毁 BoardCore，清理所有 ViewportCore                                                       |
 
 ### 视口管理
 

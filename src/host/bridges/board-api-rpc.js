@@ -300,10 +300,11 @@ class BoardApiRpc {
   /**
    * 在 Worker 中创建 BoardCore
    * @param {{ width?: number, height?: number, rootPath?: string }} [options={}] - Board 初始化选项
+   * @param {number} [timeoutMs] - 超时时间（缺省用实例默认；持久化首开含 daemon 拉起，应放宽）
    * @returns {Promise<{ ok: boolean }>} 创建结果
    */
-  async createBoard(options = {}) {
-    return this.#call("createBoard", options);
+  async createBoard(options = {}, timeoutMs) {
+    return this.#call("createBoard", options, timeoutMs);
   }
 
   /**

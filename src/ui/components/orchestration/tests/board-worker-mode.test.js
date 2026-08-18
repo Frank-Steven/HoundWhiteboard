@@ -2,6 +2,8 @@
  * @jest-environment node
  */
 
+import { jest } from "@jest/globals";
+
 import { createNoopCanvas } from "../../../../test-support/noop-canvas.js";
 import { Board } from "../board.js";
 import { Viewport } from "../viewport.js";
@@ -59,7 +61,11 @@ class FakeWorkerEndpoint {
   postMessage(message) {
     this.postedMessages.push(message);
 
-    if (message?.type === "rpc" && message?.method === "createBoard") {
+    if (
+      message?.type === "rpc" &&
+      message?.method === "createBoard" &&
+      !this.silenceCreateBoard
+    ) {
       this.emit({
         type: "rpc-response",
         msgId: message.msgId,
@@ -209,6 +215,48 @@ describe("Board worker mode", () => {
     await enablePromise;
 
     expect(board.allocateObjectId()).toBe("demo/1");
+  });
+
+  test("createBoard 超时时间可用 createBoardTimeoutMs 覆盖", async () => {
+    const board = new Board({ width: 800, height: 600 });
+    const worker = new FakeWorkerEndpoint();
+    worker.silenceCreateBoard = true;
+
+    const enablePromise = board.enableWorkerMode(worker, {
+      createBoardTimeoutMs: 30,
+    });
+    worker.emit({ type: "ready" });
+
+    await expect(enablePromise).rejects.toThrow("RPC timeout: createBoard");
+  });
+
+  test("createBoard 默认超时放宽到 20s（覆盖 daemon 拉起轮询）", async () => {
+    jest.useFakeTimers();
+    try {
+      const board = new Board({ width: 800, height: 600 });
+      const worker = new FakeWorkerEndpoint();
+      worker.silenceCreateBoard = true;
+
+      const enablePromise = board.enableWorkerMode(worker);
+      worker.emit({ type: "ready" });
+      const assertion = expect(enablePromise).rejects.toThrow(
+        "RPC timeout: createBoard",
+      );
+
+      // 19.9s 时仍未超时（默认 5s 的话早就失败了）
+      await jest.advanceTimersByTimeAsync(19900);
+      let settled = false;
+      void enablePromise.catch(() => {
+        settled = true;
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      await jest.advanceTimersByTimeAsync(200);
+      await assertion;
+    } finally {
+      jest.useRealTimers();
+    }
   });
   test("enableWorkerMode 后 createViewport 应返回 Viewport 并发送 createViewport RPC", async () => {
     const restoreAnimationFrame = installMockAnimationFrame();

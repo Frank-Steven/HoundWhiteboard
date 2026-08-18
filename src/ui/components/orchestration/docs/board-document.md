@@ -42,7 +42,7 @@ Worker 侧真实白板核心参见 [board-core-document.md](../../../../kernel/b
 2. 创建 `BoardApiRpc`
 3. 挂接 io-invoke-forwarder（worker 内驱动的文件操作经主线程转发到 Tauri invoke）
 4. 等待 Worker 发送 `ready`
-5. 调用 `boardApi.createBoard({ width, height, rootPath, source, syncUrl, boardId })`
+5. 调用 `boardApi.createBoard({ width, height, rootPath, source, syncUrl, boardId })`（超时可经 `options.createBoardTimeoutMs` 覆盖，默认 20s——持久化首开含 daemon 拉起，Rust 侧就绪轮询上限 15s）
 6. 按 `getObjectIdCounters` 续种对象 id 池（避免重开后分配碰撞）
 7. 缓存 `#boardApi` 与 `#worker`
 

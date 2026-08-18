@@ -16,6 +16,7 @@ import {
 } from "./config/whiteboard-demo.js";
 import { resolveDeviceSource } from "../utils/device-identity.js";
 import { installSyncConsole } from "./config/sync-console.js";
+import { enableWorkerWithFallback } from "./config/enable-worker-with-fallback.js";
 import { DemoLog } from "./config/log.js";
 import { ViewportTool } from "./config/viewport-tool.js";
 import {
@@ -73,17 +74,20 @@ async function bootstrapWhiteboard() {
     throw new Error("whiteboard demo root elements not found.");
   }
 
-  const worker = new Worker(
-    new URL("../host/core-worker.js", import.meta.url),
-    { type: "module" },
+  const worker = await enableWorkerWithFallback(
+    board,
+    () =>
+      new Worker(new URL("../host/core-worker.js", import.meta.url), {
+        type: "module",
+      }),
+    {
+      onFallback(error) {
+        console.warn(
+          `[whiteboard] 持久化开板失败，回退内存模式：${error?.message ?? error}`,
+        );
+      },
+    },
   );
-
-  try {
-    await board.enableWorkerMode(worker);
-  } catch (error) {
-    worker.terminate?.();
-    throw error;
-  }
 
   const viewport = board.createViewport(
     foregroundLayer,

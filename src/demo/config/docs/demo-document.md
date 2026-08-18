@@ -128,6 +128,8 @@ yarn demo:web   # 静态伺服 src/demo，浏览器打开 whiteboard.html
 
 无 Tauri 环境（纯浏览器）无文件系统能力，自动降级为内存板 + relay 同步，落盘由持板 daemon 承担（relay 来源的记录由 daemon 落盘），`?board=` 随之失效。
 
+Tauri 桌面端默认板目录为 `~/hound-whiteboard/demo-board`（首次运行自动创建）。持久化开板失败（目录不可创建、daemon 拉起超时等）时回退内存模式重试（`enable-worker-with-fallback.js`）：板面功能照常，数据仅存续于本会话。
+
 ## 同步控制台
 
 `sync-console.js` 在页面加载时安装 `window.hwb` 控制台命令（`hwb.help()` 打印全部用法）：
