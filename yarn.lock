@@ -1356,10 +1356,10 @@ hidefile@3:
   dependencies:
     winattr "^3.0.0"
 
-hound-tauri-build@0.3.1:
-  version "0.3.1"
-  resolved "https://registry.yarnpkg.com/hound-tauri-build/-/hound-tauri-build-0.3.1.tgz#90c957aa7b117f69e2dabbd81c68b47e209c6e88"
-  integrity sha512-TOoskFz9ISfbc4x8w1q9E9m3Enff9o7BHBN+95AF8zjPyrnn9TKZpIbL8fWIcQFD0F40lAoPMyx3S+oPAqj5rw==
+hound-tauri-build@^0.4.0:
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/hound-tauri-build/-/hound-tauri-build-0.4.0.tgz#b3f078da9a6fda906901a49148c97a412ba88162"
+  integrity sha512-E42VUw7G/QlqBjbRKswr6ponMArctXbBCEwaARZcIfag78K3QWyp1mGjVIXEWR9D4kBG7ckP5r60Y/bky1muNg==
 
 html-escaper@^2.0.0:
   version "2.0.2"

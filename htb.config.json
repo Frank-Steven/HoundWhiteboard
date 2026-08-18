@@ -1,0 +1,21 @@
+{
+  "ios": {
+    "target": "sim",
+    "sign": true
+  },
+  "tui": {
+    "logLimit": 20000
+  },
+  "tasks": {
+    "build:android": {
+      "env": {
+        "JAVA_HOME": "/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home"
+      }
+    },
+    "build-quick:android": {
+      "env": {
+        "JAVA_HOME": "/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home"
+      }
+    }
+  }
+}

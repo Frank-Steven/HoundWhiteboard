@@ -1,6 +1,9 @@
 # Rust build output
 target/
 
+# htb 交叉构建时临时复制的前端目录
+.htb-frontend-dist/
+
 # Tauri generated project files
 gen/
 
