@@ -28,6 +28,7 @@ daemon 进程内维护引用计数（创建者引用 1）：
 
 - **start 幂等**：重复 `start`（同名同板）是引用 +1 而非报错——误操作（不知情地两次 start）不会被打断，也不会被一次 release 误关；同名不同板、同板不同名仍报错（name 唯一 + 一个板一个 daemon 约束不变）
 - 自洽性：GUI 连接持有引用，GUI 开着时 release 最多降到 GUI 那份（>0），daemon 不会中途消失
+- **GUI 附属 daemon 闲置自退出**：`gui-` 前缀名（GUI spawn 的会话附属物）在无客户端连接且仅剩 spawn 创建者引用时启动 60s 倒计时，到期自动退出——GUI 异常关闭/宿主进程被杀时创建者引用来不及 release 的兜底；客户端 join 取消计时（GUI 每 3s 重连探测，活着的 GUI 不会误触发），CLI hold（创建者引用 >1）抑制退出
 - refCount 不持久化：daemon 重启/僵尸覆盖后重置为 1；注册表条目镜像当前值供 `status` 展示
 - CLI 短命令不计数（用之前确保 daemon 在，用完不持有）
 
@@ -47,7 +48,7 @@ hwb daemon stop --name board1            # 强制归零关闭
 
 ### GUI 协作
 
-GUI 打开板时检测板目录 `.daemon.json`：有活 daemon 直接作为**协作客户端**（只读挂载板目录、本地 BoardCore 渲染、零写盘、经协作通道与 daemon 双向同步，落盘全在 daemon）；无活 daemon 则请求宿主进程 spawn 一个（name `gui-<板名>-<路径哈希>`，等就绪后连接）。GUI 销毁板时若本端是该 daemon 的 spawn 创建者（本次会话内经宿主 spawn 成功的新实例），断开协作通道后自动发 `daemon release` 回收创建者引用，无其他引用时 daemon 随即自动退出；attach 既有 daemon（CLI 或其他 GUI 启动的）时绝不 release，其创建者引用由 `daemon release` 手动回收。本机端（CLI/TUI/MCP/GUI）之间不走 relay；relay 只承载跨机协作。
+GUI 打开板时检测板目录 `.daemon.json`：有活 daemon 直接作为**协作客户端**（只读挂载板目录、本地 BoardCore 渲染、零写盘、经协作通道与 daemon 双向同步，落盘全在 daemon）；无活 daemon 则请求宿主进程 spawn 一个（name `gui-<板名>-<路径哈希>`，等就绪后连接）。GUI 销毁板时若本端是该 daemon 的 spawn 创建者（本次会话内经宿主 spawn 成功的新实例），断开协作通道后自动发 `daemon release` 回收创建者引用，无其他引用时 daemon 随即自动退出；attach 既有 daemon（CLI 或其他 GUI 启动的）时绝不 release，其创建者引用由 `daemon release` 手动回收。GUI 未走销毁路径（直接关窗、宿主进程被杀）时创建者引用会残留，由 daemon 侧闲置自退出兜底回收（见上）。本机端（CLI/TUI/MCP/GUI）之间不走 relay；relay 只承载跨机协作。
 
 ## 命令寻址
 

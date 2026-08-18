@@ -870,3 +870,103 @@ describe("daemon 身份持久化", () => {
     }
   });
 });
+
+describe("GUI 附属 daemon 闲置自退出", () => {
+  test("gui- 前缀 daemon 无客户端连接，闲置超时自动关闭", async () => {
+    const { dir, cleanup } = await tempBoard();
+    const daemon = await startBoardDaemon({
+      rootPath: dir,
+      exitOnZero: false,
+      name: "gui-idle-exit",
+      source: "daemon-c",
+      idleExitMs: 100,
+    });
+    try {
+      expect(await readDaemonDescriptor(dir)).not.toBeNull();
+      // 仅剩 spawn 创建者引用且无客户端：超时自退出（.daemon.json 被清理）
+      await waitFor(async () => (await readDaemonDescriptor(dir)) === null);
+    } finally {
+      await daemon.close();
+      await cleanup();
+    }
+  }, 30000);
+
+  test("客户端接入取消闲置计时，断开后重新计时", async () => {
+    const { dir, cleanup } = await tempBoard();
+    const daemon = await startBoardDaemon({
+      rootPath: dir,
+      exitOnZero: false,
+      name: "gui-idle-cancel",
+      source: "daemon-c",
+      idleExitMs: 200,
+    });
+    const guiCore = new BoardCore({
+      width: 800,
+      height: 600,
+      source: "gui-test",
+      aomRenderHooks: createDefaultAomRenderHooks(),
+      persistenceAdapter: createDefaultPersistenceAdapter(),
+    });
+    const coord = createNetworkCoordinator({
+      boardCore: guiCore,
+      boardApi: new BoardApi(guiCore),
+      url: `ws://127.0.0.1:${daemon.port}`,
+      boardId: dir,
+    });
+    try {
+      await coord.connect();
+      // 超过闲置时长仍存活（join 取消了倒计时）
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(await readDaemonDescriptor(dir)).not.toBeNull();
+      // 断开后重新计时，超时自退出
+      await coord.close();
+      await waitFor(async () => (await readDaemonDescriptor(dir)) === null);
+    } finally {
+      await coord.close();
+      await daemon.close();
+      await cleanup();
+    }
+  }, 30000);
+
+  test("CLI hold 占住（创建者引用 >1）时闲置不退出", async () => {
+    const { dir, cleanup } = await tempBoard();
+    const daemon = await startBoardDaemon({
+      rootPath: dir,
+      exitOnZero: false,
+      name: "gui-idle-hold",
+      source: "daemon-c",
+      idleExitMs: 100,
+    });
+    const run = (argv) =>
+      execFileAsync(process.execPath, [CLI_PATH, ...argv], {
+        env: process.env,
+      });
+    try {
+      // 重复 start（幂等）：创建者引用 +1 → 2
+      await run(["daemon", "start", "--name", "gui-idle-hold", "--path", dir]);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(await readDaemonDescriptor(dir)).not.toBeNull();
+    } finally {
+      await daemon.close();
+      await cleanup();
+    }
+  }, 30000);
+
+  test("非 gui- 前缀名不启用闲置自退出", async () => {
+    const { dir, cleanup } = await tempBoard();
+    const daemon = await startBoardDaemon({
+      rootPath: dir,
+      exitOnZero: false,
+      name: "cli-no-idle-exit",
+      source: "daemon-c",
+    });
+    try {
+      // 未传 idleExitMs 且非 gui- 前缀：短等不自退出（默认 60s 仅属 gui- 前缀）
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(await readDaemonDescriptor(dir)).not.toBeNull();
+    } finally {
+      await daemon.close();
+      await cleanup();
+    }
+  }, 30000);
+});

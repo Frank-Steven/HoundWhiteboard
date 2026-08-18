@@ -31,6 +31,9 @@ const START_LOCK_FILE = ".daemon-start.lock";
 /** 启动锁最大抢锁次数（含 stale 锁回收重试） */
 const START_LOCK_MAX_ATTEMPTS = 3;
 
+/** GUI 附属 daemon（gui- 前缀名）无客户端连接的闲置自退出时长（毫秒） */
+const GUI_DAEMON_IDLE_EXIT_MS = 60_000;
+
 /**
  * 判定 pid 是否存活
  * @param {number} pid - 进程号
@@ -164,6 +167,7 @@ async function readDaemonDescriptor(rootPath) {
  * @param {string} [options.relayUrl] - 中继地址；省略时 daemon 不参与协作
  * @param {number} [options.port=0] - 监听端口（0 为随机）
  * @param {string} [options.host="127.0.0.1"] - 监听地址
+ * @param {number} [options.idleExitMs] - 闲置自退出时长（毫秒）；缺省时 gui- 前缀名取 60s，其余名不启用
  * @returns {Promise<{name: string, rootPath: string, port: number, source: string, close: Function}>} daemon 句柄
  *
  * @description
@@ -320,6 +324,57 @@ async function startBoardDaemonLocked(options) {
    */
   let clientRefs = 0;
 
+  /**
+   * 闲置自退出时长（毫秒）；null 表示不启用
+   * @description GUI spawn 的 daemon（`gui-` 前缀名，见 core-worker 的 guiDaemonNameFromPath）
+   * 是 GUI 会话的附属物：GUI 异常关闭或宿主进程被杀时创建者引用来不及 release，
+   * 无客户端连接的 daemon 空转无意义，闲置超时自退出兜底（仅剩 spawn 创建者引用时生效；
+   * CLI hold 占住的不退）。join 接入即取消，断连后重新计时。
+   * @type {number|null}
+   */
+  const idleExitMs =
+    typeof options.idleExitMs === "number" && options.idleExitMs > 0
+      ? options.idleExitMs
+      : name.startsWith("gui-")
+        ? GUI_DAEMON_IDLE_EXIT_MS
+        : null;
+
+  /**
+   * 闲置自退出计时器
+   * @type {ReturnType<typeof setTimeout>|null}
+   */
+  let idleExitTimer = null;
+
+  /**
+   * 取消闲置自退出计时
+   * @returns {void}
+   */
+  const cancelIdleExit = () => {
+    if (idleExitTimer !== null) {
+      clearTimeout(idleExitTimer);
+      idleExitTimer = null;
+    }
+  };
+
+  /**
+   * 评估并排定闲置自退出（无客户端且仅剩 spawn 创建者引用时启动倒计时）
+   * @returns {void}
+   */
+  const scheduleIdleExit = () => {
+    cancelIdleExit();
+    if (idleExitMs === null || closed) return;
+    if (clientRefs !== 0 || ownerRefs > 1) return;
+    idleExitTimer = setTimeout(() => {
+      idleExitTimer = null;
+      // 到期复核：期间有客户端接入或 CLI hold 占住则不退
+      if (closed || clientRefs !== 0 || ownerRefs > 1) return;
+      console.log(
+        `[daemon] 无客户端连接闲置 ${Math.round(idleExitMs / 1000)}s（GUI 会话已消失），自动退出`,
+      );
+      closeAndExit();
+    }, idleExitMs);
+  };
+
   /** @type {Function|null} 协作广播的本地记录订阅 */
   let unsubscribeCollabAppend = null;
   /** @type {Function|null} 协作广播的 activity 订阅 */
@@ -433,6 +488,7 @@ async function startBoardDaemonLocked(options) {
     if (collabClients.size === 0) {
       detachCollabSubscriptions();
     }
+    scheduleIdleExit();
     checkZeroAndExit();
   };
 
@@ -524,6 +580,7 @@ async function startBoardDaemonLocked(options) {
         if (typeof message.source !== "string" || message.source === "") return;
         collabClients.set(ws, message.source);
         clientRefs += 1;
+        cancelIdleExit();
         await syncRefCount();
         ws.send(
           JSON.stringify({
@@ -623,6 +680,7 @@ async function startBoardDaemonLocked(options) {
       if (message?.route === "daemon-hold") {
         // 创建者引用 +1（CLI 显式占住，防止 release 归零退出）
         ownerRefs += 1;
+        cancelIdleExit();
         void syncRefCount();
         ws.send(JSON.stringify({ id: message.id, ok: true, result: { refCount: totalRefs() } }));
         return;
@@ -632,6 +690,7 @@ async function startBoardDaemonLocked(options) {
         ownerRefs = Math.max(0, ownerRefs - 1);
         void syncRefCount();
         ws.send(JSON.stringify({ id: message.id, ok: true, result: { refCount: totalRefs() } }));
+        scheduleIdleExit();
         checkZeroAndExit();
         return;
       }
@@ -666,12 +725,17 @@ async function startBoardDaemonLocked(options) {
   // 注册表登记：CLI 按 name 定位 daemon
   await writeEntry(desc);
 
+  // GUI 附属 daemon：启动即排闲置自退出（覆盖 spawn 后无人接入的孤儿场景，
+  // 如 GUI 侧开板超时回退内存模式）；首个客户端 join 时取消
+  scheduleIdleExit();
+
   const close = async () => {
     if (closed) return;
     closed = true;
     // 排空 in-flight RPC：关闭前最后一次落盘不截断
     await queue.drain();
     detachCollabSubscriptions();
+    cancelIdleExit();
     if (relayRetryTimer !== null) {
       clearTimeout(relayRetryTimer);
       relayRetryTimer = null;
