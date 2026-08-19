@@ -206,7 +206,7 @@ class ViewportCore {
    * @type {number}
    */
   get chunkWidth() {
-    return this.#boardCore?.width ?? 0;
+    return this.#boardCore.width;
   }
 
   /**
@@ -214,7 +214,7 @@ class ViewportCore {
    * @type {number}
    */
   get chunkHeight() {
-    return this.#boardCore?.height ?? 0;
+    return this.#boardCore.height;
   }
 
   /**
@@ -253,11 +253,7 @@ class ViewportCore {
    * @returns {import("../../kernel/chunk/chunk.js").Chunk[]}
    */
   getVisibleChunksForViewport(origin = this.origin, zoom = this.zoom) {
-    if (
-      !(this.#boardCore instanceof BoardCore) ||
-      this.chunkWidth <= 0 ||
-      this.chunkHeight <= 0
-    ) {
+    if (this.chunkWidth <= 0 || this.chunkHeight <= 0) {
       return [];
     }
 
@@ -315,7 +311,7 @@ class ViewportCore {
    * @returns {{ chunkId: number, x: number, y: number } | null}
    */
   worldToChunk(worldPoint) {
-    if (!(this.#boardCore instanceof BoardCore) || !worldPoint) return null;
+    if (!worldPoint) return null;
 
     const chunkWidth = this.chunkWidth;
     const chunkHeight = this.chunkHeight;
@@ -365,14 +361,14 @@ class ViewportCore {
       return [];
     }
 
-    const loadedChunks = this.#chunkLoader?.getLoadedChunks?.() ?? [];
+    const loadedChunks = this.#chunkLoader.getLoadedChunks();
     const loadedChunkIds = new Set(loadedChunks.map((chunk) => chunk.id));
 
     for (const chunkId of targetChunkIds) {
       if (loadedChunkIds.has(chunkId)) continue;
-      const chunk = this.#chunkLoader?.getChunkById?.(chunkId);
+      const chunk = this.#chunkLoader.getChunkById(chunkId);
       if (chunk) {
-        this.#chunkLoader?.emitLoadRequest?.(chunk, {
+        this.#chunkLoader.emitLoadRequest(chunk, {
           strategy: CHUNK_LOAD_STRATEGIES.FULL,
         });
       }
@@ -386,8 +382,8 @@ class ViewportCore {
     if (!shouldPreserve) {
       for (const chunk of loadedChunks) {
         if (targetChunkIds.has(chunk.id)) continue;
-        this.#chunkLoader?.emitUnloadRequest?.(chunk);
-        this.#chunkLoader?.untrackChunkById?.(chunk.id);
+        this.#chunkLoader.emitUnloadRequest(chunk);
+        this.#chunkLoader.untrackChunkById(chunk.id);
       }
     }
 
@@ -589,7 +585,7 @@ class ViewportCore {
    * 销毁当前 ViewportCore
    */
   destroy() {
-    this.#chunkLoader?.destroy();
+    this.#chunkLoader.destroy();
     this.#frameDirty = false;
   }
 }

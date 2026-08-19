@@ -88,7 +88,6 @@ flowchart TD
 
 - **缓存层调度器**使用 base 层策略（`createBaseDirtyRectThresholdStrategy`），更保守的阈值（高 `viewportCoverageRatio`），减少不必要的缓存重绘
 - **输出层调度器**使用 live 层策略（`createLiveDirtyRectThresholdStrategy`），更激进的合并阈值（低 `viewportCoverageRatio`），适应逐帧变化的 AOM 输出
-- canonical rect 塌缩（chunk 级屏幕矩形）两个调度器共享同一套解析逻辑
 - 双调度器各自独立积累和合并脏区，输出帧渲染前通过 `#flushCacheScheduler()` 协调缓存 > 输出的时序保证
 
 ## 快照与旧帧追踪
@@ -149,7 +148,7 @@ const renderer = new ViewportRenderer(viewport, activeObjectManager, {
 ## 当前实现状态
 
 - 已实现：单渲染器合成、双调度器（缓存层 + 输出层）、缓存更新、输出合成、AOM 对象收集、AOM 排除过滤、对象级脏区失效、区块级脏区失效、快照追踪、调试 API
-- 已接入：`ViewportCore`、`core-worker.js` 渲染钩子、`kernel/board/aom-render-hooks.js`（kernel 侧钩子接口）、`ui/components/orchestration/board-render-hooks.js`（UI 侧 standalone 工厂）、`object-modifier.js`
+- 已接入：`ViewportCore`、`core-worker.js` 渲染钩子、`kernel/board/aom-render-hooks.js`（kernel 侧钩子接口）、`object-modifier.js`
 
 ## 相关文档
 

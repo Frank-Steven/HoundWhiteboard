@@ -88,27 +88,20 @@
 当前实现还支持按宿主注入不同参数：
 
 - live 层可使用更激进的近邻合并阈值，因为它天然以整视口为渲染边界
-- base 层可使用更保守的近邻合并阈值，并额外支持“覆盖足够多时退化为整 chunk”
+- base 层可使用更保守的近邻合并阈值
 - 两层都可以在脏区已经接近整视口时，直接退化为整视口重绘，避免继续维护大量碎片矩形
 
 这些参数可以按调用时动态读取，例如直接绑定到 `viewport.zoom`：
 
 - 近邻距离阈值可随 `zoom` 线性放大
 - 额外扫描面积阈值可随 `zoom^2` 放大
-- `viewportCoverageRatio` 与 `canonicalRectCoverageRatio` 也可随 `zoom` 提高而变得更严格，避免高倍缩放时过早退化为整视口或整 chunk
+- `viewportCoverageRatio` 也可随 `zoom` 提高而变得更严格，避免高倍缩放时过早退化为整视口
 
 若宿主不想把这些值逐项散开传入，当前还可以直接提供 `getThresholds()`：
 
 - `getThresholds()` 返回一整组当前阈值
 - 单独传入的字段仍可覆盖 `getThresholds()` 中的同名值
 - 这样可以把 zoom-aware 规则集中到独立策略模块里，再由宿主按帧读取
-
-在更上一层，宿主还可以自己维护一份 per-layer dirty rect policy：
-
-- policy 内统一组织 `getThresholds()`、`getViewportRect()`、`getCanonicalRectsForRect()`
-- `RenderScheduler` 本身不关心 policy 如何生成，它只消费这些回调的返回值
-- 这样 base/live 的差异可以集中在宿主的 policy resolver，而不是散落在 merger 调用点
-- 例如 base policy resolver 可以直接封装“屏幕 dirty rect 到世界矩形，再到 loaded chunk 子集”的候选解析逻辑
 
 这样做的目的，是让高倍缩放和低倍缩放下的 dirty rect 聚合更接近同一份世界空间语义，而不是被固定屏幕像素阈值绑死。
 
@@ -171,8 +164,8 @@
 - 已验证：同一帧周期内的多次失效请求只会触发一次调度；`flush()` 会先走 `mergeDirtyRects(...)` 再调用处理器。
 - 已接入：`ViewportRenderer`、`UiRenderer` 均在内部持有 `_scheduler` 实例，各渲染器的 `invalidate()` 直接委托给 `_scheduler.invalidate()`。
 - 已实现的默认聚合：重叠/相接矩形合并、近邻矩形的受控合并、非矩形输入透传。
-- 已实现的宿主参数化：base/live 可分别注入不同阈值；并支持“整视口 / 整 chunk”退化。
-- `collapseLargeRect`：当脏区覆盖某个 canonical rect（如 chunk 屏幕矩形）超过 `canonicalRectCoverageRatio` 时，该脏区退化为整 canonical rect；覆盖率不足时保留脏区与该 canonical rect 的交集，避免跨区块对象在低覆盖率 chunk 上丢失渲染。
+- 已实现的宿主参数化：base/live 可分别注入不同阈值；并支持“整视口”退化。
+- `collapseLargeRect`：当脏区覆盖视口的比例超过 `viewportCoverageRatio` 时，该脏区退化为整视口。
 - 待完善：更强的聚类策略、按操作类型动态调整阈值、不同渲染层按真实代价模型继续细化参数。
 
 ## 相关文档
