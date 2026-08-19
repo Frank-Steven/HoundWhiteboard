@@ -70,17 +70,58 @@ scripts/           # CI 检查与 demo 静态服务脚本
 ## 快速开始
 
 ```bash
-# 1. 安装依赖（完成后自动配置 git hooks）
+# 安装依赖（完成后自动配置 git hooks）
 yarn install
 
-# 2. 启动开发模式（带热更新）
+# 启动桌面端应用（开发模式，带热更新）
 yarn dev
+```
 
-# 3. 运行测试
-yarn test
+## 协作
 
-# 4. 生产构建
-yarn build
+开始协作前，需要先启动中继服务器（relay-server）：
+
+```bash
+# 启动中继服务器，仅绑定 127.0.0.1
+yarn relay
+```
+
+```bash
+# 启动中继服务器，绑定全部接口
+yarn relay --host 0.0.0.0
+```
+
+### 浏览器
+
+```bash
+yarn demo:web
+```
+
+浏览器打开标签页（身份用 URL 参数区分）：
+
+```
+http://127.0.0.1:8000/demo/whiteboard.html?relay=ws://127.0.0.1:8377&source=Alice
+```
+
+### Tauri 应用窗口
+
+在 Tauri 应用窗口的开发者控制台中执行：
+
+```js
+// 设置中继并刷新
+hwb.setRelay("ws://127.0.0.1:8377");
+
+// 设置身份并刷新（各设备、各窗口需互不相同）
+hwb.setSource("Alice");
+
+// 设置板目录并刷新（同设备多窗口需互不相同）
+hwb.setBoard("~/hound-whiteboard/demo-board");
+
+// 查看当前同步配置
+hwb.status();
+
+// 清除配置，回到离线
+hwb.off();
 ```
 
 ## 命令参考
@@ -109,40 +150,12 @@ yarn build
 
 ### 协作同步
 
-| 命令            | 说明                                                          |
-| --------------- | ------------------------------------------------------------- |
-| `yarn relay`    | 启动同步中继服务器（默认 8377 端口，仅绑 127.0.0.1）          |
-| `yarn demo:web` | 启动 demo 静态服务（默认 8000 端口）                          |
+| 命令            | 说明                                                 |
+| --------------- | ---------------------------------------------------- |
+| `yarn relay`    | 启动同步中继服务器（默认 8377 端口，仅绑 127.0.0.1） |
+| `yarn demo:web` | 启动 demo 静态服务（默认 8000 端口）                 |
 
 多端共享同一板目录：各端连上中继后，操作经中继互相广播（新增/修改/删除/擦除/撤销），远程活跃对象不可擦除，迟到端自动全量补齐。
-
-**浏览器双开验证**（内存板，不落盘，适合快速冒烟）：
-
-```bash
-# 终端 1
-$ yarn relay
-# 终端 2
-$ yarn demo:web
-```
-
-浏览器开两个标签页（身份用 URL 参数区分）：
-
-```
-http://127.0.0.1:8000/demo/whiteboard.html?relay=ws://127.0.0.1:8377&source=A
-http://127.0.0.1:8000/demo/whiteboard.html?relay=ws://127.0.0.1:8377&source=B
-```
-
-**Tauri 窗口验证**（持久化板）：窗口内调出控制台（macOS 为 Command+Option+I），用 `window.hwb` 辅助函数：
-
-```js
-hwb.setRelay("ws://127.0.0.1:8377"); // 设置中继并刷新
-hwb.setSource("A"); // 设置身份并刷新（同机多窗口需互不相同）
-hwb.setBoard("~/hound-whiteboard/demo-board-2"); // 设置板目录并刷新（同机多窗口需互不相同）
-hwb.status(); // 查看当前同步配置
-hwb.off(); // 清除配置回到离线
-```
-
-**跨设备验证**：中继默认仅绑 127.0.0.1；跨设备需用 `yarn relay --host 0.0.0.0` 绑全部接口（零鉴权，仅在可信网络开启），启动时会打印局域网地址（如 `ws://192.168.1.5:8377`）；另一台设备连该地址即可。各端身份（设备自动生成 `dev-xxxx`）与板目录相互独立，无需手动区分。
 
 ### 测试与 CI
 
@@ -243,4 +256,4 @@ CI 流水线定义见 `.github/workflows/ci.yml`，推送到 `master` / `develop
 ## 许可
 
 - 项目整体遵循 **GPL-3.0-only**（见 [LICENSE](LICENSE)）
-- `src/kernel/`（未来的 npm 包）以 **MIT** 发布（见 [src/kernel/LICENSE](src/kernel/LICENSE)）；对 kernel 的贡献默认按 MIT 接收
+- `src/kernel/` 以 **MIT** 发布（见 [src/kernel/LICENSE](src/kernel/LICENSE)）；对 kernel 的贡献默认按 MIT 接收
