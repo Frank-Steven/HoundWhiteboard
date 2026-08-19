@@ -33,8 +33,8 @@ const daemon = await startBoardDaemon({
 console.log(`daemon ${name} 已启动：ws://127.0.0.1:${daemon.port}`);
 console.log(`板目录：${resolvedPath}`);
 console.log(`身份：${daemon.source}`);
-if (flags.relayUrl) {
-  console.log(`中继：${flags.relayUrl}（房间 ${flags["board-id"] ?? resolvedPath}）`);
+if (flags.relay) {
+  console.log(`中继：${flags.relay}（房间 ${flags["board-id"] ?? resolvedPath}）`);
 } else {
   console.log("中继：未连接（单机权威端）");
 }
