@@ -13,6 +13,7 @@ import { bindRoot } from "../io/driver/io-driver.js";
 import { createNodeDriver } from "../io/driver/node.js";
 
 import { resolveBoardPath } from "./board-path.js";
+import { t } from "./i18n.js";
 
 /**
  * 打开（或创建并打开）一个板会话
@@ -32,7 +33,7 @@ import { resolveBoardPath } from "./board-path.js";
  */
 async function openBoardSession(rootPath, options = {}) {
   if (typeof rootPath !== "string" || rootPath.trim() === "") {
-    throw new Error("缺少板目录路径。");
+    throw new Error(t("err.boardPathMissing"));
   }
   rootPath = resolveBoardPath(rootPath);  const driver = createNodeDriver(rootPath);
   const { rootId } = await driver.registerRoot(rootPath);
@@ -40,10 +41,10 @@ async function openBoardSession(rootPath, options = {}) {
 
   const exists = await store.exists();
   if (!exists && !options.create) {
-    throw new Error(`板目录不存在或不是板：${rootPath}`);
+    throw new Error(t("err.boardNotFound", { path: rootPath }));
   }
   if (exists && options.create) {
-    throw new Error(`板已存在：${rootPath}`);
+    throw new Error(t("err.boardExists", { path: rootPath }));
   }
   if (!exists) {
     // 布局 v2：board.json 创建时写一次（含 boardConfig），之后只读；

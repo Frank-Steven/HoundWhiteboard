@@ -33,6 +33,8 @@ beforeAll(async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "hwb-daemon-reg-"));
   refFile = path.join(dir, "daemon.json");
   process.env.HWB_DAEMON_DIR = refFile;
+  // 子进程语言固定为中文：断言中文文案不随运行环境 LANG 漂移
+  process.env.HWB_LANG ??= "zh_CN";
 });
 
 afterAll(async () => {

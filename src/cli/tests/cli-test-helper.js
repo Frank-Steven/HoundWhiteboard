@@ -22,9 +22,15 @@ const execFileAsync = promisify(execFile);
  */
 const CLI_PATH = fileURLToPath(new URL("../index.js", import.meta.url));
 
+/** 测试前 HWB_LANG 的原值（未设置则为 undefined，afterAll 据此还原） */
+let savedHwbLang;
+
 /**
  * 注册测试环境隔离钩子：注册表指向临时目录，避免子进程读到真实 daemon
  * @returns {void}
+ *
+ * @description
+ * 同时把 CLI 子进程语言固定为中文（HWB_LANG），断言中文文案的测试不随运行环境 LANG 漂移。
  */
 export function setupCliTestEnv() {
   beforeAll(() => {
@@ -32,24 +38,32 @@ export function setupCliTestEnv() {
       tmpdir(),
       `hwb-cli-test-registry-${process.pid}`,
     );
+    savedHwbLang = process.env.HWB_LANG;
+    process.env.HWB_LANG ??= "zh_CN";
   });
 
   afterAll(() => {
     delete process.env.HWB_DAEMON_DIR;
+    if (savedHwbLang === undefined) {
+      delete process.env.HWB_LANG;
+    } else {
+      process.env.HWB_LANG = savedHwbLang;
+    }
   });
 }
 
 /**
  * 运行一次 CLI 命令
  * @param {string[]} argv - 命令参数
+ * @param {Object} [env] - 环境变量覆盖（如 { HWB_LANG: "en_US" }）
  * @returns {Promise<{stdout: string, stderr: string}>} 进程输出
  *
  * @description
  * 显式传 env：jest 沙箱下默认 env 快照不含测试期间设置的变量。
  */
-export function runCli(argv) {
+export function runCli(argv, env = {}) {
   return execFileAsync(process.execPath, [CLI_PATH, ...argv], {
-    env: process.env,
+    env: { ...process.env, ...env },
   });
 }
 

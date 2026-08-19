@@ -14,6 +14,7 @@ import {
   removeChoice,
   findChoiceOf,
 } from "./choice-buffer.js";
+import { t } from "./i18n.js";
 import { isValidChoiceName } from "../kernel/board/active-object-manager.js";
 
 /**
@@ -60,9 +61,7 @@ function parseLenientJson(text, flagName = "--data") {
     try {
       return JSON.parse(relaxJsonText(text));
     } catch (error) {
-      throw new Error(
-        `${flagName} 不是合法 JSON：${error.message}（复杂数据建议写标准 JSON 或用 ${flagName} @文件）`,
-      );
+      throw new Error(t("err.invalidJson", { flag: flagName, message: error.message }));
     }
   }
 }
@@ -74,7 +73,7 @@ function parseLenientJson(text, flagName = "--data") {
  */
 async function parseDataArgument(dataText) {
   if (typeof dataText !== "string" || dataText === "") {
-    throw new Error("add 需要 --data（可用 --data '<json>' 或 --data @文件）。");
+    throw new Error(t("err.addNeedData"));
   }
   if (dataText.startsWith("@")) {
     const filePath = resolveBoardPath(dataText.slice(1));
@@ -91,7 +90,7 @@ async function parseDataArgument(dataText) {
  */
 function parsePosition(text) {
   if (typeof text !== "string") return { x: 0, y: 0 };
-  return parsePair(text, "位置");
+  return parsePair(text, t("label.position"));
 }
 
 /**
@@ -121,10 +120,10 @@ async function cmdExport(flags) {
   const boardRoot = resolveBoardPath(flags.path);
   const outFile = flags.out;
   if (typeof outFile !== "string" || outFile === "") {
-    throw new Error("export 需要 --out <文件.hwb>。");
+    throw new Error(t("err.exportNeedOut", { file: t("ph.file") }));
   }
   await exportBoard(boardRoot, outFile);
-  printResult(flags, { out: outFile, root: boardRoot }, `已导出：${outFile}`);
+  printResult(flags, { out: outFile, root: boardRoot }, t("out.exported", { file: outFile }));
 }
 
 /**
@@ -138,10 +137,14 @@ async function cmdExport(flags) {
  */
 async function cmdImport(args, flags) {
   const zipFile = args[0];
-  if (!zipFile) throw new Error("import 需要 .hwb 文件路径。");
+  if (!zipFile) throw new Error(t("err.importNeedFile"));
   const targetRoot = resolveBoardPath(flags.path);
   await importBoard(zipFile, targetRoot);
-  printResult(flags, { root: targetRoot, from: zipFile }, `已导入：${targetRoot}`);
+  printResult(
+    flags,
+    { root: targetRoot, from: zipFile },
+    t("out.imported", { path: targetRoot }),
+  );
 }
 
 /**
@@ -161,7 +164,7 @@ async function cmdCreate(session, _args, flags) {
     console.log(JSON.stringify(info, null, 2));
     return;
   }
-  console.log(`板已创建：${session.rootPath}`);
+  console.log(t("out.boardCreated", { path: session.rootPath }));
 }
 
 /**
@@ -179,12 +182,17 @@ async function cmdInfo(session, _args, flags) {
   }
   const config = info.boardConfig
     ? `${info.boardConfig.width}×${info.boardConfig.height}`
-    : "未设置";
+    : t("out.infoConfigUnset");
   const lines = [
-    `板配置：${config}`,
-    `记录：${info.records} 条（HEAD ${info.head ?? "无"}）`,
-    `活动链：${info.chain.length > 0 ? info.chain.join(" → ") : "（空）"}`,
-    `对象：${info.objects}（trash：${info.trash}）`,
+    t("out.infoBoardConfig", { config }),
+    t("out.infoRecords", {
+      records: info.records,
+      head: info.head ?? t("out.infoHeadNone"),
+    }),
+    t("out.infoChain", {
+      chain: info.chain.length > 0 ? info.chain.join(" → ") : t("out.infoChainEmpty"),
+    }),
+    t("out.infoObjects", { objects: info.objects, trash: info.trash }),
   ];
   console.log(lines.join("\n"));
 }
@@ -204,19 +212,19 @@ async function cmdList(session, _args, flags) {
   }
   const lines = [];
   if (objects.length > 0) {
-    lines.push("对象：");
+    lines.push(t("out.listObjects"));
     for (const obj of objects) {
       lines.push(`  ${obj.id}  ${obj.type}`);
     }
   }
   if (trash.length > 0) {
-    lines.push("trash：");
+    lines.push(t("out.listTrash"));
     for (const id of trash) {
       lines.push(`  ${id}`);
     }
   }
   if (lines.length === 0) {
-    console.log("（空板）");
+    console.log(t("out.emptyBoard"));
     return;
   }
   console.log(lines.join("\n"));
@@ -231,9 +239,9 @@ async function cmdList(session, _args, flags) {
  */
 async function cmdShow(session, args, flags) {
   const id = args[0];
-  if (!id) throw new Error("show 需要一个对象 id。");
+  if (!id) throw new Error(t("err.showNeedId"));
   const data = await session.api.queryObject(id);
-  if (!data) throw new Error(`对象不存在：${id}`);
+  if (!data) throw new Error(t("err.objectNotFound", { ids: id }));
   if (flags.json === true) {
     console.log(JSON.stringify(data, null, 2));
     return;
@@ -255,7 +263,7 @@ async function cmdShow(session, args, flags) {
  */
 async function cmdAdd(session, _args, flags) {
   const type = flags.type;
-  if (!type) throw new Error("add 需要 --type。");
+  if (!type) throw new Error(t("err.addNeedType"));
   const data = await parseDataArgument(flags.data);
   const position = parsePosition(flags.position);
   const props = { position, data };
@@ -274,9 +282,9 @@ async function cmdAdd(session, _args, flags) {
  * @returns {Promise<void>}
  */
 async function cmdDelete(session, args, flags) {
-  if (args.length === 0) throw new Error("delete 需要至少一个对象 id。");
+  if (args.length === 0) throw new Error(t("err.deleteNeedIds"));
   await session.api.deleteObjects(args);
-  printResult(flags, { deleted: args }, `deleted: ${args.join(", ")}`);
+  printResult(flags, { deleted: args }, t("out.deleted", { ids: args.join(", ") }));
 }
 
 /**
@@ -293,8 +301,11 @@ async function cmdUndo(session, args, flags) {
     flags,
     { undone: result.undone, targetNodeId: result.targetNodeId ?? null },
     result.undone
-      ? `undo ok（撤销 ${result.targetNodeId}）`
-      : `undo：无可撤销目标${targetNodeId ? `（${targetNodeId} 不在活动链上）` : "（无本端操作）"}`,
+      ? t("out.undoOk", { id: result.targetNodeId })
+      : t("out.undoNone") +
+          (targetNodeId
+            ? t("out.undoNotOnChain", { id: targetNodeId })
+            : t("out.undoNoLocal")),
   );
 }
 
@@ -311,8 +322,8 @@ async function cmdRedo(session, _args, flags) {
     flags,
     { redone: result.redone, targetNodeId: result.targetNodeId ?? null },
     result.redone
-      ? `redo ok（重做 ${result.targetNodeId}）`
-      : "redo：无最近撤销可重做",
+      ? t("out.redoOk", { id: result.targetNodeId })
+      : t("out.redoNone"),
   );
 }
 
@@ -330,7 +341,7 @@ async function cmdOps(session, _args, flags) {
   if (typeof flags.limit === "string") {
     const limit = Number(flags.limit);
     if (!Number.isInteger(limit) || limit <= 0) {
-      throw new Error(`无效 limit：${flags.limit}（应为正整数）`);
+      throw new Error(t("err.invalidLimit", { limit: flags.limit }));
     }
     options.limit = limit;
   }
@@ -341,7 +352,7 @@ async function cmdOps(session, _args, flags) {
   }
   for (const record of records) {
     console.log(
-      `${record.id}  ${record.type}  ${record.source}  ${record.time}${record.parentId ? `  （父 ${record.parentId}）` : ""}`,
+      `${record.id}  ${record.type}  ${record.source}  ${record.time}${record.parentId ? `  ${t("out.opsParent", { id: record.parentId })}` : ""}`,
     );
   }
 }
@@ -357,13 +368,13 @@ async function cmdOps(session, _args, flags) {
  * 多对象分子节点以方括号包裹，discard 型取消选择成员带 (discard) 后缀。
  */
 function formatUndoTree(tree) {
-  if (tree.nodes.length === 0) return "（空树）";
+  if (tree.nodes.length === 0) return t("out.treeEmpty");
   return tree.nodes
     .map((node) => {
       const indent = "  ".repeat(Math.max(0, node.depth - 1));
       const marks = [];
-      if (node.isHead) marks.push("HEAD");
-      if (!node.active) marks.push("已撤销");
+      if (node.isHead) marks.push(t("out.treeHead"));
+      if (!node.active) marks.push(t("out.treeUndone"));
       const suffix = marks.length > 0 ? `  [${marks.join(", ")}]` : "";
       let type;
       if (node.memberTypes != null) {
@@ -401,7 +412,9 @@ async function cmdTree(session, _args, flags) {
   console.log(formatUndoTree(tree));
   if (tree.redoStack.length > 0) {
     console.log(
-      `重做栈：${tree.redoStack.map((entry) => entry.targetId).join(", ")}`,
+      t("out.redoStack", {
+        ids: tree.redoStack.map((entry) => entry.targetId).join(", "),
+      }),
     );
   }
 }
@@ -415,7 +428,7 @@ async function cmdTree(session, _args, flags) {
 function parsePair(text, flagName) {
   const [x, y] = String(text).split(",").map(Number);
   if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    throw new Error(`无效 ${flagName}：${text}（应为 "x,y"）`);
+    throw new Error(t("err.invalidPair", { name: flagName, text }));
   }
   return { x, y };
 }
@@ -429,7 +442,7 @@ function parsePair(text, flagName) {
 function parseMatrix(text, flagName) {
   const [a, b, c, d] = String(text).split(",").map(Number);
   if (![a, b, c, d].every(Number.isFinite)) {
-    throw new Error(`无效 ${flagName}：${text}（应为 "a,b,c,d"）`);
+    throw new Error(t("err.invalidMatrix", { name: flagName, text }));
   }
   return { a, b, c, d };
 }
@@ -482,9 +495,7 @@ async function buildModifyPatch(flags, current) {
     patch.data = await parseDataArgument(flags.data);
   }
   if (Object.keys(patch).length === 0) {
-    throw new Error(
-      "modify 需要至少一个修改标志（--displacement/--transform-delta/--position/--transform/--property/--data）。",
-    );
+    throw new Error(t("err.modifyNeedFlag"));
   }
   return patch;
 }
@@ -511,7 +522,7 @@ async function ensureActive(session, ids, options) {
   const summaries = await session.api.queryObjects(ids);
   const missing = ids.filter((id, i) => !summaries[i]);
   if (missing.length > 0) {
-    throw new Error(`对象不存在：${missing.join(", ")}`);
+    throw new Error(t("err.objectNotFound", { ids: missing.join(", ") }));
   }
   const inactive = ids.filter((id, i) => !summaries[i].isActive);
   if (inactive.length > 0) {
@@ -539,7 +550,7 @@ async function resolveChoiceMembers(session, name) {
   }
   const buffer = await loadChoices(session.rootPath);
   const ids = buffer.choices[name];
-  if (!ids) throw new Error(`choice 不存在：${name}`);
+  if (!ids) throw new Error(t("err.choiceNotFound", { name }));
   return ids;
 }
 
@@ -552,20 +563,24 @@ async function resolveChoiceMembers(session, name) {
  */
 async function cmdChoose(session, args, flags) {
   const name = typeof flags.choice === "string" ? flags.choice : null;
-  if (!name) throw new Error("choose 需要 --choice <名>。");
+  if (!name) throw new Error(t("err.chooseNeedChoice", { choice: t("ph.choice") }));
   if (!isValidChoiceName(name)) {
-    throw new Error(`非法 choice 名：${name}（不可为空、含 "/" 或以 "~" 开头）。`);
+    throw new Error(t("err.invalidChoiceName", { name }));
   }
-  if (args.length === 0) throw new Error("choose 需要至少一个对象 id。");
+  if (args.length === 0) throw new Error(t("err.chooseNeedIds"));
   const summaries = await session.api.queryObjects(args);
   const missing = args.filter((id, i) => !summaries[i]);
   if (missing.length > 0) {
-    throw new Error(`对象不存在：${missing.join(", ")}`);
+    throw new Error(t("err.objectNotFound", { ids: missing.join(", ") }));
   }
   await session.api.addActiveObjects(args, { choice: name });
   // buffer 文件仍维护：daemon 重启后的自愈种子
   await setChoice(session.rootPath, name, args);
-  printResult(flags, { choice: name, ids: args }, `choose ok（${name}：${args.join(", ")}）`);
+  printResult(
+    flags,
+    { choice: name, ids: args },
+    t("out.chooseOk", { name, ids: args.join(", ") }),
+  );
 }
 
 /**
@@ -602,15 +617,15 @@ async function cmdChoices(session, _args, flags) {
   }
   const entries = Object.entries(out);
   if (entries.length === 0) {
-    console.log("（无 choice）");
+    console.log(t("out.noChoice"));
     return;
   }
   const lines = [];
   for (const [name, members] of entries) {
-    lines.push(`${name}（${members.length} 成员）：`);
+    lines.push(t("out.choiceHeader", { name, count: members.length }));
     for (const member of members) {
       lines.push(
-        `  ${member.id}${member.active ? "  active" : "  active:false"}${member.missing ? "  missing" : ""}`,
+        `  ${member.id}  ${member.active ? t("out.memberActive") : t("out.memberInactive")}${member.missing ? `  ${t("out.memberMissing")}` : ""}`,
       );
     }
   }
@@ -630,11 +645,11 @@ async function cmdChoices(session, _args, flags) {
  */
 async function cmdUnchoose(session, args, flags) {
   const name = args[0];
-  if (!name) throw new Error("unchoose 需要 choice 名。");
+  if (!name) throw new Error(t("err.unchooseNeedName"));
   const apply = flags.apply === true;
   const discard = flags.discard === true;
   if (apply === discard) {
-    throw new Error("unchoose 需要且只能传 --apply 或 --discard 之一。");
+    throw new Error(t("err.unchooseNeedFlag"));
   }
   const ids = await resolveChoiceMembers(session, name);
   const summaries = await session.api.queryObjects(ids);
@@ -655,7 +670,10 @@ async function cmdUnchoose(session, args, flags) {
       action: apply ? "apply" : "discard",
       dropped,
     },
-    `unchoose ok（${name}，${apply ? "已提交" : "已放弃"}${dropped > 0 ? `，${dropped} 个对象已不在板上` : ""}）`,
+    t("out.unchooseOk", {
+      name,
+      action: apply ? t("out.unchooseApplied") : t("out.unchooseDiscarded"),
+    }) + (dropped > 0 ? t("out.unchooseDropped", { count: dropped }) : ""),
   );
 }
 
@@ -683,7 +701,7 @@ async function cmdModify(session, args, flags) {
     return;
   }
   const id = args[0];
-  if (!id) throw new Error("modify 需要对象 id 或 --choice <名>。");
+  if (!id) throw new Error(t("err.modifyNeedTarget", { choice: t("ph.choice") }));
   // 注册表权威（对象摘要携带所属 choice 名）；未驻留时回退 buffer 文件（重启后未恢复的 choice）
   const summary = await queryOne(session, id);
   const owner = summary.choice ?? (await findChoiceOf(session.rootPath, id));
@@ -705,7 +723,11 @@ async function cmdModify(session, args, flags) {
     await session.api.abortSupra(supraKey);
     throw error;
   }
-  printResult(flags, { objectId: id, committed: true }, `modify ok（${id}，超分子链）`);
+  printResult(
+    flags,
+    { objectId: id, committed: true },
+    t("out.modifyOkChain", { id }),
+  );
 }
 
 /**
@@ -716,7 +738,7 @@ async function cmdModify(session, args, flags) {
  */
 async function queryOne(session, id) {
   const [summary] = await session.api.queryObjects([id]);
-  if (!summary) throw new Error(`对象不存在：${id}`);
+  if (!summary) throw new Error(t("err.objectNotFound", { ids: id }));
   return summary;
 }
 
@@ -732,14 +754,12 @@ async function modifyChoice(session, name, flags, onlyId) {
   const all = await resolveChoiceMembers(session, name);
   const ids = onlyId ? [onlyId] : all;
   if (hasFullPatchFlags(flags) && ids.length > 1) {
-    throw new Error(
-      `choice ${name} 含 ${ids.length} 个对象，全量修改（--position/--transform/--property/--data）仅单对象 choice 允许；请用增量标志（--displacement/--transform-delta）。`,
-    );
+    throw new Error(t("err.choiceFullPatchMulti", { name, count: ids.length }));
   }
   const summaries = await session.api.queryObjects(ids);
   const missing = ids.filter((id, i) => !summaries[i]);
   if (missing.length > 0) {
-    throw new Error(`对象不存在：${missing.join(", ")}`);
+    throw new Error(t("err.objectNotFound", { ids: missing.join(", ") }));
   }
   // 逐对象换算 patch（增量依赖各自当前值）
   const patches = [];
@@ -757,7 +777,7 @@ async function modifyChoice(session, name, flags, onlyId) {
     printResult(
       flags,
       { choice: name, ids, committed: false, pending: true },
-      `modify ok（${name}：${ids.join(", ")}，驻留待提交）`,
+      t("out.modifyOkPending", { name, ids: ids.join(", ") }),
     );
     return;
   }
@@ -776,7 +796,7 @@ async function modifyChoice(session, name, flags, onlyId) {
   printResult(
     flags,
     { choice: name, ids, committed: true },
-    `modify ok（${name}：${ids.join(", ")}，已提交）`,
+    t("out.modifyOkCommitted", { name, ids: ids.join(", ") }),
   );
 }
 

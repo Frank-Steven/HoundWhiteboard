@@ -7,6 +7,7 @@
 
 import { WebSocketServer } from "ws";
 import { openBoardSession } from "./board-session.js";
+import { t } from "./i18n.js";
 import { BOARD_API_ROUTES } from "../kernel/api/board-api-routes.js";
 import { createNetworkCoordinator } from "../host/sync/network-coordinator.js";
 import { createAmendForwarder } from "../host/sync/amend-forwarder.js";
@@ -103,7 +104,7 @@ async function acquireStartLock(rootPath) {
       await fs.rm(lockPath, { force: true });
     }
   }
-  throw new Error("daemon 启动锁竞争失败（回收 stale 锁后仍被占用）。");
+  throw new Error(t("err.daemonStartLockContention"));
 }
 
 /**
@@ -181,7 +182,7 @@ async function readDaemonDescriptor(rootPath) {
 async function startBoardDaemon(options) {
   const rootPath = options?.rootPath;
   if (typeof rootPath !== "string" || rootPath.trim() === "") {
-    throw new Error("缺少板目录路径。");
+    throw new Error(t("err.boardPathMissing"));
   }
   const releaseStartLock = await acquireStartLock(rootPath);
   try {
@@ -200,13 +201,11 @@ async function startBoardDaemon(options) {
 async function startBoardDaemonLocked(options) {
   const name = options?.name;
   if (!isValidDaemonName(name)) {
-    throw new Error(
-      `非法 daemon name：${name}（仅允许字母/数字/.-_，不能重复）。`,
-    );
+    throw new Error(t("err.invalidDaemonName", { name }));
   }
   const rootPath = options?.rootPath;
   if (typeof rootPath !== "string" || rootPath.trim() === "") {
-    throw new Error("缺少板目录路径。");
+    throw new Error(t("err.boardPathMissing"));
   }
 
   // name 查重：注册表同名且存活的 daemon 拒绝启动；僵尸条目可覆盖

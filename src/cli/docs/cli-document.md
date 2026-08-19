@@ -117,10 +117,16 @@ hwb <命令> [--daemon <名> | --path <板目录>] [--标志 值]
 - `--path <板目录>`：读命令直读板文件（零写盘）；写命令探测持有 daemon 直走快路径，无 daemon 时自治直写自己分片（身份取 `~/.hound-whiteboard/cli-identity.json`，首启生成 `cli-*` 持久化）；`create` 与 `daemon start` 指定板位置
 - `--source <来源>`：daemon 启动时的协作身份（省略时按注册表 name→source 映射解析：首启生成 `daemon-*` 并持久化，重启后身份稳定），决定新对象 id 前缀（`<source>/<n>`）与操作记录 source
 - `--json`：输出为纯 JSON（见下文输出契约）
-- `-h` / `--help`：打印用法；`--version`：打印版本号
+- `-h` / `--help`：打印帮助（`hwb help <命令>` 查看单命令详情，见下文"帮助与国际化"）；`--version`：打印版本号
 - `--width` / `--height`：仅 `create` 建板时生效
 
 `--type` 取对象注册表中的类型名：`StrokeObject`、`CircleObject`、`EllipseObject`、`PolygonObject`。
+
+## 帮助与国际化
+
+帮助分两层：**总览**（`hwb help` / `hwb --help` / `hwb -h`）按分组列出全部命令；**单命令帮助**（`hwb help <命令>` / `hwb <命令> --help` / `hwb <命令> -h`）给出该命令的用法行、说明、标志表与示例。daemon 子命令视为帮助主题：`hwb help daemon` 列出子命令，`hwb help daemon start` 或 `hwb daemon start --help` 展示子命令细节。
+
+CLI 全部用户可见文本（帮助、错误消息、状态输出）走消息字典，语言跟随系统环境：`HWB_LANG` > `LC_ALL` > `LC_MESSAGES` > `LANG`，`zh` 前缀用中文，其余（含未设置）用英文；`HWB_LANG=zh_CN` / `HWB_LANG=en_US` 可显式覆盖。字典在 `src/cli/locales/`（`zh-CN.js` 为权威 key 集，缺 key 回退中文）；命令帮助的结构化 spec 在 `src/cli/help.js`（总览与单命令帮助均由其生成，单一事实来源）。
 
 ## .hwb 板包格式
 

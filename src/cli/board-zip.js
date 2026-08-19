@@ -8,6 +8,7 @@
 import AdmZip from "adm-zip";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { t } from "./i18n.js";
 
 /** .hwb 内板元数据文件名（与板目录布局一致） */
 const BOARD_META_FILE = "board.json";
@@ -53,7 +54,7 @@ async function exportBoard(boardRoot, outFile) {
   try {
     await fs.access(path.join(boardRoot, BOARD_META_FILE));
   } catch {
-    throw new Error(`板目录不存在或不是板：${boardRoot}`);
+    throw new Error(t("err.boardNotFound", { path: boardRoot }));
   }
   const files = await collectBoardFiles(boardRoot);
   const zip = new AdmZip();
@@ -80,22 +81,26 @@ async function importBoard(zipFile, targetRoot) {
   try {
     zip = new AdmZip(zipFile);
   } catch {
-    throw new Error(`无法打开 .hwb 文件：${zipFile}（不是合法 zip）`);
+    throw new Error(t("err.notAZip", { file: zipFile }));
   }
   const entries = zip.getEntries();
   if (!entries.some((entry) => entry.entryName === BOARD_META_FILE)) {
-    throw new Error(`不是合法板包：${zipFile}（zip 内缺少 ${BOARD_META_FILE}）`);
+    throw new Error(t("err.invalidBoardPackage", { file: zipFile, metaFile: BOARD_META_FILE }));
   }
   const metaText = zip.readAsText(BOARD_META_FILE);
   let meta = null;
   try {
     meta = JSON.parse(metaText);
   } catch {
-    throw new Error(`板包元数据损坏：${zipFile}（${BOARD_META_FILE} 不是合法 JSON）`);
+    throw new Error(t("err.packageMetaCorrupt", { file: zipFile, metaFile: BOARD_META_FILE }));
   }
   if (meta.formatVersion !== FORMAT_VERSION) {
     throw new Error(
-      `板包格式版本不兼容：${zipFile}（包内 ${meta.formatVersion}，当前支持 ${FORMAT_VERSION}）`,
+      t("err.formatVersionMismatch", {
+        file: zipFile,
+        found: meta.formatVersion,
+        supported: FORMAT_VERSION,
+      }),
     );
   }
   const target = path.resolve(targetRoot);
@@ -104,7 +109,7 @@ async function importBoard(zipFile, targetRoot) {
     .readdir(target)
     .catch(() => []);
   if (existing.length > 0) {
-    throw new Error(`目标目录非空：${targetRoot}（导入要求空目录或不存在）`);
+    throw new Error(t("err.targetDirNotEmpty", { path: targetRoot }));
   }
   zip.extractAllTo(target, true);
 }

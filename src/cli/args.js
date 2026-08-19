@@ -25,6 +25,11 @@ function parseArgv(argv) {
   const flags = {};
   for (let i = 0; i < rest.length; i++) {
     const token = rest[i];
+    if (token === "-h") {
+      // -h 是 --help 的短形态，任何位置都按 help 标志解析
+      flags.help = true;
+      continue;
+    }
     if (token.startsWith("--")) {
       const eq = token.indexOf("=");
       if (eq !== -1) {

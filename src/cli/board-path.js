@@ -8,6 +8,7 @@
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
+import { t } from "./i18n.js";
 
 /**
  * 解析板路径：展开 ~，其余原样解析
@@ -17,7 +18,7 @@ import fs from "node:fs/promises";
 function resolveBoardPath(input) {
   const text = String(input ?? "").trim();
   if (text === "") {
-    throw new Error("缺少板目录路径。");
+    throw new Error(t("err.boardPathMissing"));
   }
   if (text === "~" || text.startsWith("~/") || text.startsWith("~\\")) {
     const rest = text === "~" ? "" : text.slice(2);

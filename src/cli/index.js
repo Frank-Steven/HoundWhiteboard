@@ -22,6 +22,8 @@ import {
 import { readDaemonDescriptor, isDaemonAlive } from "./board-daemon.js";
 import { resolveBoardPath } from "./board-path.js";
 import { parseArgv } from "./args.js";
+import { initI18n, t } from "./i18n.js";
+import { formatOverview, formatCommandHelp, resolveTopicName } from "./help.js";
 import { COMMANDS, READ_COMMANDS, WRITE_COMMANDS, cmdExport, cmdImport } from "./commands.js";
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -47,61 +49,6 @@ const START_DAEMON_PATH = fileURLToPath(new URL("./start-daemon.js", import.meta
 const START_READY_TIMEOUT_MS = 15000;
 
 /**
- * 用法文本
- * @type {string}
- */
-const USAGE = `用法：hwb <命令> [--daemon <名> | --path <板目录>] [--标志 值]
-
-daemon 管理：
-  daemon start --name <名> --path <板目录> [--source <身份>]   后台启动 daemon；同名同板已存活时引用 +1（幂等）
-  daemon release --name <名>                                  引用 -1；归零且无客户端连接则 daemon 自动退出
-  daemon stop --name <名>                                     强制归零关闭（无条件，清理描述与注册表）
-  daemon status [--name <名>]                                 查单个 daemon（含引用计数）；省略 name 时列出全部
-
-建板与打包（离线，不接 daemon）：
-  create --path <板目录> [--width 800] [--height 600]   创建空板
-  export --path <板目录> --out <文件.hwb>               导出板为 .hwb（zip 平铺，不含 .daemon.json）
-  import <文件.hwb> --path <板目录>                     导入 .hwb 建板（校验格式版本，目标须为空/不存在）
-
-读命令（--daemon <名> 经 daemon 查询，或 --path <板目录> 直读板文件）：
-  info                                    打印板元数据与统计（含活动链 chain）
-  list                                    列出活动与 trash 对象
-  show <对象id>                           打印对象序列化数据
-  ops [--source 来源] [--type 类型] [--limit N]   打印操作记录明细
-  tree                                    以缩进树打印时间回溯树（HEAD 与已撤销分支）
-  choices                                 列出全部 choice buffer 及成员状态
-
-写命令（--daemon <名> 经 daemon 执行；--path <板目录> 时优先走持有 daemon，无 daemon 则自治直写分片）：
-  add --type <类型> [--data '<json>'|"@文件"] [--property '<json>'] [--position x,y]   创建并提交对象
-  delete <对象id...>                      删除对象（可撤销）
-  undo [<操作id>]                         撤销；指定操作 id 时撤销该操作，省略时撤销本端最近操作
-  redo                                    重做一步
-  choose <对象id...> --choice <名>        把对象选入命名 choice
-  unchoose <名> (--apply|--discard)       提交或放弃一个 choice
-  modify <对象id> <修改标志>               修改单对象（未选中时自动成链提交）
-  modify --choice <名> <修改标志>          修改 choice 成员（增量逐对象换算）
-
-修改标志：
-  --displacement dx,dy        位置增量（choice/单对象均可）
-  --transform-delta a,b,c,d   变换增量，左乘当前变换（choice/单对象均可）
-  --position x,y              全量位置（choice 仅单成员允许）
-  --transform a,b,c,d         全量变换（choice 仅单成员允许）
-  --property '<json>'         全量样式属性（choice 仅单成员允许）
-  --data '<json>'|"@文件"     全量数据（choice 仅单成员允许）
-
-通用标志：
-  --daemon <名>   目标 daemon（写命令优先；读命令与 --path 二选一）
-  --path <板目录>  读命令直读板文件（零写盘）；写命令无 daemon 时自治直写分片（身份取 ~/.hound-whiteboard/cli-identity.json）；daemon start 指定板位置
-  --source <来源>  操作作者命名空间（默认 cli），决定新对象 id 前缀
-  --json          输出为纯 JSON（默认输出为人类可读文本）
-  -h, --help      打印用法
-  --version       打印版本号
-
-协作模式：
-  daemon 若连了中继（--relay），CLI 操作与 GUI 实时互见。
-`;
-
-/**
  * 等待后台 daemon 就绪（注册表条目出现且端口可连通）
  * @param {string} name - daemon 名
  * @returns {Promise<boolean>} 是否就绪
@@ -125,26 +72,26 @@ async function runDaemonStart(flags) {
   const name = flags.name;
   const rootPath = resolveBoardPath(flags.path);
   if (!isValidDaemonName(name)) {
-    throw new Error(
-      `非法 daemon name：${name}（仅允许字母/数字/.-_）。`,
-    );
+    throw new Error(t("err.invalidDaemonName", { name }));
   }
   // 分支 1：同名存活 daemon → 幂等引用 +1（同板）或报错（换板）
   const registered = await readEntry(name);
   if (registered !== null && (await isEntryAlive(registered))) {
     if (registered.rootPath !== rootPath) {
       throw new Error(
-        `daemon ${name} 已持有板目录 ${registered.rootPath}，同一 name 只能指向一块板。`,
+        t("err.daemonHoldsOtherBoard", { name, path: registered.rootPath }),
       );
     }
     // 重复 start 同板 = 引用 +1（误操作安全：不会因重复 start 报错，也不会被一次 release 误关）
     const session = await connectDaemonByName(name);
     if (session === null) {
-      throw new Error(`daemon ${name} 连接失败（端口 ${registered.port}）。`);
+      throw new Error(
+        t("err.daemonConnectFailed", { name, port: registered.port }),
+      );
     }
     try {
       const result = await session.api.hold();
-      console.log(`daemon ${name} 引用 +1（当前 ${result.refCount}）。`);
+      console.log(t("out.daemonRefUp", { name, refCount: result.refCount }));
     } finally {
       session.close();
     }
@@ -156,15 +103,13 @@ async function runDaemonStart(flags) {
     await access(path.join(rootPath, "board.json"));
   } catch {
     throw new Error(
-      `板目录不存在或不是板：${rootPath}（先用 hwb create --path <板目录> 建板）。`,
+      t("err.boardNotFoundWithHint", { path: rootPath, boardDir: t("ph.boardDir") }),
     );
   }
   // 板占用检查：同一板目录只能被一个活 daemon 持有（同 name 同板已在上方分支处理）
   const existing = await readDaemonDescriptor(rootPath);
   if (existing && (await isDaemonAlive(existing.port))) {
-    throw new Error(
-      `板目录已有 daemon 在运行（端口 ${existing.port}）。`,
-    );
+    throw new Error(t("err.boardOccupied", { port: existing.port }));
   }
   const childArgs = [
     START_DAEMON_PATH,
@@ -191,10 +136,19 @@ async function runDaemonStart(flags) {
   });
   child.unref();
   if (!(await waitDaemonReady(name))) {
-    throw new Error(`daemon ${name} 启动超时（${START_READY_TIMEOUT_MS}ms 内未就绪）。`);
+    throw new Error(
+      t("err.daemonStartTimeout", { name, ms: START_READY_TIMEOUT_MS }),
+    );
   }
   const desc = await readEntry(name);
-  console.log(`daemon ${name} 已启动（后台）：${desc.rootPath}（端口 ${desc.port}，身份 ${desc.source}）`);
+  console.log(
+    t("out.daemonStarted", {
+      name,
+      path: desc.rootPath,
+      port: desc.port,
+      source: desc.source,
+    }),
+  );
 }
 
 /**
@@ -205,13 +159,21 @@ async function runDaemonStart(flags) {
 async function runDaemonStatus(flags) {
   if (typeof flags.name === "string" && flags.name !== "") {
     const desc = await readEntry(flags.name);
-    if (desc === null) throw new Error(`daemon ${flags.name} 未在运行。`);
+    if (desc === null) throw new Error(t("err.daemonNotRunning", { name: flags.name }));
     const alive = await isEntryAlive(desc);
     if (flags.json === true) {
       console.log(JSON.stringify({ ...desc, alive }, null, 2));
     } else {
       console.log(
-        `${desc.name}  ${alive ? "运行中" : "已停止（僵尸条目）"}  引用：${desc.refCount ?? 1}  板：${desc.rootPath}  端口：${desc.port}  身份：${desc.source}  启动：${desc.startedAt}`,
+        t("out.daemonStatusLine", {
+          name: desc.name,
+          status: alive ? t("out.statusAlive") : t("out.statusZombie"),
+          refCount: desc.refCount ?? 1,
+          path: desc.rootPath,
+          port: desc.port,
+          source: desc.source,
+          startedAt: desc.startedAt,
+        }),
       );
     }
     return;
@@ -224,14 +186,22 @@ async function runDaemonStatus(flags) {
       out.push({ ...desc, alive });
     } else {
       console.log(
-        `${desc.name}  ${alive ? "运行中" : "已停止（僵尸条目）"}  引用：${desc.refCount ?? 1}  板：${desc.rootPath}  端口：${desc.port}  身份：${desc.source}  启动：${desc.startedAt}`,
+        t("out.daemonStatusLine", {
+          name: desc.name,
+          status: alive ? t("out.statusAlive") : t("out.statusZombie"),
+          refCount: desc.refCount ?? 1,
+          path: desc.rootPath,
+          port: desc.port,
+          source: desc.source,
+          startedAt: desc.startedAt,
+        }),
       );
     }
   }
   if (flags.json === true) {
     console.log(JSON.stringify(out, null, 2));
   } else if (entries.length === 0) {
-    console.log("（无 daemon）");
+    console.log(t("out.noDaemons"));
   }
 }
 
@@ -250,23 +220,23 @@ async function runDaemonCommand(args, flags) {
     case "stop": {
       const name = flags.name;
       if (!isValidDaemonName(name)) {
-        throw new Error(`daemon stop 需要 --name <名>。`);
+        throw new Error(t("err.daemonStopNeedName", { name: t("ph.name") }));
       }
       const ok = await shutdownDaemon(name);
       if (!ok) {
-        throw new Error(`daemon ${name} 停机确认超时（注册表条目仍在）。`);
+        throw new Error(t("err.daemonStopTimeout", { name }));
       }
-      console.log(`daemon ${name} 已停止。`);
+      console.log(t("out.daemonStopped", { name }));
       return;
     }
     case "release": {
       const name = flags.name;
       if (!isValidDaemonName(name)) {
-        throw new Error(`daemon release 需要 --name <名>。`);
+        throw new Error(t("err.daemonReleaseNeedName", { name: t("ph.name") }));
       }
       const session = await connectDaemonByName(name);
       if (session === null) {
-        throw new Error(`daemon ${name} 不可用：注册表无条目或端口不可连通。`);
+        throw new Error(t("err.daemonUnavailable", { name }));
       }
       let refCountAfter;
       try {
@@ -275,18 +245,18 @@ async function runDaemonCommand(args, flags) {
       } finally {
         session.close();
       }
-      console.log(`daemon ${name} 引用 -1（当前 ${refCountAfter}）。`);
+      console.log(t("out.daemonRefDown", { name, refCount: refCountAfter }));
       if (refCountAfter === 0) {
         // 归零自动退出：等待注册表条目消失确认
         const deadline = Date.now() + 5000;
         while (Date.now() < deadline) {
           if ((await readEntry(name)) === null) {
-            console.log(`daemon ${name} 已退出。`);
+            console.log(t("out.daemonExited", { name }));
             return;
           }
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
-        throw new Error(`daemon ${name} 退出确认超时（注册表条目仍在）。`);
+        throw new Error(t("err.daemonExitTimeout", { name }));
       }
       return;
     }
@@ -294,7 +264,7 @@ async function runDaemonCommand(args, flags) {
       await runDaemonStatus(flags);
       return;
     default:
-      throw new Error(`未知 daemon 子命令：${sub}（支持 start/status/stop）。`);
+      throw new Error(t("err.unknownDaemonSub", { sub }));
   }
 }
 
@@ -303,14 +273,42 @@ async function runDaemonCommand(args, flags) {
  * @returns {Promise<void>}
  */
 async function main() {
+  initI18n();
   const parsed = parseArgv(process.argv.slice(2));
   const { command, args, flags } = parsed;
   if (command === "--version" || flags.version === true) {
     console.log(VERSION);
     process.exit(0);
   }
-  if (command === "-h" || command === "--help" || flags.help === true) {
-    console.log(USAGE);
+  // help 路由：help <主题> / <命令> --help 打单命令帮助；无命令打总览
+  if (command === "help") {
+    if (args.length === 0) {
+      console.log(formatOverview());
+      process.exit(0);
+    }
+    const topic = resolveTopicName(args);
+    const text = formatCommandHelp(topic);
+    if (text === null) {
+      console.error(t("err.unknownHelpTopic", { topic: args.join(" ") }));
+      process.exit(1);
+    }
+    console.log(text);
+    process.exit(0);
+  }
+  if (command === "-h" || command === "--help" || (flags.help === true && !command)) {
+    console.log(formatOverview());
+    process.exit(0);
+  }
+  if (flags.help === true) {
+    const topic = resolveTopicName(
+      command === "daemon" ? ["daemon", args[0]] : [command],
+    );
+    const text = formatCommandHelp(topic);
+    if (text === null) {
+      console.error(t("err.unknownHelpTopic", { topic: command }));
+      process.exit(1);
+    }
+    console.log(text);
     process.exit(0);
   }
   const spec = COMMANDS[command];
@@ -344,11 +342,11 @@ async function main() {
       }
       return;
     }
-    console.log(USAGE);
-    if (command && command !== "help") {
-      console.error(`未知命令：${command}`);
+    console.log(formatOverview());
+    if (command) {
+      console.error(t("err.unknownCommand", { command }));
     }
-    process.exit(command === "help" || !command ? 0 : 1);
+    process.exit(!command ? 0 : 1);
   }
 
   const isRead = READ_COMMANDS.has(command);
@@ -373,14 +371,18 @@ async function main() {
   const hasName = typeof flags.daemon === "string" && flags.daemon !== "";
   const hasPath = typeof flags.path === "string" && flags.path !== "";
   if (hasName && hasPath) {
-    console.error("--daemon 与 --path 互斥，只能二选一。");
+    console.error(t("err.daemonPathConflict"));
     process.exit(1);
   }
   if (!hasName && !hasPath) {
     console.error(
       isRead
-        ? "缺少目标：读命令可用 --daemon <名> 或 --path <板目录>。"
-        : `写命令 ${command} 需要 --daemon <名> 或 --path <板目录> 指定目标。`,
+        ? t("err.missingTargetRead", { name: t("ph.name"), boardDir: t("ph.boardDir") })
+        : t("err.missingTargetWrite", {
+            command,
+            name: t("ph.name"),
+            boardDir: t("ph.boardDir"),
+          }),
     );
     process.exit(1);
   }
@@ -432,7 +434,10 @@ async function main() {
   const session = await connectDaemonByName(flags.daemon);
   if (session === null) {
     console.error(
-      `daemon ${flags.daemon} 不可用：注册表无条目或端口不可连通，请先 hwb daemon start --name ${flags.daemon} --path <板目录>。`,
+      t("err.daemonUnavailableWithHint", {
+        name: flags.daemon,
+        boardDir: t("ph.boardDir"),
+      }),
     );
     process.exit(1);
   }

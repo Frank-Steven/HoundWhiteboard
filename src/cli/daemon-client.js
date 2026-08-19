@@ -7,6 +7,7 @@
 
 import { readDaemonDescriptor } from "./board-daemon.js";
 import { readEntry, isEntryAlive } from "./daemon-registry.js";
+import { t } from "./i18n.js";
 
 /** 单次调用的超时毫秒数 */
 const INVOKE_TIMEOUT_MS = 10000;
@@ -165,14 +166,14 @@ async function connectDaemonByPath(rootPath) {
 async function shutdownDaemon(name) {
   const desc = await readEntry(name);
   if (desc === null) {
-    throw new Error(`daemon ${name} 未在运行（注册表无此条目）。`);
+    throw new Error(t("err.daemonNotRegistered", { name }));
   }
   if (!(await isEntryAlive(desc))) {
-    throw new Error(`daemon ${name} 已停止（端口 ${desc.port} 不可连通）。`);
+    throw new Error(t("err.daemonStoppedUnreachable", { name, port: desc.port }));
   }
   const session = await connectDescriptor(desc);
   if (session === null) {
-    throw new Error(`daemon ${name} 连接失败（端口 ${desc.port}）。`);
+    throw new Error(t("err.daemonConnectFailed", { name, port: desc.port }));
   }
   try {
     await session.api.shutdown();
