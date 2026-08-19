@@ -4,11 +4,7 @@
  */
 
 import {
-  Dir,
-  File,
-  cd,
   entryToRel,
-  father,
   isValidName,
   isValidRelPath,
   joinRel,
@@ -45,17 +41,17 @@ describe("isValidName", () => {
 
 describe("entryToRel", () => {
   test("Dir 条目转换为单段路径", () => {
-    expect(entryToRel(Dir("chunks"))).toBe("chunks");
+    expect(entryToRel({ __type: "Dir", name: "chunks" })).toBe("chunks");
   });
 
   test("File 条目转换为带扩展名路径", () => {
-    expect(entryToRel(File("meta", "json"))).toBe("meta.json");
-    expect(entryToRel(File("trace"))).toBe("trace");
+    expect(entryToRel({ __type: "File", name: "meta", ext: "json" })).toBe("meta.json");
+    expect(entryToRel({ __type: "File", name: "trace", ext: "" })).toBe("trace");
   });
 
   test("非法条目返回 null", () => {
-    expect(entryToRel(Dir("a/b"))).toBe(null);
-    expect(entryToRel(File("a/b", "json"))).toBe(null);
+    expect(entryToRel({ __type: "Dir", name: "a/b" })).toBe(null);
+    expect(entryToRel({ __type: "File", name: "a/b", ext: "json" })).toBe(null);
     expect(entryToRel(null)).toBe(null);
     expect(entryToRel({ __type: "Unknown", name: "x" })).toBe(null);
   });
@@ -83,28 +79,10 @@ describe("isValidRelPath / normalizeRel", () => {
   });
 });
 
-describe("cd / father / joinRel", () => {
-  test("cd 在相对路径下进入子目录", () => {
-    expect(cd("", "chunks")).toBe("chunks");
-    expect(cd("chunks", "0")).toBe("chunks/0");
-    expect(cd("a/b", "c")).toBe("a/b/c");
-  });
-
-  test("cd 拒绝非法名称", () => {
-    expect(cd("a", "b/c")).toBe(null);
-    expect(cd("a", "..")).toBe(null);
-    expect(cd(null, "x")).toBe(null);
-  });
-
-  test("father 返回上级路径", () => {
-    expect(father("a/b/c")).toBe("a/b");
-    expect(father("a")).toBe("");
-    expect(father("")).toBe(null);
-  });
-
-  test("joinRel 挂载条目描述符", () => {
-    expect(joinRel("chunks", File("0", "json"))).toBe("chunks/0.json");
-    expect(joinRel("", Dir("objects"))).toBe("objects");
-    expect(joinRel("a", Dir("b/c"))).toBe(null);
+describe("joinRel", () => {
+  test("挂载条目描述符", () => {
+    expect(joinRel("chunks", { __type: "File", name: "0", ext: "json" })).toBe("chunks/0.json");
+    expect(joinRel("", { __type: "Dir", name: "objects" })).toBe("objects");
+    expect(joinRel("a", { __type: "Dir", name: "b/c" })).toBe(null);
   });
 });

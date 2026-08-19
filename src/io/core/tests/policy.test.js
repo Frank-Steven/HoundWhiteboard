@@ -5,32 +5,12 @@
 
 import {
   OP_PERMISSION_KEYS,
-  Permission,
   PERMISSION_PRESETS,
   checkPermissions,
-  combinePermissions,
   getPreset,
-  hasPermission,
   isValidPermissions,
   mergePermissions,
 } from "../policy.js";
-
-describe("Permission bitmask", () => {
-  test("位掩码互斥且可组合", () => {
-    expect(hasPermission(Permission.READ, Permission.READ)).toBe(true);
-    expect(hasPermission(Permission.READ, Permission.WRITE)).toBe(false);
-
-    const rw = combinePermissions(Permission.READ, Permission.WRITE);
-    expect(hasPermission(rw, Permission.READ)).toBe(true);
-    expect(hasPermission(rw, Permission.WRITE)).toBe(true);
-    expect(hasPermission(rw, Permission.DELETE)).toBe(false);
-  });
-
-  test("非数字掩码返回 false", () => {
-    expect(hasPermission("read", Permission.READ)).toBe(false);
-    expect(hasPermission(undefined, Permission.READ)).toBe(false);
-  });
-});
 
 describe("PERMISSION_PRESETS / getPreset", () => {
   test("预设字段齐全且为布尔", () => {

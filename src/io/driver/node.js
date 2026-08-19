@@ -36,8 +36,8 @@ export const createNodeDriver = (rootPath) => {
   /** @type {string} */
   const root = path.resolve(rootPath);
 
-  /** @type {boolean} 根目录注册状态 */
-  let registered = true;
+  /** @type {Set<string>} 已注册根目录 id 集合（单根驱动，仅含 "local"） */
+  const roots = new Set(["local"]);
 
   /** @type {string|null} 根目录 realpath 缓存（macOS 上 /var 是指向 /private/var 的符号链接，字面比较会误判越界） */
   let realRootCache = null;
@@ -435,19 +435,17 @@ export const createNodeDriver = (rootPath) => {
       if (typeof absPath !== "string" || absPath.trim() === "") {
         return { rootId: "" };
       }
-      registered = true;
+      roots.add("local");
       return { rootId: "local" };
     },
 
     /**
      * 注销根目录
      * @param {string} rootId - 根目录 id
-     * @returns {Promise<boolean>} 是否成功
+     * @returns {Promise<boolean>} 是否存在并被移除
      */
     async unregisterRoot(rootId) {
-      if (rootId !== "local") return false;
-      registered = false;
-      return true;
+      return roots.delete(rootId);
     },
 
     /**
@@ -455,7 +453,7 @@ export const createNodeDriver = (rootPath) => {
      * @returns {Promise<string[]>} 根目录 id 列表
      */
     async listRoots() {
-      return registered ? ["local"] : [];
+      return [...roots];
     },
   };
 };

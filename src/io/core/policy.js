@@ -1,44 +1,9 @@
 /**
  * @file 权限策略与预设
- * @description 提供权限位掩码、权限预设、操作到权限的映射与合并规则，纯数据零依赖。
+ * @description 提供权限预设、操作到权限的映射与合并规则，纯数据零依赖。
  * @module io/core/policy
  * @author Zhou Chenyu
  */
-
-/**
- * Bitmask 权限定义
- * @readonly
- * @enum {number}
- */
-export const Permission = {
-  READ: 1 << 0,
-  WRITE: 1 << 1,
-  DELETE: 1 << 2,
-  MKDIR: 1 << 3,
-  ZIP: 1 << 4,
-  UNZIP: 1 << 5,
-  HIDE: 1 << 6,
-};
-
-/**
- * 判断权限位掩码是否包含指定权限
- * @param {number} tokenPermissions - 权限位掩码
- * @param {number} requiredPermission - 要求的权限位
- * @returns {boolean} 是否包含
- */
-export const hasPermission = (tokenPermissions, requiredPermission) => {
-  if (typeof tokenPermissions !== "number") return false;
-  return (tokenPermissions & requiredPermission) === requiredPermission;
-};
-
-/**
- * 组合多个权限位
- * @param {...number} perms - 权限位
- * @returns {number} 组合后的权限位掩码
- */
-export const combinePermissions = (...perms) => {
-  return perms.reduce((acc, p) => acc | p, 0);
-};
 
 /**
  * 权限字段列表（对象形式权限的键）
@@ -123,28 +88,6 @@ export const isValidPermissions = (permissions) => {
   return keys.every(
     (key) => PERMISSION_KEYS.includes(key) && typeof permissions[key] === "boolean"
   );
-};
-
-/**
- * 操作所需权限位映射
- * @type {Object.<string, number>}
- */
-export const OP_PERMISSION_BITS = {
-  read: Permission.READ,
-  write: Permission.WRITE,
-  ls: Permission.READ,
-  stat: Permission.READ,
-  exists: Permission.READ,
-  rm: Permission.DELETE,
-  cp: Permission.WRITE,
-  mv: Permission.WRITE,
-  mkdir: Permission.MKDIR,
-  hide: Permission.HIDE,
-  unhide: Permission.HIDE,
-  isHidden: Permission.READ,
-  zipFrom: Permission.ZIP,
-  zipExtract: Permission.UNZIP,
-  zipList: Permission.ZIP,
 };
 
 /**

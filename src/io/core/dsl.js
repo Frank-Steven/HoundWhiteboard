@@ -1,6 +1,6 @@
 /**
  * @file 路径 DSL 与名称校验
- * @description 提供路径名称校验、Dir/File 条目描述符与相对路径组合纯函数，零依赖可运行于任何 JS 运行时。
+ * @description 提供路径名称校验与相对路径组合纯函数，零依赖可运行于任何 JS 运行时。
  * @module io/core/dsl
  * @author Zhou Chenyu
  */
@@ -26,45 +26,16 @@ export const isValidName = (name) => {
 };
 
 /**
- * Dir 条目描述符
- * @typedef {Object} DirEntry
- * @property {"Dir"} __type - 类型标识
- * @property {string} name - 目录名称
+ * 条目描述符
+ * @typedef {Object} PathEntry
+ * @property {"Dir"|"File"} __type - 类型标识
+ * @property {string} name - 名称（File 不含扩展名）
+ * @property {string} [ext] - 扩展名（仅 File）
  */
-
-/**
- * 创建 Dir 条目描述符
- * @param {string} name - 目录名称
- * @returns {DirEntry} Dir 条目
- */
-export const Dir = (name) => ({
-  __type: "Dir",
-  name,
-});
-
-/**
- * File 条目描述符
- * @typedef {Object} FileEntry
- * @property {"File"} __type - 类型标识
- * @property {string} name - 文件名（不含扩展名）
- * @property {string} ext - 扩展名
- */
-
-/**
- * 创建 File 条目描述符
- * @param {string} name - 文件名（不含扩展名）
- * @param {string} [ext=""] - 扩展名
- * @returns {FileEntry} File 条目
- */
-export const File = (name, ext = "") => ({
-  __type: "File",
-  name,
-  ext,
-});
 
 /**
  * 将条目描述符转换为相对路径段
- * @param {DirEntry|FileEntry} entry - 条目描述符
+ * @param {PathEntry} entry - 条目描述符
  * @returns {string|null} 相对路径段或 null（描述符非法）
  */
 export const entryToRel = (entry) => {
@@ -113,38 +84,9 @@ export const normalizeRel = (rel) => {
 };
 
 /**
- * cd 语义：在相对路径下进入子目录
- * @param {string} rel - 当前相对路径（可为 ""）
- * @param {string} name - 子目录名称
- * @returns {string|null} 新的相对路径或 null（名称非法）
- */
-export const cd = (rel, name) => {
-  if (typeof rel !== "string") return null;
-  if (!isValidName(name)) return null;
-
-  const base = normalizeRel(rel);
-  return base ? `${base}/${name}` : name;
-};
-
-/**
- * 获取上级相对路径
- * @param {string} rel - 当前相对路径
- * @returns {string|null} 上级相对路径或 null（已在顶层）
- */
-export const father = (rel) => {
-  if (typeof rel !== "string") return null;
-
-  const base = normalizeRel(rel);
-  if (!base) return null;
-
-  const idx = base.lastIndexOf("/");
-  return idx === -1 ? "" : base.slice(0, idx);
-};
-
-/**
  * 在相对路径下挂载条目描述符
  * @param {string} rel - 相对路径（可为 ""）
- * @param {DirEntry|FileEntry} entry - 条目描述符
+ * @param {PathEntry} entry - 条目描述符
  * @returns {string|null} 组合后的相对路径或 null（描述符非法）
  */
 export const joinRel = (rel, entry) => {

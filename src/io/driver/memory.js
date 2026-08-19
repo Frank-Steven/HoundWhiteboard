@@ -31,8 +31,8 @@ export const createMemoryDriver = (options = {}) => {
   /** @type {Set<string>} 目录集合（含隐式父目录） */
   const dirs = new Set();
 
-  /** @type {boolean} 根目录注册状态 */
-  let registered = true;
+  /** @type {Set<string>} 已注册根目录 id 集合（单根驱动） */
+  const roots = new Set([rootId]);
 
   /**
    * 确保路径的所有父目录存在
@@ -451,19 +451,17 @@ export const createMemoryDriver = (options = {}) => {
      * @returns {Promise<{rootId: string}>} 根目录引用
      */
     async registerRoot(_absPath) {
-      registered = true;
+      roots.add(rootId);
       return { rootId };
     },
 
     /**
      * 注销根目录
      * @param {string} id - 根目录 id
-     * @returns {Promise<boolean>} 是否成功
+     * @returns {Promise<boolean>} 是否存在并被移除
      */
     async unregisterRoot(id) {
-      if (id !== rootId) return false;
-      registered = false;
-      return true;
+      return roots.delete(id);
     },
 
     /**
@@ -471,7 +469,7 @@ export const createMemoryDriver = (options = {}) => {
      * @returns {Promise<string[]>} 根目录 id 列表
      */
     async listRoots() {
-      return registered ? [rootId] : [];
+      return [...roots];
     },
 
     /**
