@@ -19,7 +19,7 @@
     "clean:temp": "htb-clean temp",
     "clean:status": "htb-clean status",
     "clean:help": "htb-clean help",
-    "dev": "htb dev",
+    "dev": "htb dev --no-tui",
     "build": "htb build",
     "build:quick": "htb build-quick",
     "dev:win": "htb dev win",
