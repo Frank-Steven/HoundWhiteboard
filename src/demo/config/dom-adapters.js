@@ -6,6 +6,7 @@
  */
 
 import { Vector } from "../../kernel/utils/math.js";
+import { SIGNAL_TYPES } from "../../ui/devices-dag/dag-core/signal-types.js";
 import { switchTool } from "../../ui/devices-dag/tools/switch-tool.js";
 import {
   DEMO_BUTTON_GROUP_STATE_KEY,
@@ -369,6 +370,36 @@ function attachHistoryAdapter(board, viewport) {
 }
 
 /**
+ * 绑定删除按钮适配器
+ * @description 「操作」区的「删除」按钮向 tool-switcher workflow 发送 delete 信号；
+ * 信号经 switcher 路由到当前激活工具，仅当切到「选择+修改」handoff 且 modifier
+ * 持有对象时，由对象修改工具消费并删除持有对象。
+ * @param {import("../../ui/components/orchestration/board.js").Board} board - 白板实例
+ * @param {import("../../ui/components/orchestration/viewport.js").Viewport} viewport - 视口实例
+ * @returns {() => void} 解绑函数
+ */
+function attachDeleteAdapter(board, viewport) {
+  const button = document.getElementById("delete-btn");
+  if (!button) return () => { };
+
+  /**
+   * 点击删除按钮：向 tool-switcher workflow 发送 delete 信号
+   * @param {MouseEvent} event - 点击事件
+   * @returns {void}
+   */
+  const onClick = (event) => {
+    event.preventDefault();
+    board.signalsEventBus.emit("input", {
+      to: `/${viewport.viewportId}/workflows/${DEMO_WORKFLOW_NAMES.TOOL_SWITCHER}`,
+      signals: [{ type: SIGNAL_TYPES.DELETE, context: {} }],
+    });
+  };
+
+  button.addEventListener("click", onClick);
+  return () => button.removeEventListener("click", onClick);
+}
+
+/**
  * 绑定工具栏按钮适配器
  * @description
  * 读取 .toolbar-btn 按钮列表，将 pointerdown 翻译为 button-press 信号发往按钮组设备；
@@ -536,6 +567,7 @@ function attachResizeAdapter(viewport, appLeft) {
 }
 
 export {
+  attachDeleteAdapter,
   attachHistoryAdapter,
   attachKeyboardAdapter,
   attachPointerAdapter,

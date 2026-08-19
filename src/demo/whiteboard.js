@@ -21,6 +21,7 @@ import { installGracefulShutdown } from "./config/graceful-shutdown.js";
 import { DemoLog } from "./config/log.js";
 import { ViewportTool } from "./config/viewport-tool.js";
 import {
+  attachDeleteAdapter,
   attachHistoryAdapter,
   attachKeyboardAdapter,
   attachPointerAdapter,
@@ -174,6 +175,7 @@ async function bootstrapWhiteboard() {
   attachPointerAdapter(viewport, board, demoLog);
   attachKeyboardAdapter(viewport, board, demoLog, toolbar?.tools);
   attachHistoryAdapter(board, viewport);
+  attachDeleteAdapter(board, viewport);
   attachResizeAdapter(viewport, appLeft);
   attachWheelAdapter(viewport, board, appLeft);
 

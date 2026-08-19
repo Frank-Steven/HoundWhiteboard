@@ -155,6 +155,10 @@ Tauri 桌面端默认板目录为 `~/hound-whiteboard/demo-board`（首次运行
 
 工具栏的「撤销」「重做」按钮（`#undo-btn` / `#redo-btn`）由 `attachHistoryAdapter` 绑定：直接经 BoardApi 调用 `undo()` / `redo()`，不进入设备图；完成后向 tool-switcher 与 secondary-chooser 广播 `hit:changed` 信号，让工具按内核对齐本地条目。
 
+## 删除选中对象
+
+「操作」区的「删除」按钮（`#delete-btn`）由 `attachDeleteAdapter` 绑定：向 tool-switcher workflow 发送框架级 `delete` 信号，信号经 switcher 路由到当前激活工具——仅当切到「选择+修改」handoff 且 modifier 持有对象时生效。键盘 `Delete` / `Backspace` 则经 `secondary-handoff.js` 的边级 prefix（trigger → delete）发给右键 handoff workflow。两侧最终都由对象修改工具（`GestureBasedObjectModifierTool`）消费：经 `boardApi.deleteObjects` 删除持有对象（删除记录进入 handoff 会话 supra，可整体撤销），随后完成动作让 wrapper 复位相位。
+
 ## Worker 模式面板
 
 demo 固定以 Worker 模式运行（`board.enableWorkerMode(worker)`），右侧面板由 `DemoLog` 输出运行状态：运行模式（Worker）、左键/右键/空格工具说明、视口快捷键与视口状态快照。
@@ -170,6 +174,7 @@ demo 固定以 Worker 模式运行（`board.enableWorkerMode(worker)`），右�
 | 鼠标右键      | 首次框选对象 → 再次拖拽修改                         |
 | Enter         | 提交修改（右键 handoff + 左键选择工具）             |
 | Esc           | 取消修改（右键 handoff + 左键选择工具）             |
+| Delete / Backspace | 删除选中对象（右键 handoff）                   |
 | W / A / S / D | 移动选中对象（右键激活后）                          |
 | ↑ / ↓ / ← / → | 平移视口                                            |
 | + / −         | 放大 / 缩小视口                                     |

@@ -34,6 +34,7 @@ import { createCompatSelectionEntriesForSummaries } from "../../../components/re
  * @property {boolean} hasEndSignal - 是否包含结束信号
  * @property {boolean} hasCancelSignal - 是否包含取消信号
  * @property {boolean} hasSuccessSignal - 是否包含提交信号
+ * @property {boolean} hasDeleteSignal - 是否包含删除信号
  */
 
 /**
@@ -865,6 +866,9 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
       hasEndSignal: baseInteraction.hasEnd,
       hasCancelSignal: baseInteraction.hasCancel,
       hasSuccessSignal: baseInteraction.hasSuccess,
+      hasDeleteSignal: (signalPacket.signals ?? []).some(
+        (s) => s?.type === SIGNAL_TYPES.DELETE,
+      ),
     };
   }
 
@@ -988,6 +992,11 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
       objects,
     );
 
+    if (interaction.hasDeleteSignal) {
+      this._handleDelete(interaction, context, objects);
+      return;
+    }
+
     if (interaction.hasCancelSignal) {
       this._handleCancel(interaction, context, objects);
       return;
@@ -1004,6 +1013,38 @@ class GestureBasedObjectModifierTool extends ObjectModifierTool {
     }
 
     this._handleSpatialUpdate(interaction, context, objects);
+  }
+
+  /**
+   * 处理 delete 信号：删除当前持有的对象
+   * @description
+   * 手势进行中先 abort 在途分子（丢弃 amend 流，内核实例还原后随即被删，
+   * 无需回写本地条目），再经 `boardApi.deleteObjects` 永久删除持有对象——
+   * 删除记录随 supraKey 进入 wrapper 的会话分子，撤销以整个选择会话为单位。
+   * 删除后调用 `completeAction`：对已 discard 的对象 commitObjects 为幂等空操作，
+   * 由它负责清空 `_overlayModifiedObjects`、刷新 overlay，并经 `afterAction`
+   * 发出 action:complete 让 handoff wrapper 复位相位。
+   * @param {ModifyGestureInteraction} interaction - 当前交互上下文
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @param {import("../../../../kernel/types/types.js").LightweightObjectEntry[]} objects - 活动对象
+   * @private
+   */
+  _handleDelete(interaction, context, objects) {
+    const boardApi = context?.services?.boardApi;
+    const objectIds = this.resolveObjectIds(context, objects);
+    if (typeof boardApi?.deleteObjects !== "function" || objectIds.length === 0) {
+      return;
+    }
+
+    if (this.isGestureActive || this._molId !== null || this._molPending !== null) {
+      this.#abortMol(context);
+      this._molBeginPositions = null;
+      this.isGestureActive = false;
+      this.processor.reset();
+    }
+
+    boardApi.deleteObjects(objectIds, { supraKey: context?.services?.supraKey });
+    this.completeAction(context);
   }
 
   /**

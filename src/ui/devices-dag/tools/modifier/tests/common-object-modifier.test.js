@@ -1994,4 +1994,166 @@ describe("CommonObjectModifierTool", () => {
       expect(boardCore.activeObjectManager.has("demo/1")).toBe(true);
     });
   });
+
+  describe("delete 信号", () => {
+    test("持有对象时收到 delete 应经 deleteObjects 删除并结束动作", () => {
+      const object = {
+        id: "7",
+        position: new Vector(5, 5),
+      };
+      const boardApi = {
+        modifyObject: jest.fn(),
+        commitObjects: jest.fn(),
+        discardActiveObjects: jest.fn(),
+        deleteObjects: jest.fn(),
+      };
+      const tool = new CommonObjectModifierTool({
+        processor: new DragGestureProcessor(),
+      });
+      const context = aomCtx(tool, object, { boardApi, supraKey: "S" });
+      const onComplete = jest.fn();
+      tool.on("action:complete", onComplete);
+
+      tool.process(
+        { signals: [{ type: SIGNAL_TYPES.DELETE, context: {} }] },
+        context,
+      );
+
+      // 删除走 deleteObjects（记录进入会话 supra），commitObjects 对已删除对象为幂等空操作
+      expect(boardApi.deleteObjects).toHaveBeenCalledWith(["7"], {
+        supraKey: "S",
+      });
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["7"], {
+        supraKey: "S",
+      });
+      // 持有对象清空，action:complete 发出（wrapper 据此复位相位）
+      expect(tool._overlayModifiedObjects).toEqual([]);
+      expect(onComplete).toHaveBeenCalledTimes(1);
+    });
+
+    test("拖拽手势进行中收到 delete 应中止在途分子后删除对象", () => {
+      const object = {
+        id: "8",
+        position: new Vector(10, 20),
+      };
+      const boardApi = {
+        modifyObject: jest.fn(),
+        commitObjects: jest.fn(),
+        discardActiveObjects: jest.fn(),
+        deleteObjects: jest.fn(),
+        beginMol: jest.fn(() => "mol-1"),
+        amendMol: jest.fn(),
+        abortMol: jest.fn(),
+        endMol: jest.fn(),
+      };
+      const tool = new CommonObjectModifierTool({
+        processor: new DragGestureProcessor(),
+      });
+      const context = aomCtx(tool, object, { boardApi, supraKey: "S" });
+
+      // 拖动手势：首帧锚点，次帧位移，分子在途
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 10, y: 20 } } }] },
+        context,
+      );
+      tool.process(
+        { signals: [{ type: "position", context: { value: { x: 14, y: 22 } } }] },
+        context,
+      );
+      expect(tool._molId).toBe("mol-1");
+      expect(object.position).toEqual(new Vector(14, 22));
+
+      tool.process(
+        { signals: [{ type: SIGNAL_TYPES.DELETE, context: {} }] },
+        context,
+      );
+
+      // 在途分子被中止（不物化），对象仍被删除，手势状态复位
+      expect(boardApi.abortMol).toHaveBeenCalledWith("mol-1");
+      expect(boardApi.endMol).not.toHaveBeenCalled();
+      expect(boardApi.deleteObjects).toHaveBeenCalledWith(["8"], {
+        supraKey: "S",
+      });
+      expect(tool.isGestureActive).toBe(false);
+      expect(tool._molId).toBeNull();
+      expect(tool._overlayModifiedObjects).toEqual([]);
+    });
+
+    test("未持有对象时收到 delete 应为空操作", () => {
+      const boardApi = {
+        deleteObjects: jest.fn(),
+        commitObjects: jest.fn(),
+      };
+      const tool = new CommonObjectModifierTool({
+        processor: new DragGestureProcessor(),
+      });
+      const onComplete = jest.fn();
+      tool.on("action:complete", onComplete);
+
+      tool.process(
+        { signals: [{ type: SIGNAL_TYPES.DELETE, context: {} }] },
+        { path: "/test", services: { boardApi } },
+      );
+
+      expect(boardApi.deleteObjects).not.toHaveBeenCalled();
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
+    test("集成：真实内核 delete 删除选中对象且 undo 可恢复", async () => {
+      const { BoardApi } = await import(
+        "../../../../../kernel/api/board-api.js"
+      );
+      const { BoardCore } = await import(
+        "../../../../../kernel/board/board-core.js"
+      );
+      const { createDefaultAomRenderHooks } = await import(
+        "../../../../../kernel/board/aom-render-hooks.js"
+      );
+      const { createDefaultPersistenceAdapter } = await import(
+        "../../../../../kernel/board/persistence-adapter.js"
+      );
+      const boardCore = new BoardCore({
+        width: 800,
+        height: 600,
+        source: "demo",
+        aomRenderHooks: createDefaultAomRenderHooks(),
+        persistenceAdapter: createDefaultPersistenceAdapter(),
+      });
+      const api = new BoardApi(boardCore);
+
+      api.createObject("StrokeObject", {
+        id: "demo/1",
+        position: { x: 0, y: 0 },
+        property: { width: 2 },
+        data: { points: [{ x: 0, y: 0 }, { x: 10, y: 0 }] },
+      });
+      await api.commitObjects(["demo/1"]);
+      api.beginSupra("S");
+      await api.addActiveObjects(["demo/1"], { supraKey: "S" });
+
+      const tool = new CommonObjectModifierTool({
+        processor: new DragGestureProcessor(),
+      });
+      const summary = api.queryObjects(["demo/1"])[0];
+      const context = aomCtx(tool, summary, {
+        boardApi: api,
+        supraKey: "S",
+      });
+
+      tool.process(
+        { signals: [{ type: SIGNAL_TYPES.DELETE, context: {} }] },
+        context,
+      );
+
+      // 对象被删除，持有引用清空
+      expect(api.queryObject("demo/1")).toBeNull();
+      expect(tool._overlayModifiedObjects).toEqual([]);
+
+      // 删除记录在会话 supra 内，undo 一次整体恢复对象
+      api.endSupra("S");
+      api.undo();
+      expect(api.queryObject("demo/1")).not.toBeNull();
+      expect(api.queryObject("demo/1").position).toEqual({ x: 0, y: 0 });
+    });
+  });
 });
