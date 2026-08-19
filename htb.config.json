@@ -1,0 +1,13 @@
+{
+  "ios": {
+    "target": "sim",
+    "sign": true
+  },
+  "tui": {
+    "logLimit": 20000
+  },
+  "tasks": {
+    "build:android": {},
+    "build-quick:android": {}
+  }
+}

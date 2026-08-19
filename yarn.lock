@@ -1356,10 +1356,10 @@ hidefile@3:
   dependencies:
     winattr "^3.0.0"
 
-hound-tauri-build@0.3.1:
-  version "0.3.1"
-  resolved "https://registry.yarnpkg.com/hound-tauri-build/-/hound-tauri-build-0.3.1.tgz#90c957aa7b117f69e2dabbd81c68b47e209c6e88"
-  integrity sha512-TOoskFz9ISfbc4x8w1q9E9m3Enff9o7BHBN+95AF8zjPyrnn9TKZpIbL8fWIcQFD0F40lAoPMyx3S+oPAqj5rw==
+hound-tauri-build@^0.4.2:
+  version "0.4.2"
+  resolved "https://registry.yarnpkg.com/hound-tauri-build/-/hound-tauri-build-0.4.2.tgz#70db4e802ad5aa7664ba24bc452248199e5eb9ca"
+  integrity sha512-/oznUrCN0l4xhGKwdU4G4mfgaUiA9YNz8fJ9b0QyedwwQgk78zymeWFVL764WZXzMJp9ZvQrHEumI2oRRuaRpQ==
 
 html-escaper@^2.0.0:
   version "2.0.2"
@@ -2437,6 +2437,11 @@ write-file-atomic@^5.0.1:
   dependencies:
     imurmurhash "^0.1.4"
     signal-exit "^4.0.1"
+
+ws@^8.21.2:
+  version "8.21.2"
+  resolved "https://registry.npmmirror.com/ws/-/ws-8.21.2.tgz#e6976cfe96161d40420689a5f051378d11b0f0ce"
+  integrity sha512-54dMVAo4WIe6SKy3vBgN+9bJZqqQ8IMRevAkOLQALhi49qkkQDQfWdAZ8KQlXiEabw88ARXXdUrlvtbKQX+aKw==
 
 y18n@^5.0.5:
   version "5.0.8"

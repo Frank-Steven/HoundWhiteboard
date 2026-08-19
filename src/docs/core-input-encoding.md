@@ -94,6 +94,8 @@ canvasY = clientY - canvas.getBoundingClientRect().top
 
 宿主层在编码鼠标信号时应完成 canvas 偏移扣除。世界坐标转换由鼠标设备根节点自动完成，不在编码层处理。
 
+`displacement`（相对位移）信号不经宿主编码，由 prefix 在图内合成（如 WASD 方向键 prefix 把 `trigger` 规整为携带方向向量的 `displacement`，见 `src/demo/config/prefix-builders.js:129-145`）。
+
 ## 键盘输入约定
 
 进入键盘设备根节点的宿主输入，当前建议仍按 DOM 键盘事件规整：

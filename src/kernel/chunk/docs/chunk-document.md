@@ -20,7 +20,6 @@
 | `x` / `y`                                            | 区块二维坐标                               | `number`                          |
 | `board`                                              | 所属白板引用，当前主路径通常是 `BoardCore` | `BoardCore \| Board \| undefined` |
 | `objectManager`                                      | 区块对象管理器                             | `ChunkObjectManager \| undefined` |
-| `leftChunk` / `rightChunk` / `upChunk` / `downChunk` | 邻接区块引用                               | `Chunk \| undefined`              |
 | `isLoad`                                             | 当前是否已加载                             | `boolean`                         |
 | `isTempLoad`                                         | 当前是否处于临时加载状态                   | `boolean`                         |
 
@@ -41,26 +40,26 @@
 
 ## 加载模型
 
-### 临时加载 `loadTemp(boardRootPath)`
+### 临时加载 `loadTemp()`
 
 当前会：
 
 1. 标记 `isLoad = true`
 2. 标记 `isTempLoad = true`
 3. 确保存在 `ChunkObjectManager`
-4. 调用 `objectManager.loadChunkMetadata(boardRootPath)`
+4. 调用 `objectManager.loadChunkMetadata()`
 
 当前临时加载的重点是：
 
 - 让区块静态图与覆盖索引就绪
 - 不主动在这里装载对象实例
 
-### 完整加载 `loadFull(boardRootPath)`
+### 完整加载 `loadFull()`
 
 当前实现非常轻量：
 
 1. 若已完整加载，直接返回 `false`
-2. 若尚未加载，先执行 `loadTemp(boardRootPath)`
+2. 若尚未加载，先执行 `loadTemp()`
 3. 将 `isTempLoad` 置为 `false`
 
 需要特别说明：
@@ -91,9 +90,10 @@
 会：
 
 - 确保存在 `objectManager`
-- 必要时通过 `board.registerObjectInstance(obj)` 注册对象
 - 向静态图加入对象节点
 - 根据 `below` / `above` 建立层叠边
+
+对象实例的白板级注册由调用方经 `BoardCore.registerObjectInstance` 显式完成。
 
 ### `removeObject(objectId)`
 
@@ -110,11 +110,10 @@
 | `coordinateToId(x, y)`                              | 二维坐标转 id                |
 | `isValidChunkIdentity(id, x, y)`                    | 判断区块 id 与坐标是否匹配   |
 | `worldToChunkId(worldPos, chunkWidth, chunkHeight)` | 世界坐标转区块 id            |
-| `connectTwoChunk(first, second, direction)`         | 连接两个邻接区块             |
 | `addObject(obj, below, above)`                      | 向静态图加入对象             |
 | `removeObject(objectId)`                            | 从静态图移除对象             |
-| `loadTemp(boardRootPath)`                           | 临时加载区块元数据           |
-| `loadFull(boardRootPath)`                           | 将区块升级到完整加载状态     |
+| `loadTemp()`                                        | 临时加载区块元数据           |
+| `loadFull()`                                        | 将区块升级到完整加载状态     |
 | `downgradeToTemp()`                                 | 从完整加载降级为临时加载状态 |
 | `unload()`                                          | 完整卸载区块                 |
 | `unloadTemp()`                                      | 卸载临时加载区块             |

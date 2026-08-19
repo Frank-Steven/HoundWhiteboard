@@ -175,7 +175,7 @@ describe("ObjectModifierTool", () => {
         [object],
       );
 
-      expect(boardApi.commitObjects).toHaveBeenCalledWith(["10"]);
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["10"], { supraKey: undefined });
       expect(actionComplete).toHaveBeenCalledTimes(1);
       expect(actionComplete).toHaveBeenCalledWith(
         expect.objectContaining({ path: "/test" }),
@@ -234,7 +234,7 @@ describe("ObjectModifierTool", () => {
       );
 
       // apply 正常执行
-      expect(boardApi.commitObjects).toHaveBeenCalledWith(["12"]);
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["12"], { supraKey: undefined });
       // 但 unmount 不应被调用
       expect(unmount).not.toHaveBeenCalled();
     });
@@ -261,7 +261,7 @@ describe("ObjectModifierTool", () => {
         [object],
       );
 
-      expect(boardApi.commitObjects).toHaveBeenCalledWith(["13"]);
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["13"], { supraKey: undefined });
       expect(unmount).toHaveBeenCalledWith("/test");
     });
 
@@ -292,12 +292,16 @@ describe("ObjectModifierTool", () => {
       };
 
       expect(tool.applyModifiedObjects(context, [object])).toBe(true);
-      expect(commitObjects).toHaveBeenCalledWith([object.id]);
+      expect(commitObjects).toHaveBeenCalledWith([object.id], {
+        supraKey: undefined,
+      });
       expect(unmount).toHaveBeenCalledWith("/test");
 
       tool.receiveHandoffObjects([object], context);
       tool.umount(context);
-      expect(discardActiveObjects).toHaveBeenCalledWith([object.id]);
+      expect(discardActiveObjects).toHaveBeenCalledWith([object.id], {
+        supraKey: undefined,
+      });
       expect(tool._overlayModifiedObjects).toEqual([]);
     });
   });

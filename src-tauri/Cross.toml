@@ -1,0 +1,17 @@
+# Cross.toml — cross 交叉编译配置
+# 此文件由 hound-tauri-build 的 linux:init 任务自动复制到 src-tauri/Cross.toml
+#
+# cross 工具会读取此文件，为指定目标使用自定义 Docker 镜像。
+# Dockerfile.cross-linux 基于 cross 官方目标镜像，预装了 Tauri v2 所需的
+# libwebkit2gtk-4.1-dev 等 GTK/WebKit 系统依赖。
+
+[build.env]
+# 透传 TAURI_CONFIG：让容器内的 tauri-build 宏能读到 `--config` 合并后的
+# frontendDist 等配置（cross 0.2 默认只透传 CARGO_*/RUSTFLAGS 等变量）
+passthrough = ["TAURI_CONFIG"]
+
+[target.x86_64-unknown-linux-gnu]
+dockerfile = "./Dockerfile.cross-linux"
+
+[target.x86_64-pc-windows-gnu]
+dockerfile = "./Dockerfile.cross-windows"

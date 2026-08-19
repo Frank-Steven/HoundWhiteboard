@@ -8,7 +8,6 @@
 
 import { DirectedGraph } from "../utils/directed-graph.js";
 import { BasicObject } from "../objects/basic-obj.js";
-import { boardFileOperateBridge } from "../../host/bridges/file-operate-bridge-renderer.js";
 import {
   intersectsRanges,
   RectangleRange,
@@ -57,15 +56,6 @@ class ChunkObjectManager {
    */
   setBoard(board) {
     this.board = board;
-  }
-
-  /**
-   * 通过 Board 间接获取对象实例
-   * @param {string} objectId - 对象 id
-   * @returns {BasicObject | undefined}
-   */
-  getObject(objectId) {
-    return this.board?.getObjectById?.(objectId);
   }
 
   /**
@@ -210,37 +200,28 @@ class ChunkObjectManager {
 
   /**
    * 从可持久化结构恢复对象覆盖区块索引
-   * @param {Array<[number, number[]]>} coverIndexData - 覆盖索引数据
+   * @description 覆盖索引由 BoardCore 集中持有；盘上 `objectCoverIndex` 恒为空数组，逐条写回 BoardCore 索引。
+   * @param {Array<[string, number[]]>} coverIndexData - 覆盖索引数据
    */
   loadObjectCoverChunksFromData(coverIndexData) {
-    for (const entry of coverIndexData || []) {
-      if (!Array.isArray(entry) || entry.length !== 2) {
-        throw new Error("Invalid object cover index entry.");
-      }
-
-      const [objectId, chunkIds] = entry;
-      if (!Number.isInteger(objectId)) {
-        throw new Error("Invalid object id in cover index.");
-      }
-
+    for (const [objectId, chunkIds] of coverIndexData || []) {
       this.setObjectCoverChunks(objectId, chunkIds || []);
     }
   }
 
   /**
    * 加载区块元数据（层叠图 + 覆盖索引）
-   * @param {string} boardRootPath - 白板根目录
    * @returns {Promise<void>} 加载完成
    * @description
-   * 一次 IPC 读取合并后的 chunks/{chunkId}.json。
+   * 经 BoardCore 注入的持久化适配器读取 chunks/{chunkId}.json；
+   * 内存模式跳过（默认无操作适配器返回的空元数据会冲掉运行期已建的静态图）。
    */
-  async loadChunkMetadata(boardRootPath) {
-    if (typeof boardRootPath !== "string" || boardRootPath.trim() === "") {
-      return;
-    }
+  async loadChunkMetadata() {
+    const adapter = this.board?.persistenceAdapter;
+    if (!adapter || this.board.memoryMode?.()) return;
 
     const { tierGraph, objectCoverIndex } =
-      await boardFileOperateBridge.loadChunkMetadata(boardRootPath, this.id);
+      await adapter.loadChunkMetadata(this.id);
 
     this.staticGraph = DirectedGraph.parse(tierGraph);
     this.loadObjectCoverChunksFromData(objectCoverIndex);
@@ -248,15 +229,13 @@ class ChunkObjectManager {
 
   /**
    * 保存区块元数据（层叠图 + 覆盖索引）
-   * @param {string} boardRootPath - 白板根目录
    * @returns {Promise<void>} 保存完成
    */
-  async saveChunkMetadata(boardRootPath) {
-    if (typeof boardRootPath !== "string" || boardRootPath.trim() === "") {
-      return;
-    }
+  async saveChunkMetadata() {
+    const adapter = this.board?.persistenceAdapter;
+    if (!adapter || this.board.memoryMode?.()) return;
 
-    await boardFileOperateBridge.saveChunkMetadata(boardRootPath, this.id, {
+    await adapter.saveChunkMetadata(this.id, {
       tierGraph: this.staticGraph.toArray(),
       objectCoverIndex: this.serializeObjectCoverChunks(),
     });

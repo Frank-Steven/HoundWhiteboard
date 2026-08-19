@@ -21,61 +21,62 @@ import {
 import { createDefaultAomRenderHooks } from "./aom-render-hooks.js";
 
 /**
- * 断言输入是有效对象实例（纯函数）
- * @param {*} obj - 候选对象
- * @returns {BasicObject}
- * @throws {TypeError}
+ * 匿名选择的名字
+ * @description 未显式命名 choice 的选择（GUI 手势、CLI 单对象自动链）落入的共享匿名桶；
+ * 匿名选择不进日志载荷、不进 choices 查询面。
+ * @type {string}
  */
-function requireObjectInstance(obj) {
-  if (!(obj instanceof BasicObject)) {
-    throw new TypeError(
-      "ActiveObjectManager only accepts BasicObject instances.",
-    );
-  }
-  return obj;
+const ANONYMOUS_CHOICE_NAME = "~";
+
+/**
+ * choice 名的最大长度
+ * @type {number}
+ */
+const CHOICE_NAME_MAX_LENGTH = 64;
+
+/**
+ * 判定 choice 名是否合法
+ * @param {*} name - 候选名字
+ * @returns {boolean} 是否合法
+ *
+ * @description
+ * choice 名在线路形态 `"{source}/{choice}"` 中充当分段，故禁止含 `/`；
+ * `~` 前缀保留给匿名桶。合法名为 1 至 64 个字符的字符串。
+ */
+function isValidChoiceName(name) {
+  return (
+    typeof name === "string" &&
+    name.length > 0 &&
+    name.length <= CHOICE_NAME_MAX_LENGTH &&
+    !name.includes("/") &&
+    !name.startsWith(ANONYMOUS_CHOICE_NAME)
+  );
 }
 
 /**
- * 计算对象在世界空间中的范围（纯函数）
- * @param {BasicObject} obj - 对象实例
- * @returns {RectangleRange | undefined}
+ * 拼接远程 choice 引用的序列化形态
+ * @param {string} source - 来源标识
+ * @param {string} name - choice 名（匿名为 `~`）
+ * @returns {string} 序列化引用，形如 `"{source}/{choice}"`
+ * @private
  */
-function getObjectWorldRange(obj) {
-  if (!(obj instanceof BasicObject)) return undefined;
-  if (!obj.position || typeof obj.getRange !== "function") return undefined;
-  const range = obj.getRange();
-  if (!range || typeof range.withPosition !== "function") return undefined;
-  return range.withPosition(obj.position);
+function serializeChoiceRef(source, name) {
+  return `${source}/${name}`;
 }
 
 /**
- * 判断两个对象是否相交（纯函数）
- * @param {BasicObject} left
- * @param {BasicObject} right
- * @returns {boolean}
+ * 解析远程 choice 引用的序列化形态
+ * @param {string} ref - 序列化引用
+ * @returns {{ source: string, name: string|undefined }} 解析结果（匿名选择的 name 为 undefined）
+ * @private
  */
-function intersectsObjects(left, right) {
-  const leftRange = getObjectWorldRange(left);
-  const rightRange = getObjectWorldRange(right);
-  if (!leftRange || !rightRange) return false;
-  return intersectsRanges(leftRange, rightRange);
-}
-
-/**
- * 收集某层按 inactive 语义参与计算的对象 id（纯函数）
- * @param {Layer} layer
- * @returns {Set<string>}
- */
-function collectLayerSemanticInactiveObjectIds(layer) {
-  const objectIds = new Set(layer?.inactiveGraph?.getNodes?.() ?? []);
-
-  if (layer?.active === false) {
-    for (const objectId of layer.activeObjects ?? []) {
-      objectIds.add(objectId);
-    }
-  }
-
-  return objectIds;
+function parseChoiceRef(ref) {
+  const sep = ref.indexOf("/");
+  const name = ref.slice(sep + 1);
+  return {
+    source: ref.slice(0, sep),
+    name: name === ANONYMOUS_CHOICE_NAME ? undefined : name,
+  };
 }
 
 /**
@@ -148,6 +149,37 @@ class ActiveObjectManager {
    * @type {RandomNumberPool}
    */
   layerPool;
+
+  /**
+   * 本地命名选择注册表
+   * @description choice 名到成员对象 id 集合的映射；含匿名桶 `~`。
+   * 不变量：注册表只覆盖活动对象——成员关系随 `unregisterTrackedActiveObject` 自动解除。
+   * @type {Map<string, Set<string>>}
+   */
+  #localChoices = new Map();
+
+  /**
+   * 本地 choice 反向索引（对象 id → 所属本地 choice 名）
+   * @description 每个活动对象恰好属于一个本地 choice；匿名选择的名字为 `~`。
+   * @type {Map<string, string>}
+   */
+  #localChoiceIndex = new Map();
+
+  /**
+   * 远程命名选择注册表
+   * @description 来源标识到（choice 名 → 成员对象 id 集合）的映射；远程 choose 登记，
+   * unchoose/commit 与断线清理注销。匿名为 `~` 单桶。
+   * @type {Map<string, Map<string, Set<string>>>}
+   */
+  #remoteChoices = new Map();
+
+  /**
+   * 远程 choice 反向索引（对象 id → 序列化 choice 引用集合）
+   * @description 引用形如 `"{source}/{choice}"`。不同来源可同时选择同一对象（并发 choose），
+   * 各自独立注销；同一来源对同一对象只保留一个 choice（后登记者迁移）。
+   * @type {Map<string, Set<string>>}
+   */
+  #remoteChoiceIndex = new Map();
 
   /**
    * 对象所在的层
@@ -292,7 +324,12 @@ class ActiveObjectManager {
    * @private
    */
   requireObjectInstance(obj) {
-    return requireObjectInstance(obj);
+    if (!(obj instanceof BasicObject)) {
+      throw new TypeError(
+        "ActiveObjectManager only accepts BasicObject instances.",
+      );
+    }
+    return obj;
   }
 
   /**
@@ -418,6 +455,24 @@ class ActiveObjectManager {
     if (this.activeObjectIndex.has(objectId)) {
       this.activeObjectIndex.delete(objectId);
     }
+    this.#releaseLocalChoice(objectId);
+  }
+
+  /**
+   * 解除对象的本地 choice 成员关系（活动集注销的跟随动作）
+   * @param {string} objectId - 对象 id
+   * @private
+   */
+  #releaseLocalChoice(objectId) {
+    const name = this.#localChoiceIndex.get(objectId);
+    if (name === undefined) return;
+    this.#localChoiceIndex.delete(objectId);
+    const members = this.#localChoices.get(name);
+    if (members === undefined) return;
+    members.delete(objectId);
+    if (members.size === 0) {
+      this.#localChoices.delete(name);
+    }
   }
 
   /**
@@ -539,7 +594,7 @@ class ActiveObjectManager {
   resolveObjectChunk(obj) {
     this.requireObjectInstance(obj);
 
-    if (obj && this.board && this.board.width > 0 && this.board.height > 0) {
+    if (this.board && this.board.width > 0 && this.board.height > 0) {
       const chunkId = Chunk.worldToChunkId(
         obj.position,
         this.board.width,
@@ -573,9 +628,11 @@ class ActiveObjectManager {
    * @private
    */
   destroyChunkLoader(loader) {
-    let requestId = loader?.requesterId;
-    loader?.destroy?.();
-    let id = parseInt(requestId?.replace(/^aom-/, ""));
+    // 无 board（或 board 无 createChunkLoader）时 createChunkLoader 返回 undefined，无需销毁
+    if (!loader) return;
+    const requestId = loader.requesterId;
+    loader.destroy();
+    const id = parseInt(requestId.replace(/^aom-/, ""), 10);
     this.chunkLoaderIdPool.remove(id);
   }
 
@@ -586,17 +643,20 @@ class ActiveObjectManager {
    * @private
    */
   getObjectWorldRange(obj) {
-    return getObjectWorldRange(obj);
+    if (!(obj instanceof BasicObject)) return undefined;
+    if (!obj.position || typeof obj.getRange !== "function") return undefined;
+    const range = obj.getRange();
+    if (!range || typeof range.withPosition !== "function") return undefined;
+    return range.withPosition(obj.position);
   }
 
   /**
    * 在当前白板中查找对象实例
    * @param {string} objectId - 要查找的对象 id
-   * @param {Iterable<number>} [candidateChunkIds = []] - 可能包含该对象的区块 id 集合，若提供则优先在这些区块中查找以提升性能
    * @returns {BasicObject | undefined} 查找到的对象实例，若未找到则返回 undefined
    * @private
    */
-  findBoardObjectInstance(objectId, candidateChunkIds = []) {
+  findBoardObjectInstance(objectId) {
     const activeObject = this.activeObjectIndex.get(objectId);
     if (activeObject instanceof BasicObject) {
       return activeObject;
@@ -617,24 +677,6 @@ class ActiveObjectManager {
       return loadedObject;
     }
 
-    const chunkIdsToSearch = new Set(candidateChunkIds);
-    for (const chunkId of candidateChunkIds) {
-      const chunk = this.board.getChunkById(chunkId);
-      const coverChunks =
-        chunk?.objectManager?.getObjectCoverChunks(objectId) || [];
-      for (const coveredChunkId of coverChunks) {
-        chunkIdsToSearch.add(coveredChunkId);
-      }
-    }
-
-    for (const chunkId of chunkIdsToSearch) {
-      const chunk = this.board.getChunkById(chunkId);
-      const objectInstance = chunk?.objectManager?.getObject?.(objectId);
-      if (objectInstance instanceof BasicObject) {
-        return objectInstance;
-      }
-    }
-
     return undefined;
   }
 
@@ -646,7 +688,10 @@ class ActiveObjectManager {
    * @private
    */
   intersectsObjects(left, right) {
-    return intersectsObjects(left, right);
+    const leftRange = this.getObjectWorldRange(left);
+    const rightRange = this.getObjectWorldRange(right);
+    if (!leftRange || !rightRange) return false;
+    return intersectsRanges(leftRange, rightRange);
   }
 
   /**
@@ -717,7 +762,15 @@ class ActiveObjectManager {
    * @private
    */
   collectLayerSemanticInactiveObjectIds(layer) {
-    return collectLayerSemanticInactiveObjectIds(layer);
+    const objectIds = new Set(layer?.inactiveGraph?.getNodes?.() ?? []);
+
+    if (layer?.active === false) {
+      for (const objectId of layer.activeObjects ?? []) {
+        objectIds.add(objectId);
+      }
+    }
+
+    return objectIds;
   }
 
   /**
@@ -768,7 +821,7 @@ class ActiveObjectManager {
         // 跨层对象不受影响，仍按 index 比较确定 below/above。
         if (applyingObjectIds.has(nodeId) && index === currentLayerIndex)
           continue;
-        const candidate = this.findBoardObjectInstance(nodeId, coveredChunkIds);
+        const candidate = this.findBoardObjectInstance(nodeId);
         if (!(candidate instanceof BasicObject)) continue;
         if (!this.intersectsObjects(obj, candidate)) continue;
 
@@ -811,7 +864,7 @@ class ActiveObjectManager {
         if (applyingObjectIds.has(nodeId)) continue;
         if (this.onLayer.has(nodeId)) continue;
 
-        const candidate = this.findBoardObjectInstance(nodeId, coveredChunkIds);
+        const candidate = this.findBoardObjectInstance(nodeId);
         if (!(candidate instanceof BasicObject)) continue;
         if (!this.intersectsObjects(obj, candidate)) continue;
 
@@ -898,15 +951,26 @@ class ActiveObjectManager {
             const chunk = this.board.getChunkById(chunkId);
             if (!chunk || chunk.isLoad) return;
             loader.trackChunk(chunk);
-            loader.emitLoadRequest(chunk, { strategy: "temp" });
-            await new Promise((resolve) => {
-              this.board.chunkLoadEventBus.once(
+            // 先注册监听再触发加载（加载可能同步完成，事件先于注册会错过）。
+            // 不能用 once：多区块并发加载时首个 LOAD_COMPLETE 会消耗全部 once 监听，
+            // 仅匹配者 resolve、其余监听已被移除而永久挂起。
+            const promise = new Promise((resolve) => {
+              const handler = (payload) => {
+                if (payload.chunkId === chunkId) {
+                  this.board.chunkLoadEventBus.off(
+                    CHUNK_LOAD_EVENTS.LOAD_COMPLETE,
+                    handler,
+                  );
+                  resolve();
+                }
+              };
+              this.board.chunkLoadEventBus.on(
                 CHUNK_LOAD_EVENTS.LOAD_COMPLETE,
-                (payload) => {
-                  if (payload.chunkId === chunkId) resolve();
-                },
+                handler,
               );
             });
+            loader.emitLoadRequest(chunk, { strategy: "temp" });
+            await promise;
           }),
         );
         // 全部移入 loadedQueue
@@ -955,7 +1019,6 @@ class ActiveObjectManager {
     );
     this.captureBaseObjectSnapshot(activeEntries);
     this.captureBaseObjectCoverChunks(activeEntries);
-    startFrom = null; // 释放内存
 
     // 获取对象所在层
     /** @description 对象 id -> 层索引 @type {Map<string, number>} */
@@ -1206,24 +1269,33 @@ class ActiveObjectManager {
       return affectedChunkIds;
     }
 
+    // 预先计算每个对象的覆盖区块与所属区块，供三个阶段复用
+    const writeContexts = objects.map((obj) => ({
+      obj,
+      ownerChunk: this.resolveObjectChunk(obj),
+      coveredChunkIds: this.calculateCoveredChunkIds(obj),
+    }));
+
     // 确保所有对象在覆盖区块中存在（不设边）
-    for (const obj of objects) {
-      const ownerChunk = this.resolveObjectChunk(obj);
-      const coveredChunkIds = this.calculateCoveredChunkIds(obj);
+    for (const { obj, ownerChunk, coveredChunkIds } of writeContexts) {
       for (const chunkId of coveredChunkIds) {
         affectedChunkIds.add(chunkId);
       }
       for (const chunkId of coveredChunkIds) {
         const chunk = this.board.getChunkById(chunkId);
         if (!chunk) continue;
-        chunk.addObject(chunkId === ownerChunk?.id ? obj : obj.id);
-        this.board?.setObjectCoverChunks?.(obj.id, coveredChunkIds);
+        if (chunkId === ownerChunk?.id) {
+          chunk.addObject(obj);
+          this.board.registerObjectInstance(obj);
+        } else {
+          chunk.addObject(obj.id);
+        }
       }
+      this.board.setObjectCoverChunks(obj.id, coveredChunkIds);
     }
 
     // 清除所有对象在覆盖区块中的旧边
-    for (const obj of objects) {
-      const coveredChunkIds = this.calculateCoveredChunkIds(obj);
+    for (const { obj, coveredChunkIds } of writeContexts) {
       for (const chunkId of coveredChunkIds) {
         const chunk = this.board.getChunkById(chunkId);
         if (!chunk?.objectManager) continue;
@@ -1236,9 +1308,7 @@ class ActiveObjectManager {
     }
 
     // 按层间关系计算并写入静态图上下关系
-    for (const obj of objects) {
-      const coveredChunkIds = this.calculateCoveredChunkIds(obj);
-      const ownerChunk = this.resolveObjectChunk(obj);
+    for (const { obj, ownerChunk, coveredChunkIds } of writeContexts) {
       const { below, above } = this.calculateStaticRelations(
         obj,
         coveredChunkIds,
@@ -1253,7 +1323,6 @@ class ActiveObjectManager {
           [...below],
           [...above],
         );
-        this.board?.setObjectCoverChunks?.(obj.id, coveredChunkIds);
       }
     }
 
@@ -1315,50 +1384,6 @@ class ActiveObjectManager {
   }
 
   /**
-   * 置顶选择对象
-   * @param {Iterable<BasicObject>} objects
-   */
-  liftup(objects) {
-    /**
-     * @description 层索引 -> 新层实例
-     * @type {Map<number, Layer>}
-     */
-    let newLayers = new Map();
-    for (const entry of objects) {
-      const obj = this.requireObjectInstance(entry);
-      const objId = obj.id;
-      let layerIndex;
-      if (this.activeObjectIndex.has(objId)) {
-        let oldLayer = this.onLayer.get(objId);
-        layerIndex = this.layerIndex.get(oldLayer.id);
-        if (!newLayers.has(layerIndex)) {
-          newLayers.set(layerIndex, new Layer(this.layerPool.generate()));
-        }
-        // 将对象从旧层移除
-        oldLayer.activeObjects.delete(objId);
-        this.updateLayerActiveState(oldLayer);
-      } else {
-        layerIndex = this.layerOrder.length;
-        if (!newLayers.has(layerIndex)) {
-          newLayers.set(layerIndex, new Layer(this.layerPool.generate()));
-        }
-      }
-
-      // 将对象加入新层
-      let newLayer = newLayers.get(layerIndex);
-      this.onLayer.set(objId, newLayer);
-      newLayer.activeObjects.add(objId);
-    }
-
-    this.tidyup();
-    Array.from(newLayers.entries())
-      .sort(([aIndex, aLayer], [bIndex, bLayer]) => aIndex - bIndex)
-      .forEach(([layerIndex, newLayer]) => {
-        this.insertLayerToTop(newLayer);
-      });
-  }
-
-  /**
    * 应用活动对象并取消选择
    * @description
    * 将活动对象按当前动态层关系提交回白板区块静态结构，
@@ -1402,27 +1427,20 @@ class ActiveObjectManager {
         }
       }
       if (boardRootPath && preloadChunkIds.size > 0) {
-        const loader = this.createChunkLoader();
-        const loadPromises = [];
+        const chunksToLoad = [];
         for (const chunkId of preloadChunkIds) {
           const chunk = this.board.getChunkById(chunkId);
           if (!chunk || (chunk.isLoad && !chunk.isTempLoad)) continue;
-          loader.trackChunk(chunk);
-          loader.emitLoadRequest(chunk, { strategy: "full" });
-          // 通过 LOAD_COMPLETE 事件等待加载完成
-          const promise = new Promise((resolve) => {
-            const unsub = this.board.chunkLoadEventBus.once(
-              CHUNK_LOAD_EVENTS.LOAD_COMPLETE,
-              (payload) => {
-                if (payload.chunkId === chunkId) resolve();
-              },
-            );
-          });
-          loadPromises.push(promise);
+          chunksToLoad.push(chunk);
         }
-        await Promise.all(loadPromises);
-        // 延时销毁：保留已预加载区块，短时间内后续 apply 可复用缓存
-        loader?.destroy(300);
+        if (chunksToLoad.length > 0) {
+          const loader = await this.board.loadChunksAndWaitComplete(
+            chunksToLoad,
+            `aom-${this.chunkLoaderIdPool.generate()}`,
+          );
+          // 延时销毁：保留已预加载区块，短时间内后续 apply 可复用缓存
+          loader.destroy(300);
+        }
       }
     }
 
@@ -1550,97 +1568,6 @@ class ActiveObjectManager {
   }
 
   /**
-   * 将对象从白板上移除并取消选择
-   * @description
-   * 从所有覆盖区块的 ChunkObjectManager 静态图中彻底删除对象，
-   * 同时清理活动对象索引和动态图层。
-   * 与 apply 不同，remove 不会把对象写回静态图，而是从静态图中移除。
-   * 与 discard 不同，remove 会同步修改白板区块静态结构。
-   * @param {Iterable<BasicObject>} objects
-   */
-  remove(objects) {
-    const normalizedObjects = Array.from(objects, (item) =>
-      this.requireObjectInstance(item),
-    );
-
-    const removedObjects = [...normalizedObjects];
-    const canAccessBoard = Boolean(this.board);
-    const affectedChunkIds = new Set();
-
-    // 收集受影响的区块和上下文信息
-    if (canAccessBoard && normalizedObjects.length > 0) {
-      const removeContexts = normalizedObjects
-        .map((obj) => {
-          const ownerChunk = this.resolveObjectChunk(obj);
-          const previousCoveredChunkIds =
-            this.baseObjectSnapshotCoverChunks.get(obj.id) ??
-            ownerChunk?.objectManager?.getObjectCoverChunks?.(obj.id) ??
-            (ownerChunk ? new Set([ownerChunk.id]) : new Set());
-          for (const chunkId of previousCoveredChunkIds) {
-            affectedChunkIds.add(chunkId);
-          }
-          const coveredChunkIds = this.calculateCoveredChunkIds(obj);
-          for (const chunkId of coveredChunkIds) {
-            affectedChunkIds.add(chunkId);
-          }
-          // 在清理静态图前收集邻接对象
-          const neighborIds = this.collectStaticGraphNeighborIds(
-            obj.id,
-            new Set([...previousCoveredChunkIds, ...coveredChunkIds]),
-          );
-          return {
-            obj,
-            ownerChunk,
-            coveredChunkIds,
-            neighborIds,
-          };
-        })
-        .filter(Boolean);
-
-      // 从所有覆盖区块的静态图中移除对象节点、关联边和覆盖索引
-      for (const { obj, coveredChunkIds } of removeContexts) {
-        for (const chunkId of coveredChunkIds) {
-          const chunk = this.board.getChunkById(chunkId);
-          chunk?.removeObject(obj.id);
-        }
-      }
-
-      // 构建 base 层失效对象集合
-      normalizedObjects.splice(
-        0,
-        normalizedObjects.length,
-        ...this.collectBaseInvalidationObjects(
-          normalizedObjects,
-          removeContexts.map(({ obj, coveredChunkIds, neighborIds }) => ({
-            coveredChunkIds,
-            relatedObjectIds: new Set([...(neighborIds ?? [])]),
-          })),
-        ),
-      );
-    }
-
-    // 将对象从活动层移除（同时处理 active / inactive layer 中的对象）
-    for (const entry of removedObjects) {
-      const objId = entry.id;
-      this.unregisterTrackedActiveObject(objId);
-      if (this.onLayer.has(objId)) {
-        this.removeObjectFromLayer(objId);
-      }
-    }
-    this.tidyup();
-
-    // 请求静态缓存层和活动层刷新
-    this.requestStaticRenderForObjects(
-      normalizedObjects,
-      [...affectedChunkIds]
-        .map((chunkId) => this.board?.getChunkById?.(chunkId))
-        .filter(Boolean),
-    );
-    this.requestActiveRender(normalizedObjects);
-    this.clearBaseObjectSnapshots(normalizedObjects);
-  }
-
-  /**
    * 取消活动对象而不提交回白板
    * @description
    * 将对象从全局活动对象索引中移除，不修改区块静态结构。
@@ -1681,6 +1608,261 @@ class ActiveObjectManager {
    */
   isActive(objectId) {
     return this.activeObjectIndex.has(objectId);
+  }
+
+  /**
+   * 查询对象是否被远程选择（远程活动）
+   * @param {string} objectId - 对象 id
+   * @returns {boolean} 是否远程活动
+   */
+  isRemoteActive(objectId) {
+    return (this.#remoteChoiceIndex.get(objectId)?.size ?? 0) > 0;
+  }
+
+  /**
+   * 查询远程活动对象的来源
+   * @param {string} objectId - 对象 id
+   * @returns {string|undefined} 来源标识（多来源时返回其中之一）
+   */
+  remoteActiveSource(objectId) {
+    const refs = this.#remoteChoiceIndex.get(objectId);
+    if (refs === undefined || refs.size === 0) return undefined;
+    return parseChoiceRef(refs.values().next().value).source;
+  }
+
+  /**
+   * 查询对象的远程 choice 标签列表
+   * @param {string} objectId - 对象 id
+   * @returns {{ source: string, name: string|undefined }[]} choice 引用列表（匿名为 name undefined）
+   */
+  remoteChoicesOf(objectId) {
+    const refs = this.#remoteChoiceIndex.get(objectId);
+    if (refs === undefined) return [];
+    return [...refs].map(parseChoiceRef);
+  }
+
+  /**
+   * 将对象指派进本地命名选择
+   * @param {Iterable<string>} objectIds - 对象 id 集合
+   * @param {string} name - choice 名；`~` 为匿名桶
+   * @returns {void}
+   *
+   * @description
+   * 仅指派当前在活动集中的对象。同一对象只属一个本地 choice：已在其它命名选择中的对象迁入新 choice，
+   * 腾空的 choice 随之删除。匿名指派不覆盖命名 choice（GUI 手势的匿名选择不抢走 CLI 的命名 choice），
+   * 显式命名指派始终覆盖。
+   */
+  assignLocalChoice(objectIds, name) {
+    for (const objectId of objectIds ?? []) {
+      if (!this.activeObjectIndex.has(objectId)) continue;
+      const current = this.#localChoiceIndex.get(objectId);
+      if (current === name) continue;
+      if (name === ANONYMOUS_CHOICE_NAME && current !== undefined) continue;
+      if (current !== undefined) {
+        this.#releaseLocalChoice(objectId);
+      }
+      let members = this.#localChoices.get(name);
+      if (members === undefined) {
+        members = new Set();
+        this.#localChoices.set(name, members);
+      }
+      members.add(objectId);
+      this.#localChoiceIndex.set(objectId, name);
+    }
+  }
+
+  /**
+   * 查询对象所属的本地命名选择
+   * @param {string} objectId - 对象 id
+   * @returns {string|undefined} choice 名（匿名选择或不属于任何 choice 时为 undefined）
+   */
+  choiceOf(objectId) {
+    const name = this.#localChoiceIndex.get(objectId);
+    return name === ANONYMOUS_CHOICE_NAME ? undefined : name;
+  }
+
+  /**
+   * 列出本地命名选择
+   * @returns {{ name: string, ids: string[] }[]} 命名选择列表（不含匿名桶）
+   */
+  queryLocalChoices() {
+    const choices = [];
+    for (const [name, members] of this.#localChoices) {
+      if (name === ANONYMOUS_CHOICE_NAME) continue;
+      choices.push({ name, ids: [...members] });
+    }
+    return choices;
+  }
+
+  /**
+   * 列出本端全部活动持有（含匿名桶；重连后向对端重广播互斥状态用）
+   * @returns {{ name: string|undefined, ids: string[] }[]} 活动持有列表（匿名为 name undefined）
+   */
+  queryLocalActivity() {
+    const activity = [];
+    for (const [name, members] of this.#localChoices) {
+      activity.push({
+        name: name === ANONYMOUS_CHOICE_NAME ? undefined : name,
+        ids: [...members],
+      });
+    }
+    return activity;
+  }
+
+  /**
+   * 列出全部远程命名选择（awareness 查询面）
+   * @returns {{ source: string, name: string|undefined, ids: string[] }[]} 远程选择列表（按来源与 choice 名展开；匿名为 name undefined）
+   */
+  queryRemoteChoices() {
+    const choices = [];
+    for (const [source, byName] of this.#remoteChoices) {
+      for (const [name, members] of byName) {
+        choices.push({
+          source,
+          name: name === ANONYMOUS_CHOICE_NAME ? undefined : name,
+          ids: [...members],
+        });
+      }
+    }
+    return choices;
+  }
+
+  /**
+   * 撤销对象的远程活动登记（本地选择优先）
+   * @param {string} objectId - 对象 id
+   * @returns {void}
+   *
+   * @description
+   * 并发 choose 冲突时本地 choose 效果在链上后到者胜出：本地进入动态图即撤销该对象的
+   * 全部远程 choice 登记，两端按同一链序收敛到同一登记状态。
+   */
+  revokeRemoteActive(objectId) {
+    const refs = this.#remoteChoiceIndex.get(objectId);
+    if (refs === undefined) return;
+    for (const ref of [...refs]) {
+      this.#removeRemoteChoiceRef(objectId, ref);
+    }
+  }
+
+  /**
+   * 登记远程命名选择
+   * @param {Iterable<string>} objectIds - 对象 id 集合
+   * @param {string} source - 来源标识
+   * @param {string} [choice] - 来源的 choice 名（缺省为匿名桶）
+   * @returns {void}
+   *
+   * @description
+   * 本地活跃中的对象忽略远程登记（并发 choose 冲突：本地进入动态图的效果会撤销远程登记）。
+   * 同一来源对同一对象只保留一个 choice：重复登记即迁移到新 choice。
+   */
+  applyRemoteChoose(objectIds, source, choice) {
+    const name = choice ?? ANONYMOUS_CHOICE_NAME;
+    for (const id of objectIds) {
+      if (typeof id !== "string" || this.isActive(id)) continue;
+      const refs = this.#remoteChoiceIndex.get(id);
+      if (refs !== undefined) {
+        for (const ref of [...refs]) {
+          if (parseChoiceRef(ref).source === source) {
+            this.#removeRemoteChoiceRef(id, ref);
+          }
+        }
+      }
+      this.#addRemoteChoiceMember(source, name, id);
+    }
+  }
+
+  /**
+   * 注销远程命名选择
+   * @param {Iterable<string>} objectIds - 对象 id 集合
+   * @param {string} source - 来源标识
+   * @returns {void}
+   *
+   * @description
+   * 远程 unchoose/commit 与断线清理共用本路径。同一来源对同一对象只保留一个 choice，
+   * 故按（来源，对象）注销即完备，无需指定 choice。
+   */
+  applyRemoteUnchoose(objectIds, source) {
+    for (const id of objectIds) {
+      const refs = this.#remoteChoiceIndex.get(id);
+      if (refs === undefined) continue;
+      for (const ref of [...refs]) {
+        if (parseChoiceRef(ref).source === source) {
+          this.#removeRemoteChoiceRef(id, ref);
+        }
+      }
+    }
+  }
+
+  /**
+   * 清理某来源的全部远程活动登记（断线清理）
+   * @param {string} source - 来源标识
+   * @returns {string[]} 被清理的对象 id 列表
+   */
+  clearRemoteActive(source) {
+    const removed = [];
+    const choices = this.#remoteChoices.get(source);
+    if (choices === undefined) return removed;
+    for (const [name, members] of [...choices]) {
+      for (const id of [...members]) {
+        this.#removeRemoteChoiceRef(id, serializeChoiceRef(source, name));
+        removed.push(id);
+      }
+    }
+    return removed;
+  }
+
+  /**
+   * 登记一条远程 choice 成员关系（写双侧索引）
+   * @param {string} source - 来源标识
+   * @param {string} name - choice 名（含匿名桶）
+   * @param {string} objectId - 对象 id
+   * @private
+   */
+  #addRemoteChoiceMember(source, name, objectId) {
+    let choices = this.#remoteChoices.get(source);
+    if (choices === undefined) {
+      choices = new Map();
+      this.#remoteChoices.set(source, choices);
+    }
+    let members = choices.get(name);
+    if (members === undefined) {
+      members = new Set();
+      choices.set(name, members);
+    }
+    members.add(objectId);
+    let refs = this.#remoteChoiceIndex.get(objectId);
+    if (refs === undefined) {
+      refs = new Set();
+      this.#remoteChoiceIndex.set(objectId, refs);
+    }
+    refs.add(serializeChoiceRef(source, name));
+  }
+
+  /**
+   * 移除一条远程 choice 的序列化引用（清双侧索引）
+   * @param {string} objectId - 对象 id
+   * @param {string} ref - 序列化引用
+   * @private
+   */
+  #removeRemoteChoiceRef(objectId, ref) {
+    const refs = this.#remoteChoiceIndex.get(objectId);
+    if (refs === undefined || !refs.has(ref)) return;
+    refs.delete(ref);
+    if (refs.size === 0) {
+      this.#remoteChoiceIndex.delete(objectId);
+    }
+    const { source, name } = parseChoiceRef(ref);
+    const members = this.#remoteChoices.get(source)?.get(name ?? ANONYMOUS_CHOICE_NAME);
+    if (members !== undefined) {
+      members.delete(objectId);
+      if (members.size === 0) {
+        const choices = this.#remoteChoices.get(source);
+        choices.delete(name ?? ANONYMOUS_CHOICE_NAME);
+        if (choices.size === 0) {
+          this.#remoteChoices.delete(source);
+        }
+      }
+    }
   }
 
   /**
@@ -1742,4 +1924,9 @@ class ActiveObjectManager {
 
 }
 
-export { ActiveObjectManager, Layer };
+export {
+  ActiveObjectManager,
+  Layer,
+  ANONYMOUS_CHOICE_NAME,
+  isValidChoiceName,
+};

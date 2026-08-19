@@ -25,8 +25,16 @@ yarn ci-check                   # 文档链接 + @module 路径一致性检查
 
 # 基准测试
 yarn bench                      # 全部基准
-yarn bench:io                   # I/O 桥接基准
 yarn bench:io:direct            # I/O 直连基准
+yarn bench:io:granularity       # I/O 文件粒度基准
+
+# 协作同步
+yarn relay                      # 启动同步中继（默认 8377 端口，仅绑 127.0.0.1；跨设备加 --host 0.0.0.0）
+yarn demo:web                   # 启动 demo 静态服务（默认 8000 端口，浏览器双端协作冒烟）
+
+# CLI
+yarn cli <命令> [--daemon <名> | --path <板目录>]   # 读写板文件（见 src/cli/docs/cli-document.md）
+yarn cli daemon start --name <名> --path <板目录>   # 启动板 daemon（持板 + RPC）
 ```
 
 运行测试需要 `NODE_OPTIONS='--experimental-vm-modules --localstorage-file=/tmp/jest-localstorage'`（`package.json` 已配好）。
@@ -41,23 +49,25 @@ src/
 │   ├── chunk/               # 区块（空间分区）
 │   ├── board/               # Board 权威状态（BoardCore 静态图 / AOM / render-hooks 缝）
 │   ├── hit/                 # 操作日志与时间回溯树
+│   ├── store/               # 会话存储（per-source 日志流与 meta 分片、写权仲裁落盘、恢复）
 │   ├── api/                 # BoardApi 契约面
 │   ├── utils/               # 内核工具（id 池、图、数学）
 │   └── types/               # 类型定义
 ├── renderers/
 │   └── canvas/              # canvas 渲染插件（viewport-renderer、绘制策略注册表）
-├── host/                    # 组合根 + 通道（core-worker、debug-helper、bridges/）
+├── host/                    # 组合根 + 通道（core-worker、debug-helper、bridges/、sync/ 协作同步）
+├── io/                      # 安全文件操作（core 契约 / driver / adapter）
+├── cli/                     # 命令行第二前端（板 daemon 持板，读写经 BoardApi 契约）
 ├── ui/                      # UI front（Board / Viewport / DevicesDAG / Tools / overlay）
-├── utils/                   # 应用级工具（filesys, log, safe-io）
+├── utils/                   # 应用级工具（log）
 ├── docs/                    # 架构文档
 ├── test-support/            # 测试 mock 支撑
 ├── tests/                   # 跨包冒烟 / 集成测试
-├── demo/                    # 白板 HTML/CSS/JS 入口
-├── src-tauri/               # Rust 后端（Cargo workspace）
-├── benchmarks/              # 性能基准
-└── scripts/                 # 构建脚本系统
-    ├── build/               # 构建入口、task-runner、任务定义、TUI
-    └── ci/                  # 文档链接 / @module 路径检查
+└── demo/                    # 白板 HTML/CSS/JS 入口（桌面与 web 模式）
+src-tauri/                   # Rust 后端（Cargo workspace）
+benchmarks/                  # 性能基准
+scripts/                     # CI 检查与 demo 静态服务脚本
+└── ci/                      # 文档链接 / @module 路径检查
 ```
 
 核心模块下有 `docs/{name}-document.md` 和 `tests/` 目录。
@@ -67,8 +77,9 @@ src/
 - **Tool** — 设备图末端消费型处理器，不转发信号。生命周期：`beginInteraction → handleSignal* → endInteraction → success`
 - **信号类型** — `position`（绝对坐标，驱动手势状态机）、`displacement`（相对位移，无状态增量）、`end`、`success`
 - **输入路由** — 设备 → DAG → 工具处理器。顺序/互斥组合（handoff、tool-switcher）由 `tools/wrapper/` 下的 wrapper tool 承担（`HandoffWrapperTool` / `ToolSwitcherWrapper`），作为普通 Tool 单节点挂载
-- **对象模型** — `BasicObject` 基类，`Stroke`/`Container`/`two-dim`/`one-dim` 子类
+- **对象模型** — `BasicObject` 基类，`Stroke`/`graph` 子类
 - **AOM 三态术语** — 对象相对 AOM 动态图有三种状态：**活动对象**（被选中、正在操作，位于层的 `activeObjects`）、**非活动（层）对象**（被 pickup 一并纳入 AOM 的层成员，位于层的 `inactiveGraph`）、**不在 AOM 中的对象**（纯静态图，`aom.has(id) === false`）。“非活动对象”仍在 AOM 中，与“不在 AOM 中的对象”不是一回事。成员归属判定：`aom.isActive(id)` 仅活动对象，`aom.has(id)` 覆盖活动与非活动层成员
+- **命名选择（choice）** — 活动对象的命名分组：每个活动对象恰好属于一个本地 choice（未命名落匿名桶 `~`）。注册表（`queryChoices`）是权威状态，对象退出活动集时成员关系自动解除；跨端以 `"{source}/{choice}"` 区分同名 choice
 
 ## 代码规范
 
@@ -78,7 +89,7 @@ src/
 /**
  * @file 简短描述，不加句号
  * @description 一句话职责说明，以句号结尾。
- * @module {kernel|canvas|host|ui}/{path/to/module}
+ * @module {kernel|canvas|host|ui|io|cli}/{path/to/module}
  * @author {git config user.name}
  */
 ```
@@ -109,6 +120,7 @@ applyModifiedObjects(modificationContext, objects) { ... }
 
 - 私有成员以 `_` 开头，标记 `@private`
 - 常量用 `UPPER_SNAKE_CASE`
+- **开发期路线编号（Kx/Px/Sx 等阶段代号）不进入代码库**：提交信息、代码注释、文档一律写机制语义本身，路线追踪留在私有计划文档
 - 详细规范见 `.agent/skills/comment-writer/SKILL.md`，文档规范见 `.agent/skills/doc-writer/SKILL.md`
 
 ## 测试

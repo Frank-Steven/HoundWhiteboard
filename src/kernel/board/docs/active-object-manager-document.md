@@ -26,11 +26,14 @@ AOM 本身不依赖 DOM，也不直接持有 viewport 列表。它通过 `render
 每层包含：
 
 - `id`
-- `activeObjects: Set<number>`
+- `activeObjects: Set<string>`
 - `inactiveGraph: DirectedGraph`
 - `active: boolean`
+- `_dormantInstances: Map<string, BasicObject>`（lazy 创建）
 
 这里的 `active` 是层级状态，不是对象级状态。
+
+**dormant（休眠）语义**：整层失活时（`deactivateObjects` 判定层内无剩余活动对象），层标记 `active = false`，成员对象实例保留在层的 `_dormantInstances` 中——供 `tidyup()` 写回静态图与 `findBoardObjectInstance()` 实例查找；dormant 对象已从 `activeObjectIndex` 注销，不是活动对象（`isActive` 为 false），但仍随层留在 AOM 结构中直到层被清理。
 
 ### `ActiveObjectManager`
 
@@ -43,20 +46,48 @@ AOM 本身不依赖 DOM，也不直接持有 viewport 列表。它通过 `render
 - `baseObjectSnapshotWorldRanges`
 - `baseObjectSnapshotCoverChunks`
 - `renderHooks`
+- `layerPool`：层 id 分配池（`RandomNumberPool`），层销毁时回收
+- `chunkLoaderIdPool`：ChunkLoader id 分配池（`RandomNumberPool`），loader 销毁时回收
+
+命名选择（choice）注册表字段：
+
+- `#localChoices` / `#localChoiceIndex`：本地命名选择（choice）到成员对象的映射与其反向索引
+- `#remoteChoices` / `#remoteChoiceIndex`：远程命名选择（来源 → choice → 成员）与其反向索引
 
 ## API 一览
 
 ### 公开方法
 
-| 方法       | 签名                                                     | 说明                                                |
-| ---------- | -------------------------------------------------------- | --------------------------------------------------- |
-| `has`      | `(objectId: number) => boolean`                          | 判断对象 id 是否在 AOM 的任意层中（含 inactive 层） |
-| `isActive` | `(objectId: number \| string) => boolean`                | 判断对象是否为活动对象（不含非活动层成员）          |
-| `add`      | `(objects: Iterable<BasicObject>) => Layer \| undefined` | 将白板外新对象加入 AOM 顶层，返回新创建的层         |
-| `choose`   | `(startFrom: Iterable<BasicObject>) => Promise<void>`    | 从静态图中拾取对象到 AOM（异步，内部 BFS 遍历）     |
-| `discard`  | `(objects: Iterable<BasicObject>) => void`               | 取消活动态，不提交几何变化回静态图                  |
-| `apply`    | `(objects: Iterable<BasicObject>) => Promise<void>`      | 提交活动态变化回静态图（异步，含 FullLoad 预加载）  |
-| `remove`   | `(objects: Iterable<BasicObject>) => void`               | 从白板彻底删除对象并移出 AOM                        |
+| 方法                  | 签名                                                     | 说明                                                           |
+| --------------------- | -------------------------------------------------------- | -------------------------------------------------------------- |
+| `has`                 | `(objectId: string) => boolean`                          | 判断对象 id 是否在 AOM 的任意层中（含 inactive 层）            |
+| `isActive`            | `(objectId: string) => boolean`                          | 判断对象是否为活动对象（不含非活动层成员）                     |
+| `add`                 | `(objects: Iterable<BasicObject>) => Layer \| undefined` | 将白板外新对象加入 AOM 顶层，返回新创建的层                    |
+| `choose`              | `(startFrom: Iterable<BasicObject>) => Promise<void>`    | 从静态图中拾取对象到 AOM（异步，内部 BFS 遍历）                |
+| `discard`             | `(objects: Iterable<BasicObject>) => void`               | 取消活动态，不提交几何变化回静态图                             |
+| `apply`               | `(objects: Iterable<BasicObject>) => Promise<void>`      | 提交活动态变化回静态图（异步，含 FullLoad 预加载）             |
+| `assignLocalChoice`   | `(objectIds: Iterable<string>, name: string) => void`    | 将活动对象指派进本地命名选择（匿名 `~` 不覆盖命名选择）        |
+| `choiceOf`            | `(objectId: string) => string \| undefined`              | 查询对象所属本地命名选择（匿名/无选择为 undefined）            |
+| `queryLocalChoices`   | `() => { name, ids }[]`                                  | 列出本地命名选择（不含匿名桶）                                 |
+| `queryLocalActivity`  | `() => { name, ids }[]`                                  | 列出本端全部活动持有（含匿名桶；重连后向对端重广播互斥状态用） |
+| `isRemoteActive`      | `(objectId: string) => boolean`                          | 判断对象是否被远程选择                                         |
+| `remoteActiveSource`  | `(objectId: string) => string \| undefined`              | 查询远程活动对象的来源标识（多来源时返回其中之一）             |
+| `remoteChoicesOf`     | `(objectId: string) => { source, name }[]`               | 查询对象的远程 choice 标签列表（多来源）                       |
+| `queryRemoteChoices`  | `() => { source, name, ids }[]`                          | 列出全部远程命名选择（awareness 查询面）                       |
+| `revokeRemoteActive`  | `(objectId: string) => void`                             | 撤销对象的全部远程选择登记（本地选择优先）                     |
+| `applyRemoteChoose`   | `(objectIds, source, choice?) => void`                   | 登记远程命名选择（同一来源对同一对象只保留一个 choice）        |
+| `applyRemoteUnchoose` | `(objectIds, source) => void`                            | 按（来源，对象）注销远程选择                                   |
+| `clearRemoteActive`   | `(source) => string[]`                                   | 断线清理：注销某来源的全部远程选择                             |
+
+### 命名选择（choice）注册表
+
+choice 是活动对象的命名分组维度：每个活动对象恰好属于一个本地 choice（未显式命名时落匿名桶 `~`），命名 choice 即 CLI 的 choice 与协作展示的标签。同一对象在同端只属一个 choice（显式指派迁移、腾空自动删除）；不同端的同名 choice 经 `"{source}/{choice}"` 形态区分。
+
+注册表与 hit 记录衔接：choose / unchoose 的分子操作记录载荷携带命名选择名（`choice` 字段，匿名选择不记录，见[操作文档](../../hit/docs/operation-document.md)），重放与远端凭以恢复成员归属；跨端同名 choice 的区分形态 `"{source}/{choice}"` 与记录中的 `choice` 字段（仅本地名，不含 source 前缀）是同一命名空间的两个视角。
+
+不变量：注册表只覆盖活动对象。对象退出活动集（apply/discard/dormant 统一经 `unregisterTrackedActiveObject`）时成员关系自动解除，调用方无需感知。
+
+远程选择与本地选择分表：同一对象可被多个远程来源并发选择（各自独立注销）；本地 choose 优先于全部远程选择（`revokeRemoteActive` 一并撤销，并发冲突按链序收敛）。
 
 ### 私有方法
 
@@ -72,7 +103,7 @@ AOM 本身不依赖 DOM，也不直接持有 viewport 列表。它通过 `render
 | `clearBaseObjectSnapshots(objects)`                                           | 清理快照                                                             |
 | `registerActiveObject(obj)`                                                   | 将对象实例注册到活动索引                                             |
 | `unregisterTrackedActiveObject(objectId)`                                     | 从活动索引移除对象                                                   |
-| `findBoardObjectInstance(objectId, candidateChunkIds?)`                       | 在 AOM 和 BoardCore 中查找对象实例                                   |
+| `findBoardObjectInstance(objectId)`                                             | 在 AOM 和 BoardCore 中查找对象实例                                   |
 | `getObjectWorldRange(obj)`                                                    | 获取对象世界坐标范围                                                 |
 | `calculateCoveredChunkIds(obj)`                                               | 计算对象覆盖区块集合                                                 |
 | `resolveObjectChunk(obj)`                                                     | 解析对象所在的起始区块                                               |
@@ -116,9 +147,24 @@ AOM 本身不依赖 DOM，也不直接持有 viewport 列表。它通过 `render
 - `choose(objects)`
 - `discard(objects)`
 - `apply(objects)`
-- `remove(objects)`
 
 共同完成。
+
+```mermaid
+flowchart TB
+    NEW["白板外新对象"] -->|"add（新建顶层活动层）"| L3
+    subgraph static["静态图"]
+        S["ChunkObjectManager.staticGraph<br/>（逐区块，稳定层叠关系）"]
+    end
+    subgraph dynamic["动态图（layerOrder 自下而上）"]
+        direction TB
+        L1["Layer 1（inactive）<br/>activeObjects + inactiveGraph"] --> L2["Layer 2（active）<br/>activeObjects + inactiveGraph"]
+        L2 --> L3["Layer n（active）<br/>activeObjects + inactiveGraph"]
+    end
+    S -->|"choose（pickup 提取子图）"| L2
+    L2 -->|"apply（提交回静态图）"| S
+    L1 -.->|"discard（放弃更改，tidyup 写回）"| S
+```
 
 ## renderHooks
 
@@ -221,10 +267,6 @@ AOM 当前通过 `renderHooks` 发起渲染请求：
 
 返回 `Promise<void>`。
 
-### `remove(objects)`
-
-用于从白板彻底删除对象，并同步移出 AOM。
-
 ## 快照模型
 
 AOM 用两类快照支持对象级静态失效：
@@ -237,7 +279,7 @@ AOM 用两类快照支持对象级静态失效：
 
 记录对象进入 AOM 前覆盖到的区块集合。
 
-这两类快照让 `apply` / `discard` / `remove` 能同时失效旧几何与新几何，避免静态层残影。
+这两类快照让 `apply` / `discard` 能同时失效旧几何与新几何，避免静态层残影。
 
 ## 与 tools 的关系
 
@@ -260,7 +302,7 @@ AOM 用两类快照支持对象级静态失效：
 ## 当前状态
 
 - AOM 作为 Worker 侧真实语义核心运行
-- `choose` / `discard` / `apply` / `remove` 全部支持对象级静态失效
+- `choose` / `discard` / `apply` 全部支持对象级静态失效
 - 渲染副作用通过 hooks 抽离
 - `pickup` 采用双队列 BFS + 批量 TempLoad，已加载区块零开销，未加载区块并行加载
 - `apply` 提交前 FullLoad 所有相关区块，确保层叠关系计算正确

@@ -6,7 +6,7 @@
  * @author Zhou Chenyu
  */
 
-import { createDefaultPersistenceAdapter } from "../host/bridges/persistence-adapter.js";
+import { createDefaultPersistenceAdapter } from "../kernel/board/persistence-adapter.js";
 import { BoardCore } from "../kernel/board/board-core.js";
 import { createDefaultAomRenderHooks } from "../kernel/board/aom-render-hooks.js";
 import { Chunk } from "../kernel/chunk/chunk.js";
@@ -204,9 +204,13 @@ function createMockBoard(chunks, options = {}) {
     height: options.height ?? 100,
     getChunkById: (chunkId) => chunkMap.get(chunkId),
     getChunkByCoordinate: (x, y) => chunkMap.get(Chunk.coordinateToId(x, y)),
+    registerObjectInstance: () => {},
+    setObjectCoverChunks: () => {},
     createChunkLoader: () => ({
+      requesterId: "aom-mock",
       trackChunk: () => {},
       emitLoadRequest: () => {},
+      destroy: () => {},
     }),
   };
 }
@@ -225,26 +229,6 @@ function createObjectInChunk(id, chunkId, chunkSize) {
     coord.y * chunkSize + chunkSize / 2,
   );
   return new BasicObject(id, pos);
-}
-
-/**
- * 横向连接两个相邻区块
- * @param {Chunk} chunkA - 左侧区块
- * @param {Chunk} chunkB - 右侧区块
- */
-function chunkConnect(chunkA, chunkB) {
-  chunkA.rightChunk = chunkB;
-  chunkB.leftChunk = chunkA;
-}
-
-/**
- * 纵向连接两个相邻区块
- * @param {Chunk} lowerChunk - 下侧区块
- * @param {Chunk} upperChunk - 上侧区块
- */
-function verticalChunkConnect(lowerChunk, upperChunk) {
-  lowerChunk.upChunk = upperChunk;
-  upperChunk.downChunk = lowerChunk;
 }
 
 /**
@@ -287,7 +271,6 @@ function createCoverChunkStorage() {
 }
 
 export {
-  chunkConnect,
   createBoardCoreAomFixture,
   createChunk,
   createChunkAt,
@@ -296,5 +279,4 @@ export {
   createObjectInChunk,
   ensureBoardCoreChunkLoaded,
   setObjectCoverage,
-  verticalChunkConnect,
 };

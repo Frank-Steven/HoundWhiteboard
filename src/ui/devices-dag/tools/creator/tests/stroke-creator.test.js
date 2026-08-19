@@ -38,6 +38,50 @@ function createBoardDeviceContext(objectId, { viewport } = {}) {
   return { deviceContext };
 }
 
+/**
+ * 构造具备分子能力的 boardApi 测试上下文
+ * @param {string} objectId - 分配的对象 id
+ * @param {{ boardApiOverrides?: Object }} [options={}] - 选项（覆盖 boardApi 方法）
+ * @returns {{ board: Object, boardApi: Object, deviceContext: Object }} 测试上下文
+ */
+function createMolBoardDeviceContext(objectId, { boardApiOverrides = {} } = {}) {
+  const board = {
+    allocateObjectId: jest.fn(() => objectId),
+    getObjectById: jest.fn(() => undefined),
+  };
+  const boardApi = {
+    createObject: jest.fn(async () => objectId),
+    beginMol: jest.fn(() => "demo/mol-1"),
+    amendMol: jest.fn(() => true),
+    endMol: jest.fn(() => true),
+    abortMol: jest.fn(() => true),
+    appendListItem: jest.fn(),
+    replaceListItem: jest.fn(),
+    modifyObject: jest.fn(),
+    commitObjects: jest.fn(async () => [objectId]),
+    discardActiveObjects: jest.fn(),
+    ...boardApiOverrides,
+  };
+
+  const _nodeState = {};
+  const deviceContext = {
+    path: "/test",
+    getNodeState: () => ({ ..._nodeState }),
+    setNodeState: (_pathOrId, state) => {
+      Object.assign(_nodeState, state);
+      return { ..._nodeState };
+    },
+    _nodeState,
+    services: {
+      board,
+      boardApi,
+      supraKey: "S",
+    },
+  };
+
+  return { board, boardApi, deviceContext };
+}
+
 describe("StrokeCreatorTool", () => {
   test("StrokeCreatorTool 应消费 position/end 信号并累计点列", () => {
     const tool = new StrokeCreatorTool();
@@ -459,6 +503,357 @@ describe("StrokeCreatorTool", () => {
     expect(secondObject.id).toBe("32");
     expect(commitSpy).toHaveBeenNthCalledWith(1, ["31"]);
     expect(commitSpy).toHaveBeenNthCalledWith(2, ["32"]);
+  });
+
+  describe("分子管线（beginMol/amendMol/endMol/abortMol）", () => {
+    test("同步分子管线：beginMol(create) → amend 追点 → endMol → commitObjects 严格次序", () => {
+      const calls = [];
+      const { boardApi, deviceContext } = createMolBoardDeviceContext("100", {
+        boardApiOverrides: {
+          createObject: jest.fn(() => {
+            calls.push("createObject");
+            return Promise.resolve("100");
+          }),
+          beginMol: jest.fn(() => {
+            calls.push("beginMol");
+            return "demo/mol-1";
+          }),
+          amendMol: jest.fn(() => {
+            calls.push("amendMol");
+            return true;
+          }),
+          endMol: jest.fn(() => {
+            calls.push("endMol");
+            return true;
+          }),
+          commitObjects: jest.fn(() => {
+            calls.push("commitObjects");
+            return Promise.resolve(["100"]);
+          }),
+        },
+      });
+      const tool = new StrokeCreatorTool();
+
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(1, 2) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(2, 3) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        {
+          signals: [
+            { type: "position", context: { value: new Vector(3, 4) } },
+            { type: "end", context: {} },
+          ],
+        },
+        deviceContext,
+      );
+
+      expect(boardApi.beginMol).toHaveBeenCalledWith(["100"], {
+        create: true,
+        supraKey: "S",
+      });
+      // 逐点追点改经 amend 流（append patch），不再直调 appendListItem
+      expect(boardApi.amendMol).toHaveBeenCalledTimes(3);
+      expect(boardApi.amendMol).toHaveBeenNthCalledWith(1, "demo/mol-1", {
+        "100": { append: { key: "points", items: [{ x: 0, y: 0 }] } },
+      });
+      expect(boardApi.amendMol).toHaveBeenNthCalledWith(3, "demo/mol-1", {
+        "100": { append: { key: "points", items: [{ x: 2, y: 2 }] } },
+      });
+      expect(boardApi.appendListItem).not.toHaveBeenCalled();
+      expect(boardApi.endMol).toHaveBeenCalledWith("demo/mol-1");
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["100"]);
+      expect(calls).toEqual([
+        "createObject",
+        "beginMol",
+        "amendMol",
+        "amendMol",
+        "amendMol",
+        "endMol",
+        "commitObjects",
+      ]);
+    });
+
+    test("手势进行中取消：abortMol 中止分子，不再 discardActiveObjects，不提交", () => {
+      const { boardApi, deviceContext } = createMolBoardDeviceContext("101");
+      const tool = new StrokeCreatorTool();
+
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(1, 2) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(2, 3) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        { signals: [{ type: "cancel", context: {} }] },
+        deviceContext,
+      );
+
+      expect(boardApi.abortMol).toHaveBeenCalledWith("demo/mol-1");
+      expect(boardApi.endMol).not.toHaveBeenCalled();
+      expect(boardApi.discardActiveObjects).not.toHaveBeenCalled();
+      expect(boardApi.commitObjects).not.toHaveBeenCalled();
+      expect(tool._entry).toBeNull();
+    });
+
+    test("Worker 挂起：molId 确认前 append 按序缓冲，确认后合并补发再延迟 endMol/commit", async () => {
+      const calls = [];
+      let resolveBegin;
+      const beginPromise = new Promise((resolve) => {
+        resolveBegin = resolve;
+      });
+      const { boardApi, deviceContext } = createMolBoardDeviceContext("102", {
+        boardApiOverrides: {
+          beginMol: jest.fn(() => {
+            calls.push("beginMol");
+            return beginPromise;
+          }),
+          amendMol: jest.fn(() => {
+            calls.push("amendMol");
+            return true;
+          }),
+          endMol: jest.fn(() => {
+            calls.push("endMol");
+            return true;
+          }),
+          commitObjects: jest.fn(() => {
+            calls.push("commitObjects");
+            return Promise.resolve(["102"]);
+          }),
+        },
+      });
+      const tool = new StrokeCreatorTool();
+
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(1, 2) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(2, 3) } }],
+        },
+        deviceContext,
+      );
+      expect(boardApi.beginMol).toHaveBeenCalledTimes(1);
+      expect(boardApi.amendMol).not.toHaveBeenCalled();
+      expect(boardApi.appendListItem).not.toHaveBeenCalled();
+
+      // 松手时 molId 仍未确认：endMol/commit 均延迟
+      tool.process(
+        {
+          signals: [
+            { type: "position", context: { value: new Vector(3, 4) } },
+            { type: "end", context: {} },
+          ],
+        },
+        deviceContext,
+      );
+      expect(boardApi.endMol).not.toHaveBeenCalled();
+      expect(boardApi.commitObjects).not.toHaveBeenCalled();
+      // 本地草稿即时完整（渲染不等内核）
+      expect(tool._entry.data.points).toEqual([
+        { x: 0, y: 0 },
+        { x: 1, y: 1 },
+        { x: 2, y: 2 },
+      ]);
+
+      // molId 到达：三点保序合并为一条 amend 补发，随后 endMol → commitObjects
+      resolveBegin("demo/mol-1");
+      await flushMicrotasks();
+      expect(boardApi.amendMol).toHaveBeenCalledTimes(1);
+      expect(boardApi.amendMol).toHaveBeenCalledWith("demo/mol-1", {
+        "102": {
+          append: {
+            key: "points",
+            items: [
+              { x: 0, y: 0 },
+              { x: 1, y: 1 },
+              { x: 2, y: 2 },
+            ],
+          },
+        },
+      });
+      expect(boardApi.endMol).toHaveBeenCalledWith("demo/mol-1");
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["102"]);
+      expect(calls).toEqual([
+        "beginMol",
+        "amendMol",
+        "endMol",
+        "commitObjects",
+      ]);
+    });
+
+    test("Worker 挂起期间取消：molId 到达后执行延迟 abortMol，不补发不提交", async () => {
+      let resolveBegin;
+      const beginPromise = new Promise((resolve) => {
+        resolveBegin = resolve;
+      });
+      const { boardApi, deviceContext } = createMolBoardDeviceContext("103", {
+        boardApiOverrides: {
+          beginMol: jest.fn(() => beginPromise),
+        },
+      });
+      const tool = new StrokeCreatorTool();
+
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(1, 2) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(2, 3) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        { signals: [{ type: "cancel", context: {} }] },
+        deviceContext,
+      );
+      // 确认前不直接 abort/discard（分子句柄尚未到达）
+      expect(boardApi.abortMol).not.toHaveBeenCalled();
+      expect(boardApi.discardActiveObjects).not.toHaveBeenCalled();
+
+      resolveBegin("demo/mol-1");
+      await flushMicrotasks();
+      expect(boardApi.abortMol).toHaveBeenCalledWith("demo/mol-1");
+      expect(boardApi.amendMol).not.toHaveBeenCalled();
+      expect(boardApi.appendListItem).not.toHaveBeenCalled();
+      expect(boardApi.endMol).not.toHaveBeenCalled();
+      expect(boardApi.commitObjects).not.toHaveBeenCalled();
+      expect(boardApi.discardActiveObjects).not.toHaveBeenCalled();
+    });
+
+    test("beginMol 同步抛错：回退 appendListItem 直调路径，不产分子", () => {
+      const { boardApi, deviceContext } = createMolBoardDeviceContext("104", {
+        boardApiOverrides: {
+          beginMol: jest.fn(() => {
+            throw new Error("超分子 S 未开启（分子无法指定进入）");
+          }),
+        },
+      });
+      const tool = new StrokeCreatorTool();
+
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(1, 2) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        {
+          signals: [
+            { type: "position", context: { value: new Vector(2, 3) } },
+            { type: "end", context: {} },
+          ],
+        },
+        deviceContext,
+      );
+
+      expect(boardApi.appendListItem).toHaveBeenCalledTimes(2);
+      expect(boardApi.amendMol).not.toHaveBeenCalled();
+      expect(boardApi.endMol).not.toHaveBeenCalled();
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["104"]);
+      expect(tool._entry.data.points).toEqual([
+        { x: 0, y: 0 },
+        { x: 1, y: 1 },
+      ]);
+    });
+
+    test("集成：真实内核创建笔画——add-object 分子记录带 molId，commitObjects 不重复 add", async () => {
+      const { BoardApi } = await import(
+        "../../../../../kernel/api/board-api.js"
+      );
+      const { BoardCore } = await import(
+        "../../../../../kernel/board/board-core.js"
+      );
+      const { createDefaultAomRenderHooks } = await import(
+        "../../../../../kernel/board/aom-render-hooks.js"
+      );
+      const { createDefaultPersistenceAdapter } = await import(
+        "../../../../../kernel/board/persistence-adapter.js"
+      );
+      const boardCore = new BoardCore({
+        width: 800,
+        height: 600,
+        source: "demo",
+        aomRenderHooks: createDefaultAomRenderHooks(),
+        persistenceAdapter: createDefaultPersistenceAdapter(),
+      });
+      const api = new BoardApi(boardCore);
+
+      const _nodeState = {};
+      const deviceContext = {
+        path: "/test",
+        getNodeState: () => ({ ..._nodeState }),
+        setNodeState: (_pathOrId, state) => {
+          Object.assign(_nodeState, state);
+          return { ..._nodeState };
+        },
+        services: {
+          board: { allocateObjectId: jest.fn(() => "1") },
+          boardApi: api,
+        },
+      };
+
+      const tool = new StrokeCreatorTool();
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(5, 5) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(10, 8) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        {
+          signals: [
+            { type: "position", context: { value: new Vector(12, 13) } },
+            { type: "end", context: {} },
+          ],
+        },
+        deviceContext,
+      );
+      await flushMicrotasks();
+
+      // 对象已提交到静态图，点列完整
+      expect(boardCore.activeObjectManager.has("1")).toBe(false);
+      const snapshot = api.queryObject("1");
+      expect(snapshot.position).toEqual({ x: 5, y: 5 });
+      expect(snapshot.data.points).toEqual([
+        { x: 0, y: 0 },
+        { x: 5, y: 3 },
+        { x: 7, y: 8 },
+      ]);
+
+      // add-object 分子记录带 molId 且仅一条（commitObjects 凭物化水位跳过重复 add）
+      const adds = api
+        .queryOperations({ type: "add-object" })
+        .filter((record) => record.payload?.objectId === "1");
+      expect(adds).toHaveLength(1);
+      expect(adds[0].molId).not.toBeNull();
+    });
   });
 
   describe("端到端集成（通过 Board 输入链路）", () => {

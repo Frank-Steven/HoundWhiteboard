@@ -90,21 +90,21 @@ classDiagram
 
 ### 处理流程
 
-擦除计算在 Core 侧完成，由 `boardApi.eraseData({ points, radius, source })` 触发（fire-and-forget）：
+擦除计算在 Core 侧完成，由 `boardApi.eraseData({ points, radius, source }, { supraKey })` 触发（确认式 `#call`）：
 
-1. UI 线程在手势期间累积轨迹，按手势增量分段发送，fire-and-forget；单段 payload 小，可走 `BoardApiRpc` 的批量合并
+1. UI 线程在手势期间累积轨迹，按手势增量分段发送；`eraseData` 是确认式 `#call`——轨迹段有序且语义不可交换，不进 `BoardApiRpc` 的批处理合并（作为非批处理 `#call` 会先同步清空批处理队列保序）。工具侧不逐段等待往返，只记录最近一次调用的 Promise
 2. Core 在合并视图上命中查询，只处理 `isErasable()` 为 `true` 且不是活动对象的对象
 3. Core 按轨迹切割命中对象的 `data`——对笔画即切割 `data.points`；切割算法以多态方法挂在对象类上，与 rich 几何同处 Core 侧
 4. 切割结果分三种：整笔擦没则删除对象；剩单段则回写原对象；剩多段则首段保留原 id 回写，其余段新建对象并继承原 `property` 与 `transform`
-5. 一次手势的全部修改 / 新建 / 删除记为一次分子操作，撤销粒度是一次完整擦除手势（分子操作模型见操作文档）
+5. 一次手势的全部修改 / 新建 / 删除按会话 `supraKey` 凝聚为一个超分子（`beginGesture` 经 `beginSupra` 开启会话，`completeGesture` / `cancelGesture` / `umount` 在等待最后一次 `eraseData` 兑现后经 `endSupra` 闭合，保证提交先于闭合到达内核），撤销粒度是一次完整擦除手势（分子操作模型见操作文档）
 6. Core 侧 mutation 后自动 `requestActiveRender` + flush，视觉反馈与拖拽同一回环
 
 ### 为什么在 Core 侧擦除
 
-- **单次触发**：一段轨迹一次 fire-and-forget 调用即完成命中与修改，拖动中实时擦除不等待往返
+- **单次触发**：一段轨迹一次调用即完成命中与修改；工具侧不逐段等待往返（仅记录最近一次 Promise 供闭合前等待），拖动中实时擦除不被 RPC 阻塞
 - **几何就地可用**：切割需要的 `worldPathRange` 等 rich 数据就在 Core 侧，`points` 无需跨桥搬运
 - **原子修改**：命中、切割、分裂、删除在 Core 内一步完成，不存在过期快照
-- **撤销天然成组**：一次手势的全部变更在 Core 内记为一次分子操作
+- **撤销天然成组**：一次手势的全部变更在 Core 内按会话 `supraKey` 凝聚为一个超分子
 - **职责匹配**：chooser / modifier 把 `ObjectSummary` 取到 UI 是因为 UI 要显示选择框、拖拽对象；FD 只销毁 / 分裂命中对象，UI 不需要持有对象本体
 
 ### 分裂对象的 id 分配
@@ -116,6 +116,16 @@ classDiagram
 - 来源前缀保证各端并发分配互不冲突，无需跨端协调
 
 被切割对象保留原 id（首段回写原对象），只有分裂出的新段消耗新 id。
+
+### 分裂段的层级关系重建
+
+被擦除对象 O 切割后变为 O'（首段回写，与 O 同一对象）与分裂段 O1…On。分裂段经 `createObject` + `commitObjects` 提交时，apply 按「新对象置顶」写入默认层级关系；分裂段的层位应继承 O 的位置，提交后按以下规则重建：
+
+- **静态状态图（S）** — 增量 re-hit-test。切割前快照 O 在各覆盖区块的出边集 out(O) 与入边集 in(O)；O' 与 O1 均为 O 的几何子集，其邻居必属于该集合。提交后对该集合逐个重测：与 O1 相交则按 O–N 同方向写边，O' 失交的删边；apply 为 O1 默认写入的「置顶」边先清空。默认边的写入与清空重算发生在同一次 `eraseData` 调用内，渲染 flush 在其后，不产生可视闪烁。
+- **层静态图（`Layer.inactiveGraph`）** — 整体复制。inactiveGraph 表达层位（意图），O1 入图并复制 O 的出边与入边；几何重验证推迟到该层将来 apply 时由关系重算完成。O1 在静态图中的节点存留与 O 自身保持一致。
+- **层动态集合（`Layer.activeObjects`）** — 按 Local Write Win，当前视角下不在 AOM 中的对象即可擦除，O 仍可能位于某层的 activeObjects（如 inactive 层的活动集）；此时把 O1 加入同一集合。
+
+整笔擦没（无剩余点段）走删除路径，对象节点与其边由 `deleteObjects` 清理，不经重建。
 
 ### 语义特征
 - 橡皮尺寸与轨迹平滑度影响切割精度
@@ -197,7 +207,7 @@ FD 已实现：几何原语（`range/segment-math.js` 的距离判定）、`Stro
 - 各对象 `render()` 硬编码 `source-over`
 - `ViewportRenderer` 采用 `#cache` 静态层 + `#output` 合成的两层结构，AOM 对象叠画在静态内容之上
 - `ActiveObjectManager.pickup()` 会把选中对象在静态图下游（z-order 之上）的相交对象一并纳入 AOM
-- 分子操作模型见操作文档，当前 `hit/operation.js` 只有骨架定义
+- 分子操作模型见操作文档；`hit/operation.js` 已落地完整的分子操作记录模型——九类操作记录（八种分子类型 + close-supra 折叠记录），含三级容器字段（`molId` / `supraId` / `discard`）、校验与排序辅助
 
 ## 相关文档
 

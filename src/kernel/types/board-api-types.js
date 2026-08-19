@@ -66,8 +66,17 @@
  * @property {(chunkIds: number[]) => string[]} queryChunkObjects - 按区块查询对象 id
  * @property {(range: import("../range/range.js").Range | import("./types.js").Rect, mode?: string) => Promise<string[]>} hitTest - 执行命中查询
  * @property {(payload: { points: import("./types.js").Point2D[], radius: number, source?: string }) => Promise<{ modified: string[], created: string[], deleted: string[] }>} eraseData - 按橡皮轨迹擦除命中对象的数据
- * @property {() => void} undo - 执行撤销
- * @property {() => void} redo - 执行重做
+ * @property {(targetNodeId?: string) => { undone: boolean, targetNodeId: ?string, forcedEndMolIds: string[] }} undo - 执行撤销（自动闭合本端未闭合分子）
+ * @property {() => { redone: boolean, targetNodeId: ?string }} redo - 执行重做
+ * @property {(key: string) => void} beginSupra - 开启一个超分子
+ * @property {(key: string) => void} endSupra - 闭合一个超分子（先闭合其下未闭合分子，再追加 close-supra 记录）
+ * @property {(key: string) => void} abortSupra - 中止一个超分子（丢弃未闭合分子并逐个撤销已物化成员）
+ * @property {(objectIds: string[], options?: { supraKey?: string, create?: boolean }) => string} beginMol - 开启增量式分子（捕获 before 快照），返回 molId
+ * @property {(molId: string, patchesByObject: Object<string, ObjectPatch>) => boolean} amendMol - 对进行中的分子施加增量修正（RPC 实现中为 fire-and-forget 批写）
+ * @property {(molId: string) => boolean} endMol - 定稿增量式分子（物化上链）
+ * @property {(molId: string) => boolean} abortMol - 中止增量式分子（丢弃 amend 流并还原实例）
+ * @property {() => Array<Object>} queryOpenMols - 查询本端未闭合的增量式分子清单
+ * @property {(molId: string, sinceSeq?: number) => ?Object} queryMolAmendSince - 取分子在 seq 水位后的 amend 段（重连对账重发用）
  */
 
 export { };

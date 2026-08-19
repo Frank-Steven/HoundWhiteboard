@@ -109,20 +109,20 @@ describe("BOARD_API_ROUTES", () => {
     expect(api.removeListItem).toHaveBeenCalledWith("obj-1", "points", 0);
 
     BOARD_API_ROUTES.deleteObjects.invoke(api, { objectIds: ["obj-1"] });
-    expect(api.deleteObjects).toHaveBeenCalledWith(["obj-1"]);
+    expect(api.deleteObjects).toHaveBeenCalledWith(["obj-1"], undefined);
 
     const payload = { points: [{ x: 0, y: 0 }], radius: 8, source: "t" };
     BOARD_API_ROUTES.eraseData.invoke(api, payload);
-    expect(api.eraseData).toHaveBeenCalledWith(payload);
+    expect(api.eraseData).toHaveBeenCalledWith(payload, undefined);
 
     BOARD_API_ROUTES.commitObjects.invoke(api, { objectIds: ["obj-1"] });
-    expect(api.commitObjects).toHaveBeenCalledWith(["obj-1"]);
+    expect(api.commitObjects).toHaveBeenCalledWith(["obj-1"], undefined);
 
     BOARD_API_ROUTES.addActiveObjects.invoke(api, { objectIds: ["obj-1"] });
-    expect(api.addActiveObjects).toHaveBeenCalledWith(["obj-1"]);
+    expect(api.addActiveObjects).toHaveBeenCalledWith(["obj-1"], undefined);
 
     BOARD_API_ROUTES.discardActiveObjects.invoke(api, { objectIds: ["obj-1"] });
-    expect(api.discardActiveObjects).toHaveBeenCalledWith(["obj-1"]);
+    expect(api.discardActiveObjects).toHaveBeenCalledWith(["obj-1"], undefined);
 
     BOARD_API_ROUTES.queryObjects.invoke(api, { ids: ["obj-1"] });
     expect(api.queryObjects).toHaveBeenCalledWith(["obj-1"]);
@@ -135,7 +135,9 @@ describe("BOARD_API_ROUTES", () => {
     expect(api.hitTest).toHaveBeenCalledWith(range, "intersect");
 
     BOARD_API_ROUTES.undo.invoke(api, {});
-    expect(api.undo).toHaveBeenCalledWith();
+    expect(api.undo).toHaveBeenCalledWith(undefined);
+    BOARD_API_ROUTES.undo.invoke(api, { targetNodeId: "a/op-1" });
+    expect(api.undo).toHaveBeenCalledWith("a/op-1");
 
     BOARD_API_ROUTES.redo.invoke(api, {});
     expect(api.redo).toHaveBeenCalledWith();

@@ -34,6 +34,12 @@ base/live 的合成像素内容来自 Worker（`liveBitmap` 已合成两层）�
 - `resizeRenderLayers(width, height)`
 - `requestViewportUiRender()`
 
+## awareness 接口
+
+- `addAwarenessListener(listener)` — 注册 awareness 消息监听（Worker 下行的协作感知通知）
+- `removeAwarenessListener(listener)` — 注销监听
+- `sendAwareness(data)` — 发送 awareness 消息到 Worker（经协调器 volatile 广播，如 `{ kind: "cursor", point }`）
+
 ## 设备图挂载
 
 `Viewport` 持有 `inputScope`（`InputScope` 实例），外部通过它操作设备图路由：
@@ -56,10 +62,12 @@ base/live 的合成像素内容来自 Worker（`liveBitmap` 已合成两层）�
 
 - `viewport-change`：视口状态变更（origin / zoom / size）
 - `request-render-flush`：请求立即产出渲染帧
+- `awareness-send`：awareness 负载上行（`sendAwareness` 发出），core-worker 转协调器 volatile 广播
 
 **Worker → UI**：
 
 - `render-frame`：含 `liveBitmap`（已合成 base + live 层）
+- `awareness`：协作感知下行，`awarenessType` 区分载荷（`remote-activity` / `hit-changed` / `cursor` / `mol-begin` / `mol-amend` / `mol-end` / `mol-abort` / `peer-left` / `disconnect`）；`Viewport` 分发到 `addAwarenessListener` 注册的监听器
 
 ## 当前状态
 

@@ -1,5 +1,9 @@
 # HoundWhiteboard Electron 安全边界与 Safe I/O 约束
 
+> **存档说明**：本文记录 Electron 架构时期的安全边界设计（2026 年前）。
+> 当前实现为 Tauri 2 版 safe-io（`src/io/` + `src-tauri/src/commands/`），威胁模型与落地结构见 [src/io/README.md](../src/io/README.md)。
+> 「对 renderer/webview 保持零信任」的核心判断仍然成立，安全判断下沉 Rust 可信执行面的设计延续了本文原则。
+
 ## 1. 总览
 
 本文整理 HoundWhiteboard 在 Electron 架构下的安全边界设计，重点关注 renderer 进程与本地能力之间的隔离原则。

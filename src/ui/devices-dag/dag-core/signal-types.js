@@ -31,6 +31,8 @@ const SIGNAL_TYPES = Object.freeze({
   OBJECT_CANCEL: "object-cancel",
   /** 显式提交动作 */
   SUCCESS: "success",
+  /** 删除持有对象（对象修改工具消费，删除当前持有的活动对象） */
+  DELETE: "delete",
   /** 外部强制结束动作（如 tool-switcher 切换时终结当前工具动作） */
   END_ACTION: "end-action",
   /** prefix 注入的对象属性（context.value 携带属性对象） */

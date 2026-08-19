@@ -15,10 +15,7 @@
 | `key-throttle.js`     | 按 key 的源头节流器，防止重复告警                     |
 | `logger.js`           | Logger 类：命名空间、级别过滤、采样、节流、发射       |
 | `log-bus.js`          | LogBus 类：增强型 EventBus，全局单例                  |
-| `throttled-bus.js`    | 缓冲总线：攒批后定时/满额刷出                         |
-| `ring-buffer.js`      | 环形缓冲区：固定大小，始终保留最近 N 条               |
 | `console-printer.js`  | 控制台输出器：带颜色和时间的 console 订阅者           |
-| `rate-tracker.js`     | 速率追踪器：各 Logger 的发射频率统计                  |
 
 ## 模块关系
 
@@ -34,10 +31,7 @@ graph TB
 
   LB["log-bus.js<br/>LogBus + 全局单例"]
 
-  TB["throttled-bus.js<br/>缓冲总线"]
-  RB["ring-buffer.js<br/>环形缓冲区"]
   CP["console-printer.js<br/>控制台输出器"]
-  RT["rate-tracker.js<br/>速率追踪器"]
 
   EB["core/utils/event-bus.js<br/>EventBus（基类）"]
 
@@ -48,10 +42,7 @@ graph TB
 
   LB --> EB
 
-  TB --> LB
-  RB --> LB
   CP --> LB
-  RT --> LB
 ```
 
 Logger 依赖四个底层模块（levels、adaptive-sampler、key-throttle、log-bus），消费者依赖 LogBus 的类型引用。
@@ -64,8 +55,6 @@ sequenceDiagram
     participant Logger as Logger
     participant LogBus as LogBus
     participant CP as ConsolePrinter
-    participant RB as RingBuffer
-    participant TB as ThrottledBus
 
     App->>Logger: .info("started")
     Note over Logger: 级别过滤
@@ -73,20 +62,8 @@ sequenceDiagram
     Logger->>LogBus: emit("INFO", entry)
     Note over LogBus: 同步分发
 
-    par 消费者
-        LogBus->>CP: handler(entry)
-        CP-->>CP: console.log(...)
-    and
-        LogBus->>RB: push(entry)
-        Note over RB: buffer[head] = entry
-    and
-        LogBus->>TB: write(entry)
-        Note over TB: 未满 → 攒批
-    end
-
-    Note over TB: 500ms 后或满额
-    TB-->>TB: flush()
-    TB->>TB: onFlush(batch)
+    LogBus->>CP: handler(entry)
+    CP-->>CP: console.log(...)
 ```
 
 ## 关键设计点
@@ -109,10 +86,7 @@ log.info(...)
   │
   ├─ ④ LogBus 分发（所有订阅者）
   │
-  ├─ ⑤ ThrottledBus 缓冲
-  │   buffer.length ≥ maxBufferSize → dropped++
-  │
-  └─ ⑥ 消费者处理
+  └─ ⑤ 消费者处理
 ```
 
 越靠前的关卡开销越低、丢弃率越高。**高开销操作（文件 I/O、UI 更新）靠后**，只处理经过层层筛选后的少量日志。
@@ -155,42 +129,6 @@ emit(level, entry) {
 - 不同 key 独立计时。
 - `skipCount` 可查，用于辅助观察被抑制的频率。
 
-### ThrottledBus 的缓冲策略
-
-ThrottledBus 有两种触发刷出的条件：
-
-| 条件   | 触发时机                        | 说明                                       |
-| ------ | ------------------------------- | ------------------------------------------ |
-| 定时刷 | `setTimeout(fn, flushInterval)` | 首次写入启动定时器，刷出后自动重启         |
-| 满额刷 | `buffer.length ≥ maxBufferSize` | 缓冲区写满时立即刷，同时清除未到期的定时器 |
-
-两个条件互斥：满额刷时会清除定时器；定时刷时必定 buffer 未满（否则已满额刷出）。
-
-刷盘回调 `onFlush(batch)` 是同步执行的。消费者如果需要异步处理（如文件写入），应在回调内部自行管理异步边界。
-
-### RingBuffer 的环形结构
-
-```js
-push(entry) {
-  buffer[head] = entry;
-  head = (head + 1) % size;
-  count++;
-}
-
-dump() {
-  // 未绕圈 → 从 0 开始
-  // 已绕圈 → 从 head 开始
-  const start = count < size ? 0 : head;
-  return buffer[(start + 0) % size],
-         buffer[(start + 1) % size],
-         ...;
-}
-```
-
-- 不满时 `dump()` 从下标 0 到 `count-1` 输出。
-- 绕圈后 `dump()` 从 `head`（最老的有效条目）到 `head-1`（最新条目）输出。
-- `totalPushed` 累计写入次数，始终递增，不受绕圈影响。
-
 ### 无 LogBus 时的降级
 
 Logger 在创建时若未传入 `bus`，调用 `#emit` 时会走 `#consoleFallback`：
@@ -229,17 +167,13 @@ child(subName, extraMeta) {
 | `key-throttle.test.js`     | 窗口内节流、窗口恢复、独立 key、skipCount、clear |
 | `logger.test.js`           | 发射、级别过滤、child、fallback、节流、采样      |
 | `log-bus.test.js`          | 级别/通配符分发、onLevels、取消订阅              |
-| `throttled-bus.test.js`    | 定时/满额刷出、手动 flush、shutdown、subscribe   |
-| `ring-buffer.test.js`      | 顺序、绕圈、length、dumpByLevel、subscribe       |
 | `console-printer.test.js`  | 级别映射、指定级别、取消订阅                     |
-| `rate-tracker.test.js`     | 速率计算、窗口外忽略、subscribe、clear           |
 
-使用 `jest.useFakeTimers()` 控制时间相关的测试。所有关键路径（采样、节流、缓冲刷出）均依赖 `Date.now()` 而非 `performance.now()`，因为 Jest 的 fake timer 正确处理前者。
+使用 `jest.useFakeTimers()` 控制时间相关的测试。所有关键路径（采样、节流）均依赖 `Date.now()` 而非 `performance.now()`，因为 Jest 的 fake timer 正确处理前者。
 
 ## 设计约束
 
 - LogBus 的 `emit` 是同步的——所有订阅者在当前调用栈中依次执行。如果消费者需要异步处理（如网络上报），应自行包装。
-- ThrottledBus 的 `onFlush` 回调同步执行，设计上 `queueMicrotask` 被移除以确保测试可预测性。消费者如需异步化，应在回调内处理。
 - 当前不提供跨进程日志收集。主进程（Tauri 侧）如需接入，需通过 IPC 通道转发，或单独在主进程中创建 LogBus 实例。
 - 日志条目中的 `args` 是原始参数数组的引用，不是深拷贝。如果后续有异步消费者（如延迟写入），调用方应自行确保参数在消费时仍然有效。
 

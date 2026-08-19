@@ -49,8 +49,8 @@
 | 函数                                                                  | 说明                                                     |
 | --------------------------------------------------------------------- | -------------------------------------------------------- |
 | `createCompatSelectionEntriesForSummaries(summaries, role, viewport)` | 基于 summary-like 条目生成兼容选择框条目（含组合大矩形） |
-| `createPointOverlayEntry(worldPoint, style, viewport)`                | 创建点类型 overlay 条目（circle 圆心等）                 |
-| `createPathOverlayEntry(worldPoints, style, viewport)`                | 创建路径类型 overlay 条目（线段、参考线等）              |
+| `createPointOverlayEntry(worldPoint, style)`                          | 创建点类型 overlay 条目（circle 圆心等）                 |
+| `createPathOverlayEntry(worldPoints, style)`                          | 创建路径类型 overlay 条目（线段、参考线等）              |
 
 ### 条目归一化
 

@@ -9,7 +9,6 @@
 
 import {
   Renderer,
-  expandRectForClear,
   normalizeDirtyRectsForScreenUpdate,
 } from "./renderer.js";
 import { BasicObject } from "../../kernel/objects/basic-obj.js";
@@ -17,10 +16,7 @@ import { RectangleRange } from "../../kernel/range/rectangle.js";
 import { DirectedGraph } from "../../kernel/utils/directed-graph.js";
 import { ActiveObjectManager } from "../../kernel/board/active-object-manager.js";
 import { collectActiveDrawables as _collectActiveDrawables } from "./aom-collect-utils.js";
-import {
-  drawObject,
-  OBJECT_DRAW_STRATEGIES,
-} from "./object-draw-strategies.js";
+import { OBJECT_DRAW_STRATEGIES } from "./object-draw-strategies.js";
 import { RenderScheduler, createRectangleDirtyRectMerger } from "./render-scheduler.js";
 import {
   createBaseDirtyRectThresholdStrategy,
@@ -212,7 +208,7 @@ class ViewportRenderer extends Renderer {
    * @protected
    */
   _getThresholds() {
-    return this.#resolveCacheThresholds(this.viewport?.zoom ?? 1) ?? {};
+    return this.#resolveCacheThresholds(this.viewport?.zoom ?? 1);
   }
 
   /**
@@ -223,7 +219,7 @@ class ViewportRenderer extends Renderer {
    */
   #createOutputDirtyRectMerger() {
     return createRectangleDirtyRectMerger({
-      getThresholds: () => this.#resolveOutputThresholds(this.viewport?.zoom ?? 1) ?? {},
+      getThresholds: () => this.#resolveOutputThresholds(this.viewport?.zoom ?? 1),
       getViewportRect: () => this._getViewportRect(),
     });
   }
@@ -234,23 +230,8 @@ class ViewportRenderer extends Renderer {
    * @returns {boolean}
    */
   invalidate(rect) {
-    let scheduled = false;
-    if (this.#cacheScheduler) {
-      scheduled = this.#cacheScheduler.invalidate(rect) || scheduled;
-    }
-    if (this.#outputScheduler) {
-      scheduled = this.#outputScheduler.invalidate(rect) || scheduled;
-    }
-    return scheduled;
-  }
-
-  /**
-   * 收集应在输出层绘制的对象（AOM 中的对象）
-   * @returns {BasicObject[]}
-   * @protected
-   */
-  _collectDrawables() {
-    return this.collectActiveDrawables();
+    const cacheScheduled = this.#cacheScheduler.invalidate(rect);
+    return this.#outputScheduler.invalidate(rect) || cacheScheduled;
   }
 
   /**
@@ -258,28 +239,21 @@ class ViewportRenderer extends Renderer {
    * @protected
    */
   clear() {
-    const output = this._canvas;
-    const ctx = output?.getContext?.("2d") ?? null;
-    if (!output || !ctx) return;
-
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, output.width, output.height);
-    ctx.restore();
+    this.#clearCanvas(this._canvas);
   }
 
   /**
-   * 清空静态缓存 canvas
+   * 全量清空指定 canvas
+   * @param {HTMLCanvasElement | OffscreenCanvas | null} canvas - 目标 canvas
    * @private
    */
-  #clearCache() {
-    const cacheCanvas = this.#cache;
-    const ctx = cacheCanvas?.getContext?.("2d") ?? null;
-    if (!cacheCanvas || !ctx) return;
+  #clearCanvas(canvas) {
+    const ctx = canvas?.getContext?.("2d") ?? null;
+    if (!canvas || !ctx) return;
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, cacheCanvas.width, cacheCanvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.restore();
   }
 
@@ -333,22 +307,6 @@ class ViewportRenderer extends Renderer {
       worldRect.width * zoom,
       worldRect.height * zoom,
     );
-  }
-
-  /**
-   * 解析静态对象实例
-   * @param {*} chunk - 当前区块
-   * @param {string} objectId - 对象 id
-   * @returns {BasicObject | undefined}
-   */
-  resolveStaticObject(chunk, objectId) {
-    const objectInstance =
-      this.viewport?.board?.activeObjectManager?.findBoardObjectInstance?.(
-        objectId,
-        [chunk?.id],
-      ) ?? this.viewport?.board?.getObjectById?.(objectId);
-
-    return objectInstance instanceof BasicObject ? objectInstance : undefined;
   }
 
   /**
@@ -453,20 +411,19 @@ class ViewportRenderer extends Renderer {
 
   /**
    * 获取对象的世界矩形范围
-   * @description 优先从 AOM 获取世界范围，以支持 AOM 中活跃对象的变形状态。
+   * @description AOM 命中时走 AOM 的变形感知范围，否则委托基类的静态范围解析。
    * @param {BasicObject} objectInstance - 对象实例
    * @returns {RectangleRange | undefined}
    */
   getObjectWorldRect(objectInstance) {
     try {
-      const worldRange =
-        this.#aom?.getObjectWorldRange?.(objectInstance) ??
-        objectInstance?.getRange?.()?.withPosition?.(objectInstance.position);
-      if (!worldRange) return undefined;
-      return RectangleRange.from(worldRange);
+      const worldRange = this.#aom?.getObjectWorldRange?.(objectInstance);
+      if (worldRange) return RectangleRange.from(worldRange);
     } catch {
+      // AOM 范围解析期间对象可能正处于 teardown 中间态，按无范围处理
       return undefined;
     }
+    return super.getObjectWorldRect(objectInstance);
   }
 
   /**
@@ -630,19 +587,34 @@ class ViewportRenderer extends Renderer {
   }
 
   /**
+   * 在归零变换下对输出上下文执行缓存拷贝
+   * @description 封装缓存有效性检查与 save/setTransform/restore 骨架，draw 回调负责具体拷贝。
+   * @param {CanvasRenderingContext2D} ctx - 输出 canvas 上下文
+   * @param {(ctx: CanvasRenderingContext2D, cacheCanvas: OffscreenCanvas) => void} draw - 拷贝回调
+   * @private
+   */
+  #withCacheCopyContext(ctx, draw) {
+    const cacheCanvas = this.#cache;
+    if (!ctx || !cacheCanvas) return;
+    // 零尺寸缓存（浏览器布局就绪前）跳过：drawImage 对 0×0 画布抛错，resize 后自愈
+    if (cacheCanvas.width === 0 || cacheCanvas.height === 0) return;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    draw(ctx, cacheCanvas);
+    ctx.restore();
+  }
+
+  /**
    * 全量拷贝静态缓存到输出 canvas
    * @description 在 clear → copyCache → render 三步流水线中用作第二步。
    * @param {CanvasRenderingContext2D} ctx - 输出 canvas 上下文
    * @private
    */
   #copyCache(ctx) {
-    const cacheCanvas = this.#cache;
-    if (!ctx || !cacheCanvas) return;
-
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(cacheCanvas, 0, 0);
-    ctx.restore();
+    this.#withCacheCopyContext(ctx, (targetCtx, cacheCanvas) => {
+      targetCtx.drawImage(cacheCanvas, 0, 0);
+    });
   }
 
   /**
@@ -652,26 +624,23 @@ class ViewportRenderer extends Renderer {
    * @private
    */
   #copyCacheRects(ctx, rects) {
-    const cacheCanvas = this.#cache;
-    if (!ctx || !cacheCanvas || !Array.isArray(rects)) return;
-
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    for (const rect of rects) {
-      if (!(rect instanceof RectangleRange)) continue;
-      ctx.drawImage(
-        cacheCanvas,
-        rect.left,
-        rect.top,
-        rect.width,
-        rect.height,
-        rect.left,
-        rect.top,
-        rect.width,
-        rect.height,
-      );
-    }
-    ctx.restore();
+    if (!Array.isArray(rects)) return;
+    this.#withCacheCopyContext(ctx, (targetCtx, cacheCanvas) => {
+      for (const rect of rects) {
+        if (!(rect instanceof RectangleRange)) continue;
+        targetCtx.drawImage(
+          cacheCanvas,
+          rect.left,
+          rect.top,
+          rect.width,
+          rect.height,
+          rect.left,
+          rect.top,
+          rect.width,
+          rect.height,
+        );
+      }
+    });
   }
 
   /**
@@ -689,39 +658,27 @@ class ViewportRenderer extends Renderer {
     const drawableEntries = this.createDrawableEntries(drawables);
     const viewportContext = this.createViewportContext(ctx);
 
-    this.#clearCache();
+    this.#clearCanvas(this.#cache);
 
     for (const entry of drawableEntries) {
-      if (!OBJECT_DRAW_STRATEGIES.has(entry.object.constructor)) continue;
-      drawObject(viewportContext, entry.object);
+      const drawStrategy = OBJECT_DRAW_STRATEGIES.get(entry.object.constructor);
+      if (!drawStrategy) continue;
+      // 远程手势预览坐标：渲染时临时覆盖 position，画完还原（只影响渲染视图，不改数据）
+      const preview = this._getPreviewPosition(entry.object.id);
+      if (preview) {
+        const originalX = entry.object.position.x;
+        const originalY = entry.object.position.y;
+        entry.object.position.x = preview.x;
+        entry.object.position.y = preview.y;
+        drawStrategy(viewportContext, entry.object);
+        entry.object.position.x = originalX;
+        entry.object.position.y = originalY;
+      } else {
+        drawStrategy(viewportContext, entry.object);
+      }
     }
 
     this.#cacheDirty = false;
-  }
-
-  /**
-   * 在指定 context 上清理脏区
-   * @param {CanvasRenderingContext2D} ctx - 目标上下文
-   * @param {RectangleRange[]} dirtyRects - 脏区集合
-   * @private
-   */
-  clearDirtyRectsOnContext(ctx, dirtyRects) {
-    if (!ctx) return;
-
-    for (const dirtyRect of dirtyRects) {
-      const clearRect = expandRectForClear(dirtyRect);
-      if (!clearRect) continue;
-
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(
-        clearRect.left,
-        clearRect.top,
-        clearRect.width,
-        clearRect.height,
-      );
-      ctx.restore();
-    }
   }
 
   /**
@@ -744,7 +701,7 @@ class ViewportRenderer extends Renderer {
    */
   #flushCacheScheduler() {
     if (!this.#cacheDirty) return;
-    if (this.#cacheScheduler?.dirtyRects?.length > 0) {
+    if (this.#cacheScheduler.dirtyRects.length > 0) {
       this.#cacheScheduler.flush();
       return;
     }
@@ -819,7 +776,7 @@ class ViewportRenderer extends Renderer {
 
     // 按脏区裁剪绘制 AOM 对象：不相交则跳过，相交则裁剪到对应脏区
     for (const entry of drawableEntries) {
-      if (!OBJECT_DRAW_STRATEGIES.has(entry.object.constructor)) continue;
+      if (!OBJECT_DRAW_STRATEGIES.get(entry.object.constructor)) continue;
       if (
         hasExplicitDirtyRects &&
         !this.intersectsDirtyRects(entry, normalizedDirtyRects)

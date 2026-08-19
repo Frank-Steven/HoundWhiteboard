@@ -1,57 +1,100 @@
-# `.hwb` 文件结构文档
+# 白板文件结构文档
 
-本文档整理当前代码中**可以被源码直接验证**的 `.hwb` 文件结构与持久化语义。
+本文档整理当前代码中**可以被源码直接验证**的白板文件结构与持久化语义。
 
 需要特别说明：
 
-- 这份文档描述的是当前 file bridge 协议与 `BoardCore` 持久化接口所约定的结构
-- 默认 Worker runtime 仍主要运行在内存模式
-- 因此这里的目录结构应理解为“当前文件模式合同”，而不是“所有运行场景默认都会落盘的结果”
+- 这份文档描述的是 kernel 会话存储（`src/kernel/store/`）与 io 持久化适配器（`src/io/adapter/`）共同约定的布局
+- 默认 Worker runtime 以 `rootPath` 是否有效区分内存模式与持久化模式
+- 内存模式下不落任何文件；持久化模式下根目录即板目录
 
 ## 概述
 
-当前持久化相关代码分成两层：
+持久化相关代码分三层：
 
-1. `BoardCore.persistenceAdapter`：Core 侧的持久化接口
-2. `bridges/file-operate-bridge-*.js`：宿主侧真实文件读写实现
+1. **kernel 定义缝**：`kernel/board/persistence-adapter`（区块元数据与对象读写契约）、`kernel/store/session-store` 的 `SessionDriver`（最小文件操作契约）
+2. **io 包实现缝**：`io/driver/`（memory / node / tauri 三实现）、`io/adapter/persistence`（PersistenceAdapter 实现）
+3. **host 组合根接线**：core-worker `createBoard` 注册根目录、构造 BoardCore、恢复会话并挂接日志跟随者
 
-如果只执行 `createBoardRoot()`，当前确定会创建的是：
-
-```text
-.hwb/
-  meta.json
-  config.json
-  devices/
-  history/
-  objects/
-  chunks/
-  demo/
-```
-
-在后续文件模式操作中，当前 bridge 还会继续读写这些路径：
+板目录结构（formatVersion 1）：
 
 ```text
-.hwb/
-  trace.json               # 可选，缺失时可按 connection 推导默认值
-  chunks/
-    connection.json
-    {chunkId}.json
-    {chunkId}/             # 当前由 createChunkStorage 创建，但不是主读写路径
-  objects/
-    {objectId}.json
+{board}/
+  board.json                        # 板级元数据（创建时写一次，之后只读）
+  meta/{source}.json                # per-source 元数据分片（计数与时间水位）
+  objects/{objectId}.json           # 活动对象快照
+  trash/{objectId}.json             # trash 条目
+  chunks/{chunkId}.json             # 区块元数据
+  hit/{source}/seg-{NNNNNN}.jsonl   # per-source 操作日志流
+  .daemon.json                      # 持板 daemon 探测文件（daemon 运行时存在）
 ```
 
-## 当前稳定语义
+> [!NOTE]
+>
+> `.daemon.json` 由持板 daemon 进程维护（name/port 等连接信息，停止时清理），不属于 kernel store 布局本身；GUI 开板时由 core-worker 读取（core-worker.js:779）探测活 daemon，读者在板目录中会碰到。
 
-### 1. 区块元数据按单文件保存
+## 各文件与目录说明
 
-每个区块当前的主元数据文件是：
+### `board.json`
 
-```text
-chunks/{chunkId}.json
+板级元数据文件。**创建时写一次，之后只读**（多写者共板的冲突面由此归零）。
+
+```json
+{
+  "formatVersion": 1,
+  "boardConfig": { "width": 4096, "height": 4096 }
+}
 ```
 
-其内容形如：
+字段含义：
+
+- `formatVersion`：布局版本号
+- `boardConfig`：板宽高；板尺寸是文档数据（决定区块划分），恢复时以盘上配置为准
+- `lastTime` / `coreIdCounters` / `objectIdCounters`（存量兜底）：新写入落在 `meta/{source}.json` 分片；读取时板级字段与分片归并（计数按 key 并入，lastTime 取全源最大）
+- `nextSegmentSeq`（已退役）：v1 单流的全局段序号；per-source 流的下一段序号由各流目录内最大段序直接恢复
+
+### `meta/{source}.json`
+
+per-source 元数据分片（原子写）。各写端只写自己负责的分片：本端 + 本会话代写过日志流的来源（daemon 代写 relay 远端来源）。
+
+```json
+{
+  "lastTime": 1786009532137,
+  "coreIdCounters": { "dev-8f3a": 2 },
+  "objectIdCounters": { "dev-8f3a": 17 }
+}
+```
+
+- `lastTime`：该写端已落盘记录的最晚时间标记
+- `coreIdCounters` / `objectIdCounters`：仅该 source 的计数切片，重开时续号防碰撞
+
+### `objects/{objectId}.json`
+
+活动对象的序列化快照，扁平存储，每对象一文件。
+
+对象 id 含斜杠（如 `demo/1`），文件名经 `encodeURIComponent` 编码（如 `demo%2F1.json`）。
+
+内容由日志跟随者按当前板状态调和写入：序列化指纹比对，仅写差异。写权属活动方（AOM 仲裁）：远程活动对象跳过不写，等待其作者落盘。
+
+### `trash/{objectId}.json`
+
+trash 条目文件，文件名编码规则与活动对象相同。内容为完整条目：
+
+```json
+{
+  "data": { "id": "demo/2", "type": "StrokeObject", "...": "..." },
+  "chunks": [{ "chunkId": "1", "below": ["demo/1"], "above": [] }]
+}
+```
+
+- `data`：删除时刻的全量序列化
+- `chunks`：删除时刻各区块的层位边（`below` / `above` 为该对象在区块静态图中的前驱与后继）
+
+层位边使跨会话的撤销删除能把对象按原层位关系回图。
+
+### `chunks/{chunkId}.json`
+
+区块元数据文件：
 
 ```json
 {
@@ -60,145 +103,73 @@ chunks/{chunkId}.json
 }
 ```
 
-字段含义：
+- `tierGraph`：区块静态层叠图的数组化结果（`DirectedGraph.toArray()`）
+- `objectCoverIndex`：对象覆盖区块索引，`Array<[objectId, number[]]>`（盘上恒为空——覆盖索引权威副本在 BoardCore，重开时由 tierGraph 节点集表达归属）
 
-- `tierGraph`：区块静态层叠图的数组化结果
-- `objectCoverIndex`：对象覆盖区块索引，格式通常为 `Array<[objectId, number[]]>`
+由日志跟随者按当前层叠图状态调和写入（指纹比对，仅写差异）。
 
-当前代码不会再把覆盖索引单独写成 `{chunkId}-object-cover.json`。
+> [!NOTE]
+>
+> **chunks/ 保留落盘（2026-08-15 实测定夺）**：曾评估「chunks/ 停止落盘、加载时从对象与日志派生重建」（分片布局的写冲突消除动议）。万级对象实测（`yarn bench:chunk`，10,000 对象 / 11,351 条记录）：基线（chunks/ 直读 + restoreSession）409ms，全量回放派生 3625ms（约 9 倍，且随历史长度无限增长，违反「打开耗时与历史操作数脱钩」）；chunks/ 读取本身仅 3.3ms，零收益。双写软冲突由原子写与收敛内容兜底。
+>
+> 注记时曾存在的「实况提交与重放派生的 z-order 语义差」已随层位边效果记录消除：对象操作记录携带提交/提取时刻的层位边（below/above），回放与远端直接应用记录边而不做几何重算；记录之外的相交对象按先后缝合——正放缝后写者居上、历史恢复缝较晚物化者居上。同夹具复测（2026-08-15）：相交对层位反转为 0（两路视觉等价），非相交对的绘制序换位属插入序副产物、视觉无关。旧日志形态（记录未携带层位边）回退几何居上派生。
 
-### 2. 对象当前是扁平存储
+### `hit/{source}/seg-{NNNNNN}.jsonl`
 
-对象文件当前主路径是：
+操作日志流：每个写端进程按自己的 source 独占一个流目录（目录名经 `encodeURIComponent` 编码），只追加自己的段，流内段序号独立递增。段写入为原子写（临时文件 + rename），崩溃不留撕裂段。`hit/` 下的散文件（非流目录）一律不读。
 
-```text
-objects/{objectId}.json
-```
+段内容为 JSONL：一行一条序列化操作记录（分子操作记录结构见 [operation-document.md](../kernel/hit/docs/operation-document.md)）。
 
-而不是旧文档中的：
+打开板时归并全部流：按 record.source 分组、组内按操作序号升序、按 id 去重，组按 source 字典序拼接，经 `OperationLog.fromJSON` 重建日志、`UndoTree.rebuild()` 重建时间回溯树（树按 (时间, author) 确定性定序，与归并顺序无关），撤销历史由此穿越重开。
 
-```text
-objects/chunk{chunkId}/{objectId}.json
-```
+## 落盘语义
 
-当前 bridge 的 `loadObjects` / `saveObjects` / `deleteObject` 都按这个扁平结构工作。
+### 日志跟随者
 
-### 3. `chunks/{chunkId}/` 目录目前不是主数据路径
+`kernel/store/journaler` 订阅操作日志的 append 事件（本地 commit 与远端应用共用同一入日志通道），微任务合批后自动落盘。每轮 flush 按序执行：
 
-`createChunkStorage()` 仍会创建：
+1. 队列中的新记录按 record.source 分组，每组写为一段 `hit/{source}/seg-{N}.jsonl`（各写端只写自己的流；daemon 代写 relay 远端来源的流）
+2. 对象文件调和：活动对象写 `objects/`，trash 条目写 `trash/`，既非活动亦非 trash 的对象从盘上移除；**写权仲裁**——远程活动对象（AOM `isRemoteActive`）跳过不写不移除（写权属活动方）；部分驻留写端（GUI 开 chunkUnload）以 `removeMissing:false` 关闭缺失移除，防止误删未加载对象的文件
+3. 区块元数据调和：层叠图与覆盖索引指纹比对，仅写差异
+4. 写本端（与代写来源）的 `meta/{source}.json` 分片；读会话以 `writeMeta:false` 保持零写盘
 
-```text
-chunks/{chunkId}/
-```
+调和以板当前状态为准，撤销/重做/远端记录引起的任意状态迁移统一收敛，无逐类型效果逻辑。
 
-但当前主读写逻辑：
+### 写权矩阵（布局 v2）
 
-- 区块元数据读写走 `chunks/{chunkId}.json`
-- 对象读写走 `objects/{objectId}.json`
+| 文件                                    | 谁写                                                   | 冲突兜底                           |
+| --------------------------------------- | ------------------------------------------------------ | ---------------------------------- |
+| `board.json`                            | 创建者一次，之后只读                                   | —                                  |
+| `meta/{source}.json`                    | 该 source 的写端（含代写其流的 daemon）                | 硬隔离零冲突；原子写               |
+| `objects/{id}.json` / `trash/{id}.json` | 活动方（AOM 仲裁，远程活动跳过）；静态对象双侧指纹调和 | 原子写 + digest 对账               |
+| `hit/{source}/`                         | 仅该 source 进程                                       | 硬隔离零冲突；段序号占用时递增自愈 |
+| `chunks/{chunkId}.json`                 | 各写端指纹调和（收敛后内容相同）                       | 原子写                             |
 
-因此 `chunks/{chunkId}/` 更适合视为历史遗留或预留扩展目录，而不是当前主要持久化载体。
+### 会话恢复
 
-## 各文件与目录说明
+打开既有板（core-worker `createBoard` 携带有效 `rootPath`）：
 
-### `meta.json`
+1. `registerRoot` 注册根目录（`~` 家目录展开；目录不存在且声明写权限时自动创建）
+2. `loadAll` 聚合读取板元数据、日志记录、区块元数据、对象与 trash
+3. 构造 BoardCore：`hitRecords` 重建日志与树、`lastTime` 与 `coreIdCounters` 续号
+4. `restoreSession` 回填层叠图与覆盖索引、注册对象实例、恢复 trash 条目；恢复的区块标记完整加载态
+5. 挂接日志跟随者（以盘上内容为指纹种子，避免首轮重写）
 
-白板元信息文件。
+### 安全边界
 
-当前 file bridge 在创建根目录时会先写入它；读取白板快照时也会先校验它是否存在以及类型是否匹配。
-
-### `config.json`
-
-白板配置文件。
-
-它与 `meta.json` 一起在 `createBoardRoot()` 时被创建；但若要让 `loadBoardSnapshot()` 成功，当前还需要 `chunks/connection.json` 作为必需元数据的一部分。
-
-### `trace.json`
-
-记录最近一次打开/浏览位置的轨迹信息。
-
-当前结构至少涉及：
-
-- `onChunk`
-- `offset`
-
-若文件不存在，bridge 会根据 `connection.json` 推导默认值。
-
-### `chunks/connection.json`
-
-记录区块连接与顺序信息。当前读取白板快照时会把它当作必需文件。
-
-典型字段包括：
-
-- `count`
-- `order`
-- `size`
-
-### `chunks/{chunkId}.json`
-
-单区块元数据文件，包含：
-
-- `tierGraph`
-- `objectCoverIndex`
-
-### `objects/{objectId}.json`
-
-对象序列化结果。
-
-当前应该注意两点：
-
-1. 路径是按 `objectId` 扁平组织
-2. 不应在顶层文档中再把 `ownerChunkId` 写成“当前代码保证存在”的稳定字段
-
-是否带有 `ownerChunkId` 取决于具体对象类型或未来扩展，基础 `BasicObject.serialize()` 并不默认产出这个字段。
-
-### `devices/` / `demo/` / `history/`
-
-这些目录在 `createBoardRoot()` 中会被创建，但当前顶层 Core 文档里不应过度推断它们的完整业务语义：
-
-- `devices/`：可视为宿主或白板扩展数据预留区
-- `demo/`：模板相关数据预留区
-- `history/`：历史与版本空间，当前仍应视为 `[todo]` 能力
-
-## 与运行时模型的关系
-
-### `BoardCore`
-
-`BoardCore` 通过 `persistenceAdapter` 表达对持久化的需求：
-
-- `loadChunkMetadata`
-- `saveChunkMetadata`
-- `loadObjects`
-- `saveObjects`
-- `deleteObject`
-
-### file bridge
-
-宿主侧 file bridge 负责把这些抽象操作映射到 `.hwb` 目录结构。
-
-也就是说，当前这份目录结构更准确地说是：
-
-- **bridge 层的主存储合同**
-- 与 `BoardCore` 的持久化接口相匹配
-
-### 默认运行时现状
-
-当前默认 Worker runtime 创建 `BoardCore` 时仍使用 `createDefaultPersistenceAdapter()`。
-
-因此：
-
-- 内存模式是当前最常见路径
-- 完整文件模式属于已定义协议但未全面成为默认运行时的能力
+webview 与 worker 只构造受限意图（`rootId` + 相对路径），root 注册表、路径校验、符号链接边界与权限强制全部在 Rust（`src-tauri/src/commands/`）。详见 [src/io/README.md](../io/README.md)。
 
 ## 当前已知约束
 
-- `undo` / `redo` 与 `history/` 的真实落盘语义尚未实现
-- 顶层文档不应再把对象按 ownerChunk 分目录存储写成现状
-- 顶层文档不应再把 cover index 单独文件写成现状
-- `objectId` 计数池恢复尚未从文件层接回 UI 侧 `CounterPool`
+- 选择状态（活动对象集合）不随会话持久化，重开后为空
+- 区块只增不减：已从板上卸载的区块其元数据文件保留在盘上
+- 大板场景的区块懒加载读写路径（`loadChunkObjectEntries` 等）存在但未接入演示流程
 
 ## 相关文档
 
+- [src/io/README.md](../io/README.md)
+- [operation-document.md](../kernel/hit/docs/operation-document.md)
+- [undo-tree-kernel-document.md](../kernel/hit/docs/undo-tree-kernel-document.md)
+- [board-core-document.md](../kernel/board/docs/board-core-document.md)
 - [core-data-model.md](./core-data-model.md)
 - [core-overview.md](./core-overview.md)
-- [board-core-document.md](../kernel/board/docs/board-core-document.md)
-- [file-operate-document.md](../host/bridges/docs/file-operate-document.md)

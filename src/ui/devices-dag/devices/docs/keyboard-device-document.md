@@ -6,7 +6,7 @@
 
 根路径固定为 `/keyboard`，整体结构由 `createSubDAG("/keyboard")` 构建。
 
-`createKeyboardDevice()` **不接受任何参数**——设备内部预创建了 `STANDARD_KEYBOARD_CODES`（105 个标准键位）的全部 code 节点，每个 code 节点统一 `defaultRoute = "default"`。设备不负责信号转换，只负责从原始键盘事件中稳定产出 `trigger` / `release` / `cancel` 三类工具层信号。
+`createKeyboardDevice()` **不接受任何参数**——设备内部预创建了 `STANDARD_KEYBOARD_CODES`（105 个标准键位）的全部 code 节点，每个 code 节点统一 `defaultRoute = "default"`。设备不负责信号转换，只负责从原始键盘事件中稳定产出 `trigger` / `trigger-repeat` / `release` / `cancel` 四类工具层信号。
 
 ## 节点结构
 
@@ -84,22 +84,25 @@ flowchart LR
 键盘设备内部会把宿主事件规整为两层语义：
 
 - 原始层：`keydown`、`keyup`、`cancel`、`end`
-- 工具层：`trigger`、`release`、`cancel`
+- 工具层：`trigger`、`trigger-repeat`、`release`、`cancel`
 
 转换规则如下：
 
-| 原始信号        | 生成信号  | 条件               |
-| --------------- | --------- | ------------------ |
-| `keydown`       | `trigger` | `repeat === false` |
-| `keyup` / `end` | `release` | —                  |
-| `cancel`        | `cancel`  | —                  |
-| `keydown`       | _忽略_    | `repeat === true`  |
+| 原始信号        | 生成信号         | 条件               |
+| --------------- | ---------------- | ------------------ |
+| `keydown`       | `trigger`        | `repeat === false` |
+| `keydown`       | `trigger-repeat` | `repeat === true`  |
+| `keyup` / `end` | `release`        | —                  |
+| `cancel`        | `cancel`         | —                  |
 
-工具层信号类型定义在 `KEYBOARD_DEVICE_SIGNAL_TYPES` 中：
+`trigger-repeat` 由长按触发的系统 repeat keydown 产生，demo 的 WASD 长按移动即消费此信号持续发出 displacement。
 
-- `KEYBOARD_DEVICE_SIGNAL_TYPES.TRIGGER` = `"trigger"`
-- `KEYBOARD_DEVICE_SIGNAL_TYPES.RELEASE` = `"release"`
-- `KEYBOARD_DEVICE_SIGNAL_TYPES.CANCEL` = `"cancel"`
+工具层信号类型定义在 `SIGNAL_TYPES`（`dag-core/signal-types.js`）中：
+
+- `SIGNAL_TYPES.TRIGGER` = `"trigger"`
+- `SIGNAL_TYPES.TRIGGER_REPEAT` = `"trigger-repeat"`
+- `SIGNAL_TYPES.RELEASE` = `"release"`
+- `SIGNAL_TYPES.CANCEL` = `"cancel"`
 
 ## 设备状态
 
@@ -134,15 +137,18 @@ flowchart LR
 
 `DEVICE_DEFAULT_ROUTE` 定义为字符串 `"default"`，是所有设备叶节点的默认路由名。
 
-从 `devices/index.js` 统一导出：
+从 `devices/index.js` 统一导出设备构建函数与常量，信号类型从 `dag-core/signal-types.js` 导入：
 
 ```js
 import {
   createKeyboardDevice,
-  KEYBOARD_DEVICE_SIGNAL_TYPES,
+  createMouseDevice,
+  createTouchscreenDevice,
+  createButtonGroupDevice,
   STANDARD_KEYBOARD_CODES,
   DEVICE_DEFAULT_ROUTE,
 } from "../devices/index.js";
+import { SIGNAL_TYPES } from "../dag-core/signal-types.js";
 ```
 
 ## ⚠️ 一个 Tool 实例只能挂载到一个节点
@@ -164,7 +170,11 @@ const wasdPrefix = (code, vector) =>
   createEdgePrefix({
     handler(packet) {
       const signals = packet.signals
-        .filter((s) => s.type === KEYBOARD_DEVICE_SIGNAL_TYPES.TRIGGER)
+        .filter(
+          (s) =>
+            s.type === SIGNAL_TYPES.TRIGGER ||
+            s.type === SIGNAL_TYPES.TRIGGER_REPEAT,
+        )
         .map((s) => ({
           type: "position",
           context: { value: { ...vector }, code, sourceType: s.type },
@@ -173,28 +183,28 @@ const wasdPrefix = (code, vector) =>
     },
   });
 
-viewport.mountWorkflow("wasd-move", wasdTool, [
-  {
-    from: "/keyboard/code/KeyW",
-    edge: "default",
-    prefix: wasdPrefix("KeyW", { x: 0, y: -1 }),
-  },
-  {
-    from: "/keyboard/code/KeyA",
-    edge: "default",
-    prefix: wasdPrefix("KeyA", { x: -1, y: 0 }),
-  },
-  {
-    from: "/keyboard/code/KeyS",
-    edge: "default",
-    prefix: wasdPrefix("KeyS", { x: 0, y: 1 }),
-  },
-  {
-    from: "/keyboard/code/KeyD",
-    edge: "default",
-    prefix: wasdPrefix("KeyD", { x: 1, y: 0 }),
-  },
-]);
+const scope = viewport.inputScope;
+scope.mountWorkflow("wasd-move", wasdTool);
+scope.addEdge({
+  from: "keyboard/code/KeyW",
+  to: "workflows/wasd-move",
+  prefix: wasdPrefix("KeyW", { x: 0, y: -1 }),
+});
+scope.addEdge({
+  from: "keyboard/code/KeyA",
+  to: "workflows/wasd-move",
+  prefix: wasdPrefix("KeyA", { x: -1, y: 0 }),
+});
+scope.addEdge({
+  from: "keyboard/code/KeyS",
+  to: "workflows/wasd-move",
+  prefix: wasdPrefix("KeyS", { x: 0, y: 1 }),
+});
+scope.addEdge({
+  from: "keyboard/code/KeyD",
+  to: "workflows/wasd-move",
+  prefix: wasdPrefix("KeyD", { x: 1, y: 0 }),
+});
 ```
 
 ## 推荐挂载方式
@@ -202,36 +212,33 @@ viewport.mountWorkflow("wasd-move", wasdTool, [
 键盘设备本身挂在 Viewport 边界下：
 
 ```js
-viewport.mountSubDAG("", createKeyboardDevice());
+viewport.inputScope.mountDevice("keyboard", createKeyboardDevice());
 ```
 
-所有 workflow 统一通过 `viewport.mountWorkflow(name, workflow, edges)` 挂载，使用 `edge.prefix` 注入信号转换逻辑：
+所有 workflow 统一通过 `inputScope.mountWorkflow(name, workflow)` 挂载，再用 `inputScope.addEdge({ from, to, prefix })` 接线，使用 `prefix` 注入信号转换逻辑：
 
 ```js
+const scope = viewport.inputScope;
+
 // 简单的信号转发（如 Space 触发随机圆）
-viewport.mountWorkflow("create-circle", randomCircleSubDAG, [
-  {
-    from: "/keyboard/code/Space",
-    edge: "default",
-    prefix: createEdgePrefix(buildKeyboardTriggerForwardNodeConfig()),
-  },
-]);
+scope.mountWorkflow("create-circle", randomCircleSubDAG);
+scope.addEdge({
+  from: "keyboard/code/Space",
+  to: "workflows/create-circle",
+  prefix: createEdgePrefix(buildKeyboardTriggerForwardNodeConfig()),
+});
 
 // 需要 viewport 引用的信号转换（如视口平移）
-viewport.mountWorkflow("viewport", ViewportTool, [
-  {
-    from: "/keyboard/code/ArrowUp",
-    edge: "default",
-    prefix: createEdgePrefix(
-      buildViewportPositionNodeConfig({ x: 0, y: -200 }),
-    ),
-  },
-]);
+scope.mountWorkflow("viewport", ViewportTool);
+scope.addEdge({
+  from: "keyboard/code/ArrowUp",
+  to: "workflows/viewport",
+  prefix: createEdgePrefix(buildViewportPositionNodeConfig({ x: 0, y: -200 })),
+});
 
 // 鼠标设备不需要 prefix（信号直接可被工具消费）
-viewport.mountWorkflow("primary-stroke", strokeTool, [
-  { from: "/mouse/primary", edge: "default" },
-]);
+scope.mountWorkflow("primary-stroke", strokeTool);
+scope.addEdge({ from: "mouse/primary", to: "workflows/primary-stroke" });
 ```
 
 prefix handler 不应指定 `to:`。路由由 `defaultRoute: "default"` 自动完成。

@@ -43,6 +43,54 @@ const BOARD_API_ROUTES = {
   },
 
   /**
+   * 创建并提交一个对象（持板侧原子完成 id 分配）
+   */
+  addObject: {
+    invoke: (api, p) => api.addObject(p.type, p.props),
+    flush: "sync",
+  },
+
+  /**
+   * 查询板概要信息
+   */
+  queryBoardInfo: {
+    invoke: (api) => api.queryBoardInfo(),
+    flush: "none",
+  },
+
+  /**
+   * 列出活动与 trash 对象
+   */
+  queryObjectList: {
+    invoke: (api) => api.queryObjectList(),
+    flush: "none",
+  },
+
+  /**
+   * 查询单个对象的序列化数据
+   */
+  queryObject: {
+    invoke: (api, p) => api.queryObject(p.objectId),
+    flush: "none",
+  },
+
+  /**
+   * 查询操作日志记录明细
+   */
+  queryOperations: {
+    invoke: (api, p) => api.queryOperations(p),
+    flush: "none",
+  },
+
+  /**
+   * 查询时间回溯树结构
+   */
+  queryUndoTree: {
+    invoke: (api) => api.queryUndoTree(),
+    flush: "none",
+  },
+
+  /**
    * 修改单个对象的几何/样式属性
    */
   modifyObject: {
@@ -86,7 +134,7 @@ const BOARD_API_ROUTES = {
    * 永久删除对象集合
    */
   deleteObjects: {
-    invoke: (api, p) => api.deleteObjects(p.objectIds),
+    invoke: (api, p) => api.deleteObjects(p.objectIds, p.options),
     flush: "sync",
   },
 
@@ -94,7 +142,7 @@ const BOARD_API_ROUTES = {
    * 按橡皮轨迹擦除命中对象的数据
    */
   eraseData: {
-    invoke: (api, p) => api.eraseData(p),
+    invoke: (api, p) => api.eraseData(p, p.options),
     flush: "async",
   },
 
@@ -102,7 +150,7 @@ const BOARD_API_ROUTES = {
    * 将 AOM 动态图中的对象写回静态图
    */
   commitObjects: {
-    invoke: (api, p) => api.commitObjects(p.objectIds),
+    invoke: (api, p) => api.commitObjects(p.objectIds, p.options),
     flush: "none",
   },
 
@@ -110,7 +158,7 @@ const BOARD_API_ROUTES = {
    * 将对象加入 AOM 动态图
    */
   addActiveObjects: {
-    invoke: (api, p) => api.addActiveObjects(p.objectIds),
+    invoke: (api, p) => api.addActiveObjects(p.objectIds, p.options),
     flush: "none",
   },
 
@@ -118,7 +166,7 @@ const BOARD_API_ROUTES = {
    * 将对象从 AOM 动态图移除
    */
   discardActiveObjects: {
-    invoke: (api, p) => api.discardActiveObjects(p.objectIds),
+    invoke: (api, p) => api.discardActiveObjects(p.objectIds, p.options),
     flush: "none",
   },
 
@@ -127,6 +175,54 @@ const BOARD_API_ROUTES = {
    */
   queryObjects: {
     invoke: (api, p) => api.queryObjects(p.ids),
+    flush: "none",
+  },
+
+  /**
+   * 列出本端的命名选择
+   */
+  queryChoices: {
+    invoke: (api) => api.queryChoices(),
+    flush: "none",
+  },
+
+  /**
+   * 列出全部远程命名选择（awareness 查询面）
+   */
+  queryRemoteChoices: {
+    invoke: (api) => api.queryRemoteChoices(),
+    flush: "none",
+  },
+
+  /**
+   * 上报 UI 侧对象 id 池计数
+   */
+  reportObjectIdCounter: {
+    invoke: (api, p) => api.reportObjectIdCounter(p.source, p.counter),
+    flush: "none",
+  },
+
+  /**
+   * 读取 UI 侧对象 id 池计数表
+   */
+  getObjectIdCounters: {
+    invoke: (api) => api.getObjectIdCounters(),
+    flush: "none",
+  },
+
+  /**
+   * 应用远程 AOM 活动事件
+   */
+  applyRemoteActivity: {
+    invoke: (api, p) => api.applyRemoteActivity(p.events, p.source),
+    flush: "none",
+  },
+
+  /**
+   * 清理某来源的全部远程活动登记
+   */
+  clearRemoteActivity: {
+    invoke: (api, p) => api.clearRemoteActivity(p.source),
     flush: "none",
   },
 
@@ -150,8 +246,8 @@ const BOARD_API_ROUTES = {
    * 执行撤销
    */
   undo: {
-    invoke: (api) => api.undo(),
-    flush: "none",
+    invoke: (api, p) => api.undo(p?.targetNodeId ?? undefined),
+    flush: "sync",
   },
 
   /**
@@ -159,7 +255,111 @@ const BOARD_API_ROUTES = {
    */
   redo: {
     invoke: (api) => api.redo(),
+    flush: "sync",
+  },
+
+  /**
+   * 应用远端到达的分子操作记录
+   */
+  applyRemoteOperations: {
+    invoke: (api, p) => api.applyRemoteOperations(p.records),
+    flush: "sync",
+  },
+
+  /**
+   * 开启一个超分子
+   */
+  beginSupra: {
+    invoke: (api, p) => api.beginSupra(p.key),
     flush: "none",
+  },
+
+  /**
+   * 闭合一个超分子
+   */
+  endSupra: {
+    invoke: (api, p) => api.endSupra(p.key),
+    flush: "none",
+  },
+
+  /**
+   * 中止一个超分子（丢弃未闭合分子并逐个撤销已物化成员）
+   */
+  abortSupra: {
+    invoke: (api, p) => api.abortSupra(p.key),
+    flush: "none",
+  },
+
+  /**
+   * 开启一个增量式分子（手势 begin，捕获 before 快照）
+   */
+  beginMol: {
+    invoke: (api, p) => api.beginMol(p.objectIds, p.options),
+    flush: "none",
+  },
+
+  /**
+   * 对进行中的分子施加增量修正（手势的每帧）
+   */
+  amendMol: {
+    invoke: (api, p) => api.amendMol(p.molId, p.patchesByObject),
+    flush: "sync",
+  },
+
+  /**
+   * 定稿一个增量式分子（end-amend 物化上链）
+   */
+  endMol: {
+    invoke: (api, p) => api.endMol(p.molId),
+    flush: "sync",
+  },
+
+  /**
+   * 中止一个增量式分子（丢弃 amend 流，实例还原到手势起点）
+   */
+  abortMol: {
+    invoke: (api, p) => api.abortMol(p.molId),
+    flush: "sync",
+  },
+
+  /**
+   * 查询本端未闭合的增量式分子清单（断线重连对账用）
+   */
+  queryOpenMols: {
+    invoke: (api) => api.queryOpenMols(),
+    flush: "none",
+  },
+
+  /**
+   * 取指定分子在给定 seq 水位之后的 amend 段（断线重连对账重发用）
+   */
+  queryMolAmendSince: {
+    invoke: (api, p) => api.queryMolAmendSince(p.molId, p.sinceSeq),
+    flush: "none",
+  },
+
+  /**
+   * 计算对象状态的确定性校验和（同步 digest 用）
+   */
+  queryStateHash: {
+    invoke: (api) => api.queryStateHash(),
+    flush: "none",
+  },
+
+  /**
+   * 计算活动链的确定性校验和（驻留无关，同步 digest 用）
+   */
+  queryChainHash: {
+    invoke: (api) => api.queryChainHash(),
+    flush: "none",
+  },
+
+  /**
+   * 从本端日志重放派生对象状态并对齐活体（效果层分歧自愈）
+   */
+  repairStateFromLog: {
+    invoke: (api) => api.repairStateFromLog(),
+    flush: "sync",
   },
 };
 

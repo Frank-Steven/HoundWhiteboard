@@ -39,24 +39,36 @@ sequenceDiagram
 
 ### 消息类型
 
-| type              | 方向        | 说明                                               |
-| ----------------- | ----------- | -------------------------------------------------- |
-| `rpc`             | UI → Worker | 带 msgId 的单次远程调用，必有响应                  |
-| `rpc-batch`       | UI → Worker | 批量 fire-and-forget 消息，携带递增 batchId        |
-| `rpc-response`    | Worker → UI | RPC 调用结果，包含 result 或 error                 |
-| `rpc-batch-error` | Worker → UI | 批处理失败条目回执，仅在有条目失败时回传           |
-| `ready`           | Worker → UI | Worker 初始化完成通知                              |
+| type              | 方向        | 说明                                        |
+| ----------------- | ----------- | ------------------------------------------- |
+| `rpc`             | UI → Worker | 带 msgId 的单次远程调用，必有响应           |
+| `rpc-batch`       | UI → Worker | 批量 fire-and-forget 消息，携带递增 batchId |
+| `rpc-response`    | Worker → UI | RPC 调用结果，包含 result 或 error          |
+| `rpc-batch-error` | Worker → UI | 批处理失败条目回执，仅在有条目失败时回传    |
+| `ready`           | Worker → UI | Worker 初始化完成通知                       |
+
+### 非 RPC 的 core-worker 通道
+
+以下消息类型同属 core-worker 通道，但不经 `BoardApiRpc` 的 RPC 协议（无 msgId、无响应路由）：
+
+- `awareness-send`（UI → Worker）：awareness 广播请求（光标上报、分子中间帧等 volatile 数据），Worker 经同步协调器的 volatile 通道发出
+- `awareness`（Worker → UI）：远程 awareness 到达与断线通知，由 UI 侧 `addAwarenessListener` 订阅者消费（只画不存）
+- `worker-log`（Worker → UI）：Worker 侧日志转发，由 UI 侧日志总线接收
+
+这些通道与 RPC 并行存在，互不经过对方的封装。
 
 ## API 面
 
 所有方法返回 `Promise`。参数格式见 [board-api-types.js](../../../kernel/types/board-api-types.js)。
 
+Worker 侧分发由路由表 [board-api-routes.js](../../../kernel/api/board-api-routes.js) 承担。路由表是更全集：`queryStateHash` / `repairStateFromLog` / `queryMolAmendSince` / `applyRemoteOperations` 等方法不经 `BoardApiRpc` 客户端封装，仅经路由分发（CoreWorkerRuntime 与 CLI daemon 复用同表）。
+
 ### 板面生命周期
 
-| 方法                   | 说明                                                               |
-| ---------------------- | ------------------------------------------------------------------ |
-| `createBoard(options)` | 初始化 Worker 侧 `BoardCore`，可选 `width` / `height` / `rootPath` |
-| `destroyBoard()`       | 销毁 BoardCore，清理所有 ViewportCore                              |
+| 方法                            | 说明                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------ |
+| `createBoard(options, timeoutMs?)` | 初始化 Worker 侧 `BoardCore`，可选 `width` / `height` / `rootPath`；`timeoutMs` 覆盖单次超时 |
+| `destroyBoard()`                | 销毁 BoardCore，清理所有 ViewportCore                                                       |
 
 ### 视口管理
 
@@ -67,11 +79,12 @@ sequenceDiagram
 
 ### 对象创建与提交
 
-| 方法                        | 说明                                                                           |
-| --------------------------- | ------------------------------------------------------------------------------ |
-| `createObject(type, props)` | 创建对象实例并加入 AOM 动态图。`props` 需含 `id` / `position`。不触发区块加载  |
-| `commitObjects(objectIds)`  | 将 AOM 中的对象按动态层关系写入区块静态图。走 `ActiveObjectManager.apply` 路径 |
-| `deleteObjects(objectIds)`  | 从 AOM 和静态图中彻底删除对象                                                  |
+| 方法                                | 说明                                                                                                                  |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `createObject(type, props)`         | 创建对象实例并加入 AOM 动态图。`props` 需含 `id` / `position`。不触发区块加载                                         |
+| `commitObjects(objectIds, options)` | 将 AOM 中的对象按动态层关系写入区块静态图。走 `ActiveObjectManager.apply` 路径；`options.supraKey` 可指定进入的超分子 |
+| `deleteObjects(objectIds, options)` | 删除对象并移入 trash（可撤销恢复）                                                                                    |
+| `eraseData(payload, options)`       | 数据擦除（轨迹段 + 半径）；`options.supraKey` 可指定会话 key 使一次擦除手势凝聚为一个节点                             |
 
 ### 对象修改（高频写入）
 
@@ -83,21 +96,21 @@ sequenceDiagram
 | `replaceListItem(objectId, key, index, item)` | 替换列表属性指定索引元素。同帧覆盖                                        |
 | `removeListItem(objectId, key, index)`        | 删除列表属性指定索引元素                                                  |
 
-所有高频写入方法同帧内合并为单条 `rpc-batch` 消息发送，减少 Worker 侧消息处理开销。
+所有高频写入方法（含增量式分子的 `amendMol`）同帧内合并为单条 `rpc-batch` 消息发送，减少 Worker 侧消息处理开销。
 
 ### 批处理控制
 
-| 方法                   | 说明                                                                 |
-| ---------------------- | -------------------------------------------------------------------- |
-| `flush()`              | 强制 flush 当前批处理缓冲。resolve 时机为消息已写入传输层，不代表 Core 已应用 |
-| `onBatchError(handler)` | 订阅批处理条目失败回执，返回取消订阅函数                             |
+| 方法                    | 说明                                                                          |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| `flush()`               | 强制 flush 当前批处理缓冲。resolve 时机为消息已写入传输层，不代表 Core 已应用 |
+| `onBatchError(handler)` | 订阅批处理条目失败回执，返回取消订阅函数                                      |
 
 ### AOM 控制
 
-| 方法                              | 说明                            |
-| --------------------------------- | ------------------------------- |
-| `addActiveObjects(objectIds)`     | 将对象从静态图检出到 AOM 动态图 |
-| `discardActiveObjects(objectIds)` | 将对象从 AOM 丢弃，不修改静态图 |
+| 方法                                        | 说明                                                                                      |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `addActiveObjects(objectIds, options?)`     | 将对象从静态图检出到 AOM 动态图；`options.supraKey` 指定超分子、`options.choice` 命名选择 |
+| `discardActiveObjects(objectIds, options?)` | 将对象从 AOM 丢弃，不修改静态图；`options.supraKey` 指定超分子                            |
 
 ### 查询
 
@@ -106,13 +119,44 @@ sequenceDiagram
 | `queryObjects(ids)`           | 按 id 查询对象摘要（类型、位置、变换、边界、属性） |
 | `queryChunkObjects(chunkIds)` | 按区块 id 查询归属该区块的所有对象 id              |
 | `hitTest(range, mode)`        | 执行命中检测，返回与指定范围相交的对象 id 列表     |
+| `queryChoices()`              | 列出本端的命名选择（choice）                       |
+| `queryRemoteChoices()`        | 列出全部远程命名选择（awareness 查询面）           |
+| `queryStateHash()`            | 对象状态的确定性校验和（已驻留口径，同步 digest 用） |
+| `queryChainHash()`            | 活动链的确定性校验和（驻留无关，同步 digest 用）   |
+| `queryUndoTree()`             | 时间回溯树结构（活动链 / HEAD / 可重做栈 / 节点视图） |
+| `repairStateFromLog()`        | 从本端日志重放派生状态并对齐活体（效果层自愈）     |
 
 ### 撤销 / 重做
 
-| 方法     | 说明   |
-| -------- | ------ |
-| `undo()` | [todo] |
-| `redo()` | [todo] |
+| 方法     | 说明                               |
+| -------- | ---------------------------------- |
+| `undo()` | 撤销（目标节点语义，含截断形态）   |
+| `redo()` | 重做（携带 targetUndoId，生效撤销登记册为派生投影，发射即生效） |
+
+### 增量式分子
+
+| 方法                               | 说明                                                                         |
+| ---------------------------------- | ---------------------------------------------------------------------------- |
+| `beginMol(objectIds, options?)`    | 开启增量式分子（手势 begin，捕获 before 快照），返回分子 id                  |
+| `amendMol(molId, patchesByObject)` | 对进行中的分子施加增量修正（手势每帧）。fire-and-forget 批写，同帧同分子合并 |
+| `endMol(molId)`                    | 定稿分子（end-amend 物化上链）                                               |
+| `abortMol(molId)`                  | 中止分子（丢弃 amend 流，实例还原到手势起点）                                |
+| `queryOpenMols()`                  | 查询本端未闭合分子清单（断线重连对账用）                                     |
+
+### 超分子会话
+
+| 方法              | 说明                                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| `beginSupra(key)` | 按 key 开启超分子：成员记录即时物化上链（携带 supraId），不缓冲草稿                             |
+| `endSupra(key)`   | 先强制闭合在途分子，再追加 close-supra 记录；活动链上同 supraId 连续段（≥2 成员）折叠为聚合节点 |
+| `abortSupra(key)` | 丢弃未闭合分子，并逐个撤销已物化成员                                                            |
+
+### 会话元数据
+
+| 方法                                     | 说明                                         |
+| ---------------------------------------- | -------------------------------------------- |
+| `reportObjectIdCounter(source, counter)` | 上报 UI 侧对象 id 池计数（随板元数据持久化） |
+| `getObjectIdCounters()`                  | 读取对象 id 池计数表（重开板后续种）         |
 
 ### 调试
 
@@ -122,16 +166,16 @@ sequenceDiagram
 
 ## 批处理机制
 
-`modifyObject`、`appendListItem`、`replaceListItem`、`removeListItem` 使用微任务级批处理：
+`modifyObject`、`appendListItem`、`replaceListItem`、`removeListItem`、`amendMol` 使用微任务级批处理：
 
-1. 调用时，参数存入 `#batchBuffer`（map key 为 `method:objectId:key:index`）
-2. 同 key 的后续调用自动合并（`modifyObject` 的 patch 逐字段合入，`appendListItem` 的 items 合并为数组）
+1. 调用时，参数存入 `#batchBuffer`（map key 为 `method:objectId:key:index`；`amendMol` 为 `amendMol:{molId}`）
+2. 同 key 的后续调用自动合并（`modifyObject` 的 patch 逐字段合入，`appendListItem` 的 items 合并为数组，`amendMol` 的 patchesByObject 逐对象合并 patch）
 3. 在下一个微任务中执行 `#flushBatchNow`，将所有缓冲条目打包为单条 `rpc-batch` 消息发送（携带递增 batchId）
-4. 发送前若有非批处理方法调用（如 `createObject`），会自动触发 `#flushBatchNow` 确保时序正确
+4. 发送前若有非批处理方法调用（如 `createObject`、`endMol`），会自动触发 `#flushBatchNow` 确保时序正确
 
 ### 写路径的两层语义
 
-- **fire-and-forget 批写**（`modifyObject` / `appendListItem` / `replaceListItem` / `removeListItem`）：入队即 resolve，不代表 Core 已应用。Worker 侧单条目失败不影响其余条目执行，失败条目以 `rpc-batch-error` 回传，经 `onBatchError` 订阅者接收；`Board.enableWorkerMode` 默认挂 WARN 级日志订阅
+- **fire-and-forget 批写**（`modifyObject` / `appendListItem` / `replaceListItem` / `removeListItem` / `amendMol`）：入队即 resolve，不代表 Core 已应用。Worker 侧单条目失败不影响其余条目执行，失败条目以 `rpc-batch-error` 回传，经 `onBatchError` 订阅者接收；`Board.enableWorkerMode` 默认挂 WARN 级日志订阅
 - **确认式写**（`createObject` / `modifyObjects` / `deleteObjects` / `commitObjects` / `eraseData` 等）：走完整 RPC 往返，resolve 即 Core 已处理，返回值与错误可信
 
 选择规约：逐帧高频写（拖动、绘制过程）用批写方法；需要对账或依赖写结果的场景用确认式方法。
@@ -167,7 +211,6 @@ sequenceDiagram
 - `BoardApiRpc` 不依赖 DOM 或特定 Worker 实现，只要求端点满足 `postMessage` / `addEventListener` / `removeEventListener` 接口
 - `createObject` 需要显式传入 `id` 字段（当前由 UI 侧 `Board.allocateObjectId()` 分配）
 - 同线程实现（`BoardApiLocal`）已移除，当前仅保留 RPC 实现
-- undo / redo 的实现尚未落地
 
 ## 相关文档
 

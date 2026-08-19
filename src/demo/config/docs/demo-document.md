@@ -16,12 +16,13 @@
 
 - 鼠标左键进入 `/mouse/primary/default` → `/workflows/tool-switcher`
 - tool-switcher 是单个 `ToolSwitcherWrapper` 实例，根据当前激活工具名称把信号转发到内部对应槽位
-- 五个可选工具（均为 wrapper 内部槽位）：
+- 六个可选工具（均为 wrapper 内部槽位）：
   - **笔画**（`StrokeCreatorTool`）
   - **圆**（`CircleDataCreatorTool` + 圆心半径 processor）
   - **直径圆**（`CircleDataCreatorTool` + 直径 processor）
   - **椭圆**（`EllipseDataCreatorTool` + 外接矩形 processor，创建独立的 `EllipseObject`）
   - **选择+修改**（`HandoffWrapperTool`：`RectangleObjectChooserTool` → `CommonObjectModifierTool`）
+  - **橡皮**（`DataObjectEraserTool`，FD 数据擦除，擦除笔画）
 - 通过工具栏按钮（`.toolbar-btn`）或数字键 `1`-`9` 切换激活工具
 - 按钮 `pointerdown` 事件发出 `button-press` 信号 → `toolbar/button-group` 设备 → 输出 `tool-switch` 信号，双输入汇聚到 tool-switcher 节点
 - 数字键（keydown，非 repeat）经 `switchTool` 写入 `board.sharedState` 后，把 tool-switch 信号直接 emit 到 tool-switcher；该键信号同时正常流入 keyboard 设备
@@ -97,30 +98,97 @@
 - `KeyT` → `debug:devices`（`ctx.mode="tree"`）：打印设备 DAG 树状结构
 - `Shift+T` → `debug:devices`（`ctx.mode="mermaid"`）：打印 Mermaid 流程图
 
+`Shift+T` 输出的 Mermaid 可直接粘贴查看，形如：
+
+```mermaid
+flowchart TD
+  K("keyboard #1 [handler]") -->|"code"| Sp("code/Space #2 →default")
+  M("mouse #3 [handler]") -->|"primary"| MP("primary #4 →default")
+  Sp -->|"default"| P1[["Space/ #5 [prefix]"]]
+  P1 -->|"default"| RC("/workflows/create-circle #6 [prefix]")
+  MP -->|"default"| TS("/workflows/tool-switcher #7 [wrapper]")
+```
+
+## Web 模式（浏览器直连）
+
+demo 可脱离 Tauri 在纯浏览器中运行，用于双开联调同步链路：
+
+```bash
+yarn relay      # 启动同步中继（ws）
+yarn demo:web   # 静态伺服 src/demo，浏览器打开 whiteboard.html
+```
+
+连接参数按 URL 参数优先、localStorage 回退解析（`whiteboard.js`）：
+
+| 参数       | URL        | localStorage 键 | 作用                                                       |
+| ---------- | ---------- | --------------- | ---------------------------------------------------------- |
+| 中继地址   | `?relay=`  | `hwb-relay`     | 同步中继 ws 地址（双开时第二窗口用 localStorage 设不同值） |
+| 身份       | `?source=` | `hwb-source`    | 本端 idSource（同机双开需不同身份）                        |
+| 板副本路径 | `?board=`  | `hwb-board`     | 板目录（双开时各自持久化副本；web 下失效）                 |
+
+无 Tauri 环境（纯浏览器）无文件系统能力，自动降级为内存板 + relay 同步，落盘由持板 daemon 承担（relay 来源的记录由 daemon 落盘），`?board=` 随之失效。
+
+Tauri 桌面端默认板目录为 `~/hound-whiteboard/demo-board`（首次运行自动创建）。持久化开板失败（目录不可创建、daemon 拉起超时等）时回退内存模式重试（`enable-worker-with-fallback.js`）：板面功能照常，数据仅存续于本会话。
+
+## 同步控制台
+
+`sync-console.js` 在页面加载时安装 `window.hwb` 控制台命令（`hwb.help()` 打印全部用法）：
+
+- 同步配置：`hwb.setRelay(url)` / `hwb.setSource(source)` / `hwb.setBoard(board)`（设置后自动刷新）、`hwb.status()`（只读打印）、`hwb.off()`（清除回离线）
+- 操作：`hwb.undo()` / `hwb.redo()`（经 BoardApi，完成后广播 hit 变更清理失效选中）
+- 同步调试：`hwb.digest()`（stateHash / chainHash / openMols 摘要）、`hwb.tree()`（queryUndoTree 树结构）、`hwb.repair()`（手动 repairStateFromLog）、`hwb.reconnect()`（关闭并重建全部同步通道）
+- 调试查询（与调试工具同能力，Worker 侧输出）：`hwb.chunkLoad()` / `hwb.chunks(ids?)` / `hwb.objectLoad()` / `hwb.objects(ids?, chunks?)` / `hwb.aom()` / `hwb.hit()` / `hwb.board()`；UI 侧直接打印：`hwb.viewport(ids?)` / `hwb.devices(mode?)`（`"mermaid"` 输出 Mermaid）
+
+前三项设置后自动刷新页面生效。
+
+## 协作感知装饰（AwarenessOverlay）
+
+`AwarenessOverlay`（`ui/components/renderer/awareness-overlay.js`）提供远程协作的只画不存装饰层：
+
+- 远程命名选择的按来源着色框与来源标签（经 `queryRemoteChoices` 拉取，worker 的 awareness 消息驱动刷新）
+- 远程光标（本端 pointermove 节流上报，远程光标无更新超时消失）
+- 远程手势中间帧预览（对象 id → 预览状态，peer-left 按来源清理）
+
+远程文档变化经 `viewport.addAwarenessListener` 广播 `hit:changed` 信号到 tool-switcher 与 secondary-chooser，让工具清理失效选中（幽灵选择）。
+
+## 撤销 / 重做按钮
+
+工具栏的「撤销」「重做」按钮（`#undo-btn` / `#redo-btn`）由 `attachHistoryAdapter` 绑定：直接经 BoardApi 调用 `undo()` / `redo()`，不进入设备图；完成后向 tool-switcher 与 secondary-chooser 广播 `hit:changed` 信号，让工具按内核对齐本地条目。
+
+## 删除选中对象
+
+「操作」区的「删除」按钮（`#delete-btn`）由 `attachDeleteAdapter` 绑定：向 tool-switcher workflow 发送框架级 `delete` 信号，信号经 switcher 路由到当前激活工具——仅当切到「选择+修改」handoff 且 modifier 持有对象时生效。键盘 `Delete` / `Backspace` 则经 `secondary-handoff.js` 的边级 prefix（trigger → delete）发给右键 handoff workflow。两侧最终都由对象修改工具（`GestureBasedObjectModifierTool`）消费：经 `boardApi.deleteObjects` 删除持有对象（删除记录进入 handoff 会话 supra，可整体撤销），随后完成动作让 wrapper 复位相位。
+
+## Worker 模式面板
+
+demo 固定以 Worker 模式运行（`board.enableWorkerMode(worker)`），右侧面板由 `DemoLog` 输出运行状态：运行模式（Worker）、左键/右键/空格工具说明、视口快捷键与视口状态快照。
+
 ## 快捷键一览
 
-| 按键          | 功能                                    |
-| ------------- | --------------------------------------- |
-| 触摸拖动      | 多指同时创建红色笔画（每指独立）        |
-| 鼠标左键      | 当前激活工具（笔画 / 圆 / 选择+修改）   |
-| 1 - 9         | 切换激活工具（按工具栏顺序）            |
-| 鼠标右键      | 首次框选对象 → 再次拖拽修改             |
-| Enter         | 提交修改（右键 handoff + 左键选择工具） |
-| Esc           | 取消修改（右键 handoff + 左键选择工具） |
-| W / A / S / D | 移动选中对象（右键激活后）              |
-| ↑ / ↓ / ← / → | 平移视口                                |
-| + / −         | 放大 / 缩小视口                         |
-| R             | 刷新视口渲染                            |
-| Space         | 随机生成圆形                            |
-| C             | 调试：chunk 加载计数                    |
-| Shift + C     | 调试：已加载区块静态图                  |
-| O             | 调试：object 加载计数                   |
-| Shift + O     | 调试：已加载对象完整摘要                |
-| M             | 调试：视口摘要                          |
-| B             | 调试：board 摘要                        |
-| Shift + B     | 调试：Active Object Manager 分层状态    |
-| T             | 调试：设备 DAG（树状）                  |
-| Shift + T     | 调试：设备 DAG（Mermaid 流程图）        |
+| 按键          | 功能                                                |
+| ------------- | --------------------------------------------------- |
+| 触摸拖动      | 多指同时创建红色笔画（每指独立）                    |
+| 鼠标左键      | 当前激活工具（笔画 / 圆 / 椭圆 / 选择+修改 / 橡皮） |
+| 1 - 9         | 切换激活工具（按工具栏顺序）                        |
+| 橡皮（左键）  | 拖动擦除笔画（工具栏/数字键切换到橡皮后）           |
+| 鼠标右键      | 首次框选对象 → 再次拖拽修改                         |
+| Enter         | 提交修改（右键 handoff + 左键选择工具）             |
+| Esc           | 取消修改（右键 handoff + 左键选择工具）             |
+| Delete / Backspace | 删除选中对象（右键 handoff）                   |
+| W / A / S / D | 移动选中对象（右键激活后）                          |
+| ↑ / ↓ / ← / → | 平移视口                                            |
+| + / −         | 放大 / 缩小视口                                     |
+| R             | 刷新视口渲染                                        |
+| Space         | 随机生成圆形                                        |
+| C             | 调试：chunk 加载计数                                |
+| Shift + C     | 调试：已加载区块静态图                              |
+| O             | 调试：object 加载计数                               |
+| Shift + O     | 调试：已加载对象完整摘要                            |
+| M             | 调试：视口摘要                                      |
+| B             | 调试：board 摘要                                    |
+| Shift + B     | 调试：Active Object Manager 分层状态                |
+| T             | 调试：设备 DAG（树状）                              |
+| Shift + T     | 调试：设备 DAG（Mermaid 流程图）                    |
 
 ## 工具链验证点
 

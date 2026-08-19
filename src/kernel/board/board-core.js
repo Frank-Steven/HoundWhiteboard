@@ -1,7 +1,7 @@
 /**
  * @file 白板核心
  * @description
- * BoardCore 是白板在 Worker 中的纯数据实现，承载对象注册、区块加载、AOM、UndoTree、持久化协调等职责。
+ * BoardCore 是白板在 Worker 中的纯数据实现，承载对象注册、区块加载、AOM、持久化协调等职责。
  * 不依赖 DevicesDAG、DOM、signalsEventBus。
  * @module kernel/board/board-core
  * @author Zhou Chenyu
@@ -14,16 +14,20 @@ import { EventBus } from "../utils/event-bus.js";
 import { IncrementalIdPool } from "../utils/incremental-id-pool.js";
 import { Logger } from "../../utils/log/logger.js";
 import { logBus } from "../../utils/log/log-bus.js";
-import { UndoTree } from "../hit/undo-tree-core.js";
 import { ActiveObjectManager } from "./active-object-manager.js";
 import { createDefaultAomRenderHooks } from "./aom-render-hooks.js";
+import { OperationLog } from "../hit/operation-log.js";
+import { UndoTree } from "../hit/undo-tree-core.js";
+import { HitCommitter } from "../hit/hit-committer.js";
 import {
   CHUNK_LOAD_EVENTS,
   CHUNK_LOAD_STRATEGIES,
   ChunkLoader,
 } from "../chunk/chunk-loader.js";
 import { Chunk } from "../chunk/chunk.js";
-import { createDefaultPersistenceAdapter } from "../../host/bridges/persistence-adapter.js";
+import { ChunkObjectManager } from "../chunk/chunk-object-manager.js";
+import { DirectedGraph } from "../utils/directed-graph.js";
+import { createDefaultPersistenceAdapter } from "./persistence-adapter.js";
 
 /**
  * @typedef {Object} BoardChunkLoadedState
@@ -48,32 +52,21 @@ import { createDefaultPersistenceAdapter } from "../../host/bridges/persistence-
  */
 
 /**
- * @typedef {Object} PersistenceAdapter
- * @property {(chunkId: number) => Promise<{ tierGraph: any[], objectCoverIndex: any[] }>} loadChunkMetadata
- * @property {(chunkId: number, metadata: { tierGraph: any[], objectCoverIndex: any[] }) => Promise<boolean>} saveChunkMetadata
- * @property {(objectIds: string[]) => Promise<object[]>} loadObjects
- * @property {(objects: object[]) => Promise<boolean>} saveObjects
- * @property {(objectId: string) => Promise<boolean>} deleteObject
+ * @typedef {import("./persistence-adapter.js").PersistenceAdapter} PersistenceAdapter
  */
 
 /**
  * 白板核心类
  * @description
  * BoardCore 是白板在 Worker 中的纯数据/逻辑实现。
- * - 承载对象注册表（objectLoaded）、区块加载状态（chunkLoaded）、IncrementalIdPool、UndoTree、AOM
- * - 通过注入式 persistenceAdapter 完成文件读写，不直接依赖 file-operate-bridge-renderer
+ * - 承载对象注册表（objectLoaded）、区块加载状态（chunkLoaded）、IncrementalIdPool、AOM
+ * - 通过注入式 persistenceAdapter 完成文件读写（契约与默认实现见 kernel/board/persistence-adapter）
  * - 通过注入式 renderHooks 消除 AOM 对 viewport/renderer 的直接依赖
  * - 不持有 DevicesDAG、signalsEventBus、DOM 引用
  * @class
  * @author Zhou Chenyu
  */
 class BoardCore {
-  /**
-   * 时间回溯树
-   * @type {UndoTree}
-   */
-  undoTree;
-
   /**
    * 活动对象管理器
    * @type {ActiveObjectManager}
@@ -125,7 +118,7 @@ class BoardCore {
   /**
    * 持久化适配器
    * @description 用于替代直接 import boardFileOperateBridge。
-   *   内存模式使用 createDefaultPersistenceAdapter()，文件模式使用 createRendererPersistenceAdapter()。
+   *   内存模式使用 createDefaultPersistenceAdapter()，文件模式注入 io 包的 createPersistenceAdapter()。
    * @type {PersistenceAdapter}
    */
   persistenceAdapter;
@@ -138,11 +131,52 @@ class BoardCore {
   aomRenderHooks;
 
   /**
+   * 操作日志（hit 数据池）
+   * @type {OperationLog}
+   */
+  operationLog;
+
+  /**
+   * 时间回溯树
+   * @type {UndoTree}
+   */
+  undoTree;
+
+  /**
+   * hit 提交器（分子操作的 commit 边界单点）
+   * @type {HitCommitter}
+   */
+  hitCommitter;
+
+  /**
+   * 已删除对象的回收站（板根 trash/ 的内存态）
+   * @description
+   * 对象 id -> { data（删除时刻的全量序列化）, chunks（各区块层位边集） }；
+   * 撤销删除时恢复对象与层位的依据，落盘随持久化落地。
+   * @type {Map<string, Object>}
+   */
+  trash = new Map();
+
+  /**
    * Core 侧对象 id 分配器表
    * @description 键为来源标识，值为该来源的 Core id 分配器；首次使用时 lazy 创建。
    * @type {Map<string, IncrementalIdPool>}
    */
   #idAllocatorTable = new Map();
+
+  /**
+   * UI 侧对象 id 池计数表
+   * @description 键为来源标识，值为该来源已分配的最大计数；随板元数据持久化，重开续种。
+   * @type {Map<string, number>}
+   */
+  #objectIdCounters = new Map();
+
+  /**
+   * 区块卸载开关（false 时根加载器不卸载区块，对象全量驻留）
+   * @type {boolean}
+   * @private
+   */
+  #chunkUnloadEnabled = true;
 
   /**
    * 日志 Logger
@@ -157,6 +191,12 @@ class BoardCore {
    *   rootPath?: string,
    *   persistenceAdapter?: PersistenceAdapter,
    *   aomRenderHooks?: AomRenderHooks,
+   *   source?: string,
+   *   hitRecords?: Object[],
+   *   lastTime?: number,
+   *   now?: () => number,
+   *   coreIdCounters?: Object<string, number>,
+   *   objectIdCounters?: Object<string, number>,
    * }} [options={}] - 白板核心初始化选项
    */
   constructor(options = {}) {
@@ -164,10 +204,15 @@ class BoardCore {
     this.width = options.width ?? 0;
     this.height = options.height ?? 0;
     this.rootPath = options.rootPath;
-    this.undoTree = new UndoTree();
     this.chunkLoaded = new Map();
     this.objectLoaded = new Map();
     this.chunkLoadEventBus = new EventBus();
+    /**
+     * AOM 活动事件总线（ephemeral）
+     * @description 本地 choose/unchoose/commit 手势事件即时广播通道；不经日志，同步宿主订阅后转发中继。
+     * @type {EventBus}
+     */
+    this.activityEventBus = new EventBus();
     this.rootChunkLoader = new ChunkLoader({
       resolveChunkById: (chunkId) =>
         this.#getOrCreateChunkLoadedState(chunkId).chunk,
@@ -180,9 +225,40 @@ class BoardCore {
       options.persistenceAdapter ?? createDefaultPersistenceAdapter();
     this.aomRenderHooks =
       options.aomRenderHooks ?? createDefaultAomRenderHooks();
+    this.#chunkUnloadEnabled = options.chunkUnload !== false;
     this.activeObjectManager = new ActiveObjectManager(this, {
       renderHooks: this.aomRenderHooks,
     });
+
+    this.operationLog = options.hitRecords
+      ? OperationLog.fromJSON(options.hitRecords)
+      : new OperationLog();
+    this.undoTree = new UndoTree(this.operationLog);
+    if (options.hitRecords) {
+      this.undoTree.rebuild();
+    }
+    this.hitCommitter = new HitCommitter({
+      source: options.source ?? "core",
+      log: this.operationLog,
+      tree: this.undoTree,
+      now: options.now,
+      lastTime: options.lastTime,
+    });
+    for (const [source, counter] of Object.entries(
+      options.coreIdCounters ?? {},
+    )) {
+      this.#idAllocatorTable.set(
+        source,
+        new IncrementalIdPool(source ? `${source}/core` : "core", counter),
+      );
+    }
+    for (const [source, counter] of Object.entries(
+      options.objectIdCounters ?? {},
+    )) {
+      if (Number.isInteger(counter)) {
+        this.#objectIdCounters.set(source, counter);
+      }
+    }
 
     this.#bindChunkLoadEvents();
   }
@@ -245,6 +321,39 @@ class BoardCore {
   }
 
   /**
+   * FullLoad 指定区块并等待全部加载完成
+   * @description 先注册监听再触发加载（加载可能同步完成，事件先于注册会错过）。
+   * 不能用 once：多区块并发加载时首个 LOAD_COMPLETE 会消耗全部 once 监听，
+   * 仅匹配者 resolve、其余监听已被移除而永久挂起（如圆对象跨区块场景）。
+   * @param {Chunk[]} chunks - 待加载的区块实例
+   * @param {number | string} requesterId - loader 请求方 id
+   * @returns {Promise<ChunkLoader>} 完成加载的 loader，由调用方负责销毁
+   */
+  async loadChunksAndWaitComplete(chunks, requesterId) {
+    const loader = this.createChunkLoader(requesterId);
+    await Promise.all(
+      chunks.map((chunk) => {
+        loader.trackChunk(chunk);
+        const promise = new Promise((resolve) => {
+          const handler = (payload) => {
+            if (payload.chunkId === chunk.id) {
+              this.chunkLoadEventBus.off(
+                CHUNK_LOAD_EVENTS.LOAD_COMPLETE,
+                handler,
+              );
+              resolve();
+            }
+          };
+          this.chunkLoadEventBus.on(CHUNK_LOAD_EVENTS.LOAD_COMPLETE, handler);
+        });
+        loader.emitLoadRequest(chunk, { strategy: "full" });
+        return promise;
+      }),
+    );
+    return loader;
+  }
+
+  /**
    * 获取根区块加载器
    * @returns {ChunkLoader}
    */
@@ -269,26 +378,6 @@ class BoardCore {
    */
   getChunkByCoordinate(x, y) {
     return this.rootChunkLoader.getChunkByCoordinate(x, y);
-  }
-
-  /**
-   * 获取区块的左右邻区块
-   * @param {Chunk} chunk - 当前区块
-   * @param {"right" | "left" | "up" | "down"} direction - 方向
-   * @returns {Chunk | undefined}
-   */
-  getNeighborChunk(chunk, direction) {
-    if (!chunk) return undefined;
-
-    const delta = {
-      right: { x: 1, y: 0 },
-      left: { x: -1, y: 0 },
-      up: { x: 0, y: 1 },
-      down: { x: 0, y: -1 },
-    }[direction];
-    if (!delta) return undefined;
-
-    return this.getChunkByCoordinate(chunk.x + delta.x, chunk.y + delta.y);
   }
 
   /**
@@ -321,6 +410,117 @@ class BoardCore {
   }
 
   /**
+   * 获取全部活动对象实例
+   * @returns {BasicObject[]} 活动对象数组（不含 trash 中的已删对象）
+   */
+  getAllObjects() {
+    return [...this.objectLoaded.values()].map((entry) => entry.obj);
+  }
+
+  /**
+   * 本端来源标识（操作记录 source 与对象 id 前缀；写端身份）
+   * @type {string}
+   */
+  get source() {
+    return this.hitCommitter.source;
+  }
+
+  /**
+   * 恢复会话状态（对象、trash 与区块层叠图）
+   * @param {Object} session - 会话数据
+   * @param {Array<{chunkId: number, tierGraph: any[], objectCoverIndex: any[]}>} [session.chunkMetadataList] - 区块元数据列表
+   * @param {Object[]} [session.objects] - 活动对象序列化数据数组
+   * @param {Array<{data: Object, chunks: Array}>} [session.trash] - trash 条目数组
+   * @returns {void}
+   *
+   * @description
+   * 打开既有板时调用：层叠图与覆盖索引先回填（决定对象注册时的加载计数），
+   * 随后注册活动对象实例，最后恢复 trash 条目（含层位边，供跨会话撤销删除使用）。
+   */
+  restoreSession({ chunkMetadataList = [], objects = [], trash = [] } = {}) {
+    for (const { chunkId, tierGraph, objectCoverIndex } of chunkMetadataList) {
+      const chunk = this.getChunkById(chunkId);
+      if (!chunk) continue;
+      if (!chunk.objectManager) {
+        chunk.objectManager = new ChunkObjectManager(chunk.id, this);
+      }
+      chunk.objectManager.staticGraph = DirectedGraph.parse(tierGraph);
+      chunk.objectManager.loadObjectCoverChunksFromData(objectCoverIndex);
+      // 层叠图与覆盖索引已从盘上恢复，区块即完整加载态
+      chunk.isLoad = true;
+      chunk.isTempLoad = false;
+    }
+    for (const data of objects) {
+      let obj = null;
+      try {
+        obj = deserialize(data);
+      } catch (error) {
+        // 坏对象文件降级：跳过并告警，不阻断会话恢复
+        console.warn(
+          `[board-core] 跳过不可反序列化的持久化对象（${String(data?.id)}）：${error?.message ?? error}`,
+        );
+      }
+      if (obj) {
+        this.registerObjectInstance(obj);
+      }
+    }
+    for (const entry of trash) {
+      if (!entry?.data?.id) continue;
+      this.trash.set(entry.data.id, {
+        data: entry.data,
+        chunks: entry.chunks ?? [],
+      });
+    }
+  }
+
+  /**
+   * 收集随板元数据持久化的会话状态
+   * @returns {{boardConfig: {width: number, height: number}, coreIdCounters: Object<string, number>, objectIdCounters: Object<string, number>}} 会话计数器与板配置
+   */
+  collectSessionMeta() {
+    const coreIdCounters = {};
+    for (const [source, allocator] of this.#idAllocatorTable) {
+      coreIdCounters[source] = allocator.counter;
+    }
+    return {
+      // 板尺寸为 0 表示未知（未设置），不写入元数据，避免覆盖调用方显式配置
+      ...(this.width > 0 && this.height > 0
+        ? { boardConfig: { width: this.width, height: this.height } }
+        : {}),
+      coreIdCounters,
+      objectIdCounters: Object.fromEntries(this.#objectIdCounters),
+    };
+  }
+
+  /**
+   * 上报 UI 侧对象 id 池计数
+   * @param {string} source - 来源标识
+   * @param {number} counter - 已分配的最大计数
+   * @returns {boolean} 是否接受（单调取大，回拨拒绝）
+   */
+  reportObjectIdCounter(source, counter) {
+    if (
+      typeof source !== "string" ||
+      !Number.isInteger(counter) ||
+      counter < 0
+    ) {
+      return false;
+    }
+    const current = this.#objectIdCounters.get(source) ?? 0;
+    if (counter < current) return false;
+    this.#objectIdCounters.set(source, counter);
+    return true;
+  }
+
+  /**
+   * 读取 UI 侧对象 id 池计数表
+   * @returns {Object<string, number>} 各来源已分配的最大计数
+   */
+  getObjectIdCounters() {
+    return Object.fromEntries(this.#objectIdCounters);
+  }
+
+  /**
    * 获取对象当前完整加载计数
    * @param {string} objectId - 对象 id
    * @returns {number}
@@ -350,6 +550,8 @@ class BoardCore {
       obj,
       loadedCount,
     });
+    // 实例回到内存：解除驻留驱逐标记
+    this.#evictedObjectIds.delete(obj.id);
 
     return obj;
   }
@@ -449,7 +651,16 @@ class BoardCore {
         : [];
 
     for (const objectData of objectDataList ?? []) {
-      const obj = deserialize(objectData);
+      let obj = null;
+      try {
+        obj = deserialize(objectData);
+      } catch (error) {
+        // 坏对象文件降级：跳过并告警，不阻断区块加载
+        console.warn(
+          `[board-core] 跳过不可反序列化的区块对象（${String(objectData?.id)}）：${error?.message ?? error}`,
+        );
+        continue;
+      }
       const coveredChunkIds = this.getObjectCoverChunks(obj.id);
       this.registerObjectInstance(obj, { coveredChunkIds });
       loadedObjects.set(obj.id, obj);
@@ -472,18 +683,43 @@ class BoardCore {
     if (!chunk || !effectiveBoardRootPath) return;
 
     const objectIds = [
-      ...(chunk.objectManager?.staticGraph?.getNodes?.() ?? []),
+      ...(chunk.objectManager?.staticGraph.getNodes() ?? []),
     ];
     const serializedObjects = objectIds
       .map((id) => this.getObjectById(id))
       .filter(Boolean)
-      .map((obj) =>
-        obj && typeof obj.serialize === "function" ? obj.serialize() : obj,
-      );
+      .map((obj) => obj.serialize());
 
     if (serializedObjects.length > 0) {
       await this.persistenceAdapter.saveObjects(serializedObjects);
     }
+  }
+
+  /**
+   * 驻留驱逐标记：经卸载路径（chunkUnload）离场的对象 id
+   * @description 「合法缺失」的唯一形态：静态图对象只有经卸载路径离场才不算驻留缺失；
+   * 效果缺失（add 效果未放全）不在此列，仍属全量驻留口径下的可比对分歧。注册实例时解除。
+   * @type {Set<string>}
+   */
+  #evictedObjectIds = new Set();
+
+  /**
+   * 对象是否处于驻留驱逐状态（经卸载路径合法离场）
+   * @param {string} objectId - 对象 id
+   * @returns {boolean} 是否被驱逐
+   */
+  isObjectEvicted(objectId) {
+    return this.#evictedObjectIds.has(objectId);
+  }
+
+  /**
+   * 是否全量驻留（无经卸载路径的合法缺失）
+   * @description 内容校验和（对象数据口径）只在全量驻留端之间可比；
+   * 部分驻留端（chunkUnload 驱逐了对象实例）跳过内容比对，避免「误报 → 全量物化 → 卸载 → 再误报」循环。
+   * @returns {boolean} 是否全量驻留
+   */
+  isFullResidency() {
+    return this.#evictedObjectIds.size === 0;
   }
 
   /**
@@ -519,11 +755,16 @@ class BoardCore {
         coveredChunkIds.size > 0 ? coveredChunkIds : new Set([chunk.id]);
       entry.loadedCount = this.#countFullLoadReferences(effectiveChunkIds);
 
+      // chunkUnload 关闭时（CLI / daemon 常驻持板）对象不从内存移除，查询面口径保持全量
       if (
+        this.#chunkUnloadEnabled !== false &&
         entry.loadedCount <= 0 &&
-        !this.activeObjectManager?.isActive?.(objectId)
+        !this.activeObjectManager?.isActive?.(objectId) &&
+        !this.activeObjectManager?.isRemoteActive?.(objectId)
       ) {
         this.objectLoaded.delete(objectId);
+        // 经卸载路径离场：登记驻留驱逐（「合法缺失」，内容校验和比对因此豁免）
+        this.#evictedObjectIds.add(objectId);
       }
     }
   }
@@ -569,12 +810,11 @@ class BoardCore {
     const { previousStrategy, effectiveStrategy } =
       this.#registerChunkLoadRequest(chunk.id, requesterId, strategy);
 
-    const boardRootPath = this.resolvePersistenceRootPath();
     const shouldSyncChunkObjects =
-      (chunk?.objectManager?.staticGraph?.getNodes?.()?.length ?? 0) > 0;
+      (chunk.objectManager?.staticGraph.getNodes().length ?? 0) > 0;
 
     if (effectiveStrategy === CHUNK_LOAD_STRATEGIES.FULL) {
-      const changed = await chunk.loadFull(boardRootPath);
+      const changed = await chunk.loadFull();
       if (
         previousStrategy !== CHUNK_LOAD_STRATEGIES.FULL &&
         shouldSyncChunkObjects
@@ -594,7 +834,7 @@ class BoardCore {
       return false;
     }
 
-    const changed = await chunk.loadTemp(boardRootPath);
+    const changed = await chunk.loadTemp();
     this.chunkLoadEventBus.emit(CHUNK_LOAD_EVENTS.LOAD_COMPLETE, {
       chunkId: chunk.id,
     });
@@ -622,7 +862,7 @@ class BoardCore {
     if (!removedStrategy) return false;
 
     const shouldSyncChunkObjects =
-      (chunk?.objectManager?.staticGraph?.getNodes?.()?.length ?? 0) > 0;
+      (chunk.objectManager?.staticGraph.getNodes().length ?? 0) > 0;
 
     if (
       removedStrategy === CHUNK_LOAD_STRATEGIES.FULL &&
@@ -636,6 +876,11 @@ class BoardCore {
     const tempLoadedCount = chunkState?.tempLoadedCount ?? 0;
 
     if (fullLoadedCount > 0) {
+      return false;
+    }
+
+    // chunkUnload 关闭时（CLI / daemon 常驻持板）区块不从内存卸载，仅维护引用计数
+    if (this.#chunkUnloadEnabled === false) {
       return false;
     }
 
@@ -664,6 +909,11 @@ class BoardCore {
     const fullLoadedCount = chunkState?.fullLoadedCount ?? 0;
     const tempLoadedCount = chunkState?.tempLoadedCount ?? 0;
     if (fullLoadedCount > 0 || tempLoadedCount > 0) {
+      return false;
+    }
+
+    // chunkUnload 关闭时（CLI / daemon 常驻持板）区块不从内存卸载
+    if (this.#chunkUnloadEnabled === false) {
       return false;
     }
 
@@ -822,11 +1072,16 @@ class BoardCore {
 
     entry.loadedCount = loadedCount;
 
+    // chunkUnload 关闭时（CLI / daemon 常驻持板）对象不从内存移除
     if (
+      this.#chunkUnloadEnabled !== false &&
       entry.loadedCount <= 0 &&
-      !this.activeObjectManager?.isActive?.(objectId)
+      !this.activeObjectManager?.isActive?.(objectId) &&
+      !this.activeObjectManager?.isRemoteActive?.(objectId)
     ) {
       this.objectLoaded.delete(objectId);
+      // 经卸载路径离场：登记驻留驱逐（「合法缺失」，内容校验和比对因此豁免）
+      this.#evictedObjectIds.add(objectId);
     }
   }
 }

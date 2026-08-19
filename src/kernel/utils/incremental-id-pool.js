@@ -49,6 +49,31 @@ class IncrementalIdPool {
     const next = this.#counterPool.generate();
     return this.source ? `${this.source}/${next}` : `${next}`;
   }
+
+  /**
+   * 当前已分配的最大计数
+   * @type {number}
+   *
+   * @description
+   * 会话恢复时随板元数据持久化，重开时以此续号。
+   */
+  get counter() {
+    return this.#counterPool.counter;
+  }
+
+  /**
+   * 确保计数不低于指定值
+   * @param {number} n - 已使用的最大计数
+   * @returns {void}
+   *
+   * @description
+   * 会话恢复时按盘上已存在的 id 续号，避免重开后分配碰撞。
+   */
+  ensureAbove(n) {
+    if (Number.isInteger(n) && n > this.#counterPool.counter) {
+      this.#counterPool.counter = n;
+    }
+  }
 }
 
 export { IncrementalIdPool };

@@ -1,6 +1,6 @@
 # counter-pool 文档
 
-本文档提供 `src/engine/utils/counter-pool.js` 的概述。
+本文档提供 `src/kernel/utils/counter-pool.js` 的概述。
 
 ## 模块职责
 

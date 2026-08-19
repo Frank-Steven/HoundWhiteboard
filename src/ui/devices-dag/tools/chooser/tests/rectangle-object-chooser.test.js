@@ -77,8 +77,8 @@ describe("RectangleObjectChooserTool", () => {
       new RectangleRange(5, 5, 35, 35),
       "intersect",
     );
-    expect(boardApi.queryObjects).toHaveBeenCalledWith(["1"]);
-    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["1"]);
+    expect(boardApi.queryObjects).toHaveBeenCalledWith(["1"])
+    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["1"], { supraKey: undefined });
     expect(stateAccess.getState().objects).toEqual([selectedSummary]);
     expect(stateAccess.getState()).toEqual({
       objects: [selectedSummary],
@@ -178,7 +178,7 @@ describe("RectangleObjectChooserTool", () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith(["1"]);
+    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith(["1"], { supraKey: undefined });
     expect(boardApi.addActiveObjects).toHaveBeenCalledTimes(1);
     expect(tool._selectedObjects).toEqual([]);
     expect(stateAccess.getState().objects).toBeUndefined();
@@ -287,8 +287,8 @@ describe("RectangleObjectChooserTool", () => {
       new RectangleRange(0, 0, 30, 30),
       "intersect",
     );
-    expect(boardApi.queryObjects).toHaveBeenCalledWith(["121"]);
-    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["121"]);
+    expect(boardApi.queryObjects).toHaveBeenCalledWith(["121"])
+    expect(boardApi.addActiveObjects).toHaveBeenCalledWith(["121"], { supraKey: undefined });
     expect(stateAccess.getState().objects).toEqual([selectedSummary]);
     expect(deviceContext.services.board.getObjectById).not.toHaveBeenCalled();
     expect(stateAccess.getState()).toEqual({ objects: [selectedSummary] });

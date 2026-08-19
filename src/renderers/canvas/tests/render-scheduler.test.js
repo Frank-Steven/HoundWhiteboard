@@ -104,17 +104,6 @@ describe("RenderScheduler", () => {
     ]);
   });
 
-  test("可配置聚合器应在达到 chunk 覆盖阈值时退化为整 chunk", () => {
-    const mergeDirtyRects = createRectangleDirtyRectMerger({
-      getCanonicalRectsForRect: () => [new RectangleRange(0, 0, 50, 50)],
-      canonicalRectCoverageRatio: 0.5,
-    });
-
-    expect(mergeDirtyRects([new RectangleRange(0, 0, 40, 40)])).toEqual([
-      new RectangleRange(0, 0, 50, 50),
-    ]);
-  });
-
   test("可配置聚合器应支持通过 getThresholds 动态提供成组阈值", () => {
     let axisNearGap = 8;
     const mergeDirtyRects = createRectangleDirtyRectMerger({

@@ -32,7 +32,7 @@ description: Write and unify JSDoc, inline comments, and file headers following 
 
 - `@file` — 简短的文件名或职责描述
 - `@description` — 一句话说明文件职责，必须打句号
-- `@module` — 路径格式为 `{kernel|canvas|host|ui}/{path/to/module}`，与源码路径对应（各包根目录即前缀）
+- `@module` — 路径格式为 `{kernel|canvas|host|ui|io|cli}/{path/to/module}`，与源码路径对应（各包根目录即前缀）
 - `@author` — 作者名。不确定时执行 `git config user.name`
 
 ### 测试文件

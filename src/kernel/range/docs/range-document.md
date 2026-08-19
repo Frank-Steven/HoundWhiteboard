@@ -1,6 +1,6 @@
 # range 模块设计
 
-本文档概述 `src/engine/range/` 下范围类型的职责、关系和相交算法。
+本文档概述 `src/kernel/range/` 下范围类型的职责、关系和相交算法。
 
 ## 术语约定
 
@@ -26,6 +26,8 @@
 | `geometry.js`      | 点包含、线段相交、范围相交等公共入口        |
 | `bounds.js`        | 包围盒快速排除辅助函数                      |
 | `intersections.js` | 15 组范围类型组合的相交特化算法（内部文件） |
+| `segment-math.js`  | 线段原语纯函数（叉积、点段距离等，供 geometry 与 intersections 复用） |
+| `index.js`         | 聚合入口，导出公共接口                    |
 
 ## 职责边界
 

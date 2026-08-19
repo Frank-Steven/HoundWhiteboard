@@ -12,7 +12,6 @@
 
 同时要注意：
 
-- `undo` / `redo` 仍是预留入口，不属于“已实现能力”
 - `/workflows/` 是 Board / Viewport 层的推荐约定，不是 `DevicesDAG` 的硬性限制
 
 ## Board 与事件入口
@@ -40,7 +39,7 @@ board.signalsEventBus.emit("input", {
 
 - `to` 必须已包含目标 `viewportId`
 - `Board` 会把它分发到唯一的 `Board.devicesDAG`
-- 初始 dispatch context 会附带 `{ board, boardApi }`
+- dispatch 不携带 context 参数；`board` / `boardApi` / `sharedState` 经根节点 `/` 的 services 声明式注入
 
 ## SharedStateStore
 
@@ -77,28 +76,46 @@ DAG 内经 `services.sharedState` 注入，图外代码持 `Board` 引用直接�
 ### 对象写入
 
 - `createObject(type, props)`
+- `addObject(type, props)` — 创建并提交一个对象：持板侧串行完成 id 分配与提交（CLI / daemon 客户端主路径）
 - `modifyObject(objectId, patch)`
 - `modifyObjects(patches)`
 - `appendListItem(objectId, key, items)`
 - `replaceListItem(objectId, key, index, item)`
 - `removeListItem(objectId, key, index)`
-- `commitObjects(objectIds)`
-- `deleteObjects(objectIds)`
-- `addActiveObjects(objectIds)`
-- `discardActiveObjects(objectIds)`
+- `commitObjects(objectIds, options?)`
+- `deleteObjects(objectIds, options?)`
+- `addActiveObjects(objectIds, options?)`
+- `discardActiveObjects(objectIds, options?)`
+- `eraseData(payload, options?)`
+
+### 分子与超分子（手势高频写主路径）
+
+- `beginMol(objectIds, options?)` / `amendMol(molId, patchesByObject)` / `endMol(molId)` / `abortMol(molId)`
+- `beginSupra(key)` / `endSupra(key)` / `abortSupra(key)`
 
 ### 查询
 
 - `queryObjects(ids)`
 - `queryChunkObjects(chunkIds)`
 - `hitTest(range, mode?)`
+- `queryChoices()` / `queryRemoteChoices()`
+- `queryOpenMols()`
+- `queryMolAmendSince(molId, sinceSeq)` — 取指定分子在 seq 水位之后的 amend 段（断线重连对账重发用）
+- `queryStateHash()` — 对象状态确定性校验和（digest 比对用）
+- `repairStateFromLog()` — 从本端日志重放派生对象状态并对齐活体（digest 分歧自愈）
 - `requestDebug(query, extra?)`
+
+### 撤销/重做与其他
+
+- `undo()` / `redo()`
+- `reportObjectIdCounter(source, counter)` / `getObjectIdCounters()`
+- `flush()` / `onBatchError(handler)`
 
 ### 需要特别说明的语义
 
-- `modifyObject` / `appendListItem` / `replaceListItem` / `removeListItem` 当前会被微任务级合并为 `rpc-batch`
+- `modifyObject` / `appendListItem` / `replaceListItem` / `removeListItem` 当前会被微任务级合并为 `rpc-batch`；`amendMol` 同帧按 `molId` 合并
 - `createObject` 当前要求显式传入 `props.id`
-- `undo()` / `redo()` 方法名已存在，但 Worker 侧仍会抛出 `Not implemented yet.`
+- `undo` / `redo` 已落地：路由层 `undo` 支持显式 `targetNodeId`，缺省各撤各的（只撤本端最近操作）
 
 ## DevicesDAG
 
@@ -245,10 +262,13 @@ DAG 内经 `services.sharedState` 注入，图外代码持 `Board` 引用直接�
 
 ### 设备图挂载
 
-- `mountSubDAG(path, subDAGDefinition)`
-- `mountWorkflow(name, workflow, edges)`
-- `unmountWorkflow(name, edges)`
-- `addEdge(fromPath, edgeName, toPath)`
+设备图挂载入口位于 `viewport.inputScope`（`input-scope.js`）：
+
+- `inputScope.mountDevice(name, subDAGDefinition)`
+- `inputScope.mountWorkflow(name, workflow)`
+- `inputScope.unmountWorkflow(name, edgesToRemove?)`
+- `inputScope.addEdge({ from, to?, name?, prefix? })`
+- `inputScope.removeEdge({ from, edge? })`
 - 通过 `viewport.devicesDAG` 读取白板级唯一 DAG
 
 ### 视口控制
@@ -275,17 +295,21 @@ DAG 内经 `services.sharedState` 注入，图外代码持 `Board` 引用直接�
 - `registerUiOverlayProvider(provider, options?)`
 - `unregisterUiOverlayProvider(provider, options?)`
 
+### 协作感知（awareness）
+
+- `addAwarenessListener(listener)` / `removeAwarenessListener(listener)`
+- `sendAwareness(data)`
+
 ### 稳定语义
 
 - Viewport 不拥有独立 `DevicesDAG`
 - 所有挂载最终都代理到 `Board.devicesDAG`
-- `mountSubDAG()` 当前稳定签名是 `(path, subDAGDefinition)`，不是无参重载
+- `inputScope.mountWorkflow()` 的 `name` 支持嵌套路径（如 `tool-switcher/stroke`），可将工具挂到子图内部的透传节点
 
 ## 当前不应写成已稳定的部分
 
 以下能力当前不要在业务文档里写成“已可依赖实现”：
 
-- `undo` / `redo` 的实际行为
 - 完整文件模式默认已接通
 - `/workflows/` 是 `DevicesDAG` 的硬约束
 - 旧术语 `processor` / `defaultPath` / `configure` 事件等仍应被继续扩展

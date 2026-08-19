@@ -391,6 +391,43 @@ describe("ViewportRenderer", () => {
     expect(ctxCalls.some((call) => call[0] === "output" && call[1] === "drawImage")).toBe(true);
   });
 
+  test("预览坐标：静态对象按预览位置渲染且不改数据，end 清除后归位", () => {
+    const renderCalls = [];
+    const ctxCalls = [];
+    const staticObject = new FakeRectObject("1", new Vector(0, 0), renderCalls);
+    const outputCtx = createContext("output", ctxCalls);
+    const outputCanvas = createCanvas(800, 600, outputCtx);
+    const { viewport, aom } = createViewportContext({
+      staticObjects: [staticObject],
+      outputCanvas,
+    });
+
+    const renderer = new ViewportRenderer(viewport, aom, {
+      canvas: outputCanvas,
+    });
+    const cacheCtx = createContext("cache", ctxCalls);
+    renderer.getStaticCache().getContext = jest.fn(() => cacheCtx);
+
+    // 远程手势预览：对象本体按预览位置画（渲染视图），数据不变
+    renderer.setPreviewPosition("1", { x: 30, y: 40 });
+    renderer.invalidateCachedObjects();
+    renderer.flush();
+    expect(staticObject.position.serialize()).toEqual({ x: 0, y: 0 });
+    const previewTransform = ctxCalls
+      .filter((call) => call[0] === "cache" && call[1] === "setTransform")
+      .at(-1);
+    expect(previewTransform).toEqual(["cache", "setTransform", 1, 0, 0, 1, 30, 40]);
+
+    // 清除预览（手势终点）：渲染回到数据位置
+    renderer.clearPreviewPosition("1");
+    renderer.invalidateCachedObjects();
+    renderer.flush();
+    const restoredTransform = ctxCalls
+      .filter((call) => call[0] === "cache" && call[1] === "setTransform")
+      .at(-1);
+    expect(restoredTransform).toEqual(["cache", "setTransform", 1, 0, 0, 1, 0, 0]);
+  });
+
   test("invalidateCachedObjects 应返回当前/旧范围对应的屏幕脏区", () => {
     const renderCalls = [];
     const objectInstance = new FakeRectObject(1, new Vector(20, 30), renderCalls);

@@ -129,6 +129,9 @@ class PolygonCreatorTool extends MultiGestureObjectCreatorTool {
 
   /**
    * 追加顶点到多边形
+   * @description
+   * 本地 `_entry` 即时更新；内核侧经 `_appendCreatedObjectItems` 统一入口写入
+   * （分子在途走 amend 流，molId 确认中按序缓冲，否则 appendListItem 直调）。
    * @param {Vector} localPoint - 局部坐标
    * @param {Object} interaction - 当前交互上下文
    */
@@ -137,18 +140,16 @@ class PolygonCreatorTool extends MultiGestureObjectCreatorTool {
       this._entry.data.points.push({ x: localPoint.x, y: localPoint.y });
     }
 
-    const boardApi = interaction?.context?.services?.boardApi;
-    if (!boardApi || this.objectId == null) {
-      return;
-    }
-
-    boardApi.appendListItem(this.objectId, "points", [
+    this._appendCreatedObjectItems(interaction, "points", [
       { x: localPoint.x, y: localPoint.y },
     ]);
   }
 
   /**
    * 替换多边形当前顶点
+   * @description
+   * 本地 `_entry` 即时更新；内核侧经 `_replaceCreatedObjectItem` 统一入口写入
+   * （molId 确认中按序缓冲，否则 replaceListItem 直调）。
    * @param {Vector} localPoint - 新的局部坐标
    * @param {number} index - 顶点索引
    * @param {Object} interaction - 当前交互上下文
@@ -158,12 +159,7 @@ class PolygonCreatorTool extends MultiGestureObjectCreatorTool {
       this._entry.data.points[index] = { x: localPoint.x, y: localPoint.y };
     }
 
-    const boardApi = interaction?.context?.services?.boardApi;
-    if (!boardApi || this.objectId == null) {
-      return;
-    }
-
-    boardApi.replaceListItem(this.objectId, "points", index, {
+    this._replaceCreatedObjectItem(interaction, "points", index, {
       x: localPoint.x,
       y: localPoint.y,
     });

@@ -40,31 +40,37 @@ Worker 侧真实白板核心参见 [board-core-document.md](../../../../kernel/b
 
 1. 确认当前还没有创建任何 viewport
 2. 创建 `BoardApiRpc`
-3. 等待 Worker 发送 `ready`
-4. 调用 `boardApi.createBoard({ width, height, rootPath })`
-5. 缓存 `#boardApi` 与 `#worker`
+3. 挂接 io-invoke-forwarder（worker 内驱动的文件操作经主线程转发到 Tauri invoke）
+4. 等待 Worker 发送 `ready`
+5. 调用 `boardApi.createBoard({ width, height, rootPath, source, syncUrl, boardId })`（超时可经 `options.createBoardTimeoutMs` 覆盖，默认 20s——持久化首开含 daemon 拉起，Rust 侧就绪轮询上限 15s）
+6. 按 `getObjectIdCounters` 续种对象 id 池（避免重开后分配碰撞）
+7. 缓存 `#boardApi` 与 `#worker`
 
 ### objectId 分配
 
-`Board` 自持本地 `CounterPool`。
+`Board` 自持 `#idPool`（`IncrementalIdPool`，分配 `idSource` 命名空间的字符串 id，形如 `{source}/{n}`）。
 
-- `allocateObjectId()` 是同步接口
+- `allocateObjectId()` 是同步接口；分配即 `reportObjectIdCounter` 上报，计数随板元数据持久化
+- `enableWorkerMode` 后按 `getObjectIdCounters` 续种，重开不发生分配碰撞
 - creator 在 UI 线程调用它分配新对象 id
 - Worker 侧 `createObject` 要求显式传入 `props.id`
 - 若 id 重复，Worker 会通过 RPC 报错
 
 ## 核心字段
 
-| 名称               | 描述                                  |
-| ------------------ | ------------------------------------- |
-| `width` / `height` | 白板宽高，同时也是当前 chunk 尺寸来源 |
-| `rootPath`         | 白板根路径；为空时通常意味着内存模式  |
-| `viewports`        | `Map<string, Viewport>`               |
-| `signalsEventBus`  | 输入事件总线                          |
-| `devicesDAG`       | 白板级唯一设备图                      |
-| `#boardApi`        | `BoardApiRpc` 实例                    |
-| `#worker`          | 当前绑定的 Worker 端点                |
-| `#counterPool`     | UI 侧 `objectId` 分配器               |
+| 名称               | 描述                                                         |
+| ------------------ | ------------------------------------------------------------ |
+| `width` / `height` | 白板宽高，同时也是当前 chunk 尺寸来源                        |
+| `rootPath`         | 白板根路径；为空时通常意味着内存模式                         |
+| `viewports`        | `Map<string, Viewport>`                                      |
+| `signalsEventBus`  | 输入事件总线                                                 |
+| `devicesDAG`       | 白板级唯一设备图                                             |
+| `#boardApi`        | `BoardApiRpc` 实例                                           |
+| `#worker`          | 当前绑定的 Worker 端点                                       |
+| `#idPool`          | UI 侧 `objectId` 分配器（`IncrementalIdPool`）               |
+| `sharedState`      | 共享状态 store（DAG 内经 `services.sharedState` 注入）       |
+| `syncUrl`          | 同步中继地址（可选）                                         |
+| `boardId`          | 板标识（可选，同步用）                                       |
 
 ## `createViewport()` 语义
 
@@ -80,13 +86,13 @@ Worker 侧真实白板核心参见 [board-core-document.md](../../../../kernel/b
 
 ## workflow 挂载约定
 
-workflow 通过 `viewport.mountWorkflow(name, workflow, edges)` 挂到：
+workflow 通过 `viewport.inputScope.mountWorkflow(name, workflow)` 挂到：
 
 ```text
 /<viewportId>/workflows/${name}
 ```
 
-再通过 `edges` 把设备节点接到这个 workflow。
+再经 `viewport.inputScope.addEdge({ from, to })` 把设备节点接到这个 workflow。
 
 这是一条 **Board 层约定**，而不是 `DevicesDAG` 的硬性限制。
 

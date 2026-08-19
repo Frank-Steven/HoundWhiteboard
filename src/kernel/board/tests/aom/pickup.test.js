@@ -2,14 +2,12 @@
 
 import { jest } from "@jest/globals";
 import {
-  chunkConnect,
   createChunk,
   createChunkAt,
   createCoverChunkStorage,
   createMockBoard,
   createObjectInChunk,
   setObjectCoverage,
-  verticalChunkConnect,
 } from "../../../../test-support/aom-fixtures.js";
 import { DirectedGraph } from "../../../utils/directed-graph.js";
 import { Chunk } from "../../../chunk/chunk.js";
@@ -100,7 +98,6 @@ describe("ActiveObjectManager/pickup", () => {
           height: CHUNK_SIZE,
         }),
       );
-      chunkConnect(chunk1, chunk2);
       chunk1.objectManager = new ChunkObjectManager(
         1,
         createCoverChunkStorage(),
@@ -201,10 +198,6 @@ describe("ActiveObjectManager/pickup", () => {
       setObjectCoverage([chunk2, chunk3], [5, 16]);
       setObjectCoverage([chunk3, chunk4], [7, 14]);
       setObjectCoverage([chunk4, chunk5], [9, 12]);
-      chunkConnect(chunk1, chunk2);
-      chunkConnect(chunk2, chunk3);
-      chunkConnect(chunk3, chunk4);
-      chunkConnect(chunk4, chunk5);
     });
     test("应能选取多对象为起点且含多区块跨区块对象链的子图", async () => {
       const pickup6n19 = await aom.pickup(
@@ -272,9 +265,6 @@ describe("ActiveObjectManager/pickup", () => {
         [104, []],
       ]);
       setObjectCoverage([centerChunk, upChunk, rightUpChunk], [100]);
-      chunkConnect(centerChunk, rightChunk);
-      verticalChunkConnect(centerChunk, upChunk);
-      verticalChunkConnect(rightChunk, rightUpChunk);
       const pickup = await aom.pickup(
         new Set([createObject(100, centerChunk.id)]),
       );
@@ -318,8 +308,6 @@ describe("ActiveObjectManager/pickup", () => {
         [202, []],
       ]);
       setObjectCoverage([startChunk, centerChunk], [200]);
-      chunkConnect(upperChunk, startChunk);
-      verticalChunkConnect(centerChunk, upperChunk);
       const pickup = await aom.pickup(
         new Set([createObject(200, startChunk.id)]),
       );
@@ -365,7 +353,6 @@ describe("ActiveObjectManager/pickup", () => {
         upChunk.id,
         Chunk.coordinateToId(1, 1),
       ]);
-      verticalChunkConnect(centerChunk, upChunk);
       const pickup = await aom.pickup(
         new Set([createObject(300, centerChunk.id)]),
       );
@@ -406,8 +393,6 @@ describe("ActiveObjectManager/pickup", () => {
         [400, [402]],
         [402, []],
       ]);
-      chunkConnect(centerChunk, rightChunk);
-      verticalChunkConnect(centerChunk, upChunk);
       setObjectCoverage([centerChunk, rightChunk], [400]);
       const pickupBeforeMove = await aom.pickup(
         new Set([createObject(400, centerChunk.id)]),
@@ -458,8 +443,10 @@ describe("ActiveObjectManager/pickup", () => {
           x === 0 && y === 0 ? chunk : undefined,
         ),
         createChunkLoader: jest.fn(() => ({
+          requesterId: "aom-mock",
           trackChunk: jest.fn(),
           emitLoadRequest: jest.fn(),
+          destroy: jest.fn(),
         })),
       };
       const aom = new ActiveObjectManager(board);
@@ -525,6 +512,7 @@ describe("ActiveObjectManager/pickup", () => {
         },
         chunkLoadEventBus: eventBus,
         createChunkLoader: () => ({
+          requesterId: "aom-mock",
           trackChunk: jest.fn(),
           emitLoadRequest: emitLoadMock,
           destroy: jest.fn(),
@@ -546,6 +534,106 @@ describe("ActiveObjectManager/pickup", () => {
         chunk2,
         expect.objectContaining({ strategy: "temp" }),
       );
+    });
+    test("多个未加载区块并发加载时，首个 LOAD_COMPLETE 不匹配全部等待者也不应挂起", async () => {
+      // 对象 500 覆盖 chunk1（已加载）、chunk2 与 chunk3（均未加载），
+      // 其邻接对象 501、502 分别从 chunk2、chunk3 的静态图中读出，
+      // 使两个区块进入同一批并发加载。
+      const chunk1 = createChunk(1);
+      chunk1.objectManager = new ChunkObjectManager(
+        1,
+        createCoverChunkStorage(),
+      );
+      chunk1.objectManager.staticGraph = DirectedGraph.parse([[500, []]]);
+      chunk1.objectManager.setObjectCoverChunks(500, [1, 2, 3]);
+      const chunk2 = Chunk.fromId(2);
+      chunk2.x = 1;
+      chunk2.y = 0;
+      chunk2.objectManager = new ChunkObjectManager(
+        2,
+        createCoverChunkStorage(),
+      );
+      chunk2.objectManager.staticGraph = DirectedGraph.parse([
+        [500, [501]],
+        [501, []],
+      ]);
+      chunk2.objectManager.setObjectCoverChunks(500, [1, 2, 3]);
+      chunk2.objectManager.setObjectCoverChunks(501, [2]);
+      const chunk3 = Chunk.fromId(3);
+      chunk3.x = 2;
+      chunk3.y = 0;
+      chunk3.objectManager = new ChunkObjectManager(
+        3,
+        createCoverChunkStorage(),
+      );
+      chunk3.objectManager.staticGraph = DirectedGraph.parse([
+        [500, [502]],
+        [502, []],
+      ]);
+      chunk3.objectManager.setObjectCoverChunks(500, [1, 2, 3]);
+      chunk3.objectManager.setObjectCoverChunks(502, [3]);
+      const chunks = new Map([
+        [1, chunk1],
+        [2, chunk2],
+        [3, chunk3],
+      ]);
+      const eventBus = new EventBus();
+      const emittedOrder = [];
+      const emitLoadMock = jest.fn((chunk, _options) => {
+        // 模拟 BoardCore 的异步加载：按请求顺序逐个完成，
+        // 首个 LOAD_COMPLETE（chunk2）与 chunk3 的等待者不匹配
+        queueMicrotask(() => {
+          chunk.isLoad = true;
+          chunk.isTempLoad = true;
+          emittedOrder.push(chunk.id);
+          eventBus.emit(CHUNK_LOAD_EVENTS.LOAD_COMPLETE, {
+            chunkId: chunk.id,
+          });
+        });
+      });
+      const board = {
+        width: 100,
+        height: 100,
+        getChunkById: (chunkId) => chunks.get(chunkId),
+        getChunkByCoordinate: (x, y) =>
+          chunks.get(Chunk.coordinateToId(x, y)),
+        chunkLoadEventBus: eventBus,
+        createChunkLoader: () => ({
+          requesterId: "aom-mock",
+          trackChunk: jest.fn(),
+          emitLoadRequest: emitLoadMock,
+          destroy: jest.fn(),
+        }),
+        destroyChunkLoader: jest.fn(),
+      };
+      const aom = new ActiveObjectManager(board);
+      // 挂起时以超时失败暴露，而不是静默等到 Jest 超时
+      const result = await Promise.race([
+        aom.pickup(new Set([createObject(500, 1)])),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("pickup 挂起")), 500),
+        ),
+      ]);
+      // 两个区块确实并发请求加载，且首个完成事件不匹配全部等待者
+      expect(emitLoadMock).toHaveBeenCalledTimes(2);
+      expect(emitLoadMock).toHaveBeenCalledWith(
+        chunk2,
+        expect.objectContaining({ strategy: "temp" }),
+      );
+      expect(emitLoadMock).toHaveBeenCalledWith(
+        chunk3,
+        expect.objectContaining({ strategy: "temp" }),
+      );
+      expect(emittedOrder).toEqual([2, 3]);
+      // pickup 正常完成并取得跨两个加载区块的子图
+      const expected = DirectedGraph.parse([
+        [500, [501, 502]],
+        [501, []],
+        [502, []],
+      ]);
+      expect(result.equals(expected)).toBe(true);
+      expect(chunk2.isTempLoad).toBe(true);
+      expect(chunk3.isTempLoad).toBe(true);
     });
   });
 });

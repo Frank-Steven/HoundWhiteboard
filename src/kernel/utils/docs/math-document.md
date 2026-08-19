@@ -1,6 +1,6 @@
 # math 文档
 
-本文档提供 `src/engine/utils/math.js` 的概述。
+本文档提供 `src/kernel/utils/math.js` 的概述。
 
 ## 模块职责
 
@@ -121,4 +121,3 @@ $$
 
 - [utils-document.md](./utils-document.md)
 - [math-algorithm-document.md](./math-algorithm-document.md)
-- [math3d-document.md](./math3d-document.md)

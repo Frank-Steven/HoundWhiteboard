@@ -1,6 +1,6 @@
 # event-bus 文档
 
-本文档提供 `src/engine/utils/event-bus.js` 的概述。
+本文档提供 `src/kernel/utils/event-bus.js` 的概述。
 
 ## 模块职责
 

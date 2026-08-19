@@ -1,17 +1,14 @@
 # 基础类型文档
 
-本文档提供白板中基础对象类型的概述，重点对应当前 `src/engine/objects/` 下的实现。
+本文档提供白板中基础对象类型的概述，重点对应当前 `src/kernel/objects/` 下的实现。
 
 ## 模块概览
 
 当前这组基础对象模块主要包括：
 
 - `basic-obj.js`：`BasicObject`
-- `container.js`：`Container` / `ContainerMode`
-- `one-dim/one-dim-obj.js`：`OneDimensionObject`
-- `two-dim/two-dim-obj.js`：`TwoDimensionObject`
 
-其中真正被当前图形与笔画对象直接复用的基础类是 `BasicObject`。
+它是当前图形与笔画对象直接复用的基础类。
 
 ## `BasicObject`
 
@@ -30,7 +27,7 @@
 
 | 名称        | 描述                     | 类型                  |
 | ----------- | ------------------------ | --------------------- |
-| `id`        | 对象 id                  | `number`              |
+| `id`        | 对象 id（来源命名空间字符串，形如 `"{source}/{n}"`） | `string`              |
 | `position`  | 对象世界坐标位置         | `Vector`              |
 | `transform` | 对象变换矩阵             | `Matrix`              |
 | `property`  | 渲染与行为属性字典       | `Record<string, any>` |
@@ -54,6 +51,7 @@
 | `setProperty(property)`             | 合并属性                                     |
 | `getRenderPadding()`                | 从属性动态推导渲染留白（描边宽度一半 × transform 最大轴向缩放） |
 | `isErasable()`                      | 是否可擦                                     |
+| `eraseData(trailPoints, radius)`    | 按橡皮轨迹擦除对象数据；与 `isErasable` 配对，返回剩余数据片段（`null` 未命中、空数组整体擦没），供 Core 侧分流回写 / 分裂 / 删除 |
 | `isDirected()`                      | 是否有向                                     |
 | `render(ctx)`                       | 渲染对象                                     |
 | `serialize()`                       | 序列化对象                                   |
@@ -104,6 +102,7 @@
 具体子类会在此基础上追加 `type`，例如：
 
 - `CircleObject` → `type: "CircleObject"`
+- `EllipseObject` → `type: "EllipseObject"`
 - `PolygonObject` → `type: "PolygonObject"`
 - `StrokeObject` → `type: "StrokeObject"`
 
@@ -112,7 +111,7 @@
 当前统一反序列化入口位于：
 
 ```text
-src/engine/objects/object-deserializer.js
+src/kernel/objects/object-deserializer.js
 ```
 
 对应导出：
@@ -127,25 +126,12 @@ src/engine/objects/object-deserializer.js
 - `PolygonObject`
 - `StrokeObject`
 - `CircleObject`
-
-## `Container` / `OneDimensionObject` / `TwoDimensionObject`
-
-这三个类更多保留为对象族层级的基础骨架：
-
-- `Container`：定义容器对象与 `ContainerMode`
-- `OneDimensionObject`：在 `Container` 上增加 `ihatLength` / `ihatRotate`
-- `TwoDimensionObject`：二维对象骨架
-
-需要注意：
-
-- `Container` 当前代码中主要实现了 `mode` 与 `ContainerMode`
-- 更丰富的“容器包裹子对象”语义目前仍偏概念层，不应在文档中写成当前完整实现能力
+- `EllipseObject`
 
 ## 当前状态
 
 - `BasicObject` 是当前对象体系最稳定的公共根类
-- `deserialize()` 已接通 Circle / Polygon / Stroke 三类对象
-- Container / 一维 / 二维对象基类仍主要承担类型层级与概念承载作用
+- `deserialize()` 已接通 Circle / Ellipse / Polygon / Stroke 四类对象
 
 ## 相关文档
 

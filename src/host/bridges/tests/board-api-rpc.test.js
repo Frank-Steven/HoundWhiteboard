@@ -269,6 +269,37 @@ describe("BoardApiRpc", () => {
       boardApi.destroy();
     });
 
+    test("amendMol 同帧两次 append 同 key 应合并 items 按序累积", () => {
+      const endpoint = new FakeRpcEndpoint();
+      const boardApi = new BoardApiRpc(endpoint);
+
+      boardApi.amendMol("demo/mol-1", {
+        "1": { append: { key: "points", items: [{ x: 1, y: 0 }] } },
+      });
+      boardApi.amendMol("demo/mol-1", {
+        "1": { append: { key: "points", items: [{ x: 2, y: 0 }] } },
+      });
+      boardApi.flush();
+
+      expect(endpoint.postedMessages).toHaveLength(1);
+      expect(endpoint.postedMessages[0].items).toEqual([
+        {
+          method: "amendMol",
+          molId: "demo/mol-1",
+          patchesByObject: {
+            "1": {
+              append: {
+                key: "points",
+                items: [{ x: 1, y: 0 }, { x: 2, y: 0 }],
+              },
+            },
+          },
+        },
+      ]);
+
+      boardApi.destroy();
+    });
+
     test("rpc-batch 消息应携带递增 batchId", () => {
       const endpoint = new FakeRpcEndpoint();
       const boardApi = new BoardApiRpc(endpoint);
@@ -386,6 +417,32 @@ describe("BoardApiRpc", () => {
       expect(endpoint.postedMessages[1].type).toBe("rpc");
       expect(endpoint.postedMessages[1].method).toBe("commitObjects");
       expect(endpoint.postedMessages[1].params).toEqual({ objectIds: [1] });
+
+      boardApi.destroy();
+    });
+
+    test("amendMol 批缓冲应先于 endMol 发出（分子管线保序）", () => {
+      const endpoint = new FakeRpcEndpoint();
+      const boardApi = new BoardApiRpc(endpoint);
+
+      // 不 await：amend 批缓冲仍挂起时直接发起确认式 endMol，验证 #call 的同步 flush 屏障
+      boardApi.amendMol("demo/mol-1", { "1": { position: { x: 3, y: 4 } } });
+      boardApi.endMol("demo/mol-1").catch(() => { });
+
+      expect(endpoint.postedMessages).toHaveLength(2);
+      expect(endpoint.postedMessages[0].type).toBe("rpc-batch");
+      expect(endpoint.postedMessages[0].items).toEqual([
+        {
+          method: "amendMol",
+          molId: "demo/mol-1",
+          patchesByObject: { "1": { position: { x: 3, y: 4 } } },
+        },
+      ]);
+      expect(endpoint.postedMessages[1].type).toBe("rpc");
+      expect(endpoint.postedMessages[1].method).toBe("endMol");
+      expect(endpoint.postedMessages[1].params).toEqual({
+        molId: "demo/mol-1",
+      });
 
       boardApi.destroy();
     });

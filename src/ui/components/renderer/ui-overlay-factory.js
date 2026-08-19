@@ -329,11 +329,10 @@ function worldPointsToScreenPoints(worldPoints, viewport) {
  * 创建点类型 overlay 条目
  * @param {{ x: number, y: number }} worldPoint - 世界坐标
  * @param {{ fillStyle?: string, strokeStyle?: string, radius?: number, source?: string }} [options] - 选项
- * @param {import("../orchestration/viewport.js").Viewport} viewport - 视口
  * @returns {UiOverlayEntry | undefined}
  */
-function createPointOverlayEntry(worldPoint, options = {}, viewport) {
-  if (!worldPoint || !viewport) return undefined;
+function createPointOverlayEntry(worldPoint, options = {}) {
+  if (!worldPoint) return undefined;
 
   return {
     source: options.source ?? "point",
@@ -353,11 +352,10 @@ function createPointOverlayEntry(worldPoint, options = {}, viewport) {
  * 创建路径类型 overlay 条目
  * @param {Array<{x: number, y: number}>} worldPoints - 世界坐标点数组
  * @param {{ strokeStyle?: string, fillStyle?: string, lineWidth?: number, lineDash?: number[], closePath?: boolean, source?: string }} [options] - 选项
- * @param {import("../orchestration/viewport.js").Viewport} viewport - 视口
  * @returns {UiOverlayEntry | undefined}
  */
-function createPathOverlayEntry(worldPoints, options = {}, viewport) {
-  if (!Array.isArray(worldPoints) || worldPoints.length < 2 || !viewport) {
+function createPathOverlayEntry(worldPoints, options = {}) {
+  if (!Array.isArray(worldPoints) || worldPoints.length < 2) {
     return undefined;
   }
 

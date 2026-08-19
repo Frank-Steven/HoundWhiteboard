@@ -23,7 +23,7 @@
 flowchart LR
     Host[Host Input] --> Bus[Board.signalsEventBus]
     Bus --> DAG[Board.devicesDAG]
-    DAG --> ViewportRoot[/viewportId]
+    DAG --> ViewportRoot["/viewportId"]
     ViewportRoot --> Device[Device SubDAG]
     Device --> Prefix[Prefix / Wrapper]
     Prefix --> Tool[Tool Leaf]
@@ -65,36 +65,42 @@ flowchart LR
 
 其中 `input` 的稳定语义是：
 
-1. 从 `to` 中解析 `viewportId`
-2. 找到对应 `Viewport`
-3. 调用 `devicesDAG.dispatch(packet, { board, boardApi })`
+1. `Board` 直接调用 `devicesDAG.dispatch({ to, signals })`（无 context 参数）
+2. DAG 从根节点逐段向下路由，`to` 中的 `viewportId` 段定位到对应视口子树
+
+`board` / `boardApi` / `sharedState` 不随 dispatch 传递，而是由 `Board` 构造时在根节点 `/` 通过 `services` 声明式注入（`boardApi` 以 getter 形式延迟求值）。
+
+除宿主原始输入外，`input` 事件也承载合成信号：内核 undo/redo/远端应用后，宿主向各工具 workflow 注入 `hit:changed` 信号，modifier / chooser 凭它清理幽灵选择（见 `demo/config/dom-adapters.js`）。
 
 `Board` 自己不做设备语义判断，只负责把已经归属的信号送进唯一的白板级设备图。
 
+远端手势的中间帧不经本地输入路由：它们经 awareness 通道进入 `AwarenessOverlay` 做预览（只画不存），对象数据随分子记录到达时归位。
+
 ### 3. viewport 根节点声明 services
 
-`Board.createViewport()` 会为 `/${viewportId}` 配置节点，通过 `services` 声明式注入基础设施：
+`Board.createViewport()` 会为 `/${viewportId}` 配置节点，通过 `services` 声明式注入视口基础设施：
 
 ```
 configureNode("/${viewportId}", {
-  services: { board, boardApi, viewport },
+  services: { viewport },
   semantics: { viewport: true },
 })
 ```
 
-因此下游设备、prefix、tool 都能从 `ctx.services` 中读取：
+`board` / `boardApi` / `sharedState` 来自根节点 `/` 的 services（`Board` 构造时注入），不在视口节点重复声明。因此下游设备、prefix、tool 都能从 `ctx.services` 中读取：
 
 - `board`（含 `allocateObjectId` 等方法）
 - `boardApi`（RPC 代理）
+- `sharedState`
 - `viewport`
 
 ### 4. 设备阶段
 
 设备以 `SubDAGDefinition` 的形式挂在某个 viewport 子树下，例如：
 
-- `viewport.mountSubDAG("/mouse", createMouseDevice())`
-- `viewport.mountSubDAG("/keyboard", createKeyboardDevice())`
-- `viewport.mountSubDAG("/touchscreen", createTouchscreenDevice())`
+- `viewport.inputScope.mountDevice("mouse", createMouseDevice())`
+- `viewport.inputScope.mountDevice("keyboard", createKeyboardDevice())`
+- `viewport.inputScope.mountDevice("touchscreen", createTouchscreenDevice())`
 
 设备的职责是：
 
@@ -138,14 +144,14 @@ Tool 是设备图末端的消费型处理器，只负责：
 
 - 拥有唯一 `DevicesDAG`
 - 监听 `input`
-- 将 `{ board, boardApi }` 作为 dispatch 初始上下文
+- 在根节点 `/` 声明式注入 `{ board, sharedState, boardApi }` services
 - 为 `/${viewportId}` 节点补上 `viewport`
 
 ### `Viewport` 负责
 
 - 作为挂载代理，把子图和 workflow 注册到白板级 DAG
-- 提供 `mountSubDAG()` / `mountWorkflow()` / `unmountWorkflow()` / `addEdge()` 等便捷入口
-- 不再持有独立设备图实例
+- 通过 `viewport.inputScope` 提供 `mountDevice()` / `mountWorkflow()` / `unmountWorkflow()` / `addEdge()` 等便捷入口
+- 不持有独立设备图实例
 
 ## workflow 挂载约定
 
@@ -177,6 +183,7 @@ Tool 是设备图末端的消费型处理器，只负责：
 
 - `board`（含 `allocateObjectId` 等方法）
 - `boardApi`（RPC 代理）
+- `sharedState`
 - `viewport`
 
 ### 节点 `state`

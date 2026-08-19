@@ -55,15 +55,13 @@ function renderStroke(ctx, object) {
 }
 
 /**
- * 绘制圆形对象
+ * 在对象自身变换下填充/描边路径
+ * @description 封装 fill/stroke 判定、变换设置与双段绘制；drawPath 只负责构建路径。
  * @param {CanvasRenderingContext2D} ctx - 画布上下文
- * @param {CircleObject} object - 圆形对象
+ * @param {CircleObject | EllipseObject | PolygonObject} object - 图形对象
+ * @param {(ctx: CanvasRenderingContext2D) => void} drawPath - 路径构建回调
  */
-function renderCircle(ctx, object) {
-  if (object.data.radius <= 0) {
-    return;
-  }
-
+function withObjectTransform(ctx, object, drawPath) {
   const strokeWidth = object.property.strokeWidth;
   const shouldFill = Boolean(object.property.fillColor);
   const shouldStroke =
@@ -86,7 +84,7 @@ function renderCircle(ctx, object) {
   );
   ctx.globalCompositeOperation = "source-over";
   ctx.beginPath();
-  ctx.arc(0, 0, object.data.radius, 0, Math.PI * 2);
+  drawPath(ctx);
 
   if (shouldFill) {
     ctx.fillStyle = object.property.fillColor;
@@ -103,6 +101,21 @@ function renderCircle(ctx, object) {
 }
 
 /**
+ * 绘制圆形对象
+ * @param {CanvasRenderingContext2D} ctx - 画布上下文
+ * @param {CircleObject} object - 圆形对象
+ */
+function renderCircle(ctx, object) {
+  if (object.data.radius <= 0) {
+    return;
+  }
+
+  withObjectTransform(ctx, object, () => {
+    ctx.arc(0, 0, object.data.radius, 0, Math.PI * 2);
+  });
+}
+
+/**
  * 绘制椭圆对象
  * @param {CanvasRenderingContext2D} ctx - 画布上下文
  * @param {EllipseObject} object - 椭圆对象
@@ -112,42 +125,17 @@ function renderEllipse(ctx, object) {
     return;
   }
 
-  const strokeWidth = object.property.strokeWidth;
-  const shouldFill = Boolean(object.property.fillColor);
-  const shouldStroke =
-    Boolean(object.property.strokeColor) &&
-    Number.isFinite(strokeWidth) &&
-    strokeWidth > 0;
-
-  if (!shouldFill && !shouldStroke) {
-    return;
-  }
-
-  ctx.save();
-  ctx.setTransform(
-    object.transform.a,
-    object.transform.b,
-    object.transform.c,
-    object.transform.d,
-    object.position.x,
-    object.position.y,
-  );
-  ctx.globalCompositeOperation = "source-over";
-  ctx.beginPath();
-  ctx.ellipse(0, 0, object.data.radiusX, object.data.radiusY, 0, 0, Math.PI * 2);
-
-  if (shouldFill) {
-    ctx.fillStyle = object.property.fillColor;
-    ctx.fill();
-  }
-
-  if (shouldStroke) {
-    ctx.strokeStyle = object.property.strokeColor;
-    ctx.lineWidth = strokeWidth;
-    ctx.stroke();
-  }
-
-  ctx.restore();
+  withObjectTransform(ctx, object, () => {
+    ctx.ellipse(
+      0,
+      0,
+      object.data.radiusX,
+      object.data.radiusY,
+      0,
+      0,
+      Math.PI * 2,
+    );
+  });
 }
 
 /**
@@ -163,47 +151,14 @@ function renderPolygon(ctx, object) {
     return;
   }
 
-  const strokeWidth = object.property.strokeWidth;
-  const shouldFill = Boolean(object.property.fillColor);
-  const shouldStroke =
-    Boolean(object.property.strokeColor) &&
-    Number.isFinite(strokeWidth) &&
-    strokeWidth > 0;
-
-  if (!shouldFill && !shouldStroke) {
-    return;
-  }
-
   const points = object.rich.localPolygonRange.points;
-  ctx.save();
-  ctx.setTransform(
-    object.transform.a,
-    object.transform.b,
-    object.transform.c,
-    object.transform.d,
-    object.position.x,
-    object.position.y,
-  );
-  ctx.globalCompositeOperation = "source-over";
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 1; i < points.length; i++) {
-    ctx.lineTo(points[i].x, points[i].y);
-  }
-  ctx.closePath();
-
-  if (shouldFill) {
-    ctx.fillStyle = object.property.fillColor;
-    ctx.fill();
-  }
-
-  if (shouldStroke) {
-    ctx.strokeStyle = object.property.strokeColor;
-    ctx.lineWidth = strokeWidth;
-    ctx.stroke();
-  }
-
-  ctx.restore();
+  withObjectTransform(ctx, object, () => {
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.closePath();
+  });
 }
 
 /**

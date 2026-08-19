@@ -300,10 +300,11 @@ class BoardApiRpc {
   /**
    * 在 Worker 中创建 BoardCore
    * @param {{ width?: number, height?: number, rootPath?: string }} [options={}] - Board 初始化选项
+   * @param {number} [timeoutMs] - 超时时间（缺省用实例默认；持久化首开含 daemon 拉起，应放宽）
    * @returns {Promise<{ ok: boolean }>} 创建结果
    */
-  async createBoard(options = {}) {
-    return this.#call("createBoard", options);
+  async createBoard(options = {}, timeoutMs) {
+    return this.#call("createBoard", options, timeoutMs);
   }
 
   /**
@@ -431,37 +432,41 @@ class BoardApiRpc {
   /**
    * 永久删除对象集合
    * @param {string[]} objectIds - 要删除的对象 id 列表
+   * @param {Object} [options] - 删除选项（supraKey 指定超分子）
    * @returns {Promise<void>}
    */
-  async deleteObjects(objectIds) {
-    return this.#call("deleteObjects", { objectIds });
+  async deleteObjects(objectIds, options) {
+    return this.#call("deleteObjects", { objectIds, options });
   }
 
   /**
    * 将 AOM 动态图中的对象写回静态图
    * @param {string[]} objectIds - 要提交的对象 id 列表
+   * @param {Object} [options] - 提交选项（supraKey 指定超分子）
    * @returns {Promise<string[]>} 实际提交的对象 id 列表
    */
-  async commitObjects(objectIds) {
-    return this.#call("commitObjects", { objectIds });
+  async commitObjects(objectIds, options) {
+    return this.#call("commitObjects", { objectIds, options });
   }
 
   /**
    * 将对象加入 AOM 动态图
    * @param {string[]} objectIds - 对象 id 列表
+   * @param {Object} [options] - 选择选项（supraKey 指定超分子）
    * @returns {Promise<void>}
    */
-  async addActiveObjects(objectIds) {
-    return this.#call("addActiveObjects", { objectIds });
+  async addActiveObjects(objectIds, options) {
+    return this.#call("addActiveObjects", { objectIds, options });
   }
 
   /**
    * 将对象从 AOM 动态图移除
    * @param {string[]} objectIds - 对象 id 列表
+   * @param {Object} [options] - 选项（supraKey 指定超分子）
    * @returns {Promise<void>}
    */
-  async discardActiveObjects(objectIds) {
-    return this.#call("discardActiveObjects", { objectIds });
+  async discardActiveObjects(objectIds, options) {
+    return this.#call("discardActiveObjects", { objectIds, options });
   }
 
   /**
@@ -471,6 +476,40 @@ class BoardApiRpc {
    */
   async queryObjects(ids) {
     return this.#call("queryObjects", { ids });
+  }
+
+  /**
+   * 列出本端的命名选择
+   * @returns {Promise<{ name: string, ids: string[] }[]>} 命名选择列表
+   */
+  async queryChoices() {
+    return this.#call("queryChoices", {});
+  }
+
+  /**
+   * 列出全部远程命名选择（awareness 查询面）
+   * @returns {Promise<{ source: string, name: string|undefined, ids: string[] }[]>} 远程选择列表
+   */
+  async queryRemoteChoices() {
+    return this.#call("queryRemoteChoices", {});
+  }
+
+  /**
+   * 上报 UI 侧对象 id 池计数（随板元数据持久化）
+   * @param {string} source - 来源标识
+   * @param {number} counter - 已分配的最大计数
+   * @returns {Promise<boolean>} 是否成功
+   */
+  async reportObjectIdCounter(source, counter) {
+    return this.#call("reportObjectIdCounter", { source, counter });
+  }
+
+  /**
+   * 读取 UI 侧对象 id 池计数表（重开板后续种）
+   * @returns {Promise<Object<string, number>>} 各来源已分配的最大计数
+   */
+  async getObjectIdCounters() {
+    return this.#call("getObjectIdCounters", {});
   }
 
   /**
@@ -500,8 +539,8 @@ class BoardApiRpc {
    * @param {{ points: Array<{x: number, y: number}>, radius: number, source?: string }} payload - 轨迹段、橡皮半径与来源标识
    * @returns {Promise<{ modified: string[], created: string[], deleted: string[] }>} 受影响对象 id 三组
    */
-  async eraseData(payload) {
-    return this.#call("eraseData", payload);
+  async eraseData(payload, options) {
+    return this.#call("eraseData", { ...payload, options });
   }
 
   /**
@@ -536,6 +575,134 @@ class BoardApiRpc {
    */
   async redo() {
     return this.#call("redo", {});
+  }
+
+  /**
+   * 开启一个超分子
+   * @param {string} key - 超分子 key（调用方提供的会话标识）
+   * @returns {Promise<void>}
+   */
+  async beginSupra(key) {
+    return this.#call("beginSupra", { key });
+  }
+
+  /**
+   * 闭合一个超分子
+   * @param {string} key - 超分子 key
+   * @returns {Promise<void>}
+   */
+  async endSupra(key) {
+    return this.#call("endSupra", { key });
+  }
+
+  /**
+   * 中止一个超分子（丢弃未闭合分子并逐个撤销已物化成员）
+   * @param {string} key - 超分子 key
+   * @returns {Promise<void>}
+   */
+  async abortSupra(key) {
+    return this.#call("abortSupra", { key });
+  }
+
+  /**
+   * 开启一个增量式分子（手势 begin）
+   * @param {string[]} objectIds - 分子覆盖的对象 id 列表
+   * @param {Object} [options] - 选项（supraKey 指定归属超分子；create 标记创建型分子）
+   * @returns {Promise<string>} 分子 id
+   */
+  async beginMol(objectIds, options) {
+    return this.#call("beginMol", { objectIds, options });
+  }
+
+  /**
+   * 对进行中的分子施加增量修正（手势的每帧）
+   * @description
+   * fire-and-forget 批写：同帧同分子合并入队即 resolve，不代表 Core 已应用；
+   * Core 侧失败经 onBatchError 旁路上报。确认式调用（endMol 等）发出前会先 flush 保序。
+   * @param {string} molId - 分子 id
+   * @param {Object<string, import("../../kernel/types/board-api-types.js").ObjectPatch>} patchesByObject - 对象 id -> 修改 patch
+   * @returns {Promise<void>} 入队后 resolve
+   */
+  async amendMol(molId, patchesByObject) {
+    const batchKey = `amendMol:${molId}`;
+    const existing = this.#batchBuffer.get(batchKey);
+    if (existing) {
+      for (const [objectId, patch] of Object.entries(patchesByObject ?? {})) {
+        existing.patchesByObject[objectId] = existing.patchesByObject[objectId]
+          ? this.#mergePatches(existing.patchesByObject[objectId], patch)
+          : { ...patch };
+      }
+    } else {
+      const merged = {};
+      for (const [objectId, patch] of Object.entries(patchesByObject ?? {})) {
+        merged[objectId] = { ...patch };
+      }
+      this.#batchBuffer.set(batchKey, {
+        method: "amendMol",
+        molId,
+        patchesByObject: merged,
+      });
+    }
+    this.#scheduleBatchFlush();
+    return Promise.resolve();
+  }
+
+  /**
+   * 定稿一个增量式分子（end-amend 物化上链）
+   * @param {string} molId - 分子 id
+   * @returns {Promise<boolean>} 分子是否曾在进行中
+   */
+  async endMol(molId) {
+    return this.#call("endMol", { molId });
+  }
+
+  /**
+   * 中止一个增量式分子（丢弃 amend 流，实例还原到手势起点）
+   * @param {string} molId - 分子 id
+   * @returns {Promise<boolean>} 分子是否曾在进行中
+   */
+  async abortMol(molId) {
+    return this.#call("abortMol", { molId });
+  }
+
+  /**
+   * 查询本端未闭合的增量式分子清单（断线重连对账用）
+   * @returns {Promise<Array<Object>>} 未闭合分子清单
+   */
+  async queryOpenMols() {
+    return this.#call("queryOpenMols", {});
+  }
+
+  /**
+   * 计算对象状态的确定性校验和（已驻留口径，同步 digest 用）
+   * @returns {Promise<string>} 状态校验和
+   */
+  async queryStateHash() {
+    return this.#call("queryStateHash", {});
+  }
+
+  /**
+   * 计算活动链的确定性校验和（驻留无关，同步 digest 用）
+   * @returns {Promise<string>} 活动链校验和
+   */
+  async queryChainHash() {
+    return this.#call("queryChainHash", {});
+  }
+
+  /**
+   * 查询时间回溯树结构（活动链、HEAD、可重做栈与节点视图）
+   * @returns {Promise<Object>} 树结构
+   */
+  async queryUndoTree() {
+    return this.#call("queryUndoTree", {});
+  }
+
+  /**
+   * 从本端日志重放派生对象状态并对齐活体（效果层分歧自愈）
+   * @returns {Promise<{ repaired: boolean, fixedIds: string[] }>} 修复结果
+   */
+  async repairStateFromLog() {
+    return this.#call("repairStateFromLog", {});
   }
 
   /**
@@ -623,6 +790,20 @@ class BoardApiRpc {
     if (next.data != null) {
       merged.data = { ...(merged.data ?? {}), ...next.data };
     }
+    if (next.append != null) {
+      // append 是增量：同 key 合并 items 按序累积（后帧覆盖会永久丢点）
+      const existingAppend = merged.append;
+      merged.append =
+        existingAppend != null && existingAppend.key === next.append.key
+          ? {
+            key: next.append.key,
+            items: [
+              ...(existingAppend.items ?? []),
+              ...(next.append.items ?? []),
+            ],
+          }
+          : { key: next.append.key, items: [...(next.append.items ?? [])] };
+    }
 
     return merged;
   }
@@ -655,45 +836,11 @@ class BoardApiRpc {
     this.#batchBuffer.clear();
     this.#batchPending = false;
 
-    const paramsList = entries.map((entry) => {
-      switch (entry.method) {
-        case "modifyObject":
-          return {
-            method: entry.method,
-            objectId: entry.objectId,
-            patch: entry.patch,
-          };
-        case "appendListItem":
-          return {
-            method: entry.method,
-            objectId: entry.objectId,
-            key: entry.key,
-            items: entry.items,
-          };
-        case "replaceListItem":
-          return {
-            method: entry.method,
-            objectId: entry.objectId,
-            key: entry.key,
-            index: entry.index,
-            item: entry.item,
-          };
-        case "removeListItem":
-          return {
-            method: entry.method,
-            objectId: entry.objectId,
-            key: entry.key,
-            index: entry.index,
-          };
-        default:
-          return entry;
-      }
-    });
-
+    // 入队时已是目标形状（method + 各自参数字段），直接发送
     this.#endpoint.postMessage({
       type: "rpc-batch",
       batchId: this.#nextBatchId++,
-      items: paramsList,
+      items: entries,
     });
   }
 }

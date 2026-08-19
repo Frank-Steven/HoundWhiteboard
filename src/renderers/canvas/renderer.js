@@ -1,6 +1,6 @@
 /**
  * @file 渲染器基类
- * @description 提供视口变换、脏区裁剪、渲染调度与渲染管线骨架的通用抽象。
+ * @description 提供视口变换、脏区裁剪与渲染调度的通用抽象。
  * @module canvas/renderer
  * @author Zhou Chenyu
  */
@@ -10,10 +10,7 @@ import { intersectsRanges, RectangleRange } from "../../kernel/range/index.js";
 import { PathRange } from "../../kernel/range/path.js";
 import { createRectangleDirtyRectMerger } from "./render-scheduler.js";
 import { CanvasHost } from "./canvas-lifecycle.js";
-import {
-  drawObject,
-  OBJECT_DRAW_STRATEGIES,
-} from "./object-draw-strategies.js";
+import { drawObject } from "./object-draw-strategies.js";
 
 const PATH_RASTERIZATION_SCREEN_PADDING = 1;
 
@@ -48,12 +45,19 @@ function normalizeDirtyRectsForScreenUpdate(dirtyRects = []) {
 /**
  * 渲染器基类
  * @description 封装视口坐标变换、脏区清理、裁剪渲染与渲染调度的通用逻辑。
- * 子类需实现 clear、_collectDrawables 抽象方法并可按需重写
- * _beforeRender、_afterClear、_afterRender、_getThresholds、_getCanonicalRectsForRect 钩子。
+ * 子类需实现 clear 抽象方法并可按需重写 _getThresholds 钩子。
  * @class
  * @author Zhou Chenyu
  */
 class Renderer extends CanvasHost {
+  /**
+   * 远程手势预览坐标覆盖表（对象 id → 预览位置）
+   * @description 只影响渲染视图，不改对象数据；渲染时临时覆盖 position 后还原。
+   * @type {Map<string, { x: number, y: number }>}
+   * @private
+   */
+  #previewPositions = new Map();
+
   /**
    * @param {import("../../kernel/types/types.js").ViewportLike} viewport - 目标视口
    * @param {{ canvas?: HTMLCanvasElement | null }} [options = {}] - 初始化选项
@@ -63,14 +67,43 @@ class Renderer extends CanvasHost {
   }
 
   /**
-   * 初始化渲染调度器
-   * @description 子类在完成自身构造后调用，确保阈值策略等依赖已就位。
+   * 设置对象的预览坐标（远程手势中间帧；渲染时覆盖 position）
+   * @param {string} objectId - 对象 id
+   * @param {{ x: number, y: number }} position - 预览位置
+   * @returns {void}
+   */
+  setPreviewPosition(objectId, position) {
+    if (typeof position?.x !== "number" || typeof position?.y !== "number") {
+      return;
+    }
+    this.#previewPositions.set(objectId, { x: position.x, y: position.y });
+  }
+
+  /**
+   * 清除对象的预览坐标（手势终点或记录归位后）
+   * @param {string} objectId - 对象 id
+   * @returns {void}
+   */
+  clearPreviewPosition(objectId) {
+    this.#previewPositions.delete(objectId);
+  }
+
+  /**
+   * 清空全部预览坐标（断线时对端手势状态不可信）
+   * @returns {void}
+   */
+  clearAllPreviewPositions() {
+    this.#previewPositions.clear();
+  }
+
+  /**
+   * 取对象的预览坐标（渲染覆盖用）
+   * @param {string} objectId - 对象 id
+   * @returns {{ x: number, y: number } | undefined} 预览位置
    * @protected
    */
-  _initScheduler() {
-    super._initScheduler(this._createDirtyRectMerger(), (dirtyRects) =>
-      this.flush(dirtyRects),
-    );
+  _getPreviewPosition(objectId) {
+    return this.#previewPositions.get(objectId);
   }
 
   /**
@@ -82,8 +115,6 @@ class Renderer extends CanvasHost {
     return createRectangleDirtyRectMerger({
       getThresholds: () => this._getThresholds(),
       getViewportRect: () => this._getViewportRect(),
-      getCanonicalRectsForRect: (dirtyRect) =>
-        this._getCanonicalRectsForRect(dirtyRect),
     });
   }
 
@@ -106,60 +137,11 @@ class Renderer extends CanvasHost {
   }
 
   /**
-   * 获取脏区对应的 canonical rect 集合
-   * @param {any} dirtyRect - 脏区
-   * @returns {any[]}
-   * @protected
-   */
-  _getCanonicalRectsForRect(dirtyRect) {
-    return [];
-  }
-
-  /**
-   * 收集应绘制的对象集合
-   * @returns {BasicObject[]}
-   * @protected
-   */
-  _collectDrawables() {
-    throw new Error("Not implemented: _collectDrawables");
-  }
-
-  /**
    * 全量清空画布
    * @protected
    */
   clear() {
     throw new Error("Not implemented: clear");
-  }
-
-  /**
-   * 在收集 drawable 之前执行的钩子
-   * @param {CanvasRenderingContext2D} ctx - 渲染上下文
-   * @protected
-   */
-  _beforeRender(ctx) {
-    // 默认空实现
-  }
-
-  /**
-   * 在清理之后、绘制对象之前执行的钩子
-   * @param {CanvasRenderingContext2D} ctx - 渲染上下文
-   * @param {boolean} hasExplicitDirtyRects - 是否有显式脏区
-   * @param {RectangleRange[]} effectiveDirtyRects - 有效脏区
-   * @protected
-   */
-  _afterClear(ctx, hasExplicitDirtyRects, effectiveDirtyRects) {
-    // 默认空实现
-  }
-
-  /**
-   * 在绘制完成之后执行的钩子
-   * @param {BasicObject[]} drawables - 已绘制的对象
-   * @param {Array<{ objectId: string, object: BasicObject, screenRect?: RectangleRange }>} drawableEntries - drawable 条目
-   * @protected
-   */
-  _afterRender(drawables, drawableEntries) {
-    // 默认空实现
   }
 
   /**
@@ -175,6 +157,7 @@ class Renderer extends CanvasHost {
       if (!worldRange) return undefined;
       return RectangleRange.from(worldRange);
     } catch {
+      // 渲染期对象可能处于 teardown 中间态（range/position 暂缺），按无范围处理
       return undefined;
     }
   }
@@ -375,74 +358,6 @@ class Renderer extends CanvasHost {
         return Reflect.set(target, prop, value, target);
       },
     });
-  }
-
-  /**
-   * 渲染管线模板方法
-   * @description
-   * 方法骨架：
-   * 1. _beforeRender     — 渲染前准备工作
-   * 2. _collectDrawables — 子类决定从何处收集对象
-   * 3. clear / clearDirtyRects — 清空画布
-   * 4. _afterClear       — 清空后绘制前的工作（例如合成缓存层）
-   * 5. 遍历 drawable     — 脏区裁剪 + 渲染
-   * 6. _afterRender      — 渲染后收尾（例如保存上一帧缓存）
-   * @param {Array<RectangleRange>} [dirtyRects] - 可选的屏幕脏区集合
-   * @returns {BasicObject[]} 当前渲染的对象集合
-   */
-  render(dirtyRects) {
-    const ctx = this._getContext();
-    if (!ctx) return [];
-
-    this._beforeRender(ctx);
-
-    const drawables = this._collectDrawables();
-    const drawableEntries = this.createDrawableEntries(drawables);
-    const viewportContext = this.createViewportContext(ctx);
-    const hasExplicitDirtyRects =
-      Array.isArray(dirtyRects) && dirtyRects.length > 0;
-    const effectiveDirtyRects = hasExplicitDirtyRects
-      ? normalizeDirtyRectsForScreenUpdate(this.collectDirtyRects(dirtyRects))
-      : [];
-
-    if (hasExplicitDirtyRects) {
-      this.clearDirtyRects(effectiveDirtyRects);
-    } else {
-      this.clear();
-    }
-
-    this._afterClear(ctx, hasExplicitDirtyRects, effectiveDirtyRects);
-
-    for (const entry of drawableEntries) {
-      if (hasExplicitDirtyRects) {
-        if (!this.intersectsDirtyRects(entry, effectiveDirtyRects)) continue;
-      }
-      if (!OBJECT_DRAW_STRATEGIES.has(entry.object.constructor)) continue;
-
-      const entryDirtyRects = hasExplicitDirtyRects
-        ? this.getEntryDirtyRects(entry, effectiveDirtyRects)
-        : [];
-
-      this.renderObjectWithinDirtyRects(
-        ctx,
-        viewportContext,
-        entry.object,
-        entryDirtyRects,
-      );
-    }
-
-    this._afterRender(drawables, drawableEntries);
-
-    return drawables;
-  }
-
-  /**
-   * 刷新入口
-   * @param {Array<RectangleRange>} [dirtyRects] - 可选的屏幕脏区集合
-   * @returns {BasicObject[]} 当前渲染的对象集合
-   */
-  flush(dirtyRects) {
-    return this.render(dirtyRects);
   }
 }
 

@@ -67,7 +67,7 @@ creator 不再持有本地 `BasicObject` 实例。
 
 ```js
 {
-  id: number,
+  id: string,                        // 来源命名空间字符串（如 "ui/42"）
   type: string,                      // 对象类型名（如 "StrokeObject"）
   position: Vector | { x, y },
   transform?: { a, b, c, d },        // 由手势补丁写入（对象变换）
@@ -111,7 +111,9 @@ creator 在 `ensureObject(interaction)` 中按需分配 `objectId`：
 
 1. 若输入上下文已携带 `interaction.objectId`，直接复用
 2. 否则调用 `board.allocateObjectId()`
-3. `Board` 在 UI 线程用本地 `CounterPool` 同步分配新 id
+3. `Board.#idPool` 为 `IncrementalIdPool`：分配出来的是 `idSource` 命名空间的
+   字符串 id（`{source}/{n}`）；分配即 `reportObjectIdCounter` 上报，计数随板元数据
+   持久化，`enableWorkerMode` 后按 `getObjectIdCounters` 续种，重开不发生分配碰撞
 4. 后续 `boardApi.createObject(type, { id, ... })` 必须显式携带该 id
 
 Worker 侧若发现重复 id，会通过 RPC 抛错返回。
@@ -135,9 +137,16 @@ boardApi.createObject(type, {
 
 ### 高频几何更新
 
-- `StrokeCreatorTool` → `boardApi.appendListItem(id, "points", [...])`
-- `CircleDataCreatorTool` → `applyGesturePatch()` → `boardApi.modifyObject(id, patch)`（patch 可含 `position` / `data` / `transform`）
-- `PolygonCreatorTool` → `boardApi.appendListItem(...)` / `replaceListItem(...)`
+创建手势的内核写统一走 **create 型增量式分子**：`createObject` 发出后立即
+`beginMol([id], { create: true, supraKey })`，手势期间的逐帧更新流入 amend 流（不产生记录）：
+
+- `StrokeCreatorTool` → `_appendCreatedObjectItems()` → `amendMol(molId, { [id]: { append: { key: "points", items } } })`
+- `CircleDataCreatorTool` → `applyGesturePatch()` → `amendMol(molId, { [id]: patch })`（patch 可含 `position` / `data` / `transform`）
+- `PolygonCreatorTool` → 追加顶点经 amend 的 append patch；顶点替换（`replaceListItem`）无对应 amend 语义，仍直调
+
+Worker 模式下 `beginMol` 经 RPC 异步确认：确认前 append 条目按序缓冲（增量必须保序）、
+绝对量补丁覆盖合并，molId 到达后按序补发（同 key 连续 append 折叠为一条 amend）。
+boardApi 无分子能力或 `beginMol` 同步抛错时回退旧 `appendListItem` / `modifyObject` 直调路径。
 
 这些调用也保持 fire-and-forget。
 
@@ -148,9 +157,12 @@ Core 侧的 mutation RPC handler 在修改 AOM 对象后自动触发 live 层脏
 
 ### 提交 / 撤销
 
-- 提交：`boardApi.commitObjects([objectId])`——Worker 返回实际提交的 id 列表，
-  creator 对回执对账，期望 id 缺失时告警（对象静默丢失的最后一张网）
-- 撤销：`boardApi.discardActiveObjects([objectId])`
+- 提交：`completeCreatedObject` 先 `endMol(molId)` 把 amend 流折叠物化为 add-object 分子记录，
+  再走 `boardApi.commitObjects([objectId])`——内核凭物化水位跳过重复 add；
+  Worker 返回实际提交的 id 列表，creator 对回执对账，期望 id 缺失时告警（对象静默丢失的最后一张网）。
+  molId 确认中（Worker 模式）时 endMol 与 commitObjects 均延迟到确认补发之后，保持内核侧顺序
+- 撤销：`abortMol(molId)`——丢弃 amend 流，暂存对象随分子移除；
+  无在途分子时回退 `boardApi.discardActiveObjects([objectId])`
 
 ## 手势流程
 

@@ -50,30 +50,6 @@ class Chunk {
   y;
 
   /**
-   * 左区块引用
-   * @type {Chunk | undefined}
-   */
-  leftChunk;
-
-  /**
-   * 右区块引用
-   * @type {Chunk | undefined}
-   */
-  rightChunk;
-
-  /**
-   * 上区块引用
-   * @type {Chunk | undefined}
-   */
-  upChunk;
-
-  /**
-   * 下区块引用
-   * @type {Chunk | undefined}
-   */
-  downChunk;
-
-  /**
    * 区块是否已被加载到内存中
    * @type {boolean}
    */
@@ -100,10 +76,6 @@ class Chunk {
     this.id = chunkId;
     this.x = coordinate.x;
     this.y = coordinate.y;
-    this.leftChunk = undefined;
-    this.rightChunk = undefined;
-    this.upChunk = undefined;
-    this.downChunk = undefined;
     this.isLoad = false;
     this.isTempLoad = false;
   }
@@ -269,34 +241,9 @@ class Chunk {
   }
 
   /**
-   * 连接两区块
-   * @param {Chunk | undefined} first - 第一区块
-   * @param {Chunk | undefined} second - 第二区块
-   * @param {"right" | "left" | "up" | "down"} [direction = "right"] - second 相对 first 的方向，默认左右相邻
-   * @description
-   * 该方法会在 first 和 second 之间建立双向连接。
-   * 仅更新区块之间的引用关系，不会判断或修改区块的二维坐标或 id。
-   */
-  static connectTwoChunk(first, second, direction = "right") {
-    if (!first || !second) return;
-
-    const directions = {
-      right: ["rightChunk", "leftChunk"],
-      left: ["leftChunk", "rightChunk"],
-      up: ["upChunk", "downChunk"],
-      down: ["downChunk", "upChunk"],
-    };
-    const pair = directions[direction];
-    if (!pair) {
-      throw new Error("Invalid chunk connection direction.");
-    }
-
-    first[pair[0]] = second;
-    second[pair[1]] = first;
-  }
-
-  /**
    * 添加对象并更新层叠图
+   * @description 仅维护区块静态图；对象实例的白板级注册由调用方经
+   * `BoardCore.registerObjectInstance` 显式完成（携带覆盖区块等完整语义）。
    *
    * @param {BasicObject | number} obj - 要添加的对象或对象 id
    * @param {number[]} [below = []] - 应在该对象之下的对象
@@ -311,10 +258,6 @@ class Chunk {
 
     const graph = this.objectManager.staticGraph;
     const objectId = obj instanceof BasicObject ? obj.id : obj;
-
-    if (obj instanceof BasicObject) {
-      this.board?.registerObjectInstance?.(obj);
-    }
 
     if (!graph.hasNode(objectId)) {
       graph.addNodeUnsafe(objectId);
@@ -345,17 +288,14 @@ class Chunk {
 
   /**
    * 完整加载该区块
-   * @description
-   * @param {string} boardRootPath - 白板根目录
-   * @todo
    * @returns {Promise<boolean>} 是否成功
    */
-  async loadFull(boardRootPath) {
+  async loadFull() {
     // 已完整加载
     if (this.isLoad && !this.isTempLoad) return false;
 
     // 未加载，升级为临时加载
-    if (!this.isLoad) await this.loadTemp(boardRootPath);
+    if (!this.isLoad) await this.loadTemp();
     this.isTempLoad = false;
     return true;
   }
@@ -403,10 +343,9 @@ class Chunk {
 
   /**
    * 临时加载该区块
-   * @param {string} boardRootPath - 白板根目录
    * @returns {Promise<boolean>} 是否成功
    */
-  async loadTemp(boardRootPath) {
+  async loadTemp() {
     if (this.isLoad) {
       // 已加载，不管是完整加载还是临时加载，都不能重复加载
       return false;
@@ -418,7 +357,7 @@ class Chunk {
     } else if (!this.objectManager.board && this.board) {
       this.objectManager.setBoard(this.board);
     }
-    await this.objectManager.loadChunkMetadata(boardRootPath);
+    await this.objectManager.loadChunkMetadata();
     return true;
   }
 }

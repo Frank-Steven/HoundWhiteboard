@@ -5,8 +5,6 @@
  * @author Zhou Chenyu
  */
 
-import { RectangleRange } from "../../kernel/range/rectangle.js";
-
 /**
  * 规整缩放因子
  * @param {number} [zoom = 1] 缩放因子
@@ -124,56 +122,8 @@ function createDirtyRectThresholdStrategy(thresholds = {}) {
         thresholds.viewportCoverageRatio,
         zoomScale,
       ),
-      canonicalRectCoverageRatio: resolveThresholdStrategyValue(
-        thresholds.canonicalRectCoverageRatio,
-        zoomScale,
-      ),
     };
   };
-}
-
-/**
- * 创建 dirty rect policy 解析函数
- * @description 返回的函数聚合一整组 policy（阈值回调、视口回调、canonical rect 回调）。
- * @param {Object} [options = {}] - policy 配置
- * @param {Function} [options.getThresholds = () => ({})] - 阈值解析回调
- * @param {Function} [options.getViewportRect] - 视口矩形回调
- * @param {Function} [options.getCanonicalRectsForRect] - canonical rect 回调
- * @returns {Function}
- */
-function createDirtyRectPolicyResolver({
-  getThresholds = () => ({}),
-  getViewportRect,
-  getCanonicalRectsForRect,
-} = {}) {
-  return function resolveDirtyRectPolicy() {
-    return {
-      getThresholds,
-      getViewportRect,
-      getCanonicalRectsForRect,
-    };
-  };
-}
-
-/**
- * 将屏幕脏区换算为世界坐标脏区
- * @param {RectangleRange | Object} rect - 屏幕坐标矩形
- * @param {{ x: number, y: number }} [origin = { x: 0, y: 0 }] - 视口原点
- * @param {number} [zoom = 1] - 缩放因子
- * @returns {RectangleRange | undefined}
- */
-function screenRectToWorldRect(rect, origin = { x: 0, y: 0 }, zoom = 1) {
-  const normalizedRect = RectangleRange.fromRectLike(rect);
-  if (!normalizedRect) return undefined;
-
-  const zoomScale = normalizeDirtyRectZoomScale(zoom);
-
-  return new RectangleRange(
-    normalizedRect.left / zoomScale + (origin?.x ?? 0),
-    normalizedRect.top / zoomScale + (origin?.y ?? 0),
-    normalizedRect.width / zoomScale,
-    normalizedRect.height / zoomScale,
-  );
 }
 
 /**
@@ -194,11 +144,6 @@ function createBaseDirtyRectThresholdStrategy(overrides = {}) {
       baseValue: 0.92,
       zoomStep: 0.03,
       max: 0.98,
-    }),
-    canonicalRectCoverageRatio: createZoomOffsetThresholdStrategy({
-      baseValue: 0.55,
-      zoomStep: 0.1,
-      max: 0.8,
     }),
     ...overrides,
   });
@@ -227,32 +172,11 @@ function createLiveDirtyRectThresholdStrategy(overrides = {}) {
   });
 }
 
-/**
- * 创建 live 层 dirty rect policy 解析器
- * @description 组装 live 层的阈值策略与视口回调（无 canonical rect 解析）。
- * @param {Object} [options = {}] - policy 配置
- * @returns {Function}
- */
-function createLiveDirtyRectPolicyResolver(options = {}) {
-  const resolveLiveThresholds = createLiveDirtyRectThresholdStrategy();
-
-  return createDirtyRectPolicyResolver({
-    getThresholds:
-      options.getThresholds ??
-      (() => resolveLiveThresholds(options.getZoom?.())),
-    getViewportRect: options.getViewportRect,
-    getCanonicalRectsForRect: options.getCanonicalRectsForRect,
-  });
-}
-
 export {
   createBaseDirtyRectThresholdStrategy,
-  createDirtyRectPolicyResolver,
   createDirtyRectThresholdStrategy,
-  createLiveDirtyRectPolicyResolver,
   createLiveDirtyRectThresholdStrategy,
   createZoomOffsetThresholdStrategy,
   createZoomScaledThresholdStrategy,
   normalizeDirtyRectZoomScale,
-  screenRectToWorldRect,
 };

@@ -6,6 +6,7 @@
  */
 
 import { Vector } from "../../kernel/utils/math.js";
+import { SIGNAL_TYPES } from "../../ui/devices-dag/dag-core/signal-types.js";
 import { switchTool } from "../../ui/devices-dag/tools/switch-tool.js";
 import {
   DEMO_BUTTON_GROUP_STATE_KEY,
@@ -17,6 +18,7 @@ import {
   CANCEL_KEY,
   TOOL_SWITCH_KEYS,
 } from "./constants.js";
+import { broadcastHitChanged } from "./hit-changed-broadcast.js";
 
 /**
  * 绑定指针事件适配器
@@ -174,11 +176,55 @@ function attachKeyboardAdapter(viewport, board, demoLog, tools) {
   };
 
   /**
+   * 向各工具 workflow 广播 hit 变更信号（撤销/重做后工具清理失效对象引用）
+   * @param {Object} [hitContext] - hit:changed 信号上下文
+   * @returns {void}
+   */
+  const notifyHitChanged = (hitContext = {}) => {
+    broadcastHitChanged(board, viewport.viewportId, hitContext);
+  };
+
+  /**
+   * 处理撤销/重做快捷键（Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y）
+   * @description 组合键不进入设备图，直接经 BoardApi 路由调用；返回 true 表示事件已被消费。
+   * 内核 undo 自动闭合的在途分子 id（forcedEndMolIds）随 hit:changed 信号 context 透传，
+   * 命中当前手势分子的工具据此结束手势复位。
+   * @param {KeyboardEvent} event - 键盘事件
+   * @returns {boolean} 是否已消费
+   */
+  const handleHistoryHotkey = (event) => {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return false;
+    if (event.code !== "KeyZ" && event.code !== "KeyY") return false;
+    if (event.type !== "keydown" || event.repeat) {
+      event.preventDefault();
+      return true;
+    }
+    event.preventDefault();
+    const api = board.getBoardApi();
+    if (!api) return true;
+    const isRedo = event.code === "KeyY" || event.shiftKey;
+    demoLog.logKeyInput(isRedo ? "重做" : "撤销");
+    const pending = isRedo ? api.redo() : api.undo();
+    Promise.resolve(pending)
+      .then((result) => {
+        notifyHitChanged({
+          forcedEndMolIds: result?.forcedEndMolIds ?? [],
+        });
+      })
+      .catch((error) => {
+        console.error("[whiteboard] undo/redo failed:", error);
+        notifyHitChanged();
+      });
+    return true;
+  };
+
+  /**
    * 键盘事件处理器
    * @param {KeyboardEvent} event
    * @returns {void}
    */
   const onKey = (event) => {
+    if (handleHistoryHotkey(event)) return;
     if (!shouldHandle(event)) return;
     event.preventDefault();
     if (event.type === "keydown") {
@@ -254,6 +300,87 @@ function attachKeyboardAdapter(viewport, board, demoLog, tools) {
     canvas.removeEventListener("keyup", onKey);
     canvas.removeEventListener("blur", onBlur);
   };
+}
+
+/**
+ * 绑定撤销/重做按钮适配器
+ * @description 侧栏按钮直接经 BoardApi 路由调用，不进入设备图；完成后向工具 workflow 广播 hit 变更。
+ * @param {import("../../ui/components/orchestration/board.js").Board} board - 白板实例
+ * @param {import("../../ui/components/orchestration/viewport.js").Viewport} viewport - 视口实例
+ * @returns {() => void} 解绑函数
+ */
+function attachHistoryAdapter(board, viewport) {
+  /** @type {Array<() => void>} */
+  const unbinds = [];
+
+  /**
+   * 绑定单个按钮
+   * @param {string} id - 按钮元素 id
+   * @param {() => void} run - 点击行为
+   * @returns {void}
+   */
+  const bind = (id, run) => {
+    const button = document.getElementById(id);
+    if (!button) return;
+    const onClick = (event) => {
+      event.preventDefault();
+      run();
+    };
+    button.addEventListener("click", onClick);
+    unbinds.push(() => button.removeEventListener("click", onClick));
+  };
+
+  /**
+   * 经 BoardApi 调用并兜底异常，完成后广播 hit 变更
+   * @param {string} method - 方法名（undo / redo）
+   * @returns {void}
+   */
+  const invoke = (method) => {
+    const api = board.getBoardApi();
+    if (!api) return;
+    const pending = method === "redo" ? api.redo() : api.undo();
+    Promise.resolve(pending)
+      .catch((error) => {
+        console.error(`[whiteboard] ${method} failed:`, error);
+      })
+      .finally(() => {
+        broadcastHitChanged(board, viewport.viewportId);
+      });
+  };
+
+  bind("undo-btn", () => invoke("undo"));
+  bind("redo-btn", () => invoke("redo"));
+  return () => unbinds.forEach((fn) => fn());
+}
+
+/**
+ * 绑定删除按钮适配器
+ * @description 「操作」区的「删除」按钮向 tool-switcher workflow 发送 delete 信号；
+ * 信号经 switcher 路由到当前激活工具，仅当切到「选择+修改」handoff 且 modifier
+ * 持有对象时，由对象修改工具消费并删除持有对象。
+ * @param {import("../../ui/components/orchestration/board.js").Board} board - 白板实例
+ * @param {import("../../ui/components/orchestration/viewport.js").Viewport} viewport - 视口实例
+ * @returns {() => void} 解绑函数
+ */
+function attachDeleteAdapter(board, viewport) {
+  const button = document.getElementById("delete-btn");
+  if (!button) return () => { };
+
+  /**
+   * 点击删除按钮：向 tool-switcher workflow 发送 delete 信号
+   * @param {MouseEvent} event - 点击事件
+   * @returns {void}
+   */
+  const onClick = (event) => {
+    event.preventDefault();
+    board.signalsEventBus.emit("input", {
+      to: `/${viewport.viewportId}/workflows/${DEMO_WORKFLOW_NAMES.TOOL_SWITCHER}`,
+      signals: [{ type: SIGNAL_TYPES.DELETE, context: {} }],
+    });
+  };
+
+  button.addEventListener("click", onClick);
+  return () => button.removeEventListener("click", onClick);
 }
 
 /**
@@ -424,6 +551,8 @@ function attachResizeAdapter(viewport, appLeft) {
 }
 
 export {
+  attachDeleteAdapter,
+  attachHistoryAdapter,
   attachKeyboardAdapter,
   attachPointerAdapter,
   attachResizeAdapter,

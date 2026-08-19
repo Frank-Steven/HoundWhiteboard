@@ -8,21 +8,23 @@
 - **Worker**：`src/host/core-worker.js` 启动的 Core Worker 线程
 - **Kernel**：可在 UI、Worker、Node 测试环境中复用的纯逻辑
 - **Host**：Tauri / preload / 主进程等宿主桥接层，不属于 Core 运行时本身，但与之交互
+- **CLI / daemon**：独立 Node 进程；daemon 是持板进程（进程内 BoardCore + node driver 落盘 + WebSocket RPC 服务）
 
 ## 总览
 
 | 目录 / 文件                                                | 运行边界 | 说明                                                            |
 | ---------------------------------------------------------- | -------- | --------------------------------------------------------------- |
 | `host/bridges/board-api-rpc.js`                                 | UI       | UI 侧 RPC 客户端，封装 `rpc` / `rpc-batch` / `rpc-response`     |
-| `host/bridges/persistence-adapter.js`                           | Kernel   | 持久化适配器协议与工厂，本身不依赖线程宿主                      |
-| `host/bridges/file-operate-bridge-renderer.js`                  | UI       | 渲染线程侧文件桥调用入口                                        |
-| `host/bridges/file-operate-bridge-main.js`                      | Host     | 宿主/主线程的真实文件系统实现                                   |
+| `kernel/board/persistence-adapter.js`                           | Kernel   | 持久化适配器契约与默认无操作实现                                |
+| `host/bridges/io-invoke-forwarder.js`                           | UI       | worker 内驱动的文件操作转发到主线程 Tauri invoke                |
 | `ui/components/orchestration/board.js`              | UI       | UI 白板 facade、唯一 `DevicesDAG`、viewport 管理、Worker 初始化 |
 | `ui/components/orchestration/viewport.js`           | UI       | DOM canvas、overlay、Worker 同步、workflow 挂载代理             |
-| `ui/components/orchestration/board-render-hooks.js` | UI       | 本地渲染路径用的 render hook 辅助                               |
 | `ui/components/renderer/ui-renderer.js`             | UI       | UI overlay 渲染                                                 |
+| `ui/components/renderer/awareness-overlay.js`       | UI       | 协作感知装饰层（远程选择着色框与来源标签、远程光标、手势预览）   |
 | `ui/devices-dag/**`                                 | UI       | 设备图、设备子图、prefix、tool 全部在 UI 线程                   |
 | `host/core-worker.js`                                    | Worker   | Worker 入口与 `CoreWorkerRuntime`                               |
+| `host/sync/network-coordinator.js` / `amend-forwarder.js` | Worker   | 同步协调器（digest/openMols 对账与自愈）与 amend 转发           |
+| `host/sync/relay-server.js` / `start-relay.js`           | Host     | 无状态 WebSocket 中继（板即房间），独立 Node 进程               |
 | `kernel/board/board-core.js`                       | Worker   | 对象、区块、AOM、UndoTree、持久化协调                           |
 | `renderers/canvas/viewport-core.js`                    | Worker   | Worker 视口状态、区块缓冲、渲染帧输出                           |
 | `kernel/board/active-object-manager.js`            | Worker   | 动态图与交互态对象生命周期                                      |
@@ -35,6 +37,8 @@
 | `renderers/canvas/**` （基类）                              | Kernel   | 渲染器基类、调度器、共享脏区策略                                |
 | `kernel/types/**`                                          | Kernel   | 跨线程共享 typedef 与协议                                       |
 | `kernel/utils/**`                                          | Kernel   | 数学、图结构、事件总线、路径、计数池                            |
+| `io/**`                                                    | 按 driver 分 | core（路径 DSL 与权限策略）任意环境；tauri driver 在 Worker 内经 invoke 转发到主线程；node driver 在 CLI / daemon 进程；memory driver 任意环境 |
+| `cli/**`                                                   | CLI      | 独立 Node 进程；写命令经持板 daemon 的 WebSocket RPC，读命令可直读板文件 |
 | `test-support/**`                                          | Any      | 测试 mock 与 fixture                                            |
 
 ## `ui/`（UI 线程）
@@ -92,7 +96,7 @@ Worker 不解析 DOM 事件，也不持有 DevicesDAG。
 
 ### objectId 分配
 
-- `Board.allocateObjectId()` 在 UI 侧通过本地 `CounterPool` 同步分配
+- `Board.allocateObjectId()` 在 UI 侧通过本地 `IncrementalIdPool` 分配来源命名空间字符串 id
 - Worker 侧 `createObject` 要求显式传入 `props.id`
 - Worker 若收到重复 id，会抛错并通过 RPC 返回错误
 
@@ -118,15 +122,18 @@ Worker 不解析 DOM 事件，也不持有 DevicesDAG。
 
 ### 已存在的协议层
 
-- `persistence-adapter.js` 定义了 `BoardCore` 依赖的持久化接口
-- `file-operate-bridge-*` 定义了宿主文件 I/O bridge 协议
+- `kernel/board/persistence-adapter.js` 定义了 `BoardCore` 依赖的持久化接口
+- `kernel/store/session-store.js` 定义了会话存储布局，`kernel/store/journaler.js` 驱动增量落盘
 - `rootPath`、`memoryMode()`、`isPersistent()` 等能力已经存在于 `BoardCore`
 
 ### 当前默认运行时
 
-- `CoreWorkerRuntime.createBoard()` 当前默认注入的是 `createDefaultPersistenceAdapter()`
-- 默认 demo 主要运行在内存模式
-- `undo` / `redo` 尚未接通到持久化历史路径
+- `CoreWorkerRuntime.createBoard()` 在 `rootPath` 有效时装配 tauri driver、会话恢复与日志跟随者
+- GUI 开板时探测板目录 `.daemon.json`（core-worker.js:222、:779-801）：有活 daemon 则只读挂载、零写盘，经协作通道直连 daemon；无则请求宿主 spawn 并周期重试
+- 持板 daemon 进程内由 node driver 承担落盘（BoardCore + 日志跟随者），GUI / CLI / TUI / MCP 均为其客户端
+- demo 以 `~/hound-whiteboard/demo-board` 为板目录运行于持久化模式（Tauri 可用时）
+- web demo（浏览器，无 Tauri）无文件系统能力，降级为内存模式 + relay 同步，落盘由持板 daemon 承担（whiteboard.js:51-52）
+- 撤销/重做历史随操作日志段落盘，重开后可跨会话撤销
 
 ## 当前默认运行模式
 
@@ -137,6 +144,51 @@ Worker 不解析 DOM 事件，也不持有 DevicesDAG。
 3. `Board.createViewport(...)` 创建 UI 侧 `Viewport`
 4. `BoardApiRpc.createViewport(...)` 创建 Worker 侧 `ViewportCore`
 5. tools 保持在 UI 线程，通过 RPC 与 Worker 协作
+
+## CLI daemon 进程（第五种运行边界）
+
+持板 daemon 是独立 Node 进程，每块板同时最多一个：
+
+- 进程内装配完整 Core：`BoardCore` + `BoardApi` + node driver + 日志跟随者落盘 + WebSocket RPC 服务
+- 本机端（CLI / TUI / MCP / GUI）都是其客户端：写命令一律经 daemon 的 WebSocket RPC 串行执行，与 GUI 实时互见
+- daemon 连了中继时，本机端的操作经 daemon 桥接进 relay 房间；relay 只承载跨机协作
+- 无 daemon 时 CLI 读命令以 `--path` 自治直读板文件（node driver，零写盘）
+
+## demo web 模式边界
+
+web demo（`yarn demo:web` + `yarn relay`）运行在纯浏览器环境，无 Tauri 宿主层：
+
+- 浏览器主线程承担 UI 边界，Core Worker 仍在 Worker 线程，kernel 边界不变
+- 无文件系统能力，`rootPath` 为空降级内存模式；落盘由连同一 relay 房间的持板 daemon 承担
+- 同步通道是 relay 的 WebSocket：双端经中继交换操作记录与 amend / awareness 消息
+
+```mermaid
+flowchart LR
+    subgraph TauriMain["Tauri 主进程（Rust 可信执行面）"]
+        IO["safe-io commands"]
+    end
+    subgraph UIThread["UI 线程"]
+        DAG["DevicesDAG / tools"]
+        VP["Viewport / UiRenderer"]
+    end
+    subgraph CoreWorker["Core Worker"]
+        CW["CoreWorkerRuntime / BoardCore"]
+    end
+    subgraph DaemonProc["CLI daemon 进程"]
+        DM["BoardCore + node driver + 日志跟随者"]
+    end
+    subgraph RelayProc["relay 进程"]
+        RS["relay-server（板即房间）"]
+    end
+
+    DAG -->|"rpc / rpc-batch"| CW
+    CW -->|"invoke 转发（tauri driver）"| IO
+    CW -.->|"WebSocket（协作通道，本机直连）"| DM
+    DM -->|"WebSocket（跨机协作）"| RS
+    CW -->|"WebSocket（syncUrl 中继）"| RS
+```
+
+CLI / TUI / MCP 作为独立 Node 进程位于图外，写命令经 WebSocket RPC 进 daemon 泳道。
 
 ## 相关文档
 

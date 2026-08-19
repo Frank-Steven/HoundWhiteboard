@@ -9,7 +9,7 @@
  * @author Zhou Chenyu
  */
 
-import { createDefaultPersistenceAdapter } from "./bridges/persistence-adapter.js";
+import { createDefaultPersistenceAdapter } from "../kernel/board/persistence-adapter.js";
 import { createDefaultAomRenderHooks } from "../kernel/board/aom-render-hooks.js";
 import { BoardCore } from "../kernel/board/board-core.js";
 import { ViewportCore } from "../renderers/canvas/viewport-core.js";
@@ -19,6 +19,14 @@ import { createConsolePrinter } from "../utils/log/console-printer.js";
 import { handleDebugQuery } from "./debug-helper.js";
 import { BoardApi } from "../kernel/api/board-api.js";
 import { BOARD_API_ROUTES } from "../kernel/api/board-api-routes.js";
+import { createTauriDriver } from "../io/driver/tauri.js";
+import { bindRoot } from "../io/driver/io-driver.js";
+import { createPersistenceAdapter } from "../io/adapter/persistence.js";
+import { createSessionStore } from "../kernel/store/session-store.js";
+import { createNetworkCoordinator } from "./sync/network-coordinator.js";
+import { createAmendForwarder } from "./sync/amend-forwarder.js";
+import { createJournaler } from "../kernel/store/journaler.js";
+import { hashString } from "../kernel/utils/hash.js";
 
 /**
  * 判断值是否可作为 Worker 消息宿主
@@ -54,6 +62,12 @@ function isWorkerGlobalScopeInstance(value) {
 function normalizeViewportKey(viewportId) {
   return String(viewportId ?? "");
 }
+
+/**
+ * 分子预览的超时时长（毫秒，无 mol 消息即判定分子失联并清预览）
+ * @type {number}
+ */
+const MOL_PREVIEW_TIMEOUT_MS = 3000;
 
 /**
  * Core Worker 运行时
@@ -122,6 +136,124 @@ class CoreWorkerRuntime {
   #flushScheduled;
 
   /**
+   * 日志跟随者（持久化模式非空）
+   * @type {Object | null}
+   */
+  #journaler;
+
+  /**
+   * 网络协调器（syncUrl 存在且连接成功时非空）
+   * @type {Object | null}
+   */
+  #coordinator;
+
+  /**
+   * remote-activity 事件订阅的退订函数
+   * @type {Function | null}
+   */
+  #unsubscribeRemoteActivity;
+
+  /**
+   * hit-changed 事件订阅的退订函数
+   * @type {Function | null}
+   */
+  #unsubscribeHitChanged;
+
+  /**
+   * amend 转发器（协调器连接成功时非空）
+   * @type {Object | null}
+   */
+  #amendForwarder;
+
+  /**
+   * 分子预览登记表（molId → 预览中的对象 id 集）
+   * @type {Map<string, Set<string>>}
+   */
+  #molPreviews;
+
+  /**
+   * 分子预览超时定时器表（molId → 定时器，3s 无分子消息即按失联清预览）
+   * @type {Map<string, ReturnType<typeof setTimeout>>}
+   */
+  #molPreviewTimers;
+
+  /**
+   * 同步中继地址（createBoard 时记录，供断线重连）
+   * @type {string | null}
+   */
+  #syncUrl = null;
+
+  /**
+   * 同步房间 id（createBoard 时记录，供断线重连）
+   * @type {string | null}
+   */
+  #syncBoardId = null;
+
+  /**
+   * 协调器重连定时器
+   * @type {ReturnType<typeof setTimeout> | null}
+   */
+  #coordinatorRetryTimer = null;
+
+  /**
+   * GUI 协作协调器（板 daemon 直连；协作模式非空）
+   * @type {Object | null}
+   */
+  #guiCoordinator = null;
+
+  /**
+   * GUI 协作板 daemon 信息（{name, port}；createBoard 时记录，供重连探测）
+   * @type {Object | null}
+   */
+  #guiDaemon = null;
+
+  /**
+   * 本会话是否持有板 daemon 的创建者引用
+   * @type {boolean}
+   *
+   * @description
+   * 仅「本次会话内经 Rust spawn 成功拉起新实例」记 true（spawn 前探测无活 daemon）；
+   * attach 既有 daemon（CLI 或其他 GUI 启动）一律 false，destroy 时不得 release。
+   */
+  #guiDaemonOwned = false;
+
+  /**
+   * GUI 协作 daemon 重连定时器
+   * @type {ReturnType<typeof setTimeout> | null}
+   */
+  #guiRetryTimer = null;
+
+  /**
+   * GUI 板尺寸（createBoard 时记录，spawn 建板骨架用）
+   * @type {{width: number, height: number}}
+   */
+  #boardSize = { width: 0, height: 0 };
+
+  /**
+   * 持久化只读 driver（协作重连时读 .daemon.json 重新探测用）
+   * @type {Object | null}
+   */
+  #persistenceDriver = null;
+
+  /**
+   * 持久化根目录 id
+   * @type {string | null}
+   */
+  #persistenceRootId = null;
+
+  /**
+   * 等待主线程 io-response 的挂起表
+   * @type {Map<string, { resolve: Function, reject: Function }>}
+   */
+  #ioPending;
+
+  /**
+   * io-invoke 消息序号
+   * @type {number}
+   */
+  #ioMsgSeq;
+
+  /**
    * @param {{ postMessage: Function, addEventListener: Function, removeEventListener: Function }} host - Worker 消息宿主
    */
   constructor(host) {
@@ -140,6 +272,25 @@ class CoreWorkerRuntime {
     this.#offWorkerLogs = null;
     this.#started = false;
     this.#flushScheduled = false;
+    this.#journaler = null;
+    this.#coordinator = null;
+    this.#unsubscribeRemoteActivity = null;
+    this.#unsubscribeHitChanged = null;
+    this.#amendForwarder = null;
+    this.#molPreviews = new Map();
+    this.#molPreviewTimers = new Map();
+    this.#syncUrl = null;
+    this.#syncBoardId = null;
+    this.#coordinatorRetryTimer = null;
+    this.#guiCoordinator = null;
+    this.#guiDaemon = null;
+    this.#guiDaemonOwned = false;
+    this.#guiRetryTimer = null;
+    this.#boardSize = { width: 0, height: 0 };
+    this.#persistenceDriver = null;
+    this.#persistenceRootId = null;
+    this.#ioPending = new Map();
+    this.#ioMsgSeq = 0;
   }
 
   /**
@@ -206,6 +357,22 @@ class CoreWorkerRuntime {
   }
 
   /**
+   * 处理主线程回传的 IO 执行结果
+   * @param {Object} message - io-response 消息
+   * @returns {void}
+   */
+  #handleIoResponse(message) {
+    const pending = this.#ioPending.get(message?.msgId);
+    if (!pending) return;
+    this.#ioPending.delete(message.msgId);
+    if (message.ok) {
+      pending.resolve(message.result);
+    } else {
+      pending.reject(new Error(message.error ?? "io-invoke failed"));
+    }
+  }
+
+  /**
    * 处理宿主消息事件
    * @param {MessageEvent | { data?: any }} event - 宿主消息事件
    * @returns {void}
@@ -231,6 +398,13 @@ class CoreWorkerRuntime {
         return;
       case "debug-request":
         this.#handleDebugRequest(message);
+        return;
+      case "io-response":
+        this.#handleIoResponse(message);
+        return;
+      case "awareness-send":
+        // UI 上报的 awareness（光标等）：经协调器 volatile 广播
+        this.#coordinator?.sendAwareness(message.data);
         return;
       default:
         return;
@@ -356,38 +530,735 @@ class CoreWorkerRuntime {
     }
   }
 
-  /**
-   * 创建 Worker 侧 BoardCore
-   * @param {{ width?: number, height?: number, rootPath?: string }} [options={}] - Board 初始化选项
-   * @returns {{ ok: boolean }} 创建结果
-   */
-  createBoard(options = {}) {
+/**
+ * 创建 Worker 侧 BoardCore
+ * @param {{ width?: number, height?: number, rootPath?: string, source?: string }} [options={}] - Board 初始化选项
+ * @returns {Promise<{ ok: boolean }>} 创建结果
+ *
+ * @description
+ * rootPath 有效时进入持久化协作模式：可写挂载板目录（GUI 落自己的日志流与活动对象文件，
+ * board.json 由 daemon 单写），探测或拉起板 daemon 后经协作通道双向同步；既有板从会话存储恢复（树、对象、trash、层叠图、计数器）。
+ */
+  async createBoard(options = {}) {
     if (this.#boardCore) {
       throw new Error("BoardCore already created.");
     }
 
+    this.#boardSize = { width: options.width ?? 0, height: options.height ?? 0 };
+    const persistence = await this.#setupPersistence(options.rootPath);
+
+    // 盘上板配置优先：板尺寸是文档数据（决定区块划分），重开必须与原值一致
+    const boardConfig = persistence?.session?.meta?.boardConfig;
     this.#boardCore = new BoardCore({
-      width: options.width,
-      height: options.height,
+      width: boardConfig?.width || options.width,
+      height: boardConfig?.height || options.height,
       rootPath: options.rootPath,
-      persistenceAdapter: createDefaultPersistenceAdapter(),
+      source: options.source,
+      persistenceAdapter:
+        persistence?.adapter ?? createDefaultPersistenceAdapter(),
       aomRenderHooks: createDefaultAomRenderHooks(),
+      hitRecords: persistence?.session?.records?.length
+        ? persistence.session.records
+        : undefined,
+      lastTime: persistence?.session?.meta?.lastTime,
+      coreIdCounters: persistence?.session?.meta?.coreIdCounters,
+      objectIdCounters: persistence?.session?.meta?.objectIdCounters,
     });
 
     const renderHooks = this.#createViewportRenderHooks();
     this.#boardCore.aomRenderHooks = renderHooks;
     this.#boardCore.activeObjectManager.renderHooks = renderHooks;
 
+    // awareness 下行：远程选择注册表变更合批通知 UI（选中装饰刷新与预览清理触发）
+    this.#unsubscribeRemoteActivity = this.#boardCore.activityEventBus.on(
+      "remote-activity",
+      (event) => {
+        this.#postMessage({
+          type: "awareness",
+          awarenessType: "remote-activity",
+          data: event,
+        });
+      },
+    );
+    // hit 变更下行：远程文档变化通知 UI（工具清理失效选中）
+    this.#unsubscribeHitChanged = this.#boardCore.activityEventBus.on(
+      "hit-changed",
+      () => {
+        this.#postMessage({
+          type: "awareness",
+          awarenessType: "hit-changed",
+        });
+      },
+    );
+
     this.#boardApi = new BoardApi(this.#boardCore);
+
+    if (persistence) {
+      this.#boardCore.restoreSession(persistence.session);
+      // 布局 v2：GUI 自己落盘——只落本端 source 的日志流（persistStream），
+      // 对象文件按 AOM 活动性仲裁（journaler 内跳过远程活动对象）；
+      // 元数据写本端分片 meta/<source>.json（board.json 创建后只读）；
+      // chunkUnload 部分驻留下不移除缺失对象文件
+      this.#journaler = createJournaler({
+        boardCore: this.#boardCore,
+        store: persistence.store,
+        collectMeta: () => this.#boardCore.collectSessionMeta(),
+        persistStream: (s) => s === this.#boardCore.source,
+        removeMissing: false,
+      });
+      this.#journaler.attach({
+        nextSegmentSeqBySource: persistence.session.nextSegmentSeqBySource,
+        lastTime: persistence.session.meta?.lastTime ?? 0,
+        knownObjects: persistence.session.objects,
+        knownTrash: persistence.session.trash,
+        knownSourceMeta: persistence.session.sourceMeta ?? null,
+        knownChunkMetadata: persistence.session.chunkMetadataList,
+      });
+      if (persistence.daemon) {
+        this.#guiDaemon = persistence.daemon;
+        await this.#connectGuiDaemon();
+      } else {
+        // 单机降级：daemon 暂不可用（断线/未拉起），盘即兜底；周期重试探测/拉起并接入协作
+        this.#scheduleGuiReconnect();
+      }
+    }
+
+    // 同步：syncUrl 存在时连接中继；首次失败起每 3s 自动重试，不阻塞开板
+    if (typeof options.syncUrl === "string" && options.syncUrl !== "") {
+      this.#syncUrl = options.syncUrl;
+      this.#syncBoardId =
+        typeof options.boardId === "string" && options.boardId !== ""
+          ? options.boardId
+          : options.rootPath;
+      await this.#connectCoordinator();
+    }
 
     return { ok: true };
   }
 
   /**
-   * 销毁 Worker 侧 BoardCore
-   * @returns {{ ok: boolean }} 销毁结果
+   * 连接（或重连）同步中继
+   * @returns {Promise<void>}
+   * @private
+   *
+   * @description
+   * 每次尝试使用新的协调器实例（断线后旧实例已自清理）；成功时挂接 amend 转发器，
+   * 失败起每 3s 自动重试（板存活期间中继后启动也能连上）。
    */
-  destroyBoard() {
+  async #connectCoordinator() {
+    if (this.#boardCore === null || this.#syncUrl === null) return;
+    await this.#connectSyncChannel({
+      url: this.#syncUrl,
+      boardId: this.#syncBoardId,
+      assign: (coordinator) => {
+        this.#coordinator = coordinator;
+      },
+      getCoordinator: () => this.#coordinator,
+      scheduleReconnect: () => this.#scheduleCoordinatorReconnect(),
+      logConnected: `已连接同步中继：${this.#syncUrl}`,
+      logFailedPrefix: "同步中继连接失败，离线运行",
+    });
+  }
+
+  /**
+   * 建立协作同步通道（relay 协调器与 daemon 直连通道共用的连接骨架）
+   * @param {Object} options - 连接参数
+   * @param {string} options.url - WS 地址
+   * @param {string} options.boardId - 板标识（relay 侧为房间号，daemon 直连为板根路径）
+   * @param {(coordinator: Object) => void} options.assign - 连接成功后的协调器归属赋值
+   * @param {() => Object | null} options.getCoordinator - 读取已归属协调器（amend 转发用）
+   * @param {() => void} options.scheduleReconnect - 断线或失败时的重连调度
+   * @param {string} options.logConnected - 连接成功日志文案
+   * @param {string} options.logFailedPrefix - 连接失败日志前缀
+   * @returns {Promise<void>}
+   * @private
+   *
+   * @description
+   * 每次尝试使用新的协调器实例（断线后旧实例已自清理）；connect 期间板已销毁则
+   * 直接关闭防泄漏；成功时挂接 amend 转发器，失败时关闭实例并调度重连。
+   */
+  async #connectSyncChannel({
+    url,
+    boardId,
+    assign,
+    getCoordinator,
+    scheduleReconnect,
+    logConnected,
+    logFailedPrefix,
+  }) {
+    const coordinator = createNetworkCoordinator({
+      boardCore: this.#boardCore,
+      boardApi: this.#boardApi,
+      url,
+      boardId,
+      // awareness 下行：volatile 消息（光标等）与成员离开转发 UI
+      onAwareness: ({ source, data }) => {
+        this.#postMessage({
+          type: "awareness",
+          awarenessType: data?.kind,
+          source,
+          data,
+        });
+        // 渲染侧预览：amend 通道的分子中间帧按预览坐标画对象本体（只影响渲染视图）
+        if (
+          data?.kind === "mol-begin" ||
+          data?.kind === "mol-amend" ||
+          data?.kind === "mol-end" ||
+          data?.kind === "mol-abort"
+        ) {
+          this.#applyMolMessages(data);
+        }
+      },
+      onDisconnect: () => {
+        // 断线瞬间对端手势状态不可信：通知 UI 清空全部预览与光标，重连后重建
+        this.#postMessage({ type: "awareness", awarenessType: "disconnect" });
+        for (const viewportCore of this.#viewportCores.values()) {
+          viewportCore.renderer?.clearAllPreviewPositions?.();
+        }
+        this.#clearAllMolPreviews();
+        this.#requestStaticRender();
+        scheduleReconnect();
+      },
+    });
+    try {
+      await coordinator.connect();
+      if (this.#boardCore === null) {
+        // connect 期间板已销毁：协调器无处挂接，直接关闭防泄漏
+        await coordinator.close();
+        return;
+      }
+      assign(coordinator);
+      this.#amendForwarder?.close();
+      this.#amendForwarder = createAmendForwarder({
+        boardCore: this.#boardCore,
+        sendAwareness: (data) => getCoordinator()?.sendAwareness(data),
+      });
+      this.#log.info(logConnected);
+    } catch (error) {
+      this.#log.warn(`${logFailedPrefix}：${error?.message ?? error}`);
+      await coordinator.close();
+      scheduleReconnect();
+    }
+  }
+
+  /**
+   * 连接（或重连）板 daemon 协作通道
+   * @returns {Promise<void>}
+   * @private
+   *
+   * @description
+   * 每次尝试先重新探测 daemon（重启后端口可能变化）；失败起每 3s 重试。
+   * 协作通道与 relay 协调器同协议（join/records/aom/awareness/digest），
+   * 断线重连后的全量收敛沿用同步机制的 digest/request-init 对账。
+   */
+  async #connectGuiDaemon() {
+    if (this.#boardCore === null) return;
+    // 内存模式（无 rootPath）无 daemon 可言；单机降级下 #guiDaemon 为空也要继续探测
+    if (!this.#boardCore.rootPath) return;
+    const daemon = await this.#resolveGuiDaemonForReconnect();
+    if (daemon === null) {
+      this.#scheduleGuiReconnect();
+      return;
+    }
+    this.#guiDaemon = daemon;
+    await this.#connectSyncChannel({
+      url: `ws://127.0.0.1:${daemon.port}`,
+      boardId: this.#boardCore.rootPath ?? "board",
+      assign: (coordinator) => {
+        this.#guiCoordinator = coordinator;
+      },
+      getCoordinator: () => this.#guiCoordinator,
+      scheduleReconnect: () => this.#scheduleGuiReconnect(),
+      logConnected: `已连接板 daemon 协作通道：${daemon.name}（端口 ${daemon.port}）`,
+      logFailedPrefix: "板 daemon 协作连接失败",
+    });
+  }
+
+  /**
+   * 调度板 daemon 协作重连（3s 后重新探测）
+   * @returns {void}
+   * @private
+   */
+  #scheduleGuiReconnect() {
+    if (this.#guiRetryTimer !== null) return;
+    this.#guiRetryTimer = setTimeout(() => {
+      this.#guiRetryTimer = null;
+      if (this.#boardCore !== null) {
+        void this.#connectGuiDaemon();
+      }
+    }, 3000);
+  }
+
+  /**
+   * 探测板目录的活 daemon（先读 .daemon.json，再按内存中的旧记录兜底）
+   * @returns {Promise<{name: string, port: number}|null>} daemon 信息；无活 daemon 时为 null
+   * @private
+   */
+  async #probeLiveBoardDaemon() {
+    const driver = this.#persistenceDriver;
+    if (driver !== null) {
+      try {
+        const text = await driver.read(this.#persistenceRootId, ".daemon.json");
+        if (typeof text === "string" && text !== "") {
+          const desc = JSON.parse(text);
+          if (
+            typeof desc?.port === "number" &&
+            (await this.#probeWs(desc.port))
+          ) {
+            return { name: desc.name, port: desc.port };
+          }
+        }
+      } catch {
+        // 描述文件缺失或损坏：走旧端口兜底
+      }
+    }
+    if (this.#guiDaemon && (await this.#probeWs(this.#guiDaemon.port))) {
+      return this.#guiDaemon;
+    }
+    return null;
+  }
+
+  /**
+   * 重连时重新探测板 daemon（重启后端口可能变化；无则返回 null 等待重试）
+   * @returns {Promise<Object|null>} daemon 信息
+   * @private
+   */
+  async #resolveGuiDaemonForReconnect() {
+    const live = await this.#probeLiveBoardDaemon();
+    if (live !== null) return live;
+    // 探测不到活 daemon（崩溃/被 stop）：重新拉起，幂等（活 daemon 直返）；
+    // 拉起失败（含单机降级期）返回 null 等下轮重试
+    const rootPath = this.#boardCore?.rootPath;
+    if (typeof rootPath === "string" && rootPath !== "") {
+      try {
+        return await this.#resolveBoardDaemon(rootPath);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 应用 amend 通道的分子消息到渲染侧预览坐标
+   * @param {Object} data - 分子消息数据（mol-begin / mol-amend / mol-end / mol-abort）
+   * @returns {void}
+   * @private
+   *
+   * @description
+   * mol-begin 按 before/create 快照的 position 起预览，mol-amend 的 patch.position 以绝对坐标覆盖；
+   * mol-end / mol-abort 清除该分子全部预览。预览只存在于渲染器视图，对象数据在分子记录到达时归位；
+   * 每个分子挂 3s 超时兜底，消息中断时预览不残留。
+   */
+  #applyMolMessages(data) {
+    if (this.#viewportCores.size === 0) return;
+    let changed = false;
+    switch (data?.kind) {
+      case "mol-begin": {
+        if (typeof data.molId !== "string" || !Array.isArray(data.entries)) {
+          return;
+        }
+        const ids = this.#molPreviewIds(data.molId);
+        for (const entry of data.entries) {
+          if (typeof entry?.objectId !== "string") continue;
+          // 修改型取 before 快照，创建型取 create 初始快照
+          const position = entry.before?.position ?? entry.create?.position;
+          if (
+            typeof position?.x !== "number" ||
+            typeof position?.y !== "number"
+          ) {
+            continue;
+          }
+          this.#setPreviewPosition(entry.objectId, position);
+          ids.add(entry.objectId);
+          changed = true;
+        }
+        this.#resetMolPreviewTimer(data.molId);
+        break;
+      }
+      case "mol-amend": {
+        if (!Array.isArray(data.mols)) return;
+        for (const mol of data.mols) {
+          if (typeof mol?.molId !== "string" || !Array.isArray(mol.entries)) {
+            continue;
+          }
+          const ids = this.#molPreviewIds(mol.molId);
+          for (const entry of mol.entries) {
+            if (typeof entry?.objectId !== "string") continue;
+            const position = entry.patch?.position;
+            if (
+              typeof position?.x !== "number" ||
+              typeof position?.y !== "number"
+            ) {
+              continue;
+            }
+            // patch.position 为绝对坐标：直接覆盖，不是增量
+            this.#setPreviewPosition(entry.objectId, position);
+            ids.add(entry.objectId);
+            changed = true;
+          }
+          this.#resetMolPreviewTimer(mol.molId);
+        }
+        break;
+      }
+      case "mol-end":
+      case "mol-abort": {
+        if (typeof data.molId !== "string") return;
+        changed = this.#dropMolPreview(data.molId);
+        break;
+      }
+      default:
+        return;
+    }
+    if (changed) {
+      // 全量缓存重画（预览位置变化后静态缓存按新位置重建）
+      this.#requestStaticRender();
+    }
+  }
+
+  /**
+   * 取分子的预览对象 id 集（无则创建）
+   * @param {string} molId - 分子 id
+   * @returns {Set<string>} 预览对象 id 集
+   * @private
+   */
+  #molPreviewIds(molId) {
+    let ids = this.#molPreviews.get(molId);
+    if (ids === undefined) {
+      ids = new Set();
+      this.#molPreviews.set(molId, ids);
+    }
+    return ids;
+  }
+
+  /**
+   * 覆盖对象的渲染预览坐标（全部视口）
+   * @param {string} objectId - 对象 id
+   * @param {{ x: number, y: number }} position - 世界坐标
+   * @returns {void}
+   * @private
+   */
+  #setPreviewPosition(objectId, position) {
+    for (const viewportCore of this.#viewportCores.values()) {
+      viewportCore.renderer?.setPreviewPosition?.(objectId, position);
+    }
+  }
+
+  /**
+   * 重置分子预览的超时定时器（到期按分子失联清预览）
+   * @param {string} molId - 分子 id
+   * @returns {void}
+   * @private
+   */
+  #resetMolPreviewTimer(molId) {
+    const existing = this.#molPreviewTimers.get(molId);
+    if (existing !== undefined) clearTimeout(existing);
+    this.#molPreviewTimers.set(
+      molId,
+      setTimeout(() => {
+        this.#molPreviewTimers.delete(molId);
+        if (this.#dropMolPreview(molId)) {
+          this.#requestStaticRender();
+        }
+      }, MOL_PREVIEW_TIMEOUT_MS),
+    );
+  }
+
+  /**
+   * 清除分子的全部渲染预览（mol-end / mol-abort / 超时）
+   * @param {string} molId - 分子 id
+   * @returns {boolean} 是否有预览被清除
+   * @private
+   */
+  #dropMolPreview(molId) {
+    const timer = this.#molPreviewTimers.get(molId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.#molPreviewTimers.delete(molId);
+    }
+    const ids = this.#molPreviews.get(molId);
+    if (ids === undefined) return false;
+    this.#molPreviews.delete(molId);
+    for (const objectId of ids) {
+      for (const viewportCore of this.#viewportCores.values()) {
+        viewportCore.renderer?.clearPreviewPosition?.(objectId);
+      }
+    }
+    return true;
+  }
+
+  /**
+   * 清空全部分子预览登记与超时定时器（断线 / 销毁时调用）
+   * @returns {void}
+   * @private
+   */
+  #clearAllMolPreviews() {
+    for (const timer of this.#molPreviewTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.#molPreviewTimers.clear();
+    this.#molPreviews.clear();
+  }
+
+  /**
+   * 调度一次静态层全量刷新（预览坐标变化后缓存按新位置重建）
+   * @description invalidateCachedObjects 置缓存脏，invalidateViewport 经调度器安排 rAF flush，
+   * markFrameDirty 标记帧回传；三者缺一不可。
+   * @returns {void}
+   * @private
+   */
+  #requestStaticRender() {
+    for (const viewportCore of this.#viewportCores.values()) {
+      viewportCore.renderer?.invalidateCachedObjects?.();
+      viewportCore.renderer?.invalidateViewport?.();
+      viewportCore.markFrameDirty();
+    }
+  }
+
+  /**
+   * 调度一次协调器重连（板存活且未在计时时才调度）
+   * @returns {void}
+   * @private
+   */
+  #scheduleCoordinatorReconnect() {
+    if (this.#boardCore === null || this.#syncUrl === null) return;
+    if (this.#coordinatorRetryTimer !== null) return;
+    this.#coordinatorRetryTimer = setTimeout(() => {
+      this.#coordinatorRetryTimer = null;
+      void this.#connectCoordinator();
+    }, 3000);
+  }
+
+  /**
+   * 装配持久化（rootPath 有效时）
+   * @param {string} [rootPath] - 白板根路径
+   * @returns {Promise<{ adapter: Object, store: Object, session: Object, daemon: Object } | null>} 持久化上下文，内存模式为 null
+   *
+   * @description
+   * 可写挂载（布局 v2：GUI 落自己的日志流、活动对象文件与 meta 分片）+ 探测或 spawn 板 daemon。
+   * daemon 不可用时不抛错：单机降级（盘即兜底，GUI 照常落盘，周期重试接入协作）。
+   * 板不存在时自行建骨架（不再依赖 spawn 侧）。
+   * @private
+   */
+  async #setupPersistence(rootPath) {
+    if (typeof rootPath !== "string" || rootPath.trim() === "") {
+      return null;
+    }
+    const driver = createTauriDriver({
+      invoke: (command, args) => this.#forwardIoInvoke(command, args),
+    });
+    // 可写挂载先行（目录不存在且声明写权限时自动创建）
+    const registered = await driver.registerRoot(rootPath, {
+      read: true,
+      write: true,
+      ls: true,
+      mkdir: true,
+      rm: true,
+      hide: false,
+      zip: false,
+    });
+    if (!registered?.rootId) {
+      throw new Error(`持久化根目录注册失败：${rootPath}`);
+    }
+    const { rootId } = registered;
+    const store = createSessionStore(bindRoot(driver, rootId));
+    // 单机降级自建仓（daemon 侧建骨架的历史职责收回到这里；幂等）
+    if (!(await store.exists())) {
+      await store.create(
+        this.#boardSize.width > 0 && this.#boardSize.height > 0
+          ? { boardConfig: { ...this.#boardSize } }
+          : {},
+      );
+    }
+    this.#persistenceDriver = driver;
+    this.#persistenceRootId = rootId;
+    const session = await store.loadAll();
+    // daemon 探测/拉起失败不阻塞开板（单机降级，盘即兜底）
+    let daemon = null;
+    try {
+      daemon = await this.#resolveBoardDaemon(rootPath);
+    } catch (error) {
+      this.#log.warn(`板 daemon 拉起失败：${error?.message ?? error}`);
+    }
+    if (daemon === null) {
+      this.#log.warn(`板 daemon 暂不可用，按单机模式开板（盘即兜底）：${rootPath}`);
+    }
+    return {
+      adapter: createPersistenceAdapter({ driver, rootId }),
+      store,
+      session,
+      daemon,
+      rootPath,
+    };
+  }
+
+  /**
+   * 探测板目录的活 daemon，无则请求主线程 spawn（Rust command，等就绪）
+   * @param {Object} driver - tauri driver
+   * @param {string} rootId - 根目录 id
+   * @param {string} rootPath - 板目录
+   * @returns {Promise<{name: string, port: number}|null>} daemon 信息；不可用时为 null
+   * @private
+   */
+  async #resolveBoardDaemon(rootPath) {
+    // 无条件请求 Rust 侧拉起（幂等：已有活 daemon 直接返回现有实例，无则建骨架并 spawn）
+    // 不传 source：daemon 身份按注册表 name→source 映射自持，不与 GUI 共享（撞号结构性排除）
+    const name = `gui-${guiDaemonNameFromPath(rootPath)}`;
+    // ownership 保守判定：spawn 前探测到活 daemon 则本次为 attach（创建者引用归原启动方，
+    // destroy 不得 release）；无活 daemon 时 spawn 成功的新实例初始创建者引用归本会话。
+    // 仅「本次会话内经 Rust spawn 成功」记 ownership，其余情况一律不 release
+    const liveBefore = await this.#probeLiveBoardDaemon();
+    const spawned = await this.#forwardIoInvoke("spawn_board_daemon", {
+      path: rootPath,
+      name,
+      width: this.#boardSize.width ?? 0,
+      height: this.#boardSize.height ?? 0,
+    });
+    if (spawned && typeof spawned?.port === "number") {
+      this.#guiDaemonOwned = liveBefore === null;
+      this.#log.info(`板 daemon 就绪：${spawned.name}（端口 ${spawned.port}）`);
+      return { name: spawned.name, port: spawned.port };
+    }
+    return null;
+  }
+
+  /**
+   * 建立短连 WebSocket 并统一幂等收尾（settled 防重入 + 超时兜底 + close 容错）
+   * @param {string} url - WS 地址
+   * @param {Object} options - 选项
+   * @param {number} options.timeoutMs - 超时毫秒数
+   * @param {*} options.fallbackValue - 超时、构造失败或连接出错时的解决值
+   * @param {(ws: WebSocket, finish: (value?: *) => void) => void} options.onOpen - open 事件处理
+   * @param {(event: MessageEvent, finish: (value?: *) => void) => void} [options.onMessage] - message 事件处理
+   * @returns {Promise<*>} finish 或兜底值解决
+   * @private
+   */
+  #openShortLivedWs(url, { timeoutMs, fallbackValue, onOpen, onMessage }) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let ws = null;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try {
+          ws?.close();
+        } catch {
+          // 收尾结果已定，close 抛错（如底层连接早已断开）无需处理
+        }
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish(fallbackValue), timeoutMs);
+      try {
+        ws = new WebSocket(url);
+      } catch {
+        // 构造即抛错（如 url 非法）：无连接可建，直接按兜底值收尾
+        finish(fallbackValue);
+        return;
+      }
+      ws.addEventListener("open", () => onOpen(ws, finish));
+      ws.addEventListener("error", () => finish(fallbackValue));
+      if (onMessage) {
+        ws.addEventListener("message", (event) => onMessage(event, finish));
+      }
+    });
+  }
+
+  /**
+   * WS 探测端口上是否有活 daemon（WebView 仅能作客户端，短连即断）
+   * @param {number} port - 端口
+   * @returns {Promise<boolean>} 是否可连通
+   * @private
+   */
+  #probeWs(port) {
+    return this.#openShortLivedWs(`ws://127.0.0.1:${port}`, {
+      timeoutMs: 800,
+      fallbackValue: false,
+      onOpen: (_ws, finish) => finish(true),
+    });
+  }
+
+  /**
+   * 向本会话 spawn 的板 daemon 发 daemon-release（创建者引用 -1）
+   * @param {{name: string, port: number}} daemon - daemon 信息
+   * @returns {Promise<void>}
+   * @private
+   *
+   * @description
+   * 短连接直发 daemon 协议 route（与 CLI daemon-client 的 release 同一路由；
+   * 不复用 daemon-client 是因为它依赖 node 侧注册表模块，Worker 内不可用）。
+   * 协作 WS 断开后 clientRefs 已归零，此处 ownerRefs 归零即触发 daemon 自动退出；
+   * 失败（daemon 已死/超时）静默收尾，残留 daemon 由 stale 探测与手动 release 兜底。
+   */
+  #releaseOwnedGuiDaemon(daemon) {
+    return this.#openShortLivedWs(`ws://127.0.0.1:${daemon.port}`, {
+      timeoutMs: 2000,
+      fallbackValue: undefined,
+      onOpen: (ws) => {
+        ws.send(JSON.stringify({ id: 1, route: "daemon-release", params: {} }));
+      },
+      onMessage: (_event, finish) => finish(),
+    });
+  }
+
+  /**
+   * 转发 IO 调用到主线程执行
+   * @param {string} command - Rust command 名称
+   * @param {Object} args - 参数
+   * @returns {Promise<*>} 执行结果
+   * @private
+   */
+  #forwardIoInvoke(command, args) {
+    const msgId = `io-${++this.#ioMsgSeq}`;
+    return new Promise((resolve, reject) => {
+      this.#ioPending.set(msgId, { resolve, reject });
+      this.#postMessage({ type: "io-invoke", msgId, command, args });
+    });
+  }
+
+  /**
+   * 销毁 Worker 侧 BoardCore
+   * @returns {Promise<{ ok: boolean }>} 销毁结果
+   */
+  async destroyBoard() {
+    if (this.#coordinatorRetryTimer !== null) {
+      clearTimeout(this.#coordinatorRetryTimer);
+      this.#coordinatorRetryTimer = null;
+    }
+    this.#amendForwarder?.close();
+    this.#amendForwarder = null;
+    this.#clearAllMolPreviews();
+    if (this.#coordinator) {
+      await this.#coordinator.close();
+      this.#coordinator = null;
+    }
+    this.#syncUrl = null;
+    this.#syncBoardId = null;
+    this.#unsubscribeRemoteActivity?.();
+    this.#unsubscribeRemoteActivity = null;
+    this.#unsubscribeHitChanged?.();
+    this.#unsubscribeHitChanged = null;
+    if (this.#guiCoordinator) {
+      await this.#guiCoordinator.close();
+      this.#guiCoordinator = null;
+    }
+    if (this.#guiRetryTimer !== null) {
+      clearTimeout(this.#guiRetryTimer);
+      this.#guiRetryTimer = null;
+    }
+    // 创建者引用回收：仅本会话 spawn 的 daemon 才 release（attach 他人 daemon 绝不误杀）；
+    // 协作 WS 已断开（clientRefs 归零），ownerRefs 归零即触发 daemon 自动退出
+    if (this.#guiDaemonOwned && this.#guiDaemon !== null) {
+      await this.#releaseOwnedGuiDaemon(this.#guiDaemon);
+    }
+    this.#guiDaemonOwned = false;
+    this.#guiDaemon = null;
+    this.#persistenceDriver = null;
+    this.#persistenceRootId = null;
+    if (this.#journaler) {
+      await this.#journaler.detach();
+      this.#journaler = null;
+    }
     this.#destroyAllViewportCores();
     this.#boardApi = null;
     this.#boardCore = null;
@@ -711,9 +1582,54 @@ class CoreWorkerRuntime {
    */
   #handleDebugRequest(message) {
     const { query, ...params } = message;
+    if (query === "reconnect") {
+      void this.#reconnectSyncChannels();
+      return;
+    }
     const boardCore = this.#requireBoardCore();
     handleDebugQuery(boardCore, query, params);
   }
+
+  /**
+   * 关闭并重建全部同步通道（relay 协调器与 GUI daemon 协作通道）
+   * @description 调试动作：通道卡死或状态可疑时手动重建，不走 3s 重连等待。
+   * 通道不存在（离线/单机）时仅记录日志。
+   * @returns {Promise<void>}
+   * @private
+   */
+  async #reconnectSyncChannels() {
+    let acted = false;
+    if (this.#coordinator !== null) {
+      acted = true;
+      await this.#coordinator.close().catch(() => {});
+      this.#coordinator = null;
+      this.#log.info("调试重连：重建 relay 协调器");
+      await this.#connectCoordinator();
+    }
+    if (this.#guiCoordinator !== null) {
+      acted = true;
+      await this.#guiCoordinator.close().catch(() => {});
+      this.#guiCoordinator = null;
+      this.#log.info("调试重连：重建板 daemon 协作通道");
+      await this.#connectGuiDaemon();
+    }
+    if (!acted) {
+      this.#log.info("调试重连：当前无同步通道（离线/单机）");
+    }
+  }
+}
+
+/**
+ * 由板目录路径派生 GUI daemon 名后缀（清洗为注册表字符集 [A-Za-z0-9._-]，附路径哈希防同 basename 撞名）
+ * @param {string} rootPath - 板目录
+ * @returns {string} 清洗后的板名与 8 位路径哈希（`{base}-{hash8}`）
+ */
+function guiDaemonNameFromPath(rootPath) {
+  const raw = String(rootPath);
+  const base = raw.split(/[\\/]/).filter(Boolean).pop() ?? "board";
+  const cleaned = base.replace(/[^A-Za-z0-9._-]/g, "-").replace(/^-+|-+$/g, "");
+  const name = cleaned !== "" ? cleaned : "board";
+  return `${name}-${hashString(raw)}`;
 }
 
 /**
@@ -730,4 +1646,4 @@ if (isWorkerGlobalScopeInstance(defaultWorkerHost)) {
   createCoreWorkerRuntime(defaultWorkerHost).start();
 }
 
-export { CoreWorkerRuntime, createCoreWorkerRuntime };
+export { CoreWorkerRuntime, createCoreWorkerRuntime, guiDaemonNameFromPath };

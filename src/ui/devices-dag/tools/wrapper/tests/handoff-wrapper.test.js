@@ -202,7 +202,9 @@ describe("HandoffWrapperTool", () => {
     // success → 提交并切回 first
     dispatchToHandoff(dag, [{ type: "success", context: {} }]);
 
-    expect(boardApi.commitObjects).toHaveBeenCalledWith([object.id]);
+    expect(boardApi.commitObjects).toHaveBeenCalledWith([object.id], {
+      supraKey: expect.any(String),
+    });
     expect(object.position).toEqual(new Vector(8, 6));
     expect(wrapper.getDebugInfo().phase).toBe("first");
     expect(dag.getNodeState("/viewport/handoff")).toMatchObject({
@@ -239,7 +241,9 @@ describe("HandoffWrapperTool", () => {
     // cancel 手势回滚几何
     expect(object.position).toEqual(new Vector(5, 5));
     // wrapper 显式丢弃 second 持有的活动对象（对齐旧 completeOnCancel 语义）
-    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith([object.id]);
+    expect(boardApi.discardActiveObjects).toHaveBeenCalledWith([object.id], {
+      supraKey: expect.any(String),
+    });
     expect(wrapper.getDebugInfo().phase).toBe("first");
     expect(dag.getNodeState("/viewport/handoff")).toMatchObject({
       phase: "first",
@@ -295,6 +299,43 @@ describe("HandoffWrapperTool", () => {
     });
     // 选中对象桥接到 second
     expect(modifier._handoffObjects).toEqual([selectedSummary]);
+  });
+
+  test("会话超分子不闭合不重开：key 全程不变，second 完成时才闭合", () => {
+    const object = { id: "7", position: new Vector(5, 5) };
+    const first = createMockCreator();
+    first._entry = object;
+    const second = new CommonObjectModifierTool({ processor: new DragGestureProcessor() });
+    const wrapper = new HandoffWrapperTool({ first, second });
+
+    const { services, board, boardApi } = createCreatorServices("7");
+    board.activeObjectManager.activeObjectIndex.set(object.id, object);
+    const supraCalls = [];
+    boardApi.beginSupra = jest.fn((key) => supraCalls.push(["begin", key]));
+    boardApi.endSupra = jest.fn((key) => supraCalls.push(["end", key]));
+    boardApi.abortSupra = jest.fn((key) => supraCalls.push(["abort", key]));
+    const { dag } = mountHandoff(wrapper, services);
+
+    // first 完成 → 切到 second；会话超分子不闭合、不重开（撤销 b874e04 会话分割）
+    dispatchToHandoff(dag, [{ type: "position", context: {} }]);
+    expect(wrapper.getDebugInfo().phase).toBe("second");
+    expect(supraCalls).toHaveLength(1);
+    expect(supraCalls[0][0]).toBe("begin");
+
+    // second 手势 + success → 提交并切回 first
+    dispatchToHandoff(dag, [
+      { type: "position", context: { value: { x: 5, y: 5 } } },
+    ]);
+    dispatchToHandoff(dag, [
+      { type: "position", context: { value: { x: 8, y: 6 } } },
+    ]);
+    dispatchToHandoff(dag, [{ type: "success", context: {} }]);
+
+    expect(wrapper.getDebugInfo().phase).toBe("first");
+    // second 完成时才闭合会话超分子，且 key 与开启时相同
+    expect(supraCalls).toHaveLength(2);
+    expect(supraCalls[1][0]).toBe("end");
+    expect(supraCalls[1][1]).toBe(supraCalls[0][1]);
   });
 
   test("endAction 传播到当前相位工具并完成其动作", () => {
@@ -376,5 +417,120 @@ describe("HandoffWrapperTool", () => {
     expect(firstShell.state.objects).toBeUndefined();
     // wrapper 真实节点不被子工具的状态读写污染
     expect(dag.getNodeState("/viewport/handoff").objects).toBeUndefined();
+  });
+
+  test("undo 命中 choose：会话终止，wrapper 复位相位并清理会话超分子（真实内核）", async () => {
+    const { BoardApi } = await import("../../../../../kernel/api/board-api.js");
+    const { BoardCore } = await import("../../../../../kernel/board/board-core.js");
+    const { createDefaultAomRenderHooks } = await import(
+      "../../../../../kernel/board/aom-render-hooks.js"
+    );
+    const { createDefaultPersistenceAdapter } = await import(
+      "../../../../../kernel/board/persistence-adapter.js"
+    );
+    const boardCore = new BoardCore({
+      width: 800,
+      height: 600,
+      source: "demo",
+      aomRenderHooks: createDefaultAomRenderHooks(),
+      persistenceAdapter: createDefaultPersistenceAdapter(),
+    });
+    const api = new BoardApi(boardCore);
+
+    // 画 X 并提交（左键笔画）
+    api.createObject("StrokeObject", {
+      id: "demo/1",
+      position: { x: 0, y: 0 },
+      property: { width: 2 },
+      data: { points: [{ x: 0, y: 0 }, { x: 10, y: 0 }] },
+    });
+    await api.commitObjects(["demo/1"]);
+
+    const chooser = new RectangleObjectChooserTool();
+    const modifier = new CommonObjectModifierTool({ processor: new DragGestureProcessor() });
+    const wrapper = new HandoffWrapperTool({ first: chooser, second: modifier });
+    const { dag } = mountHandoff(wrapper, {
+      board: boardCore,
+      boardApi: api,
+      viewport: { requestViewportUiRender: jest.fn() },
+    });
+
+    // 右键框选：会话超分子开启，choose 即时物化挂入（不闭合不重开）
+    dispatchToHandoff(dag, [
+      { type: "position", context: { value: { x: -5, y: -5 } } },
+    ]);
+    dispatchToHandoff(dag, [
+      { type: "position", context: { value: { x: 20, y: 20 } } },
+      { type: "end", context: {} },
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(wrapper.getDebugInfo().phase).toBe("second");
+    const choose = boardCore.operationLog
+      .toArray()
+      .find((r) => r.type === "choose-object");
+    expect(choose.supraId).not.toBeNull();
+
+    // Ctrl+Z：未闭合超分子内命中 choose（非更早的 add）
+    const result = api.undo();
+    const record = boardCore.operationLog.get(result.targetNodeId);
+    expect(record.type).toBe("choose-object");
+    expect(api.queryObjects(["demo/1"])[0].isActive).toBe(false);
+
+    // hit:changed → modifier 检测失效 → completeAction → wrapper 复位相位并清理会话
+    dispatchToHandoff(dag, [
+      {
+        type: "hit:changed",
+        context: { forcedEndMolIds: result.forcedEndMolIds },
+      },
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(wrapper.getDebugInfo().phase).toBe("first");
+    // 会话超分子已清理：成员在已撤销分支，endSupra 纯清理不产生 close-supra 记录
+    expect(
+      boardCore.operationLog.toArray().some((r) => r.type === "close-supra"),
+    ).toBe(false);
+    // 对象留在板上（撤销的是选择而非创建）
+    expect(boardCore.getObjectById("demo/1")).not.toBeNull();
+  });
+
+  test("会话未闭合时撤销落到 choose（撤销粒度缺陷的内核修复）", async () => {
+    const { BoardApi } = await import("../../../../../kernel/api/board-api.js");
+    const { BoardCore } = await import("../../../../../kernel/board/board-core.js");
+    const { createDefaultAomRenderHooks } = await import(
+      "../../../../../kernel/board/aom-render-hooks.js"
+    );
+    const { createDefaultPersistenceAdapter } = await import(
+      "../../../../../kernel/board/persistence-adapter.js"
+    );
+    const boardCore = new BoardCore({
+      width: 800,
+      height: 600,
+      source: "demo",
+      aomRenderHooks: createDefaultAomRenderHooks(),
+      persistenceAdapter: createDefaultPersistenceAdapter(),
+    });
+    const api = new BoardApi(boardCore);
+
+    api.createObject("StrokeObject", {
+      id: "demo/1",
+      position: { x: 0, y: 0 },
+      property: { width: 2 },
+      data: { points: [{ x: 0, y: 0 }, { x: 10, y: 0 }] },
+    });
+    await api.commitObjects(["demo/1"]);
+
+    // 三级容器模型：choose 即时物化（不再是草稿），未闭合会话内 undo 命中 choose 而非误撤创建
+    api.beginSupra("handoff/1");
+    await api.addActiveObjects(["demo/1"], { supraKey: "handoff/1" });
+
+    const result = api.undo();
+    const record = boardCore.operationLog.get(result.targetNodeId);
+    expect(record.type).toBe("choose-object");
+
+    // choose 已撤（成员在已撤销分支），abortSupra 退化为纯句柄清理
+    api.abortSupra("handoff/1");
+    expect(boardCore.operationLog.toArray().filter((r) => r.type === "undo")).toHaveLength(1);
   });
 });

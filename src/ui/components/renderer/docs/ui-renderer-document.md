@@ -41,7 +41,7 @@ provider 签名：`(context: { viewport: Viewport, renderer: UiRenderer }) => an
 
 ### Overlay 条目收集
 
-- `collectOverlayEntries()`：遍历所有 provider，收集并归一化 overlay 条目
+- `collectProviderOverlayEntries()`：遍历所有 provider，收集并归一化 overlay 条目
 - provider 返回的条目经过 `normalizeOverlayEntry`（委托给 `ui-overlay-factory.js`）归一化，确保 `draw` 函数可用
 
 ### 绘制
@@ -109,6 +109,17 @@ createCompatSelectionEntriesForSummaries(objects, "modifier", viewport);
 
 这演示了如何用 `type: "point"` 和 `type: "path"` 为创建工具添加可视辅助。
 
+### awareness（远程协作装饰）
+
+`AwarenessOverlay`（`awareness-overlay.js`）以 overlay provider 注册远程协作装饰：
+
+- 远程命名选择的按来源着色虚线框与来源标签（`awareness-choice:{source}`）
+- 远程光标
+- 远程创建中对象的预览（手势中间帧框随预览位置画）
+
+数据经 `queryRemoteChoices` / `queryObjects` 拉取，由 awareness 消息驱动刷新；
+只画不存——条目不进任何本地状态，commit 记录到达后按记录归位。
+
 ## overlay 条目格式
 
 条目分三层结构：
@@ -164,7 +175,6 @@ creator、chooser、modifier 都可能推动 ui 层刷新，但 `UiRenderer` 仅
 | `registerOverlayProvider(provider)`   | 注册自定义 overlay provider          |
 | `unregisterOverlayProvider(provider)` | 注销 provider                        |
 | `collectProviderOverlayEntries()`     | 收集并归一化所有 provider 条目       |
-| `collectOverlayEntries()`             | 收集当前应绘制的 overlay（调用上者） |
 | `drawRectEntry(context, entry)`       | 绘制矩形条目                         |
 | `drawPointEntry(context, entry)`      | 绘制点（填充圆点）条目               |
 | `drawPathEntry(context, entry)`       | 绘制路径（折线/闭合路径）条目        |

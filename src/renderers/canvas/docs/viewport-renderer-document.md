@@ -53,6 +53,23 @@
 - `#flushCacheScheduler()` 在输出渲染前被调用：若有积压脏区则调用 `#cacheScheduler.flush()`，否则全量重建缓存
 - 双调度器独立安排各自的 rAF，但输出帧总是先保证缓存最新
 
+```mermaid
+flowchart TD
+  INV1["invalidateActiveObjects"] --> OS["#outputScheduler<br/>（仅输出层）"]
+  INV2["invalidateCachedObjects"] --> CS["#cacheScheduler"]
+  INV2 --> OS
+  INV3["invalidateChunks"] --> CS
+  INV3 --> OS
+
+  CS -->|rAF| CF["#cacheFlush<br/>静态图对象绘制到 #cache"]
+  OS -->|rAF| OF["#outputFlush"]
+  OF --> FCS["#flushCacheScheduler<br/>先缓存后输出"]
+  FCS --> CF
+  FCS --> COPY["cache 拷贝<br/>#copyCache / #copyCacheRects"]
+  COPY --> AOM["AOM 对象叠画到 #output"]
+  AOM --> BMP["ViewportCore.flushRenderFrame<br/>transferToImageBitmap 回传 UI"]
+```
+
 ## 对象收集
 
 ### 缓存层（`#collectCacheDrawables()`）
@@ -71,7 +88,6 @@
 
 - **缓存层调度器**使用 base 层策略（`createBaseDirtyRectThresholdStrategy`），更保守的阈值（高 `viewportCoverageRatio`），减少不必要的缓存重绘
 - **输出层调度器**使用 live 层策略（`createLiveDirtyRectThresholdStrategy`），更激进的合并阈值（低 `viewportCoverageRatio`），适应逐帧变化的 AOM 输出
-- canonical rect 塌缩（chunk 级屏幕矩形）两个调度器共享同一套解析逻辑
 - 双调度器各自独立积累和合并脏区，输出帧渲染前通过 `#flushCacheScheduler()` 协调缓存 > 输出的时序保证
 
 ## 快照与旧帧追踪
@@ -93,6 +109,25 @@
 不会产生拉丝残留。`invalidateCachedObjects()` 在对象离开 AOM（commit / delete）时
 同样并入其 `drawnRects`，关闭最后一帧活动绘制溢出静态提交清除集的窗口。
 
+## 远程手势预览
+
+`Renderer` 基类（`renderer.js`）维护一张预览坐标表（对象 id → 预览位置）：
+
+- `setPreviewPosition(objectId, position)` — 写入预览坐标
+- `clearPreviewPosition(objectId)` — 清除单个对象的预览（手势终点或记录归位后）
+- `clearAllPreviewPositions()` — 清空全部预览（断线时对端手势状态不可信）
+
+`ViewportRenderer` 重画静态缓存时按预览坐标临时覆盖对象的 `position`，画完还原——只影响渲染视图，不改对象数据。
+
+预览由 amend volatile 通道的分子消息驱动（`core-worker.js` 的 `#applyMolMessages`）：
+
+- `mol-begin` 按 before/create 快照的 `position` 起预览
+- `mol-amend` 的 `patch.position` 以绝对坐标覆盖（不是增量）
+- `mol-end` / `mol-abort` 清除该分子的全部预览
+- 每个分子挂 3s 超时兜底，消息中断时预览不残留；断线时清空全部预览并全量重画
+
+预览变化后触发全量缓存重画（`#requestStaticRender`），对象数据在分子记录到达时归位。
+
 ## 调试 API
 
 - `getStaticCache()`：返回内部的静态缓存 `OffscreenCanvas`，供调试面板读取
@@ -113,7 +148,7 @@ const renderer = new ViewportRenderer(viewport, activeObjectManager, {
 ## 当前实现状态
 
 - 已实现：单渲染器合成、双调度器（缓存层 + 输出层）、缓存更新、输出合成、AOM 对象收集、AOM 排除过滤、对象级脏区失效、区块级脏区失效、快照追踪、调试 API
-- 已接入：`ViewportCore`、`core-worker.js` 渲染钩子、`board-render-hooks.js`、`object-modifier.js`
+- 已接入：`ViewportCore`、`core-worker.js` 渲染钩子、`kernel/board/aom-render-hooks.js`（kernel 侧钩子接口）、`object-modifier.js`
 
 ## 相关文档
 

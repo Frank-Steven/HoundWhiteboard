@@ -1,6 +1,6 @@
 /**
  * @file 右键选择→修改 handoff workflow 挂载
- * @description 将鼠标右键、Enter/Escape、WASD 汇聚到 handoff wrapper。
+ * @description 将鼠标右键、Enter/Escape、Delete/Backspace、WASD 汇聚到 handoff wrapper。
  * @module demo/config/workflows/secondary-handoff
  * @author Zhou Chenyu
  */
@@ -13,6 +13,7 @@ import { SIGNAL_TYPES } from "../../../ui/devices-dag/dag-core/signal-types.js";
 import { buildWasdNodeConfig } from "../prefix-builders.js";
 import {
   CANCEL_KEY,
+  DELETE_KEYS,
   DEMO_WORKFLOW_NAMES,
   SUBMIT_KEY,
   WASD_KEYS,
@@ -40,7 +41,7 @@ function buildSignalForwardNodeConfig(targetType) {
 
 /**
  * 挂载右键选择→修改 handoff workflow
- * @description 鼠标右键驱动 chooser 框选；Enter 提交、Escape 取消；WASD 在 modifier 阶段产生 displacement。
+ * @description 鼠标右键驱动 chooser 框选；Enter 提交、Escape 取消、Delete/Backspace 删除选中对象；WASD 在 modifier 阶段产生 displacement。
  * @param {import("../../../ui/components/orchestration/viewport.js").Viewport} viewport - 视口实例
  * @param {import("../../../ui/devices-dag/tools/chooser/rectangle-object-chooser.js").RectangleObjectChooserTool} secondarySelectionTool - 右键框选工具
  * @returns {void}
@@ -67,6 +68,13 @@ function mountSecondaryHandoff(viewport, secondarySelectionTool) {
     to: `workflows/${wfName}`,
     prefix: createEdgePrefix(buildSignalForwardNodeConfig("cancel")),
   });
+  for (const code of DELETE_KEYS) {
+    scope.addEdge({
+      from: `keyboard/code/${code}`,
+      to: `workflows/${wfName}`,
+      prefix: createEdgePrefix(buildSignalForwardNodeConfig(SIGNAL_TYPES.DELETE)),
+    });
+  }
   for (const { code, vector } of WASD_KEYS) {
     scope.addEdge({
       from: `keyboard/code/${code}`,

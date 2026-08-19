@@ -4,7 +4,7 @@
  * @module benchmarks/queue
  */
 
-import { Queue } from "../src/core/utils/queue.js";
+import { Queue } from "../src/kernel/utils/queue.js";
 import { printHeader, printFooter, benchmarkSync } from "./helpers.js";
 
 const SMALL_SIZE = 100;

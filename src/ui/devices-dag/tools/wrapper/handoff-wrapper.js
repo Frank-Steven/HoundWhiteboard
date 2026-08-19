@@ -9,6 +9,9 @@ import { SignalPacket } from "../../dag-core/signal.js";
 import { normalizeObjectCollection } from "../tool.js";
 import { WrapperTool } from "./wrapper-tool.js";
 
+/** 会话超分子模块级单调序号（跨 wrapper 实例唯一） @type {number} */
+let handoffSessionSeq = 0;
+
 /**
  * handoff 包装工具
  * @class
@@ -33,6 +36,88 @@ import { WrapperTool } from "./wrapper-tool.js";
  * });
  */
 class HandoffWrapperTool extends WrapperTool {
+  /**
+   * 会话超分子 key（first 阶段信号到达时开启，second 完成或会话终结时闭合）
+   * @description 三级容器模型下会话超分子从开启持续整个「选择 → 修改 → 提交」会话，
+   * 不再于 first 完成时闭合重开（b874e04 会话分割已被撤销）：
+   * choose 与后续修改分子挂同一 supraId，闭合时经 close-supra 折叠为聚合节点。
+   * @type {?string}
+   */
+  #sessionKey = null;
+
+  /**
+   * 开启会话超分子（first 阶段信号到达时）
+   * @description 一次「选择 → 修改 → 提交」会话的所有提交指定同一 key，
+   * 成员即时物化挂入，endSupra 时追加 close-supra 折叠为一个聚合节点。
+   * key 取模块级单调序号，跨 wrapper 实例唯一。
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} context - 设备图处理器上下文
+   * @returns {void}
+   */
+  #openSessionSupra(context) {
+    if (this.#sessionKey !== null) {
+      return;
+    }
+    handoffSessionSeq += 1;
+    this.#sessionKey = `handoff/${handoffSessionSeq}`;
+    context?.services?.boardApi?.beginSupra?.(this.#sessionKey);
+  }
+
+  /**
+   * 闭合会话超分子（追加 close-supra 折叠；成员不足两条时纯清理句柄）
+   * @returns {void}
+   */
+  #closeSessionSupra() {
+    if (this.#sessionKey === null) {
+      return;
+    }
+    const key = this.#sessionKey;
+    this.#sessionKey = null;
+    this._resolveLatestServices()?.boardApi?.endSupra?.(key);
+  }
+
+  /**
+   * 分发信号包到槽位（注入会话超分子 key）
+   * @param {string} scopeId - 槽位标识
+   * @param {import("../../dag-type.js").SignalPacket|Object} packet - 输入信号包
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [parentContext={}] - 父上下文
+   * @returns {*} 分发结果
+   * @protected
+   */
+  _dispatchToSlot(scopeId, packet, parentContext = {}) {
+    // 会话超分子 key 经 services 透传：子工具的提交随之指定归属
+    return super._dispatchToSlot(
+      scopeId,
+      packet,
+      this.#sessionKey === null
+        ? parentContext
+        : {
+          ...parentContext,
+          services: {
+            ...parentContext?.services,
+            supraKey: this.#sessionKey,
+          },
+        },
+    );
+  }
+
+  /**
+   * 构造槽位作用域上下文（注入会话超分子 key）
+   * @param {string} scopeId - 槽位标识
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [parentContext={}] - 父上下文
+   * @returns {Object} 槽位作用域上下文
+   * @protected
+   */
+  _buildSlotContext(scopeId, parentContext = {}) {
+    const slotContext = super._buildSlotContext(scopeId, parentContext);
+    if (this.#sessionKey !== null) {
+      slotContext.services = {
+        ...slotContext.services,
+        supraKey: this.#sessionKey,
+      };
+    }
+    return slotContext;
+  }
+
   /**
    * 第一阶段工具
    * @type {Tool}
@@ -156,6 +241,8 @@ class HandoffWrapperTool extends WrapperTool {
       return;
     }
 
+    // 选择完成：choose 已随 first 阶段的提交挂入会话超分子（即时物化带 supraId），
+    // 超分子保持开启，等待 second 阶段的修改分子继续挂入
     if (this.#autoBridgeObjects) {
       this.#second.receiveHandoffObjects?.(objects, eventContext ?? {});
     }
@@ -171,6 +258,7 @@ class HandoffWrapperTool extends WrapperTool {
    */
   #onSecondComplete(eventContext, result) {
     this.#setPhase("first");
+    this.#closeSessionSupra();
     this._resolveLatestServices()?.viewport?.requestViewportUiRender?.();
   }
 
@@ -192,6 +280,11 @@ class HandoffWrapperTool extends WrapperTool {
       this.#mirrorPhase(context);
     }
 
+    // first 阶段信号到达 = 一次「选择 → 修改 → 提交」会话开始：开启会话超分子
+    if (this.#phase === "first") {
+      this.#openSessionSupra(context);
+    }
+
     const phaseBeforeDispatch = this.#phase;
     const hasCancelSignal = packet.signals.some(
       (signal) => signal?.type === "cancel",
@@ -205,9 +298,11 @@ class HandoffWrapperTool extends WrapperTool {
       this.#phase === "second"
     ) {
       // 对齐旧 completeOnCancel 的丢弃语义：second 的 cancel 手势只回滚几何，
-      // 其持有的活动对象需由 wrapper 显式丢弃
+      // 其持有的活动对象需由 wrapper 显式丢弃（discard 型 unchoose，位置回选择前快照），
+      // 随后闭合会话超分子——Esc 为 discard 闭合，零撤销动作
       this.#second.discardAction?.(this._buildSlotContext("second", context));
       this.#setPhase("first");
+      this.#closeSessionSupra();
       this._resolveLatestServices()?.viewport?.requestViewportUiRender?.();
     }
   }
@@ -219,14 +314,17 @@ class HandoffWrapperTool extends WrapperTool {
    * @returns {*} 当前相位工具 endAction 的返回值
    */
   endAction(context = {}) {
-    return this._getSlot(this.#phase)?.tool?.endAction(
+    const result = this._getSlot(this.#phase)?.tool?.endAction(
       this._buildSlotContext(this.#phase, context),
     );
+    this.#closeSessionSupra();
+    return result;
   }
 
   /**
    * 取消当前动作
-   * @description 对当前相位工具调用 `cancelAction`（槽位作用域上下文）并切回 first。
+   * @description 对当前相位工具调用 `cancelAction`（槽位作用域上下文）并切回 first，
+   * 会话超分子按取消语义闭合（成员不足两条时纯清理句柄）。
    * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
    * @returns {void}
    */
@@ -235,6 +333,7 @@ class HandoffWrapperTool extends WrapperTool {
       this._buildSlotContext(this.#phase, context),
     );
     this.#setPhase("first");
+    this.#closeSessionSupra();
   }
 
   /**
@@ -253,6 +352,16 @@ class HandoffWrapperTool extends WrapperTool {
    */
   getDebugInfo() {
     return { phase: this.#phase };
+  }
+
+  /**
+   * 卸载时闭合会话超分子（已落地的更改随之物化）
+   * @param {import("../../dag-type.js").DevicesDAGHandlerContext} [context={}] - 设备图处理器上下文
+   * @returns {void}
+   */
+  umount(context = {}) {
+    this.#closeSessionSupra();
+    super.umount(context);
   }
 }
 

@@ -10,9 +10,8 @@ import {
 import { StrokeObject } from "../../objects/stroke/stroke.js";
 import { Vector } from "../../utils/math.js";
 import { ChunkObjectManager } from "../../chunk/chunk-object-manager.js";
-import { boardFileOperateBridge } from "../../../host/bridges/file-operate-bridge-renderer.js";
 import { createDefaultAomRenderHooks } from "../aom-render-hooks.js";
-import { createDefaultPersistenceAdapter } from "../../../host/bridges/persistence-adapter.js";
+import { createDefaultPersistenceAdapter } from "../persistence-adapter.js";
 
 describe("Board chunk grid", () => {
   test("Chunk 的回字形 id 与二维坐标应可双向转换", () => {
@@ -36,24 +35,6 @@ describe("Board chunk grid", () => {
   test("Chunk 应能判断 id 与坐标是否匹配", () => {
     expect(Chunk.isValidChunkIdentity(3, 1, 1)).toBe(true);
     expect(Chunk.isValidChunkIdentity(3, 0, 0)).toBe(false);
-  });
-
-  test("Chunk 应能从已加载的 neighbor 访问上下左右关联", () => {
-    const center = Chunk.fromId(1);
-    const right = Chunk.fromId(2);
-    const left = Chunk.fromId(5);
-    const up = Chunk.fromId(3);
-    const down = Chunk.fromId(9);
-
-    Chunk.connectTwoChunk(center, right, "right");
-    Chunk.connectTwoChunk(center, left, "left");
-    Chunk.connectTwoChunk(center, up, "up");
-    Chunk.connectTwoChunk(center, down, "down");
-
-    expect(right.leftChunk).toBe(center);
-    expect(left.rightChunk).toBe(center);
-    expect(up.downChunk).toBe(center);
-    expect(down.upChunk).toBe(center);
   });
 
   test("BoardCore 应能通过 getChunkById 查找已加载区块", async () => {

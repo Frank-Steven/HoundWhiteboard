@@ -2,7 +2,7 @@
  * @file UI 侧白板 facade
  * @description
  * Board 是白板在 UI 线程的宿主 facade，负责持有 DevicesDAG、signalsEventBus、viewports 等 UI 运行时。
- * Core 数据职责（对象、区块、AOM、UndoTree）全部在 Worker 侧，UI 侧通过 BoardApiRpc 与之通信。
+ * Core 数据职责（对象、区块、AOM）全部在 Worker 侧，UI 侧通过 BoardApiRpc 与之通信。
  * @module ui/components/orchestration/board
  * @author Zhou Chenyu
  */
@@ -12,6 +12,7 @@ import { EventBus } from "../../../kernel/utils/event-bus.js";
 import { SharedStateStore } from "../../../kernel/utils/shared-state-store.js";
 import { DevicesDAG } from "../../devices-dag/index.js";
 import { BoardApiRpc } from "../../../host/bridges/board-api-rpc.js";
+import { attachIoInvokeForwarder } from "../../../host/bridges/io-invoke-forwarder.js";
 import { Viewport } from "./viewport.js";
 import { joinPath } from "../../../kernel/utils/path.js";
 import { Logger } from "../../../utils/log/logger.js";
@@ -22,6 +23,13 @@ import { logBus } from "../../../utils/log/log-bus.js";
  * @type {Logger}
  */
 const boardLog = new Logger("Board", "WARN", logBus);
+
+/**
+ * createBoard 默认超时（毫秒）
+ * @description 持久化首开要拉起板 daemon，Rust 侧就绪轮询上限 15s，此处留足余量。
+ * @type {number}
+ */
+const CREATE_BOARD_TIMEOUT_MS = 20000;
 
 /**
  * Board 运行时节点配置事件载荷。
@@ -50,6 +58,12 @@ class Board {
    * @type {{ postMessage: Function, addEventListener: Function, removeEventListener: Function } | null}
    */
   #worker;
+
+  /**
+   * IO invoke 转发器卸接函数
+   * @type {(() => void) | null}
+   */
+  #detachIoForwarder;
 
   /**
    * 白板宽度
@@ -108,6 +122,8 @@ class Board {
    *   height?: number,
    *   rootPath?: string,
    *   idSource?: string,
+   *   syncUrl?: string,
+   *   boardId?: string,
    * }} [options={}] - 白板初始化选项
    */
   constructor(options = {}) {
@@ -116,9 +132,26 @@ class Board {
     this.rootPath = isValidBoardRootPath(options.rootPath)
       ? options.rootPath
       : undefined;
+    /**
+     * 同步中继地址（不传则离线运行）
+     * @type {string|undefined}
+     */
+    this.syncUrl =
+      typeof options.syncUrl === "string" && options.syncUrl !== ""
+        ? options.syncUrl
+        : undefined;
+    /**
+     * 同步房间 id（缺省取 rootPath：板即房间）
+     * @type {string|undefined}
+     */
+    this.boardId =
+      typeof options.boardId === "string" && options.boardId !== ""
+        ? options.boardId
+        : undefined;
 
     this.#boardApi = null;
     this.#worker = null;
+    this.#detachIoForwarder = null;
     this.#idPool = new IncrementalIdPool(options.idSource ?? "");
     this.viewports = new Map();
     this.signalsEventBus = new EventBus();
@@ -172,7 +205,26 @@ class Board {
    * @returns {string} 携带来源命名空间的字符串 id
    */
   allocateObjectId() {
-    return this.#idPool.allocate();
+    const id = this.#idPool.allocate();
+    // 计数随板元数据持久化（上报在随后的 createObject 之前到达内核，同一通道保序）
+    void this.#boardApi?.reportObjectIdCounter?.(
+      this.idSource,
+      this.#idPool.counter,
+    );
+    return id;
+  }
+
+  /**
+   * 按会话元数据续种对象 id 池
+   * @param {Object<string, number>} counters - 各来源已分配的最大计数
+   * @returns {void}
+   * @private
+   */
+  #reseedIdPool(counters) {
+    const counter = counters?.[this.idSource];
+    if (Number.isInteger(counter) && counter > 0) {
+      this.#idPool.ensureAbove(counter);
+    }
   }
 
   /**
@@ -181,7 +233,7 @@ class Board {
    * 创建 BoardApiRpc 并在 Worker 中初始化 BoardCore。
    * 必须在创建任何 viewport 之前调用。
    * @param {{ postMessage: Function, addEventListener: Function, removeEventListener: Function }} worker - Worker 或兼容端点
-   * @param {{ timeoutMs?: number, readyTimeoutMs?: number }} [options={}] - RPC 选项
+   * @param {{ timeoutMs?: number, readyTimeoutMs?: number, createBoardTimeoutMs?: number }} [options={}] - RPC 选项
    * @returns {Promise<BoardApiRpc>} 已就绪的 BoardApiRpc
    */
   async enableWorkerMode(worker, options = {}) {
@@ -201,15 +253,27 @@ class Board {
       );
     });
 
+    // worker 内驱动的文件操作经主线程转发到 Tauri invoke
+    this.#detachIoForwarder = attachIoInvokeForwarder(worker);
+
     try {
       await boardApi.waitUntilReady(
         options.readyTimeoutMs ?? options.timeoutMs,
       );
-      await boardApi.createBoard({
-        width: this.width,
-        height: this.height,
-        rootPath: this.rootPath,
-      });
+      await boardApi.createBoard(
+        {
+          width: this.width,
+          height: this.height,
+          rootPath: this.rootPath,
+          source: this.idSource || undefined,
+          syncUrl: this.syncUrl,
+          boardId: this.boardId ?? this.rootPath,
+        },
+        options.createBoardTimeoutMs ?? CREATE_BOARD_TIMEOUT_MS,
+      );
+      // 按会话元数据续种对象 id 池，避免重开后分配碰撞
+      const counters = await boardApi.getObjectIdCounters();
+      this.#reseedIdPool(counters);
     } catch (error) {
       boardApi.destroy(error?.message ?? "Failed to enable worker mode.");
       throw error;

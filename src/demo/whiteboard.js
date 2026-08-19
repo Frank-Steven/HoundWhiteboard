@@ -7,15 +7,22 @@
 
 import { Vector } from "../kernel/utils/math.js";
 import { Board } from "../ui/components/orchestration/board.js";
+import { AwarenessOverlay } from "../ui/components/renderer/awareness-overlay.js";
 import { createConsolePrinter, logBus } from "../utils/log/index.js";
 import {
   configureWhiteboardDemo,
   mountToolSwitcher,
 } from "./config/whiteboard-demo.js";
-import { DEMO_ID_SOURCE } from "./config/constants.js";
+import { broadcastHitChanged } from "./config/hit-changed-broadcast.js";
+import { resolveDeviceSource } from "../utils/device-identity.js";
+import { installSyncConsole } from "./config/sync-console.js";
+import { enableWorkerWithFallback } from "./config/enable-worker-with-fallback.js";
+import { installGracefulShutdown } from "./config/graceful-shutdown.js";
 import { DemoLog } from "./config/log.js";
 import { ViewportTool } from "./config/viewport-tool.js";
 import {
+  attachDeleteAdapter,
+  attachHistoryAdapter,
   attachKeyboardAdapter,
   attachPointerAdapter,
   attachResizeAdapter,
@@ -31,7 +38,35 @@ createConsolePrinter(logBus, { timestamps: true });
  * @returns {Promise<void>}
  */
 async function bootstrapWhiteboard() {
-  const board = new Board({ idSource: DEMO_ID_SOURCE });
+  // hwb 控制台命令的 board 惰性引用（install 早于 board 创建，调试命令在用时才取值）
+  let boardRef = null;
+  installSyncConsole({ getBoard: () => boardRef });
+  // demo 板目录：家目录下 hound-whiteboard/demo-board（首次运行自动创建）
+  // 同步中继：URL ?relay= 或 localStorage hwb-relay（双开时第二窗口用 localStorage 设不同值）
+  // 身份：URL ?source= 或 localStorage hwb-source（同机双开需不同身份）
+  // 板副本：URL ?board=（双开时第二窗口用不同路径，各自持久化副本）
+  const query = new URLSearchParams(globalThis.location?.search ?? "");
+  const storage = globalThis.localStorage;
+  const relayUrl =
+    query.get("relay") ?? storage?.getItem?.("hwb-relay") ?? undefined;
+  const sourceOverride =
+    query.get("source") ?? storage?.getItem?.("hwb-source") ?? undefined;
+  const boardPath =
+    query.get("board") ?? storage?.getItem?.("hwb-board") ?? undefined;
+  // 无 Tauri（浏览器 web demo）：无文件系统能力，降级为内存模式 + relay 同步，
+  // 落盘由持板 daemon 承担（relay 来源的记录由 daemon 落盘）；?board= 在 web 下随之失效
+  const tauriAvailable = Boolean(
+    globalThis.__TAURI__?.core?.invoke ?? globalThis.__TAURI_INTERNALS__?.invoke,
+  );
+  const board = new Board({
+    idSource: sourceOverride ?? resolveDeviceSource(),
+    rootPath: tauriAvailable
+      ? (boardPath ?? "~/hound-whiteboard/demo-board")
+      : undefined,
+    syncUrl: relayUrl,
+    boardId: "demo-board",
+  });
+  boardRef = board;
   board.width = 800;
   board.height = 600;
 
@@ -41,17 +76,23 @@ async function bootstrapWhiteboard() {
     throw new Error("whiteboard demo root elements not found.");
   }
 
-  const worker = new Worker(
-    new URL("../host/core-worker.js", import.meta.url),
-    { type: "module" },
+  const worker = await enableWorkerWithFallback(
+    board,
+    () =>
+      new Worker(new URL("../host/core-worker.js", import.meta.url), {
+        type: "module",
+      }),
+    {
+      onFallback(error) {
+        console.warn(
+          `[whiteboard] 持久化开板失败，回退内存模式：${error?.message ?? error}`,
+        );
+      },
+    },
   );
 
-  try {
-    await board.enableWorkerMode(worker);
-  } catch (error) {
-    worker.terminate?.();
-    throw error;
-  }
+  // 关窗前销毁 BoardCore：回收板 daemon 创建者引用，daemon 无其他引用时随即退出
+  await installGracefulShutdown(board.getBoardApi(), { tauriAvailable });
 
   const viewport = board.createViewport(
     foregroundLayer,
@@ -93,6 +134,21 @@ async function bootstrapWhiteboard() {
 
   const demoResults = configureWhiteboardDemo(board, viewport, { viewportTool });
 
+  // 协作感知装饰：远程命名选择的着色框与来源标签
+  const awarenessOverlay = new AwarenessOverlay({
+    boardApi: board.getBoardApi(),
+    viewport,
+  });
+  awarenessOverlay.start();
+
+  // 远程文档变化：广播 hit:changed 让工具清理失效选中（幽灵选择）。
+  // 远端通知不携带 forcedEndMolIds（对端被强制闭合的分子经 amend 通道的 mol-end 另行到达）；
+  // 本地 undo 的 forcedEndMolIds 由 dom-adapters 的 hit:changed 信号携带，勿混淆两条路径。
+  viewport.addAwarenessListener((message) => {
+    if (message?.awarenessType !== "hit-changed") return;
+    broadcastHitChanged(board, viewport.viewportId);
+  });
+
   const toolbar = attachToolbarAdapter(board, viewport);
   if (toolbar) {
     mountToolSwitcher(viewport, {
@@ -104,6 +160,8 @@ async function bootstrapWhiteboard() {
 
   attachPointerAdapter(viewport, board, demoLog);
   attachKeyboardAdapter(viewport, board, demoLog, toolbar?.tools);
+  attachHistoryAdapter(board, viewport);
+  attachDeleteAdapter(board, viewport);
   attachResizeAdapter(viewport, appLeft);
   attachWheelAdapter(viewport, board, appLeft);
 

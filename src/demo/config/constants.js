@@ -5,8 +5,6 @@
  * @author Zhou Chenyu
  */
 
-/** demo 用户标识（对象 id 的来源命名空间） */
-const DEMO_ID_SOURCE = "demo";
 
 /** 笔画颜色（鼠标左键与触摸多指笔画共用） */
 const DEMO_PRIMARY_STROKE_COLOR = "#ff0000";
@@ -130,6 +128,7 @@ const DEBUG_KEYS = Object.freeze([
         : "debug:objectload",
   },
   { code: "KeyM", type: "debug:viewport" },
+  { code: "KeyU", type: "debug:hit" },
   {
     code: "KeyB",
     type: (signals) =>
@@ -156,6 +155,13 @@ const SUBMIT_KEY = "Enter";
 const CANCEL_KEY = "Escape";
 
 /**
+ * 删除持有对象的键编码列表
+ * @description 经右键 handoff 边级 prefix 转为 delete 信号，删除 modifier 持有的选中对象。
+ * @type {ReadonlyArray<string>}
+ */
+const DELETE_KEYS = Object.freeze(["Delete", "Backspace"]);
+
+/**
  * 数字键切工具的键编码列表
  * @description 按工具栏工具列表顺序映射：`Digit1` 对应第一个工具，以此类推；按键在集合内但无对应工具时跳过。
  * @type {ReadonlyArray<string>}
@@ -178,6 +184,7 @@ const DEMO_KEYBOARD_INPUT_CODES = Object.freeze([
     RANDOM_CIRCLE_KEY,
     SUBMIT_KEY,
     CANCEL_KEY,
+    ...DELETE_KEYS,
     ...TOOL_SWITCH_KEYS,
     ...WASD_KEYS.map((k) => k.code),
     ...VIEWPORT_POSITION_KEYS.map((k) => k.code),
@@ -190,10 +197,10 @@ const DEMO_KEYBOARD_INPUT_CODES = Object.freeze([
 export {
   CANCEL_KEY,
   DEBUG_KEYS,
+  DELETE_KEYS,
   DEMO_BUTTON_GROUP_STATE_KEY,
   DEMO_CIRCLE_STROKE_COLOR,
   DEMO_DEVICE_PATHS,
-  DEMO_ID_SOURCE,
   DEMO_KEYBOARD_INPUT_CODES,
   DEMO_PRIMARY_STROKE_COLOR,
   DEMO_STROKE_WIDTH,

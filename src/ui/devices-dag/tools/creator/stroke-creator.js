@@ -79,6 +79,9 @@ class StrokeCreatorTool extends SingleGestureObjectCreatorTool {
 
   /**
    * 追加一个局部路径点
+   * @description
+   * 本地 `_entry` 即时更新；内核侧经 `_appendCreatedObjectItems` 统一入口写入
+   * （分子在途走 amend 流，molId 确认中按序缓冲，否则 appendListItem 直调）。
    * @param {Vector} point - 待追加的局部路径点
    * @param {Object} interaction - 当前交互上下文
    */
@@ -97,12 +100,9 @@ class StrokeCreatorTool extends SingleGestureObjectCreatorTool {
       this._entry.data.points.push({ x: point.x, y: point.y });
     }
 
-    const boardApi = interaction?.context?.services?.boardApi;
-    if (boardApi && this.objectId != null) {
-      boardApi.appendListItem(this.objectId, "points", [
-        { x: point.x, y: point.y },
-      ]);
-    }
+    this._appendCreatedObjectItems(interaction, "points", [
+      { x: point.x, y: point.y },
+    ]);
 
     this._lastLocalPoint = new Vector(point.x, point.y);
   }

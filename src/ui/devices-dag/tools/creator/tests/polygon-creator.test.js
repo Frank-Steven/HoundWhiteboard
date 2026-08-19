@@ -31,6 +31,44 @@ function createBoardDeviceContext(objectId, { viewport } = {}) {
   };
 }
 
+/**
+ * 构造具备分子能力的 boardApi 测试上下文
+ * @param {string} objectId - 分配的对象 id
+ * @param {{ boardApiOverrides?: Object }} [options={}] - 选项（覆盖 boardApi 方法）
+ * @returns {{ board: Object, boardApi: Object, deviceContext: Object }} 测试上下文
+ */
+function createMolBoardDeviceContext(objectId, { boardApiOverrides = {} } = {}) {
+  const board = {
+    allocateObjectId: jest.fn(() => objectId),
+    getObjectById: jest.fn(() => undefined),
+  };
+  const boardApi = {
+    createObject: jest.fn(async () => objectId),
+    beginMol: jest.fn(() => "demo/mol-1"),
+    amendMol: jest.fn(() => true),
+    endMol: jest.fn(() => true),
+    abortMol: jest.fn(() => true),
+    appendListItem: jest.fn(),
+    replaceListItem: jest.fn(),
+    modifyObject: jest.fn(),
+    commitObjects: jest.fn(async () => [objectId]),
+    discardActiveObjects: jest.fn(),
+    ...boardApiOverrides,
+  };
+
+  return {
+    board,
+    boardApi,
+    deviceContext: {
+      services: {
+        board,
+        boardApi,
+        supraKey: "S",
+      },
+    },
+  };
+}
+
 describe("PolygonCreatorTool", () => {
   test("PolygonCreatorTool 应在同一手势内更新当前顶点，并在 end 时固化", () => {
     const tool = new PolygonCreatorTool();
@@ -393,6 +431,238 @@ describe("PolygonCreatorTool", () => {
     );
 
     expect(boardApi.commitObjects).toHaveBeenCalledWith(["23"]);
+  });
+
+  describe("分子管线（多手势：object-end 才闭合分子）", () => {
+    test("单个手势 end 不闭合分子，object-end 才 endMol → commitObjects", () => {
+      const calls = [];
+      const { boardApi, deviceContext } = createMolBoardDeviceContext("10", {
+        boardApiOverrides: {
+          createObject: jest.fn(() => {
+            calls.push("createObject");
+            return Promise.resolve("10");
+          }),
+          beginMol: jest.fn(() => {
+            calls.push("beginMol");
+            return "demo/mol-1";
+          }),
+          amendMol: jest.fn(() => {
+            calls.push("amendMol");
+            return true;
+          }),
+          replaceListItem: jest.fn(() => {
+            calls.push("replaceListItem");
+          }),
+          endMol: jest.fn(() => {
+            calls.push("endMol");
+            return true;
+          }),
+          commitObjects: jest.fn(() => {
+            calls.push("commitObjects");
+            return Promise.resolve(["10"]);
+          }),
+        },
+      });
+      const tool = new PolygonCreatorTool();
+
+      // 第一个手势：落笔 + 拖动 + 抬笔（end 仅结束当前手势）
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(5, 5) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(8, 9) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        {
+          signals: [
+            { type: "position", context: { value: new Vector(10, 12) } },
+            { type: "end", context: {} },
+          ],
+        },
+        deviceContext,
+      );
+
+      expect(boardApi.beginMol).toHaveBeenCalledTimes(1);
+      expect(boardApi.beginMol).toHaveBeenCalledWith(["10"], {
+        create: true,
+        supraKey: "S",
+      });
+      // 首顶点经 amend 流入 amend 流；顶点拖拽替换仍走 replaceListItem 直调
+      expect(boardApi.amendMol).toHaveBeenCalledWith("demo/mol-1", {
+        "10": { append: { key: "points", items: [{ x: 0, y: 0 }] } },
+      });
+      expect(boardApi.replaceListItem).toHaveBeenCalledWith("10", "points", 0, {
+        x: 5,
+        y: 7,
+      });
+      // 单手势 end 不闭合分子、不提交
+      expect(boardApi.endMol).not.toHaveBeenCalled();
+      expect(boardApi.commitObjects).not.toHaveBeenCalled();
+
+      // 第二个手势：再落笔追加顶点（同一分子继续 amend）
+      tool.process(
+        {
+          signals: [
+            { type: "position", context: { value: new Vector(20, 20) } },
+            { type: "end", context: {} },
+          ],
+        },
+        deviceContext,
+      );
+      expect(boardApi.beginMol).toHaveBeenCalledTimes(1);
+      expect(boardApi.amendMol).toHaveBeenLastCalledWith("demo/mol-1", {
+        "10": { append: { key: "points", items: [{ x: 15, y: 15 }] } },
+      });
+      expect(boardApi.endMol).not.toHaveBeenCalled();
+
+      // object-end：闭合分子并提交
+      tool.process(
+        { signals: [{ type: "object-end", context: {} }] },
+        deviceContext,
+      );
+      expect(boardApi.endMol).toHaveBeenCalledWith("demo/mol-1");
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["10"]);
+      expect(calls).toEqual([
+        "createObject",
+        "beginMol",
+        "amendMol",
+        "replaceListItem",
+        "replaceListItem",
+        "amendMol",
+        "endMol",
+        "commitObjects",
+      ]);
+    });
+
+    test("object-cancel：abortMol 中止分子并移除暂存对象", () => {
+      const { boardApi, deviceContext } = createMolBoardDeviceContext("11");
+      const tool = new PolygonCreatorTool();
+
+      tool.process(
+        {
+          signals: [
+            { type: "position", context: { value: new Vector(5, 5) } },
+            { type: "end", context: {} },
+          ],
+        },
+        deviceContext,
+      );
+      tool.process(
+        { signals: [{ type: "object-cancel", context: {} }] },
+        deviceContext,
+      );
+
+      expect(boardApi.abortMol).toHaveBeenCalledWith("demo/mol-1");
+      expect(boardApi.endMol).not.toHaveBeenCalled();
+      expect(boardApi.discardActiveObjects).not.toHaveBeenCalled();
+      expect(boardApi.commitObjects).not.toHaveBeenCalled();
+      expect(tool._entry).toBeNull();
+      expect(tool.count).toBe(0);
+    });
+
+    test("Worker 挂起跨手势缓冲保序：确认后按序补发，object-end 延迟闭合", async () => {
+      const calls = [];
+      let resolveBegin;
+      const beginPromise = new Promise((resolve) => {
+        resolveBegin = resolve;
+      });
+      const { boardApi, deviceContext } = createMolBoardDeviceContext("12", {
+        boardApiOverrides: {
+          beginMol: jest.fn(() => {
+            calls.push("beginMol");
+            return beginPromise;
+          }),
+          amendMol: jest.fn(() => {
+            calls.push("amendMol");
+            return true;
+          }),
+          replaceListItem: jest.fn(() => {
+            calls.push("replaceListItem");
+          }),
+          endMol: jest.fn(() => {
+            calls.push("endMol");
+            return true;
+          }),
+          commitObjects: jest.fn(() => {
+            calls.push("commitObjects");
+            return Promise.resolve(["12"]);
+          }),
+        },
+      });
+      const tool = new PolygonCreatorTool();
+
+      // 第一个手势全程处于 molId 确认中：append/replace 均按序缓冲
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(5, 5) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        {
+          signals: [{ type: "position", context: { value: new Vector(8, 9) } }],
+        },
+        deviceContext,
+      );
+      tool.process(
+        {
+          signals: [
+            { type: "position", context: { value: new Vector(10, 12) } },
+            { type: "end", context: {} },
+          ],
+        },
+        deviceContext,
+      );
+      expect(boardApi.amendMol).not.toHaveBeenCalled();
+      expect(boardApi.replaceListItem).not.toHaveBeenCalled();
+      expect(boardApi.appendListItem).not.toHaveBeenCalled();
+
+      // object-end（molId 仍未确认）：延迟闭合与提交
+      tool.process(
+        { signals: [{ type: "object-end", context: {} }] },
+        deviceContext,
+      );
+      expect(boardApi.endMol).not.toHaveBeenCalled();
+      expect(boardApi.commitObjects).not.toHaveBeenCalled();
+
+      // molId 到达：append → replace×2 保序补发，随后 endMol → commitObjects
+      resolveBegin("demo/mol-1");
+      await flushMicrotasks();
+      expect(boardApi.amendMol).toHaveBeenCalledTimes(1);
+      expect(boardApi.amendMol).toHaveBeenCalledWith("demo/mol-1", {
+        "12": { append: { key: "points", items: [{ x: 0, y: 0 }] } },
+      });
+      expect(boardApi.replaceListItem).toHaveBeenNthCalledWith(
+        1,
+        "12",
+        "points",
+        0,
+        { x: 3, y: 4 },
+      );
+      expect(boardApi.replaceListItem).toHaveBeenNthCalledWith(
+        2,
+        "12",
+        "points",
+        0,
+        { x: 5, y: 7 },
+      );
+      expect(boardApi.endMol).toHaveBeenCalledWith("demo/mol-1");
+      expect(boardApi.commitObjects).toHaveBeenCalledWith(["12"]);
+      expect(calls).toEqual([
+        "beginMol",
+        "amendMol",
+        "replaceListItem",
+        "replaceListItem",
+        "endMol",
+        "commitObjects",
+      ]);
+    });
   });
 
   describe("端到端集成（通过 Board 输入链路）", () => {

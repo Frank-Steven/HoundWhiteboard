@@ -32,6 +32,8 @@ function handleDebugQuery(boardCore, query, params = {}) {
       return logObjectsDetail(boardCore, params);
     case "boardState":
       return logBoardState(boardCore);
+    case "hitState":
+      return logHitState(boardCore);
     default:
       debugLog.warn("unknown debug query:", query);
   }
@@ -213,6 +215,89 @@ function logBoardState(boardCore) {
     objectIds: [...boardCore.objectLoaded.keys()].sort((a, b) => a - b),
     activeObjectCount: aom?.activeObjectIndex?.size ?? 0,
   });
+}
+
+/** hitState 转储序号（防 DevTools 相邻重复消息合并） @type {number} */
+let hitDumpSeq = 0;
+
+/**
+ * 输出 hit 全景：时间回溯树、操作日志（by id）、对象状态（by id）、操作数据（id → data）
+ * @description 四部分合并为单条原子输出，避免多条独立输出在控制台被分流或合并。
+ * @param {import("../kernel/board/board-core.js").BoardCore} boardCore
+ * @returns {void}
+ */
+function logHitState(boardCore) {
+  const tree = boardCore.undoTree;
+  const log = boardCore.operationLog;
+  if (!tree || !log) {
+    debugLog.warn("hitState: no undo tree or operation log");
+    return;
+  }
+
+  // 树形结构（缩进文本）：活动链节点标 *，HEAD 标 <<<
+  const activeNodes = new Set(tree.getActiveChain());
+  const treeLines = [];
+  const walk = (node, depth) => {
+    if (node.record !== null) {
+      const headMark = node === tree.head ? " <<< HEAD" : "";
+      const members = log.getSupraMembers(node.shareId);
+      const supraMark = members.length > 1 ? ` (超分子×${members.length})` : "";
+      treeLines.push(
+        `${"  ".repeat(depth)}${activeNodes.has(node) ? "*" : "-"} ${node.shareId}${supraMark}${headMark}`,
+      );
+    } else {
+      treeLines.push("root");
+    }
+    for (const child of node.children) {
+      walk(child, depth + 1);
+    }
+  };
+  walk(tree.root, 0);
+
+  // 操作日志（by id）
+  const logById = {};
+  for (const record of log.toArray()) {
+    logById[record.id] = {
+      type: record.type,
+      source: record.source,
+      time: record.time,
+      parentId: record.parentId,
+      supraOpId: record.supraOpId,
+      payload: record.payload,
+    };
+  }
+
+  // 对象状态（by id）
+  const aom = boardCore.activeObjectManager;
+  const stateById = {};
+  for (const [id] of boardCore.objectLoaded) {
+    const obj = boardCore.getObjectById(id);
+    stateById[id] = {
+      type: obj?.constructor?.name,
+      isActive: aom?.isActive?.(id) ?? false,
+      inTrash: boardCore.trash?.has?.(id) ?? false,
+    };
+  }
+
+  // 操作数据（id → data）
+  const dataById = {};
+  for (const record of log.toArray()) {
+    dataById[record.id] =
+      record.payload?.data ??
+      record.payload?.after ??
+      record.payload?.before ??
+      null;
+  }
+
+  hitDumpSeq += 1;
+  debugLog.debug(
+    `hitState #${hitDumpSeq}: 时间回溯树（* 活动链）\n${treeLines.join("\n")}\n`,
+    {
+      "日志 (by id)": logById,
+      "对象状态 (by id)": stateById,
+      "操作数据 (id → data)": dataById,
+    },
+  );
 }
 
 export { handleDebugQuery };
