@@ -19,7 +19,6 @@
 | `host/bridges/io-invoke-forwarder.js`                           | UI       | worker 内驱动的文件操作转发到主线程 Tauri invoke                |
 | `ui/components/orchestration/board.js`              | UI       | UI 白板 facade、唯一 `DevicesDAG`、viewport 管理、Worker 初始化 |
 | `ui/components/orchestration/viewport.js`           | UI       | DOM canvas、overlay、Worker 同步、workflow 挂载代理             |
-| `ui/components/orchestration/board-render-hooks.js` | UI       | 本地渲染路径用的 render hook 辅助                               |
 | `ui/components/renderer/ui-renderer.js`             | UI       | UI overlay 渲染                                                 |
 | `ui/components/renderer/awareness-overlay.js`       | UI       | 协作感知装饰层（远程选择着色框与来源标签、远程光标、手势预览）   |
 | `ui/devices-dag/**`                                 | UI       | 设备图、设备子图、prefix、tool 全部在 UI 线程                   |

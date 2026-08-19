@@ -50,7 +50,6 @@ flowchart BT
 | ----------------------- | ----------------------------------------------------------------------------------------------- |
 | `board.js`              | UI 侧白板 facade，持有 `DevicesDAG`、`signalsEventBus`、`Viewport` 集合，并负责启用 Worker mode |
 | `viewport.js`           | UI 侧视口 facade，负责 DOM canvas、坐标换算、Worker 同步与 workflow 挂载代理                    |
-| `board-render-hooks.js` | UI 侧 render hook 工厂，适用于本地/非 Worker 场景的渲染桥接辅助                                 |
 
 ### `ui/components/renderer/`
 
@@ -133,7 +132,7 @@ flowchart BT
 
 ## `io/`
 
-`io/` 是安全文件操作框架（safe-io v4），分层为 core（路径 DSL 与权限策略，纯 JS 零依赖）、driver（IoDriver 契约与 memory / node / tauri 三实现）、adapter（PersistenceAdapter 实现）、api（registerRoot → open → handle）。Tauri 模式下安全判断下沉 Rust 可信执行面（`src-tauri/src/commands/`）。详见 [../io/README.md](../io/README.md)。
+`io/` 是安全文件操作框架（safe-io v4），分层为 core（路径 DSL 与权限策略，纯 JS 零依赖）、driver（IoDriver 契约与 memory / node / tauri 三实现）、adapter（PersistenceAdapter 实现）。Tauri 模式下安全判断下沉 Rust 可信执行面（`src-tauri/src/commands/`）。详见 [../io/README.md](../io/README.md)。
 
 ## `cli/`
 
@@ -165,7 +164,7 @@ flowchart BT
 - `object-draw-strategies.js`：对象类型到 Canvas2D 绘制策略的注册表
 - `canvas-lifecycle.js`：Canvas 生命周期管理
 - `render-scheduler.js`：渲染调度器
-- `dirty-rect-strategy.js` / `dirty-rect-strategy-shared.js`：脏区策略
+- `dirty-rect-strategy-shared.js`：脏区策略
 - `viewport-renderer.js`：Worker 侧视口渲染器
 - `aom-collect-utils.js`：AOM 渲染收集辅助
 
@@ -195,7 +194,7 @@ flowchart BT
 ### `kernel/objects/`
 
 - `basic-obj.js`：基础对象模型
-- `stroke/`、`one-dim/`、`two-dim/`、`graph/`、`container.js`
+- `stroke/`、`graph/`
 - `object-deserializer.js`
 
 ### `kernel/range/`
@@ -211,8 +210,8 @@ flowchart BT
 
 ### `kernel/utils/`
 
-- `math.js`、`math3d.js`、`math-algorithm.js`
-- `directed-graph.js`、`path.js`、`chain.js`
-- `event-bus.js`、`deque.js`、`queue.js`
+- `math.js`、`math-algorithm.js`
+- `directed-graph.js`、`path.js`
+- `event-bus.js`、`queue.js`
 - `counter-pool.js`、`incremental-id-pool.js`（来源命名空间字符串 id 分配）、`random.js`
 - `hash.js`（FNV-1a 字符串哈希，状态摘要比对用）、`shared-state-store.js`（跨信道共享状态存储）
