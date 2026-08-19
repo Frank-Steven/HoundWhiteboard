@@ -836,51 +836,11 @@ class BoardApiRpc {
     this.#batchBuffer.clear();
     this.#batchPending = false;
 
-    const paramsList = entries.map((entry) => {
-      switch (entry.method) {
-        case "modifyObject":
-          return {
-            method: entry.method,
-            objectId: entry.objectId,
-            patch: entry.patch,
-          };
-        case "appendListItem":
-          return {
-            method: entry.method,
-            objectId: entry.objectId,
-            key: entry.key,
-            items: entry.items,
-          };
-        case "replaceListItem":
-          return {
-            method: entry.method,
-            objectId: entry.objectId,
-            key: entry.key,
-            index: entry.index,
-            item: entry.item,
-          };
-        case "removeListItem":
-          return {
-            method: entry.method,
-            objectId: entry.objectId,
-            key: entry.key,
-            index: entry.index,
-          };
-        case "amendMol":
-          return {
-            method: entry.method,
-            molId: entry.molId,
-            patchesByObject: entry.patchesByObject,
-          };
-        default:
-          return entry;
-      }
-    });
-
+    // 入队时已是目标形状（method + 各自参数字段），直接发送
     this.#endpoint.postMessage({
       type: "rpc-batch",
       batchId: this.#nextBatchId++,
-      items: paramsList,
+      items: entries,
     });
   }
 }

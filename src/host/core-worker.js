@@ -647,11 +647,50 @@ class CoreWorkerRuntime {
    */
   async #connectCoordinator() {
     if (this.#boardCore === null || this.#syncUrl === null) return;
+    await this.#connectSyncChannel({
+      url: this.#syncUrl,
+      boardId: this.#syncBoardId,
+      assign: (coordinator) => {
+        this.#coordinator = coordinator;
+      },
+      getCoordinator: () => this.#coordinator,
+      scheduleReconnect: () => this.#scheduleCoordinatorReconnect(),
+      logConnected: `已连接同步中继：${this.#syncUrl}`,
+      logFailedPrefix: "同步中继连接失败，离线运行",
+    });
+  }
+
+  /**
+   * 建立协作同步通道（relay 协调器与 daemon 直连通道共用的连接骨架）
+   * @param {Object} options - 连接参数
+   * @param {string} options.url - WS 地址
+   * @param {string} options.boardId - 板标识（relay 侧为房间号，daemon 直连为板根路径）
+   * @param {(coordinator: Object) => void} options.assign - 连接成功后的协调器归属赋值
+   * @param {() => Object | null} options.getCoordinator - 读取已归属协调器（amend 转发用）
+   * @param {() => void} options.scheduleReconnect - 断线或失败时的重连调度
+   * @param {string} options.logConnected - 连接成功日志文案
+   * @param {string} options.logFailedPrefix - 连接失败日志前缀
+   * @returns {Promise<void>}
+   * @private
+   *
+   * @description
+   * 每次尝试使用新的协调器实例（断线后旧实例已自清理）；connect 期间板已销毁则
+   * 直接关闭防泄漏；成功时挂接 amend 转发器，失败时关闭实例并调度重连。
+   */
+  async #connectSyncChannel({
+    url,
+    boardId,
+    assign,
+    getCoordinator,
+    scheduleReconnect,
+    logConnected,
+    logFailedPrefix,
+  }) {
     const coordinator = createNetworkCoordinator({
       boardCore: this.#boardCore,
       boardApi: this.#boardApi,
-      url: this.#syncUrl,
-      boardId: this.#syncBoardId,
+      url,
+      boardId,
       // awareness 下行：volatile 消息（光标等）与成员离开转发 UI
       onAwareness: ({ source, data }) => {
         this.#postMessage({
@@ -678,7 +717,7 @@ class CoreWorkerRuntime {
         }
         this.#clearAllMolPreviews();
         this.#requestStaticRender();
-        this.#scheduleCoordinatorReconnect();
+        scheduleReconnect();
       },
     });
     try {
@@ -688,17 +727,17 @@ class CoreWorkerRuntime {
         await coordinator.close();
         return;
       }
-      this.#coordinator = coordinator;
+      assign(coordinator);
       this.#amendForwarder?.close();
       this.#amendForwarder = createAmendForwarder({
         boardCore: this.#boardCore,
-        sendAwareness: (data) => this.#coordinator?.sendAwareness(data),
+        sendAwareness: (data) => getCoordinator()?.sendAwareness(data),
       });
-      this.#log.info(`已连接同步中继：${this.#syncUrl}`);
+      this.#log.info(logConnected);
     } catch (error) {
-      this.#log.warn(`同步中继连接失败，离线运行：${error?.message ?? error}`);
+      this.#log.warn(`${logFailedPrefix}：${error?.message ?? error}`);
       await coordinator.close();
-      this.#scheduleCoordinatorReconnect();
+      scheduleReconnect();
     }
   }
 
@@ -722,56 +761,17 @@ class CoreWorkerRuntime {
       return;
     }
     this.#guiDaemon = daemon;
-    const coordinator = createNetworkCoordinator({
-      boardCore: this.#boardCore,
-      boardApi: this.#boardApi,
+    await this.#connectSyncChannel({
       url: `ws://127.0.0.1:${daemon.port}`,
       boardId: this.#boardCore.rootPath ?? "board",
-      onAwareness: ({ source, data }) => {
-        this.#postMessage({
-          type: "awareness",
-          awarenessType: data?.kind,
-          source,
-          data,
-        });
-        if (
-          data?.kind === "mol-begin" ||
-          data?.kind === "mol-amend" ||
-          data?.kind === "mol-end" ||
-          data?.kind === "mol-abort"
-        ) {
-          this.#applyMolMessages(data);
-        }
+      assign: (coordinator) => {
+        this.#guiCoordinator = coordinator;
       },
-      onDisconnect: () => {
-        this.#postMessage({ type: "awareness", awarenessType: "disconnect" });
-        for (const viewportCore of this.#viewportCores.values()) {
-          viewportCore.renderer?.clearAllPreviewPositions?.();
-        }
-        this.#clearAllMolPreviews();
-        this.#requestStaticRender();
-        this.#scheduleGuiReconnect();
-      },
+      getCoordinator: () => this.#guiCoordinator,
+      scheduleReconnect: () => this.#scheduleGuiReconnect(),
+      logConnected: `已连接板 daemon 协作通道：${daemon.name}（端口 ${daemon.port}）`,
+      logFailedPrefix: "板 daemon 协作连接失败",
     });
-    try {
-      await coordinator.connect();
-      if (this.#boardCore === null) {
-        // connect 期间板已销毁：协调器无处挂接，直接关闭防泄漏
-        await coordinator.close();
-        return;
-      }
-      this.#guiCoordinator = coordinator;
-      this.#amendForwarder?.close();
-      this.#amendForwarder = createAmendForwarder({
-        boardCore: this.#boardCore,
-        sendAwareness: (data) => this.#guiCoordinator?.sendAwareness(data),
-      });
-      this.#log.info(`已连接板 daemon 协作通道：${daemon.name}（端口 ${daemon.port}）`);
-    } catch (error) {
-      this.#log.warn(`板 daemon 协作连接失败：${error?.message ?? error}`);
-      await coordinator.close();
-      this.#scheduleGuiReconnect();
-    }
   }
 
   /**
@@ -1123,40 +1123,58 @@ class CoreWorkerRuntime {
   }
 
   /**
+   * 建立短连 WebSocket 并统一幂等收尾（settled 防重入 + 超时兜底 + close 容错）
+   * @param {string} url - WS 地址
+   * @param {Object} options - 选项
+   * @param {number} options.timeoutMs - 超时毫秒数
+   * @param {*} options.fallbackValue - 超时、构造失败或连接出错时的解决值
+   * @param {(ws: WebSocket, finish: (value?: *) => void) => void} options.onOpen - open 事件处理
+   * @param {(event: MessageEvent, finish: (value?: *) => void) => void} [options.onMessage] - message 事件处理
+   * @returns {Promise<*>} finish 或兜底值解决
+   * @private
+   */
+  #openShortLivedWs(url, { timeoutMs, fallbackValue, onOpen, onMessage }) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let ws = null;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try {
+          ws?.close();
+        } catch {
+          // 收尾结果已定，close 抛错（如底层连接早已断开）无需处理
+        }
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish(fallbackValue), timeoutMs);
+      try {
+        ws = new WebSocket(url);
+      } catch {
+        // 构造即抛错（如 url 非法）：无连接可建，直接按兜底值收尾
+        finish(fallbackValue);
+        return;
+      }
+      ws.addEventListener("open", () => onOpen(ws, finish));
+      ws.addEventListener("error", () => finish(fallbackValue));
+      if (onMessage) {
+        ws.addEventListener("message", (event) => onMessage(event, finish));
+      }
+    });
+  }
+
+  /**
    * WS 探测端口上是否有活 daemon（WebView 仅能作客户端，短连即断）
    * @param {number} port - 端口
    * @returns {Promise<boolean>} 是否可连通
    * @private
    */
   #probeWs(port) {
-    return new Promise((resolve) => {
-      let settled = false;
-      let ws = null;
-      const finish = (ok) => {
-        if (settled) return;
-        settled = true;
-        try {
-          ws?.close();
-        } catch {
-          /* 忽略 */
-        }
-        resolve(ok);
-      };
-      try {
-        ws = new WebSocket(`ws://127.0.0.1:${port}`);
-      } catch {
-        finish(false);
-        return;
-      }
-      const timer = setTimeout(() => finish(false), 800);
-      ws.addEventListener("open", () => {
-        clearTimeout(timer);
-        finish(true);
-      });
-      ws.addEventListener("error", () => {
-        clearTimeout(timer);
-        finish(false);
-      });
+    return this.#openShortLivedWs(`ws://127.0.0.1:${port}`, {
+      timeoutMs: 800,
+      fallbackValue: false,
+      onOpen: (_ws, finish) => finish(true),
     });
   }
 
@@ -1173,32 +1191,13 @@ class CoreWorkerRuntime {
    * 失败（daemon 已死/超时）静默收尾，残留 daemon 由 stale 探测与手动 release 兜底。
    */
   #releaseOwnedGuiDaemon(daemon) {
-    return new Promise((resolve) => {
-      let settled = false;
-      let ws = null;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        try {
-          ws?.close();
-        } catch {
-          /* 忽略 */
-        }
-        resolve();
-      };
-      const timer = setTimeout(finish, 2000);
-      try {
-        ws = new WebSocket(`ws://127.0.0.1:${daemon.port}`);
-      } catch {
-        finish();
-        return;
-      }
-      ws.addEventListener("open", () => {
+    return this.#openShortLivedWs(`ws://127.0.0.1:${daemon.port}`, {
+      timeoutMs: 2000,
+      fallbackValue: undefined,
+      onOpen: (ws) => {
         ws.send(JSON.stringify({ id: 1, route: "daemon-release", params: {} }));
-      });
-      ws.addEventListener("message", finish);
-      ws.addEventListener("error", finish);
+      },
+      onMessage: (_event, finish) => finish(),
     });
   }
 
