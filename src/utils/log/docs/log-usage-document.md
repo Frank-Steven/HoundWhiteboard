@@ -4,7 +4,7 @@
 
 ## 模块定位
 
-`utils/log/` 提供一套基于 EventBus 的日志体系，覆盖日志产生、分发、缓冲和消费四个环节。前端代码通过 Logger 记录日志，日志总线（LogBus）将条目分发给多个消费者，重量级消费者可通过 ThrottledBus 缓冲后批量处理。
+`utils/log/` 提供一套基于 EventBus 的日志体系，覆盖日志产生、分发和消费三个环节。前端代码通过 Logger 记录日志，日志总线（LogBus）将条目分发给多个消费者（如控制台输出器）。
 
 ## 快速开始
 
@@ -116,54 +116,6 @@ new Logger(name, level?, bus?)
 import { logBus } from "./utils/log/log-bus.js";
 ```
 
-### ThrottledBus
-
-```js
-const writer = new ThrottledBus({
-  flushInterval: 1000, // 定时刷出间隔
-  maxBufferSize: 200, // 缓冲区上限
-  onFlush: (batch) => {
-    // batch: 攒批的 entry 数组
-    appendToFile(batch.map(JSON.stringify).join("\n"));
-  },
-});
-
-// 挂到 LogBus
-writer.subscribe(logBus);
-// 或指定级别
-writer.subscribe(logBus, ["WARN", "ERROR"]);
-```
-
-| 方法                             | 说明                     |
-| -------------------------------- | ------------------------ |
-| `bus.write(entry)`               | 写入一条日志             |
-| `bus.subscribe(logBus, levels?)` | 自动从 LogBus 接收并写入 |
-| `bus.flush()`                    | 手动触发刷出             |
-| `bus.shutdown()`                 | 刷出剩余条目并清理定时器 |
-
-`stats` 属性记录收发统计：`{ received, flushed, dropped }`。
-
-### RingBuffer
-
-```js
-const ring = new RingBuffer(500);
-ring.subscribe(logBus); // 接收所有级别，永不降采样
-
-// 崩溃时导出
-const recent = ring.dump();
-const errors = ring.dumpByLevel("ERROR");
-```
-
-| 方法                              | 说明                       |
-| --------------------------------- | -------------------------- |
-| `ring.push(entry)`                | 写入                       |
-| `ring.dump()`                     | 按时间顺序导出所有条目     |
-| `ring.dumpByLevel(level)`         | 按级别筛选导出             |
-| `ring.subscribe(logBus, levels?)` | 自动从 LogBus 接收         |
-| `ring.clear()`                    | 清空                       |
-| `ring.length`                     | 当前有效条目数             |
-| `ring.totalPushed`                | 累计写入总数（含被覆盖的） |
-
 ### createConsolePrinter
 
 ```js
@@ -178,21 +130,6 @@ createConsolePrinter(logBus, { timestamps: false, levels: ["ERROR"] });
 // 返回取消函数
 const off = createConsolePrinter(logBus);
 off(); // 取消订阅
-```
-
-### LogRateTracker
-
-```js
-import { LogRateTracker } from "./utils/log/rate-tracker.js";
-
-const tracker = new LogRateTracker(1000); // 1s 窗口
-tracker.subscribe(logBus);
-
-// 定期查询各 Logger 的发射速率
-setInterval(() => {
-  console.table(tracker.getRates());
-  // → [{ name: "HWB", rate: 1.5, total: 3 }, ...]
-}, 1000);
 ```
 
 ## 常见场景
@@ -239,42 +176,6 @@ function renderFrame() {
 ```js
 // 视口平移时不断触发，但 200ms 内只记一次
 log.throttledWarn("chunk-miss", `Chunk ${chunkId} not found`);
-```
-
-### 场景五：文件日志
-
-```js
-const fileLog = new ThrottledBus({
-  flushInterval: 2000,
-  maxBufferSize: 100,
-  onFlush: (batch) => {
-    const text =
-      batch
-        .map(
-          (e) =>
-            `${new Date(e.timestamp).toISOString()} [${e.level}] ${e.logger}: ${e.args.join(" ")}`,
-        )
-        .join("\n") + "\n";
-    fs.appendFile("app.log", text);
-  },
-});
-fileLog.subscribe(logBus);
-```
-
-### 场景六：崩溃日志导出
-
-```js
-const ring = new RingBuffer(1000);
-ring.subscribe(logBus);
-
-// 捕获未处理异常时导出
-window.addEventListener("error", (event) => {
-  const dump = ring.dump();
-  saveCrashReport({
-    error: event.error?.stack,
-    recentLogs: dump,
-  });
-});
 ```
 
 ## 级别说明

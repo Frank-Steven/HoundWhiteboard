@@ -656,9 +656,9 @@ class Viewport {
     const { liveBitmap } = frameData ?? {};
 
     if (liveBitmap && this.#canvasCtx) {
-      this.#canvasCtx.clearRect?.(0, 0, this.width, this.height);
+      this.#canvasCtx.clearRect(0, 0, this.width, this.height);
       this.#canvasCtx.drawImage(liveBitmap, 0, 0);
-      liveBitmap.close?.();
+      liveBitmap.close();
     }
 
     this.uiRenderer?.invalidateViewport();
@@ -682,7 +682,7 @@ class Viewport {
 
     this.#worker.removeEventListener("message", this.#workerMessageListener);
     this.#awarenessListeners.clear();
-    this.#canvasCtx?.clearRect?.(0, 0, this.width, this.height);
+    this.#canvasCtx?.clearRect(0, 0, this.width, this.height);
   }
 
   /**

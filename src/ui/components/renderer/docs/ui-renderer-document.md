@@ -41,7 +41,7 @@ provider 签名：`(context: { viewport: Viewport, renderer: UiRenderer }) => an
 
 ### Overlay 条目收集
 
-- `collectOverlayEntries()`：遍历所有 provider，收集并归一化 overlay 条目
+- `collectProviderOverlayEntries()`：遍历所有 provider，收集并归一化 overlay 条目
 - provider 返回的条目经过 `normalizeOverlayEntry`（委托给 `ui-overlay-factory.js`）归一化，确保 `draw` 函数可用
 
 ### 绘制
@@ -175,7 +175,6 @@ creator、chooser、modifier 都可能推动 ui 层刷新，但 `UiRenderer` 仅
 | `registerOverlayProvider(provider)`   | 注册自定义 overlay provider          |
 | `unregisterOverlayProvider(provider)` | 注销 provider                        |
 | `collectProviderOverlayEntries()`     | 收集并归一化所有 provider 条目       |
-| `collectOverlayEntries()`             | 收集当前应绘制的 overlay（调用上者） |
 | `drawRectEntry(context, entry)`       | 绘制矩形条目                         |
 | `drawPointEntry(context, entry)`      | 绘制点（填充圆点）条目               |
 | `drawPathEntry(context, entry)`       | 绘制路径（折线/闭合路径）条目        |

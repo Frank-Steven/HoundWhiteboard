@@ -6,7 +6,7 @@
  */
 
 import { dagToMermaid } from "../../ui/devices-dag/index.js";
-import { DEMO_WORKFLOW_NAMES } from "./whiteboard-demo.js";
+import { broadcastHitChanged } from "./hit-changed-broadcast.js";
 
 /** 中继地址存储键 */
 const RELAY_KEY = "hwb-relay";
@@ -94,16 +94,10 @@ function installSyncConsole({ getBoard } = {}) {
    * @returns {void}
    */
   const notifyHitChanged = (board, forcedEndMolIds = []) => {
-    const workflows = [
-      DEMO_WORKFLOW_NAMES.TOOL_SWITCHER,
-      DEMO_WORKFLOW_NAMES.SECONDARY_CHOOSER,
-    ];
-    for (const wf of workflows) {
-      board?.signalsEventBus?.emit("input", {
-        to: `/${board.viewports?.keys?.().next().value}/workflows/${wf}`,
-        signals: [{ type: "hit:changed", context: { forcedEndMolIds } }],
-      });
-    }
+    if (!board?.signalsEventBus) return;
+    broadcastHitChanged(board, board.viewports?.keys?.().next().value, {
+      forcedEndMolIds,
+    });
   };
 
   globalThis.hwb = {

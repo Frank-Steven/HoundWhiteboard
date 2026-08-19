@@ -18,6 +18,7 @@ import {
   CANCEL_KEY,
   TOOL_SWITCH_KEYS,
 } from "./constants.js";
+import { broadcastHitChanged } from "./hit-changed-broadcast.js";
 
 /**
  * 绑定指针事件适配器
@@ -176,19 +177,11 @@ function attachKeyboardAdapter(viewport, board, demoLog, tools) {
 
   /**
    * 向各工具 workflow 广播 hit 变更信号（撤销/重做后工具清理失效对象引用）
+   * @param {Object} [hitContext] - hit:changed 信号上下文
    * @returns {void}
    */
   const notifyHitChanged = (hitContext = {}) => {
-    const workflows = [
-      DEMO_WORKFLOW_NAMES.TOOL_SWITCHER,
-      DEMO_WORKFLOW_NAMES.SECONDARY_CHOOSER,
-    ];
-    for (const wf of workflows) {
-      board.signalsEventBus.emit("input", {
-        to: `/${viewport.viewportId}/workflows/${wf}`,
-        signals: [{ type: "hit:changed", context: hitContext }],
-      });
-    }
+    broadcastHitChanged(board, viewport.viewportId, hitContext);
   };
 
   /**
@@ -351,16 +344,7 @@ function attachHistoryAdapter(board, viewport) {
         console.error(`[whiteboard] ${method} failed:`, error);
       })
       .finally(() => {
-        const workflows = [
-          DEMO_WORKFLOW_NAMES.TOOL_SWITCHER,
-          DEMO_WORKFLOW_NAMES.SECONDARY_CHOOSER,
-        ];
-        for (const wf of workflows) {
-          board.signalsEventBus.emit("input", {
-            to: `/${viewport.viewportId}/workflows/${wf}`,
-            signals: [{ type: "hit:changed", context: {} }],
-          });
-        }
+        broadcastHitChanged(board, viewport.viewportId);
       });
   };
 

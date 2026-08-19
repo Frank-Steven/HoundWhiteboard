@@ -12,8 +12,8 @@ import { createConsolePrinter, logBus } from "../utils/log/index.js";
 import {
   configureWhiteboardDemo,
   mountToolSwitcher,
-  DEMO_WORKFLOW_NAMES,
 } from "./config/whiteboard-demo.js";
+import { broadcastHitChanged } from "./config/hit-changed-broadcast.js";
 import { resolveDeviceSource } from "../utils/device-identity.js";
 import { installSyncConsole } from "./config/sync-console.js";
 import { enableWorkerWithFallback } from "./config/enable-worker-with-fallback.js";
@@ -146,21 +146,7 @@ async function bootstrapWhiteboard() {
   // 本地 undo 的 forcedEndMolIds 由 dom-adapters 的 hit:changed 信号携带，勿混淆两条路径。
   viewport.addAwarenessListener((message) => {
     if (message?.awarenessType !== "hit-changed") return;
-    const workflows = [
-      DEMO_WORKFLOW_NAMES.TOOL_SWITCHER,
-      DEMO_WORKFLOW_NAMES.SECONDARY_CHOOSER,
-    ];
-    for (const wf of workflows) {
-      board.signalsEventBus.emit("input", {
-        to: `/${viewport.viewportId}/workflows/${wf}`,
-        signals: [
-          {
-            type: "hit:changed",
-            context: {},
-          },
-        ],
-      });
-    }
+    broadcastHitChanged(board, viewport.viewportId);
   });
 
   const toolbar = attachToolbarAdapter(board, viewport);

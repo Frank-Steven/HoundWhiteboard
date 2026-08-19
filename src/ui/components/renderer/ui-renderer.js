@@ -97,15 +97,15 @@ function _clearDirtyRects(context, dirtyRects) {
 
   for (const dirtyRect of dirtyRects) {
     if (!(dirtyRect instanceof RectangleRange)) continue;
-    context.save?.();
-    context.setTransform?.(1, 0, 0, 1, 0, 0);
-    context.clearRect?.(
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(
       dirtyRect.left,
       dirtyRect.top,
       dirtyRect.width,
       dirtyRect.height,
     );
-    context.restore?.();
+    context.restore();
   }
 }
 
@@ -235,14 +235,6 @@ class UiRenderer extends CanvasHost {
   }
 
   /**
-   * 收集当前应绘制的 overlay
-   * @returns {import("./ui-overlay-factory.js").UiOverlayEntry[]}
-   */
-  collectOverlayEntries() {
-    return this.collectProviderOverlayEntries();
-  }
-
-  /**
    * 绘制矩形 overlay 条目
    * @param {CanvasRenderingContext2D} context - 画布上下文
    * @param {import("./ui-overlay-factory.js").UiOverlayEntry} entry - 矩形条目
@@ -256,13 +248,11 @@ class UiRenderer extends CanvasHost {
 
     const style = entry.style ?? {};
 
-    context.save?.();
-    if (typeof context.setLineDash === "function") {
-      context.setLineDash(style.lineDash ?? []);
-    }
+    context.save();
+    context.setLineDash(style.lineDash ?? []);
     if (style.fillStyle !== undefined) {
       context.fillStyle = style.fillStyle;
-      context.fillRect?.(
+      context.fillRect(
         screenRect.left,
         screenRect.top,
         screenRect.width,
@@ -275,13 +265,13 @@ class UiRenderer extends CanvasHost {
     if (Number.isFinite(style.lineWidth)) {
       context.lineWidth = style.lineWidth;
     }
-    context.strokeRect?.(
+    context.strokeRect(
       screenRect.left,
       screenRect.top,
       screenRect.width,
       screenRect.height,
     );
-    context.restore?.();
+    context.restore();
   }
 
   /**
@@ -300,19 +290,19 @@ class UiRenderer extends CanvasHost {
     const radius = g.radius ?? 4;
     const style = entry.style ?? {};
 
-    context.save?.();
-    context.beginPath?.();
-    context.arc?.(sp.x, sp.y, radius, 0, Math.PI * 2);
+    context.save();
+    context.beginPath();
+    context.arc(sp.x, sp.y, radius, 0, Math.PI * 2);
     if (style.fillStyle !== undefined) {
       context.fillStyle = style.fillStyle;
-      context.fill?.();
+      context.fill();
     }
     if (style.strokeStyle !== undefined) {
       context.strokeStyle = style.strokeStyle;
       context.lineWidth = style.lineWidth ?? 1;
-      context.stroke?.();
+      context.stroke();
     }
-    context.restore?.();
+    context.restore();
   }
 
   /**
@@ -330,28 +320,26 @@ class UiRenderer extends CanvasHost {
 
     const style = entry.style ?? {};
 
-    context.save?.();
-    context.beginPath?.();
+    context.save();
+    context.beginPath();
     context.moveTo(points[0].x, points[0].y);
     for (let i = 1; i < points.length; i++) {
       context.lineTo(points[i].x, points[i].y);
     }
     if (g.closePath) {
-      context.closePath?.();
+      context.closePath();
     }
-    if (typeof context.setLineDash === "function") {
-      context.setLineDash(style.lineDash ?? []);
-    }
+    context.setLineDash(style.lineDash ?? []);
     if (style.strokeStyle !== undefined) {
       context.strokeStyle = style.strokeStyle;
       context.lineWidth = style.lineWidth ?? 1;
-      context.stroke?.();
+      context.stroke();
     }
     if (style.fillStyle !== undefined) {
       context.fillStyle = style.fillStyle;
-      context.fill?.();
+      context.fill();
     }
-    context.restore?.();
+    context.restore();
   }
 
   /**
@@ -371,7 +359,7 @@ class UiRenderer extends CanvasHost {
       return [];
     }
 
-    const overlayEntries = this.collectOverlayEntries();
+    const overlayEntries = this.collectProviderOverlayEntries();
 
     const normalizedDirtyRects =
       Array.isArray(dirtyRects) && dirtyRects.length > 0
@@ -382,7 +370,7 @@ class UiRenderer extends CanvasHost {
     if (normalizedDirtyRects.length > 0) {
       _clearDirtyRects(context, normalizedDirtyRects);
     } else {
-      context.clearRect?.(0, 0, viewportRect.width, viewportRect.height);
+      context.clearRect(0, 0, viewportRect.width, viewportRect.height);
     }
 
     if (overlayEntries.length === 0) {
@@ -407,18 +395,18 @@ class UiRenderer extends CanvasHost {
 
       // 有脏区时 clip 到脏区，避免绘制越界
       if (hasDirtyRects) {
-        context.save?.();
-        context.setTransform?.(1, 0, 0, 1, 0, 0);
-        context.beginPath?.();
+        context.save();
+        context.setTransform(1, 0, 0, 1, 0, 0);
+        context.beginPath();
         for (const dirtyRect of normalizedDirtyRects) {
-          context.rect?.(
+          context.rect(
             dirtyRect.left,
             dirtyRect.top,
             dirtyRect.width,
             dirtyRect.height,
           );
         }
-        context.clip?.();
+        context.clip();
       }
 
       entry.draw?.(context, {
@@ -429,7 +417,7 @@ class UiRenderer extends CanvasHost {
       });
 
       if (hasDirtyRects) {
-        context.restore?.();
+        context.restore();
       }
     }
 
