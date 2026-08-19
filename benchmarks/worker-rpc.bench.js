@@ -4,8 +4,8 @@
  * @module benchmarks/worker-rpc
  */
 
-import { createCoreWorkerRuntime } from "../src/core-worker.js";
-import { BoardApiRpc } from "../src/core/bridges/board-api.js";
+import { createCoreWorkerRuntime } from "../src/host/core-worker.js";
+import { BoardApiRpc } from "../src/host/bridges/board-api-rpc.js";
 import { installNoopOffscreenCanvas } from "../src/test-support/noop-canvas.js";
 import { printHeader, printFooter, benchmarkAsync } from "./helpers.js";
 
@@ -54,12 +54,12 @@ async function main() {
     await api.waitUntilReady(1000);
     await api.createBoard({ width: 800, height: 600 });
     await api.createObject("CircleObject", {
-      id: 1,
+      id: "bench-1",
       position: { x: 400, y: 300 },
       data: { radius: 20 },
     });
     await api.createObject("CircleObject", {
-      id: 2,
+      id: "bench-2",
       position: { x: 500, y: 400 },
       data: { radius: 30 },
     });
@@ -73,7 +73,7 @@ async function main() {
       5000,
       ROUNDS,
       async () => {
-        await api.modifyObject(1, { position: { x: 400, y: 300 } });
+        await api.modifyObject("bench-1", { position: { x: 400, y: 300 } });
       },
     );
 
@@ -83,8 +83,8 @@ async function main() {
       ROUNDS,
       async () => {
         await api.modifyObjects([
-          { objectId: 1, patch: { position: { x: 400, y: 300 } } },
-          { objectId: 2, patch: { position: { x: 500, y: 400 } } },
+          { objectId: "bench-1", patch: { position: { x: 400, y: 300 } } },
+          { objectId: "bench-2", patch: { position: { x: 500, y: 400 } } },
         ]);
       },
     );
@@ -94,12 +94,12 @@ async function main() {
       5000,
       ROUNDS,
       async () => {
-        await api.appendListItem(1, "points", [{ x: 400, y: 300 }]);
+        await api.appendListItem("bench-1", "points", [{ x: 400, y: 300 }]);
       },
     );
 
     await benchmarkAsync("queryObjects（2 个 id）", 5000, ROUNDS, async () => {
-      await api.queryObjects([1, 2]);
+      await api.queryObjects(["bench-1", "bench-2"]);
     });
 
     await benchmarkAsync(
@@ -107,15 +107,15 @@ async function main() {
       2000,
       ROUNDS,
       async () => {
-        await api.commitObjects([1, 2]);
+        await api.commitObjects(["bench-1", "bench-2"]);
       },
     );
 
-    let objectId = 10000;
+    let objectSeq = 0;
     await benchmarkAsync("创建 CircleObject", 500, ROUNDS, async () => {
-      objectId++;
+      objectSeq++;
       await api.createObject("CircleObject", {
-        id: objectId,
+        id: `bench-created-${objectSeq}`,
         position: { x: 400, y: 300 },
         data: { radius: 20 },
       });
