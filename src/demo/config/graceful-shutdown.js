@@ -1,5 +1,5 @@
 /**
- * @file 关窗优雅销毁
+ * @file 关窗销毁
  * @description 窗口关闭前销毁 BoardCore（含板 daemon 创建者引用回收），销毁失败或超时不阻塞关窗。
  * @module demo/config/graceful-shutdown
  * @author Zhou Chenyu
@@ -14,7 +14,7 @@
 const CLOSE_DESTROY_TIMEOUT_MS = 3000;
 
 /**
- * 安装关窗优雅销毁钩子
+ * 安装关窗销毁钩子
  * @param {{ destroyBoard: Function }} boardApi - BoardApiRpc 实例
  * @param {{ tauriAvailable?: boolean, closeTimeoutMs?: number }} [options={}] - 运行环境与超时配置
  * @returns {Promise<void>} 钩子注册完成
@@ -36,7 +36,16 @@ async function installGracefulShutdown(boardApi, options = {}) {
     return;
   }
 
-  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  // 无打包器（frontendDist 直出原始 ESM），不能用裸说明符 import @tauri-apps/api；
+  // withGlobalTauri: true 已注入 window.__TAURI__ 全局，直接读取
+  const getCurrentWindow = globalThis.__TAURI__?.window?.getCurrentWindow;
+  if (typeof getCurrentWindow !== "function") {
+    // 全局缺失时降级 beforeunload 尽力销毁（与 web 分支同语义）
+    globalThis.addEventListener?.("beforeunload", () => {
+      void boardApi.destroyBoard();
+    });
+    return;
+  }
   const appWindow = getCurrentWindow();
   // 重入保护：放行自身 close() 再次触发的 close-requested，避免无限拦截
   let closing = false;

@@ -14,10 +14,6 @@ const mockGetCurrentWindow = jest.fn(() => ({
   close: mockClose,
 }));
 
-jest.unstable_mockModule("@tauri-apps/api/window", () => ({
-  getCurrentWindow: mockGetCurrentWindow,
-}));
-
 const { installGracefulShutdown } = await import("../graceful-shutdown.js");
 
 /**
@@ -33,6 +29,11 @@ describe("installGracefulShutdown", () => {
     mockOnCloseRequested.mockReset();
     mockClose.mockReset();
     mockGetCurrentWindow.mockClear();
+    globalThis.__TAURI__ = { window: { getCurrentWindow: mockGetCurrentWindow } };
+  });
+
+  afterEach(() => {
+    delete globalThis.__TAURI__;
   });
 
   test("Tauri 关窗时先销毁 BoardCore 再真正关窗", async () => {
