@@ -9,6 +9,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { WebSocket } from "ws";
+import { resolveFileIdentity } from "./cli-identity.js";
 
 /** daemon name 合法字符集（跨平台文件名安全，不含中文） */
 const DAEMON_NAME_RE = /^[A-Za-z0-9._-]+$/;
@@ -93,23 +94,7 @@ function daemonIdentityFile(name) {
  * 也不回退设备身份（node 进程无 localStorage，设备身份在 daemon 内无法持久化）。
  */
 async function resolveDaemonIdentity(name) {
-  try {
-    const text = await fs.readFile(daemonIdentityFile(name), "utf-8");
-    const desc = JSON.parse(text);
-    if (typeof desc?.source === "string" && desc.source.startsWith("daemon-")) {
-      return desc.source;
-    }
-  } catch {
-    /* 缺失或损坏时按首启处理 */
-  }
-  const random = Math.floor(Math.random() * 36 ** 4);
-  const source = `daemon-${random.toString(36).padStart(4, "0")}`;
-  const file = daemonIdentityFile(name);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  await fs.writeFile(tmp, JSON.stringify({ name, source }), "utf-8");
-  await fs.rename(tmp, file);
-  return source;
+  return resolveFileIdentity(daemonIdentityFile(name), "daemon", { name });
 }
 
 /**

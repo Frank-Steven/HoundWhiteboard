@@ -56,9 +56,6 @@ async function exportBoard(boardRoot, outFile) {
     throw new Error(`板目录不存在或不是板：${boardRoot}`);
   }
   const files = await collectBoardFiles(boardRoot);
-  if (!files.includes(BOARD_META_FILE)) {
-    throw new Error(`板目录不存在或不是板：${boardRoot}`);
-  }
   const zip = new AdmZip();
   for (const rel of files) {
     const abs = path.join(boardRoot, rel);

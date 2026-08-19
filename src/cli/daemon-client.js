@@ -111,15 +111,7 @@ async function connectDescriptor(desc) {
       beginSupra: (key) => invoke("beginSupra", { key }),
       endSupra: (key) => invoke("endSupra", { key }),
       abortSupra: (key) => invoke("abortSupra", { key }),
-      beginMol: (objectIds, options) =>
-        invoke("beginMol", { objectIds, options }),
-      amendMol: (molId, patchesByObject) =>
-        invoke("amendMol", { molId, patchesByObject }),
-      endMol: (molId) => invoke("endMol", { molId }),
-      abortMol: (molId) => invoke("abortMol", { molId }),
       queryOpenMols: () => invoke("queryOpenMols", {}),
-      queryMolAmendSince: (molId, sinceSeq) =>
-        invoke("queryMolAmendSince", { molId, sinceSeq }),
       shutdown: () => invoke("daemon-shutdown", {}),
       hold: () => invoke("daemon-hold", {}),
       release: () => invoke("daemon-release", {}),

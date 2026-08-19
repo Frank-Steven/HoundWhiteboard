@@ -695,7 +695,7 @@ async function startBoardDaemonLocked(options) {
         return;
       }
       if (typeof message?.id === "number" && typeof message?.route === "string") {
-        queue.enqueue(() => handleRpcMessage(session, ws, data));
+        queue.enqueue(() => handleRpcMessage(session, ws, message));
         return;
       }
       if (message?.type !== undefined) {
@@ -768,21 +768,12 @@ async function startBoardDaemonLocked(options) {
  * 分发一条 RPC 消息（BoardApi routes + flush 落盘）
  * @param {Object} session - 板会话
  * @param {Object} ws - WebSocket 连接
- * @param {*} data - 原始消息
+ * @param {Object} message - 已解析的 RPC 消息（id 为 number、route 为 string 已校验）
  * @returns {Promise<void>}
  * @private
  */
-async function handleRpcMessage(session, ws, data) {
-  let message;
-  try {
-    message = JSON.parse(String(data));
-  } catch {
-    return;
-  }
+async function handleRpcMessage(session, ws, message) {
   const { id, route, params } = message ?? {};
-  if (typeof id !== "number" || typeof route !== "string") {
-    return;
-  }
   const entry = BOARD_API_ROUTES[route];
   if (!entry) {
     ws.send(JSON.stringify({ id, ok: false, error: `未知 route：${route}` }));

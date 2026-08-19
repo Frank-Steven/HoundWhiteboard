@@ -5,6 +5,8 @@
  * @author Zhou Chenyu
  */
 
+import { generateShortId } from "./short-id.js";
+
 /**
  * 设备标识的存储键
  * @type {string}
@@ -16,8 +18,7 @@ const STORAGE_KEY = "hwb-device-id";
  * @returns {string} 形如 "dev-xxxx" 的标识
  */
 function generateDeviceId() {
-  const random = Math.floor(Math.random() * 36 ** 4);
-  return `dev-${random.toString(36).padStart(4, "0")}`;
+  return generateShortId("dev");
 }
 
 /**

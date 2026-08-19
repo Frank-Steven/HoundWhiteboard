@@ -87,15 +87,11 @@ async function parseDataArgument(dataText) {
 /**
  * 解析位置参数
  * @param {string} [text] - "x,y" 形式的坐标文本
- * @returns {{x: number, y: number}} 位置
+ * @returns {{x: number, y: number}} 位置（未提供时为原点）
  */
 function parsePosition(text) {
   if (typeof text !== "string") return { x: 0, y: 0 };
-  const [x, y] = text.split(",").map(Number);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    throw new Error(`无效位置：${text}（应为 "x,y"）`);
-  }
-  return { x, y };
+  return parsePair(text, "位置");
 }
 
 /**
@@ -286,7 +282,7 @@ async function cmdDelete(session, args, flags) {
 /**
  * undo 命令：撤销一步
  * @param {Object} session - 板会话
- * @param {string[]} _args - 位置参数（未使用）
+ * @param {string[]} args - 位置参数（args[0] 为可选目标节点 id）
  * @param {Object} flags - 标志（source）
  * @returns {Promise<void>}
  */
