@@ -48,7 +48,7 @@ hwb daemon stop --name board1            # 强制归零关闭
 
 ### GUI 协作
 
-GUI 打开板时检测板目录 `.daemon.json`：有活 daemon 直接作为**协作客户端**（只读挂载板目录、本地 BoardCore 渲染、零写盘、经协作通道与 daemon 双向同步，落盘全在 daemon）；无活 daemon 则请求宿主进程 spawn 一个（name `gui-<板名>-<路径哈希>`，等就绪后连接）。GUI 销毁板时若本端是该 daemon 的 spawn 创建者（本次会话内经宿主 spawn 成功的新实例），断开协作通道后自动发 `daemon release` 回收创建者引用，无其他引用时 daemon 随即自动退出；attach 既有 daemon（CLI 或其他 GUI 启动的）时绝不 release，其创建者引用由 `daemon release` 手动回收。GUI 未走销毁路径（直接关窗、宿主进程被杀）时创建者引用会残留，由 daemon 侧闲置自退出兜底回收（见上）。本机端（CLI/TUI/MCP/GUI）之间不走 relay；relay 只承载跨机协作。
+GUI 打开板时检测板目录 `.daemon.json`：有活 daemon 直接作为**协作客户端**（只读挂载板目录、本地 BoardCore 渲染、零写盘、经协作通道与 daemon 双向同步，落盘全在 daemon）；无活 daemon 则请求宿主进程 spawn 一个（name `gui-<板名>-<路径哈希>`，等就绪后连接）。GUI 销毁板时若本端是该 daemon 的 spawn 创建者（本次会话内经宿主 spawn 成功的新实例），断开协作通道后自动发 `daemon release` 回收创建者引用，无其他引用时 daemon 随即自动退出；attach 既有 daemon（CLI 或其他 GUI 启动的）时绝不 release，其创建者引用由 `daemon release` 手动回收。GUI 正常关窗会先走销毁路径（demo 侧拦截 close-requested 销毁 BoardCore，超时兜底放行关窗）；宿主进程被强杀等无机会执行关窗钩子的场景创建者引用会残留，由 daemon 侧闲置自退出兜底回收（见上）。本机端（CLI/TUI/MCP/GUI）之间不走 relay；relay 只承载跨机协作。
 
 ## 命令寻址
 

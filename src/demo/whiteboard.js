@@ -17,6 +17,7 @@ import {
 import { resolveDeviceSource } from "../utils/device-identity.js";
 import { installSyncConsole } from "./config/sync-console.js";
 import { enableWorkerWithFallback } from "./config/enable-worker-with-fallback.js";
+import { installGracefulShutdown } from "./config/graceful-shutdown.js";
 import { DemoLog } from "./config/log.js";
 import { ViewportTool } from "./config/viewport-tool.js";
 import {
@@ -88,6 +89,9 @@ async function bootstrapWhiteboard() {
       },
     },
   );
+
+  // 关窗前销毁 BoardCore：回收板 daemon 创建者引用，daemon 无其他引用时随即退出
+  await installGracefulShutdown(board.getBoardApi(), { tauriAvailable });
 
   const viewport = board.createViewport(
     foregroundLayer,
