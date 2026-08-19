@@ -59,4 +59,3 @@
 
 - [utils-document.md](./utils-document.md)
 - [math-document.md](./math-document.md)
-- [math3d-document.md](./math3d-document.md)

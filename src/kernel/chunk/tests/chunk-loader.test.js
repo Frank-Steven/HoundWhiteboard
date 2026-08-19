@@ -13,20 +13,7 @@ describe("ChunkLoader", () => {
     const chunkByCoordinate = loader.getChunkByCoordinate(0, 0);
 
     expect(chunkByCoordinate).toBe(chunkById);
-    expect(loader.chunksLoadedCount).toBe(1);
-  });
-
-  test("应在已管理区块之间同步四向邻接引用", () => {
-    const loader = new ChunkLoader();
-
-    const center = loader.getChunkByCoordinate(0, 0);
-    const right = loader.getChunkByCoordinate(1, 0);
-    const up = loader.getChunkByCoordinate(0, 1);
-
-    expect(center.rightChunk).toBe(right);
-    expect(right.leftChunk).toBe(center);
-    expect(center.upChunk).toBe(up);
-    expect(up.downChunk).toBe(center);
+    expect(loader.chunksLoaded.size).toBe(1);
   });
 
   test("应支持按 id、坐标卸载和 clear", () => {
@@ -36,15 +23,15 @@ describe("ChunkLoader", () => {
     loader.getChunkByCoordinate(0, 0);
     loader.getChunkByCoordinate(1, 0);
 
-    expect(loader.unloadChunkByCoordinate(1, 0)).toBe(true);
-    expect(loader.chunksLoadedCount).toBe(1);
+    expect(loader.unloadChunkById(Chunk.coordinateToId(1, 0))).toBe(true);
+    expect(loader.chunksLoaded.size).toBe(1);
     expect(loader.unloadChunkById(1)).toBe(true);
-    expect(loader.chunksLoadedCount).toBe(0);
+    expect(loader.chunksLoaded.size).toBe(0);
 
     loader.getChunkByCoordinate(0, 0);
     loader.getChunkByCoordinate(0, 1);
     expect(loader.clear()).toBe(true);
-    expect(loader.chunksLoadedCount).toBe(0);
+    expect(loader.chunksLoaded.size).toBe(0);
     expect(unloadHandler).toHaveBeenCalledTimes(4);
   });
 
@@ -85,26 +72,6 @@ describe("ChunkLoader", () => {
     expect(loader.chunksLoaded.size).toBe(0);
 
     jest.useRealTimers();
-  });
-
-  test("cancelScheduledDestroy 应取消挂起的销毁", () => {
-    jest.useFakeTimers();
-
-    const loader = new ChunkLoader();
-    loader.getChunkById(1);
-    loader.destroy(200);
-
-    expect(loader.cancelScheduledDestroy()).toBe(true);
-    // 快进定时器后 loader 仍应存活
-    jest.advanceTimersByTime(200);
-    expect(loader.chunksLoaded.size).toBe(1);
-
-    jest.useRealTimers();
-  });
-
-  test("cancelScheduledDestroy 无挂起销毁时返回 false", () => {
-    const loader = new ChunkLoader();
-    expect(loader.cancelScheduledDestroy()).toBe(false);
   });
 
   test("延迟销毁期间调 trackChunk 应自动取消定时的销毁", () => {
@@ -153,17 +120,15 @@ describe("ChunkLoader", () => {
     jest.useRealTimers();
   });
 
-  test("应由 ChunkLoader 直接发出加载、卸载与缓冲区更新事件", () => {
+  test("应由 ChunkLoader 直接发出加载与卸载事件", () => {
     const bus = new EventBus();
     const chunk = Chunk.fromCoordinate(0, 0);
     const loader = new ChunkLoader({ eventBus: bus, requesterId: "loader-1" });
     const loadHandler = jest.fn();
     const unloadHandler = jest.fn();
-    const updateHandler = jest.fn();
 
     bus.on(CHUNK_LOAD_EVENTS.REQUEST_LOAD, loadHandler);
     bus.on(CHUNK_LOAD_EVENTS.REQUEST_UNLOAD, unloadHandler);
-    bus.on(CHUNK_LOAD_EVENTS.BUFFER_UPDATED, updateHandler);
 
     expect(
       loader.emitLoadRequest(chunk, {
@@ -173,15 +138,6 @@ describe("ChunkLoader", () => {
       }),
     ).toBe(true);
     expect(loader.emitUnloadRequest(chunk, { source: "test" })).toBe(true);
-    expect(
-      loader.emitBufferUpdated({
-        action: "reset",
-        direction: "none",
-        chunkNow: chunk,
-        chunksLoaded: [chunk],
-        bufferBounds: { minX: 0, maxX: 0, minY: 0, maxY: 0 },
-      }),
-    ).toBe(true);
 
     expect(loadHandler).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -198,13 +154,6 @@ describe("ChunkLoader", () => {
         requesterId: "loader-1",
         chunk,
         source: "test",
-      }),
-    );
-    expect(updateHandler).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "reset",
-        direction: "none",
-        chunkNow: chunk,
       }),
     );
   });

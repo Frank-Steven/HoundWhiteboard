@@ -12,8 +12,7 @@
 
 - 持有当前 loader 作用域中的区块实例
 - 提供按区块 id / 坐标解析区块实例的统一入口
-- 维护当前持有集合内部的四向邻接引用
-- 发出区块加载、区块卸载与缓冲区更新事件
+- 发出区块加载与区块卸载事件
 - 清理当前 loader 的持有关系与事件上下文
 
 它不负责：
@@ -43,7 +42,6 @@
 2. 若未持有，优先调用 `resolveChunkById(chunkId)`
 3. 若未提供解析器，则回退到 `Chunk.fromId(chunkId)`
 4. 将结果纳入当前 `ChunkLoader` 持有范围
-5. 刷新当前持有集合内部的邻接引用
 
 ### `getChunkByCoordinate(x, y)`
 
@@ -51,7 +49,7 @@
 
 ## 卸载模型
 
-### `unloadChunkById(chunkId)` / `unloadChunkByCoordinate(x, y)`
+### `unloadChunkById(chunkId)`
 
 卸载当前 loader 持有的某个区块。
 
@@ -66,10 +64,6 @@
 
 适合“需要真实触发卸载逻辑”的场景。
 
-### `reset()`
-
-只清空当前持有关系，不触发 `unloadChunk` 钩子。
-
 ### `destroy(delayMs?)`
 
 当前实现会：
@@ -78,7 +72,7 @@
 - 清空本地持有关系
 - 释放 `eventBus`、`resolveChunkById`、`unloadChunk`、`requesterId`
 
-传入 `delayMs > 0` 时为延时销毁：先挂起定时，到期后才执行上述销毁；定时期间可显式调用 `cancelScheduledDestroy()` 取消，任何追踪/访问方法（`trackChunk`、`getChunkById`、`emitLoadRequest` 等）也会自动取消挂起的定时。AOM 在 `apply()` 批量预加载后以 `destroy(300)` 延时销毁临时 loader，保留已预加载区块供短时间内后续 apply 复用缓存。
+传入 `delayMs > 0` 时为延时销毁：先挂起定时，到期后才执行上述销毁；定时期间任何追踪/访问方法（`trackChunk`、`getChunkById`、`emitLoadRequest` 等）会自动取消挂起的定时。AOM 在 `apply()` 批量预加载后以 `destroy(300)` 延时销毁临时 loader，保留已预加载区块供短时间内后续 apply 复用缓存。
 
 ## 与 `BoardCore` 的关系
 
@@ -104,14 +98,13 @@
 
 - `chunk-loader:request-load`
 - `chunk-loader:request-unload`
-- `chunk-loader:buffer-updated`
 - `chunk-loader:load-complete`
 
 对应常量定义在 `CHUNK_LOAD_EVENTS`。
 
 ## 实现状态
 
-- 已实现：区块实例持有、按 id/坐标获取、按 id/坐标卸载、清空持有集合、集合内部邻接同步，以及区块加载相关事件发射
+- 已实现：区块实例持有、按 id/坐标获取、按 id 卸载、清空持有集合，以及区块加载相关事件发射
 - 已接线：`BoardCore` 根 loader、`ViewportCore` loader、AOM 临时 loader
 - 待完善：更细粒度的 loader 共享策略、生命周期统计，以及更复杂的错误恢复路径
 

@@ -2,14 +2,12 @@
 
 import { jest } from "@jest/globals";
 import {
-  chunkConnect,
   createChunk,
   createChunkAt,
   createCoverChunkStorage,
   createMockBoard,
   createObjectInChunk,
   setObjectCoverage,
-  verticalChunkConnect,
 } from "../../../../test-support/aom-fixtures.js";
 import { DirectedGraph } from "../../../utils/directed-graph.js";
 import { Chunk } from "../../../chunk/chunk.js";
@@ -100,7 +98,6 @@ describe("ActiveObjectManager/pickup", () => {
           height: CHUNK_SIZE,
         }),
       );
-      chunkConnect(chunk1, chunk2);
       chunk1.objectManager = new ChunkObjectManager(
         1,
         createCoverChunkStorage(),
@@ -201,10 +198,6 @@ describe("ActiveObjectManager/pickup", () => {
       setObjectCoverage([chunk2, chunk3], [5, 16]);
       setObjectCoverage([chunk3, chunk4], [7, 14]);
       setObjectCoverage([chunk4, chunk5], [9, 12]);
-      chunkConnect(chunk1, chunk2);
-      chunkConnect(chunk2, chunk3);
-      chunkConnect(chunk3, chunk4);
-      chunkConnect(chunk4, chunk5);
     });
     test("应能选取多对象为起点且含多区块跨区块对象链的子图", async () => {
       const pickup6n19 = await aom.pickup(
@@ -272,9 +265,6 @@ describe("ActiveObjectManager/pickup", () => {
         [104, []],
       ]);
       setObjectCoverage([centerChunk, upChunk, rightUpChunk], [100]);
-      chunkConnect(centerChunk, rightChunk);
-      verticalChunkConnect(centerChunk, upChunk);
-      verticalChunkConnect(rightChunk, rightUpChunk);
       const pickup = await aom.pickup(
         new Set([createObject(100, centerChunk.id)]),
       );
@@ -318,8 +308,6 @@ describe("ActiveObjectManager/pickup", () => {
         [202, []],
       ]);
       setObjectCoverage([startChunk, centerChunk], [200]);
-      chunkConnect(upperChunk, startChunk);
-      verticalChunkConnect(centerChunk, upperChunk);
       const pickup = await aom.pickup(
         new Set([createObject(200, startChunk.id)]),
       );
@@ -365,7 +353,6 @@ describe("ActiveObjectManager/pickup", () => {
         upChunk.id,
         Chunk.coordinateToId(1, 1),
       ]);
-      verticalChunkConnect(centerChunk, upChunk);
       const pickup = await aom.pickup(
         new Set([createObject(300, centerChunk.id)]),
       );
@@ -406,8 +393,6 @@ describe("ActiveObjectManager/pickup", () => {
         [400, [402]],
         [402, []],
       ]);
-      chunkConnect(centerChunk, rightChunk);
-      verticalChunkConnect(centerChunk, upChunk);
       setObjectCoverage([centerChunk, rightChunk], [400]);
       const pickupBeforeMove = await aom.pickup(
         new Set([createObject(400, centerChunk.id)]),
@@ -458,8 +443,10 @@ describe("ActiveObjectManager/pickup", () => {
           x === 0 && y === 0 ? chunk : undefined,
         ),
         createChunkLoader: jest.fn(() => ({
+          requesterId: "aom-mock",
           trackChunk: jest.fn(),
           emitLoadRequest: jest.fn(),
+          destroy: jest.fn(),
         })),
       };
       const aom = new ActiveObjectManager(board);
@@ -525,6 +512,7 @@ describe("ActiveObjectManager/pickup", () => {
         },
         chunkLoadEventBus: eventBus,
         createChunkLoader: () => ({
+          requesterId: "aom-mock",
           trackChunk: jest.fn(),
           emitLoadRequest: emitLoadMock,
           destroy: jest.fn(),
@@ -611,6 +599,7 @@ describe("ActiveObjectManager/pickup", () => {
           chunks.get(Chunk.coordinateToId(x, y)),
         chunkLoadEventBus: eventBus,
         createChunkLoader: () => ({
+          requesterId: "aom-mock",
           trackChunk: jest.fn(),
           emitLoadRequest: emitLoadMock,
           destroy: jest.fn(),

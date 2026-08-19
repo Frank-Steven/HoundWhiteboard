@@ -7,7 +7,6 @@
 当前对象体系主要可以分成几类：
 
 - **基础根类**：`BasicObject`
-- **容器/维度骨架**：`Container`、`OneDimensionObject`、`TwoDimensionObject`
 - **图形对象族**：`GraphObject`、`CircleObject`、`EllipseObject`、`PolygonObject`
 - **笔画对象族**：`StrokeObject`
 
@@ -21,56 +20,6 @@
 - `rich`
 
 来组织。
-
-## `Container`
-
-`Container` 定义在：
-
-```text
-src/kernel/objects/container.js
-```
-
-它派生于 [BasicObject](./basic-classes-document.md)，并引入 `ContainerMode` 概念。
-
-### 当前实现状态
-
-当前 `Container` 代码层主要提供：
-
-- `mode`
-- `ContainerMode.NORMAL`
-- `ContainerMode.STRETCH`
-- `ContainerMode.WINDOW`
-- `ContainerMode.SHRINK`
-
-需要特别说明：
-
-- 文档层常见的“容器包裹子对象、进入容器编辑内部对象”等 richer 语义，当前并没有在 `container.js` 中完整实现为运行时代码
-- 因此更适合把它理解为**对象族层级骨架 + 容器模式概念承载**
-
-## 一维 / 二维对象骨架
-
-### `OneDimensionObject`
-
-定义于：
-
-```text
-src/kernel/objects/one-dim/one-dim-obj.js
-```
-
-当前在 `Container` 基础上增加：
-
-- `ihatLength`
-- `ihatRotate`
-
-### `TwoDimensionObject`
-
-定义于：
-
-```text
-src/kernel/objects/two-dim/two-dim-obj.js
-```
-
-当前主要作为二维对象的类型骨架存在。
 
 ## 图形对象族
 
@@ -131,7 +80,6 @@ src/kernel/objects/object-deserializer.js
 ## 当前状态
 
 - `BasicObject`、`GraphObject`、`CircleObject`、`EllipseObject`、`PolygonObject`、`StrokeObject` 都已有明确运行时代码
-- `Container`、`OneDimensionObject`、`TwoDimensionObject` 当前更多承担对象族层级骨架与概念角色
 - 统一反序列化入口已接通 Circle / Ellipse / Polygon / Stroke
 
 ## 相关文档

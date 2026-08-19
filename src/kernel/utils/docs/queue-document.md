@@ -14,7 +14,7 @@
 
 ## 数据结构
 
-与 `Deque` 类似，`Queue` 使用循环数组并预留一个空位区分空和满。
+`Queue` 使用循环数组并预留一个空位区分空和满。
 
 ### 核心字段
 
@@ -57,5 +57,4 @@
 ## 相关文档
 
 - [utils-document.md](./utils-document.md)
-- [deque-document.md](./deque-document.md)
 - [directed-graph-document.md](./directed-graph-document.md)

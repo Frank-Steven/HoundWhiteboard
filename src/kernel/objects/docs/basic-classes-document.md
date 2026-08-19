@@ -7,11 +7,8 @@
 当前这组基础对象模块主要包括：
 
 - `basic-obj.js`：`BasicObject`
-- `container.js`：`Container` / `ContainerMode`
-- `one-dim/one-dim-obj.js`：`OneDimensionObject`
-- `two-dim/two-dim-obj.js`：`TwoDimensionObject`
 
-其中真正被当前图形与笔画对象直接复用的基础类是 `BasicObject`。
+它是当前图形与笔画对象直接复用的基础类。
 
 ## `BasicObject`
 
@@ -131,24 +128,10 @@ src/kernel/objects/object-deserializer.js
 - `CircleObject`
 - `EllipseObject`
 
-## `Container` / `OneDimensionObject` / `TwoDimensionObject`
-
-这三个类更多保留为对象族层级的基础骨架：
-
-- `Container`：定义容器对象与 `ContainerMode`
-- `OneDimensionObject`：在 `Container` 上增加 `ihatLength` / `ihatRotate`
-- `TwoDimensionObject`：二维对象骨架
-
-需要注意：
-
-- `Container` 当前代码中主要实现了 `mode` 与 `ContainerMode`
-- 更丰富的“容器包裹子对象”语义目前仍偏概念层，不应在文档中写成当前完整实现能力
-
 ## 当前状态
 
 - `BasicObject` 是当前对象体系最稳定的公共根类
 - `deserialize()` 已接通 Circle / Ellipse / Polygon / Stroke 四类对象
-- Container / 一维 / 二维对象基类仍主要承担类型层级与概念承载作用
 
 ## 相关文档
 

@@ -59,15 +59,6 @@ class ChunkObjectManager {
   }
 
   /**
-   * 通过 Board 间接获取对象实例
-   * @param {string} objectId - 对象 id
-   * @returns {BasicObject | undefined}
-   */
-  getObject(objectId) {
-    return this.board?.getObjectById?.(objectId);
-  }
-
-  /**
    * 设置对象覆盖区块集合
    * @description 委托到 BoardCore 的唯一覆盖索引。
    * @param {string} objectId - 对象 id
@@ -209,19 +200,11 @@ class ChunkObjectManager {
 
   /**
    * 从可持久化结构恢复对象覆盖区块索引
-   * @param {Array<[number, number[]]>} coverIndexData - 覆盖索引数据
+   * @description 覆盖索引由 BoardCore 集中持有；盘上 `objectCoverIndex` 恒为空数组，逐条写回 BoardCore 索引。
+   * @param {Array<[string, number[]]>} coverIndexData - 覆盖索引数据
    */
   loadObjectCoverChunksFromData(coverIndexData) {
-    for (const entry of coverIndexData || []) {
-      if (!Array.isArray(entry) || entry.length !== 2) {
-        throw new Error("Invalid object cover index entry.");
-      }
-
-      const [objectId, chunkIds] = entry;
-      if (!Number.isInteger(objectId)) {
-        throw new Error("Invalid object id in cover index.");
-      }
-
+    for (const [objectId, chunkIds] of coverIndexData || []) {
       this.setObjectCoverChunks(objectId, chunkIds || []);
     }
   }

@@ -45,12 +45,6 @@
 
 ## 核心接口
 
-### 对象实例访问
-
-- `getObject(objectId)`：通过 `board.getObjectById(...)` 间接获取对象实例
-
-当前运行时中，这里的 `board` 主要指向 Worker 侧 `BoardCore`。
-
 ### 覆盖索引接口
 
 - `setObjectCoverChunks(objectId, chunkIds)`

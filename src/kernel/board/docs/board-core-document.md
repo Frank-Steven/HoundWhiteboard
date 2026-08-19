@@ -30,7 +30,7 @@ UI 侧的 `Board` facade 通过 `BoardApiRpc` 与 Worker 侧的 `BoardCore` 通�
 | `activeObjectManager` | AOM 实例，管理活动对象集合与动态层关系                                                  |
 | `chunkLoaded`         | `Map<chunkId, BoardChunkLoadedState>`，记录各区块的加载计数与 loader 策略               |
 | `objectLoaded`        | `Map<objectId, BoardObjectLoadedState>`，白板级对象实例注册表                           |
-| `chunkLoadEventBus`   | 区块加载事件总线（REQUEST_LOAD / REQUEST_UNLOAD / BUFFER_UPDATED / LOAD_COMPLETE）      |
+| `chunkLoadEventBus`   | 区块加载事件总线（REQUEST_LOAD / REQUEST_UNLOAD / LOAD_COMPLETE）                       |
 | `activityEventBus`    | AOM 活动事件总线（ephemeral），本地 choose/unchoose/commit 手势事件即时广播，不经日志   |
 | `rootChunkLoader`     | 根区块加载器，负责区块实例的创建、持有、释放                                            |
 | `persistenceAdapter`  | 持久化适配器接口，内存模式使用默认实现，文件模式使用 `createRendererPersistenceAdapter` |

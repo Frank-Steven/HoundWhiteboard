@@ -164,9 +164,9 @@ class BasicObject {
    */
   getRenderPadding() {
     const strokeWidthCandidates = [
-      this.property?.strokeWidth,
-      this.property?.width,
-      this.property?.outlineWidth,
+      this.property.strokeWidth,
+      this.property.width,
+      this.property.outlineWidth,
     ].filter((value) => Number.isFinite(value) && value > 0);
 
     if (strokeWidthCandidates.length === 0) {
@@ -174,8 +174,8 @@ class BasicObject {
     }
 
     const transform = this.transform;
-    const scaleX = transform ? Math.hypot(transform.a, transform.b) : 1;
-    const scaleY = transform ? Math.hypot(transform.c, transform.d) : 1;
+    const scaleX = Math.hypot(transform.a, transform.b);
+    const scaleY = Math.hypot(transform.c, transform.d);
 
     return (Math.max(...strokeWidthCandidates) / 2) * Math.max(scaleX, scaleY);
   }

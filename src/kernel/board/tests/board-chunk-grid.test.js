@@ -37,24 +37,6 @@ describe("Board chunk grid", () => {
     expect(Chunk.isValidChunkIdentity(3, 0, 0)).toBe(false);
   });
 
-  test("Chunk 应能从已加载的 neighbor 访问上下左右关联", () => {
-    const center = Chunk.fromId(1);
-    const right = Chunk.fromId(2);
-    const left = Chunk.fromId(5);
-    const up = Chunk.fromId(3);
-    const down = Chunk.fromId(9);
-
-    Chunk.connectTwoChunk(center, right, "right");
-    Chunk.connectTwoChunk(center, left, "left");
-    Chunk.connectTwoChunk(center, up, "up");
-    Chunk.connectTwoChunk(center, down, "down");
-
-    expect(right.leftChunk).toBe(center);
-    expect(left.rightChunk).toBe(center);
-    expect(up.downChunk).toBe(center);
-    expect(down.upChunk).toBe(center);
-  });
-
   test("BoardCore 应能通过 getChunkById 查找已加载区块", async () => {
     const boardCore = new BoardCore({
       width: 800,

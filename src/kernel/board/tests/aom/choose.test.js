@@ -2,14 +2,12 @@
 
 import { jest } from "@jest/globals";
 import {
-  chunkConnect,
   createChunk,
   createChunkAt,
   createCoverChunkStorage,
   createMockBoard,
   createObjectInChunk,
   setObjectCoverage,
-  verticalChunkConnect,
 } from "../../../../test-support/aom-fixtures.js";
 
 import { DirectedGraph } from "../../../utils/directed-graph.js";
@@ -142,8 +140,10 @@ describe("ActiveObjectManager/choose", () => {
           chunkId === 1 ? ownerChunk : undefined,
         ),
         createChunkLoader: jest.fn(() => ({
+          requesterId: "aom-mock",
           trackChunk: jest.fn(),
           emitLoadRequest: jest.fn(),
+          destroy: jest.fn(),
         })),
       };
       aom = new ActiveObjectManager(board, { renderHooks });
@@ -332,10 +332,6 @@ describe("ActiveObjectManager/choose", () => {
       ]);
 
       setObjectCoverage([centerChunk, upChunk, rightUpChunk], [100]);
-
-      chunkConnect(centerChunk, rightChunk);
-      verticalChunkConnect(centerChunk, upChunk);
-      verticalChunkConnect(rightChunk, rightUpChunk);
 
       await aom.choose(new Set([createObject(100, centerChunk.id)]));
 

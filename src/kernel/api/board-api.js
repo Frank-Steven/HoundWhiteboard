@@ -21,7 +21,6 @@ import { hashString } from "../utils/hash.js";
 import { IncrementalIdPool } from "../utils/incremental-id-pool.js";
 import { intersectsRanges, RectangleRange } from "../range/index.js";
 import { ChunkObjectManager } from "../chunk/chunk-object-manager.js";
-import { CHUNK_LOAD_EVENTS } from "../chunk/chunk-loader.js";
 import { Chunk } from "../chunk/chunk.js";
 import { BoardCore } from "../board/board-core.js";
 import { createDefaultAomRenderHooks } from "../board/aom-render-hooks.js";
@@ -46,7 +45,7 @@ const ERASE_COARSE_MARGIN = 64;
  */
 function hasStaticBoardObject(boardCore, objectId) {
   for (const { chunk } of boardCore.chunkLoaded.values()) {
-    if (chunk?.objectManager?.staticGraph?.hasNode?.(objectId)) {
+    if (chunk?.objectManager?.staticGraph?.hasNode(objectId)) {
       return true;
     }
   }
@@ -59,11 +58,10 @@ function hasStaticBoardObject(boardCore, objectId) {
  * @returns {import("../range/index.js").RectangleRange | null} 世界包围矩形
  */
 function getObjectWorldRect(obj) {
-  if (typeof obj?.getRange !== "function" || !obj.position) return null;
+  if (!obj?.position) return null;
   const range = obj.getRange();
-  if (!range || typeof range.withPosition !== "function") return null;
-  const positioned = range.withPosition(obj.position);
-  return positioned ? RectangleRange.from(positioned) : null;
+  if (!range) return null;
+  return RectangleRange.from(range.withPosition(obj.position));
 }
 
 /**
@@ -181,7 +179,7 @@ class BoardApi {
   #resolveObjectChunkId(objectId) {
     const boardCore = this.#boardCore;
     for (const { chunk } of boardCore.chunkLoaded.values()) {
-      if (chunk?.objectManager?.staticGraph?.hasNode?.(objectId)) {
+      if (chunk?.objectManager?.staticGraph?.hasNode(objectId)) {
         return String(chunk.id);
       }
     }
@@ -206,7 +204,7 @@ class BoardApi {
     const chunks = [];
     for (const { chunk } of this.#boardCore.chunkLoaded.values()) {
       const graph = chunk?.objectManager?.staticGraph;
-      if (!graph?.hasNode?.(objectId)) continue;
+      if (!graph?.hasNode(objectId)) continue;
       chunks.push({
         chunkId: String(chunk.id),
         below: [...graph.predecessors(objectId)].sort(),
@@ -276,7 +274,7 @@ class BoardApi {
     if (!obj) {
       throw new Error(`Object ${objectId} not found.`);
     }
-    if (!boardCore.activeObjectManager?.isActive?.(objectId)) {
+    if (!boardCore.activeObjectManager.isActive(objectId)) {
       throw new Error(`对象 ${objectId} 不是活动对象：更改前须先选择（进入动态图）`);
     }
     return obj;
@@ -309,7 +307,7 @@ class BoardApi {
       // 列表增量追加（创建手势逐点追点走 amend 的载体）
       obj.appendListItem(patch.append.key, ...(patch.append.items ?? []));
     }
-    boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
+    boardCore.aomRenderHooks.requestActiveRender([obj]);
   }
 
   /**
@@ -350,7 +348,7 @@ class BoardApi {
     const obj = this.#requireActiveObject(objectId);
     obj.appendListItem(key, ...(items ?? []));
     this.#materializedMarks.delete(objectId);
-    this.#boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
+    this.#boardCore.aomRenderHooks.requestActiveRender([obj]);
   }
 
   /**
@@ -365,7 +363,7 @@ class BoardApi {
     const obj = this.#requireActiveObject(objectId);
     obj.replaceListItem(key, index, item);
     this.#materializedMarks.delete(objectId);
-    this.#boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
+    this.#boardCore.aomRenderHooks.requestActiveRender([obj]);
   }
 
   /**
@@ -588,7 +586,7 @@ class BoardApi {
    * @private
    */
   #emitAmend(message) {
-    this.#boardCore.activityEventBus?.emit("amend", message);
+    this.#boardCore.activityEventBus.emit("amend", message);
   }
 
   /**
@@ -601,7 +599,7 @@ class BoardApi {
   removeListItem(objectId, key, index) {
     const obj = this.#requireActiveObject(objectId);
     obj.removeListItem(key, index);
-    this.#boardCore.aomRenderHooks?.requestActiveRender?.([obj]);
+    this.#boardCore.aomRenderHooks.requestActiveRender([obj]);
   }
 
   /**
@@ -627,16 +625,16 @@ class BoardApi {
       const obj = boardCore.getObjectById(objectId);
       if (!obj) continue;
       // 远程活动对象被来源锁定，本地不可删除
-      if (boardCore.activeObjectManager?.isRemoteActive?.(objectId)) continue;
+      if (boardCore.activeObjectManager.isRemoteActive(objectId)) continue;
 
-      if (aom?.isActive?.(objectId)) {
+      if (aom.isActive(objectId)) {
         activeToDiscard.push(obj);
       }
 
       // 删除记录与 trash 条目携带删除时刻的层位边：接收端与跨会话撤销凭以恢复
       const trashChunks = this.#captureLayerEdges(objectId) ?? [];
       for (const { chunk } of boardCore.chunkLoaded.values()) {
-        if (!chunk?.objectManager?.staticGraph?.hasNode?.(objectId)) continue;
+        if (!chunk?.objectManager?.staticGraph?.hasNode(objectId)) continue;
         chunk.removeObject(objectId);
         affectedChunks.add(chunk);
       }
@@ -679,7 +677,7 @@ class BoardApi {
 
     if (
       affectedChunks.size > 0 &&
-      boardCore.aomRenderHooks?.requestStaticRender
+      boardCore.aomRenderHooks.requestStaticRender
     ) {
       boardCore.aomRenderHooks.requestStaticRender([...affectedChunks]);
     }
@@ -697,7 +695,7 @@ class BoardApi {
     const chunks = [];
     for (const { chunk } of boardCore.chunkLoaded.values()) {
       const graph = chunk?.objectManager?.staticGraph;
-      if (!graph?.hasNode?.(objectId)) continue;
+      if (!graph?.hasNode(objectId)) continue;
       chunks.push({
         chunk,
         graph,
@@ -706,10 +704,10 @@ class BoardApi {
       });
     }
     let layerMembership = null;
-    const layer = boardCore.activeObjectManager?.onLayer?.get(objectId);
-    if (layer?.activeObjects?.has(objectId)) {
+    const layer = boardCore.activeObjectManager.onLayer.get(objectId);
+    if (layer?.activeObjects.has(objectId)) {
       layerMembership = { layer, kind: "active" };
-    } else if (layer?.inactiveGraph?.hasNode?.(objectId)) {
+    } else if (layer?.inactiveGraph.hasNode(objectId)) {
       layerMembership = {
         layer,
         kind: "inactive",
@@ -913,8 +911,8 @@ class BoardApi {
       if (typeof obj.eraseData !== "function") continue;
       // 已被选中的对象（本地或远程活动对象）不能被擦除
       if (
-        boardCore.activeObjectManager?.isActive?.(objectId) ||
-        boardCore.activeObjectManager?.isRemoteActive?.(objectId)
+        boardCore.activeObjectManager.isActive(objectId) ||
+        boardCore.activeObjectManager.isRemoteActive(objectId)
       ) {
         continue;
       }
@@ -1020,10 +1018,10 @@ class BoardApi {
     }
 
     if (correctedChunks.size > 0) {
-      boardCore.aomRenderHooks?.requestStaticRender?.([...correctedChunks]);
+      boardCore.aomRenderHooks.requestStaticRender([...correctedChunks]);
     }
     if (modifiedStaticObjects.length > 0) {
-      boardCore.aomRenderHooks?.requestStaticRenderForObjects?.(
+      boardCore.aomRenderHooks.requestStaticRenderForObjects(
         modifiedStaticObjects,
         [],
         previousWorldRects,
@@ -1308,7 +1306,7 @@ class BoardApi {
    */
   #emitActivity(kind, ids, choice) {
     if (!Array.isArray(ids) || ids.length === 0) return;
-    this.#boardCore.activityEventBus?.emit("activity", {
+    this.#boardCore.activityEventBus.emit("activity", {
       kind,
       ids: [...ids],
       source: this.#boardCore.hitCommitter.source,
@@ -1564,25 +1562,23 @@ class BoardApi {
       .map((objectId) => {
         const obj = boardCore.getObjectById(objectId);
         if (!obj) return null;
-        const isActive = aom?.isActive?.(objectId) ?? false;
+        const isActive = aom.isActive(objectId);
         return {
           id: obj.id,
           type: obj.constructor.name,
           isActive,
-          choice: aom?.choiceOf?.(objectId),
+          choice: aom.choiceOf(objectId),
           position: { x: obj.position.x, y: obj.position.y },
-          transform: obj.transform
-            ? {
-              a: obj.transform.a,
-              b: obj.transform.b,
-              c: obj.transform.c,
-              d: obj.transform.d,
-            }
-            : undefined,
-          boundingBox: obj.rich?.boundingBox,
+          transform: {
+            a: obj.transform.a,
+            b: obj.transform.b,
+            c: obj.transform.c,
+            d: obj.transform.d,
+          },
+          boundingBox: obj.rich.boundingBox,
           range: obj.getRange(),
-          property: { ...(obj.property ?? {}) },
-          data: { ...(obj.data ?? {}) },
+          property: { ...obj.property },
+          data: { ...obj.data },
         };
       })
       .filter(Boolean);
@@ -1726,7 +1722,7 @@ class BoardApi {
       if (!graph) continue;
       const nodes = [...graph.getNodes()];
       // 本地未闭合会话的主体合法偏离派生态（提交时重算居上），其所在区块跳过
-      if (nodes.some((id) => aom?.isActive?.(id))) continue;
+      if (nodes.some((id) => aom.isActive(id))) continue;
       const derivedGraph = scratchCore.getChunkById(chunk.id)?.objectManager?.staticGraph;
       const edgesOf = (g) =>
         [...g.getNodes()]
@@ -1749,12 +1745,12 @@ class BoardApi {
     }
 
     if (affectedChunks.size > 0) {
-      boardCore.aomRenderHooks?.requestStaticRender?.([...affectedChunks]);
+      boardCore.aomRenderHooks.requestStaticRender([...affectedChunks]);
     }
     const repaired = fixedIds.length > 0 || trashChanged;
     if (repaired) {
       // 文档状态变化：UI 工具凭此清理本地失效选中（同远端应用路径）
-      boardCore.activityEventBus?.emit("hit-changed", { time: Date.now() });
+      boardCore.activityEventBus.emit("hit-changed", { time: Date.now() });
     }
     return { repaired, fixedIds };
   }
@@ -1788,7 +1784,7 @@ class BoardApi {
     this.#remoteChoicesDirty = false;
     const ids = [...this.#remoteChoicesDirtyIds];
     this.#remoteChoicesDirtyIds.clear();
-    this.#boardCore.activityEventBus?.emit("remote-activity", {
+    this.#boardCore.activityEventBus.emit("remote-activity", {
       time: Date.now(),
       ids,
     });
@@ -1848,12 +1844,14 @@ class BoardApi {
    * @private
    */
   async #collectHitObjects(boardCore, queryRange) {
+    let chunkIds;
+    let loader;
     if (
       boardCore.width > 0 &&
       boardCore.height > 0 &&
       typeof queryRange.left === "number"
     ) {
-      const chunkIds = ChunkObjectManager.calculateCoveredChunkIdsForRange(
+      chunkIds = ChunkObjectManager.calculateCoveredChunkIdsForRange(
         queryRange,
         boardCore.width,
         boardCore.height,
@@ -1863,38 +1861,16 @@ class BoardApi {
         .filter((chunk) => chunk && (chunk.isTempLoad || !chunk.isLoad));
 
       if (chunksToLoad.length > 0) {
-        const loader = boardCore.createChunkLoader(
+        loader = await boardCore.loadChunksAndWaitComplete(
+          chunksToLoad,
           `hit-test-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         );
-        for (const chunk of chunksToLoad) {
-          loader.trackChunk(chunk);
-          loader.emitLoadRequest(chunk, { strategy: "full" });
-          await new Promise((resolve) => {
-            const handler = (payload) => {
-              if (payload.chunkId === chunk.id) {
-                boardCore.chunkLoadEventBus.off(
-                  CHUNK_LOAD_EVENTS.LOAD_COMPLETE,
-                  handler,
-                );
-                resolve();
-              }
-            };
-            boardCore.chunkLoadEventBus.on(
-              CHUNK_LOAD_EVENTS.LOAD_COMPLETE,
-              handler,
-            );
-          });
-        }
-
-        const hits = this.#runHitTest(boardCore, queryRange, chunkIds);
-        loader.destroy(300);
-        return hits;
       }
-
-      return this.#runHitTest(boardCore, queryRange, chunkIds);
     }
 
-    return this.#runHitTest(boardCore, queryRange);
+    const hits = this.#runHitTest(boardCore, queryRange, chunkIds);
+    loader?.destroy(300);
+    return hits;
   }
 
   /**
@@ -1919,7 +1895,7 @@ class BoardApi {
         }
       }
 
-      const worldRange = obj.getRange()?.withPosition?.(obj.position);
+      const worldRange = obj.getRange()?.withPosition(obj.position);
       if (!worldRange) continue;
 
       if (intersectsRanges(worldRange, queryRange)) {
@@ -2111,7 +2087,7 @@ class BoardApi {
       this.#applyOpEffect(afterRecords[i], affectedChunks);
     }
     if (affectedChunks.size > 0) {
-      this.#boardCore.aomRenderHooks?.requestStaticRender?.([...affectedChunks]);
+      this.#boardCore.aomRenderHooks.requestStaticRender([...affectedChunks]);
     }
     return diverge !== beforeRecords.length || diverge !== afterRecords.length;
   }
@@ -2140,7 +2116,7 @@ class BoardApi {
           // 擦除回写等绕过 AOM 会话的修改：层位边以记录为准（手势会话的层位由 unchoose 记录承载）
           if (
             payload.chunks?.after !== undefined &&
-            !boardCore.activeObjectManager?.has?.(payload.objectId)
+            !boardCore.activeObjectManager.has(payload.objectId)
           ) {
             this.#applyRecordedLayerEdges(payload.objectId, payload.chunks.after, affectedChunks);
             // 缝合：日志序先于本记录但提交捕获后才到达的相交对象不在记录中，按后写者居上补齐
@@ -2183,7 +2159,7 @@ class BoardApi {
         // 本地活动中的对象（会话冲突由链序收敛）不动边
         if (
           payload.chunks !== undefined &&
-          !boardCore.activeObjectManager?.isActive?.(payload.objectId)
+          !boardCore.activeObjectManager.isActive(payload.objectId)
         ) {
           this.#applyRecordedLayerEdges(payload.objectId, payload.chunks, affectedChunks);
           // 缝合：日志序先于本记录但提交捕获后才到达的相交对象不在记录中，按后写者居上补齐
@@ -2222,7 +2198,7 @@ class BoardApi {
           // 携带层位边的修改（擦除回写）：逆放恢复修改前的边并按后到者居上缝合
           if (
             payload.chunks?.before !== undefined &&
-            !this.#boardCore.activeObjectManager?.has?.(payload.objectId)
+            !this.#boardCore.activeObjectManager.has(payload.objectId)
           ) {
             this.#restoreRecordedLayerEdges(payload.objectId, payload.chunks.before, affectedChunks);
           }
@@ -2244,7 +2220,7 @@ class BoardApi {
         // 恢复选择时刻的提取边并缝合：撤销选择（或整个会话）后对象回到选择前的层位
         if (
           payload.chunks !== undefined &&
-          !this.#boardCore.activeObjectManager?.has?.(payload.objectId)
+          !this.#boardCore.activeObjectManager.has(payload.objectId)
         ) {
           this.#restoreRecordedLayerEdges(payload.objectId, payload.chunks, affectedChunks);
         }
@@ -2302,7 +2278,7 @@ class BoardApi {
   #syncObjectChunkMembership(obj, affectedChunks) {
     const boardCore = this.#boardCore;
     if (boardCore.width <= 0 || boardCore.height <= 0) return;
-    if (boardCore.activeObjectManager?.has?.(obj.id)) return;
+    if (boardCore.activeObjectManager.has(obj.id)) return;
     const rect = getObjectWorldRect(obj);
     if (!rect) return;
     const next = ChunkObjectManager.calculateCoveredChunkIdsForRange(
@@ -2315,7 +2291,7 @@ class BoardApi {
     for (const chunkId of prev) {
       if (next.has(chunkId)) continue;
       const chunk = boardCore.getChunkById(chunkId);
-      if (chunk?.objectManager?.staticGraph?.hasNode?.(obj.id)) {
+      if (chunk?.objectManager?.staticGraph?.hasNode(obj.id)) {
         chunk.removeObject(obj.id);
         affectedChunks.add(chunk);
       }
@@ -2324,7 +2300,7 @@ class BoardApi {
       const chunk = boardCore.getChunkById(chunkId);
       if (!chunk) continue;
       const graph = chunk.objectManager?.staticGraph;
-      if (graph?.hasNode?.(obj.id)) continue;
+      if (graph?.hasNode(obj.id)) continue;
       const below = graph
         ? graph.getNodes().filter((nodeId) => {
             const nodeRect = getObjectWorldRect(boardCore.getObjectById(nodeId));
@@ -2332,6 +2308,7 @@ class BoardApi {
           })
         : [];
       chunk.addObject(obj, below, []);
+      boardCore.registerObjectInstance(obj);
       affectedChunks.add(chunk);
     }
     // chunk.removeObject 会顺带清掉覆盖索引条目，统一在最后重写
@@ -2415,12 +2392,12 @@ class BoardApi {
     }
     this.#chooseSnapshots.delete(objectId);
     for (const { chunk } of boardCore.chunkLoaded.values()) {
-      if (chunk?.objectManager?.staticGraph?.hasNode?.(objectId)) {
+      if (chunk?.objectManager?.staticGraph?.hasNode(objectId)) {
         chunk.removeObject(objectId);
       }
     }
     const aom = boardCore.activeObjectManager;
-    if (aom?.onLayer?.get(objectId)) {
+    if (aom.onLayer.get(objectId)) {
       aom.removeObjectFromLayer(objectId);
       aom.unregisterTrackedActiveObject(objectId);
     }
@@ -2518,11 +2495,11 @@ class BoardApi {
     for (const entry of chunksEntries ?? []) {
       const chunk = boardCore.getChunkById(Number(entry.chunkId));
       const graph = chunk?.objectManager?.staticGraph;
-      if (!graph?.hasNode?.(obj.id)) continue;
+      if (!graph?.hasNode(obj.id)) continue;
       const recorded = new Set([...(entry.below ?? []), ...(entry.above ?? [])]);
       for (const nodeId of graph.getNodes()) {
         if (nodeId === obj.id || recorded.has(nodeId)) continue;
-        if (aom?.has?.(nodeId)) continue;
+        if (aom.has(nodeId)) continue;
         const nodeRect = getObjectWorldRect(boardCore.getObjectById(nodeId));
         if (!nodeRect || !intersectsRanges(rect, nodeRect)) continue;
         const [from, to] = position === "above" ? [nodeId, obj.id] : [obj.id, nodeId];
@@ -2746,7 +2723,7 @@ class BoardApi {
     const applied = list.length;
     if (applied > 0) {
       // 远程文档变化：UI 工具凭此清理本地失效选中（幽灵选择）
-      this.#boardCore.activityEventBus?.emit("hit-changed", {
+      this.#boardCore.activityEventBus.emit("hit-changed", {
         time: Date.now(),
       });
     }

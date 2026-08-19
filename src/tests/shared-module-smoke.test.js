@@ -14,7 +14,6 @@ const SHARED_MODULE_PATHS = [
   "../kernel/range/index.js",
   "../kernel/utils/math.js",
   "../kernel/utils/math-algorithm.js",
-  "../kernel/utils/chain.js",
   "../renderers/canvas/render-scheduler.js",
   "../renderers/canvas/renderer.js",
   "../renderers/canvas/dirty-rect-strategy-shared.js",

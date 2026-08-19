@@ -60,7 +60,7 @@ describe("ActiveObjectManager/apply", () => {
       const coveredChunk = board.getChunkById(2);
 
       expect(board.activeObjectManager.activeObjectIndex.size).toBe(0);
-      expect(ownerChunk.objectManager.getObject(15)).toBe(stroke);
+      expect(board.getObjectById(15)).toBe(stroke);
       expect(ownerChunk.objectManager.getObjectCoverChunks(15)).toEqual(
         new Set([1, 2, 3]),
       );
@@ -210,9 +210,13 @@ describe("ActiveObjectManager/apply", () => {
           if (chunkId === 2) return coveredChunk;
           return undefined;
         }),
+        setObjectCoverChunks: jest.fn(),
+        registerObjectInstance: jest.fn(),
         createChunkLoader: jest.fn(() => ({
+          requesterId: "aom-mock",
           trackChunk: jest.fn(),
           emitLoadRequest: jest.fn(),
+          destroy: jest.fn(),
         })),
       };
       const aom = new ActiveObjectManager(board, { renderHooks });
@@ -268,9 +272,13 @@ describe("ActiveObjectManager/apply", () => {
         getChunkById: jest.fn((chunkId) =>
           chunkId === 1 ? ownerChunk : undefined,
         ),
+        setObjectCoverChunks: jest.fn(),
+        registerObjectInstance: jest.fn(),
         createChunkLoader: jest.fn(() => ({
+          requesterId: "aom-mock",
           trackChunk: jest.fn(),
           emitLoadRequest: jest.fn(),
+          destroy: jest.fn(),
         })),
       };
       const aom = new ActiveObjectManager(board, { renderHooks });
@@ -288,73 +296,6 @@ describe("ActiveObjectManager/apply", () => {
       expect(previousWorldRects.get(301)).toEqual(
         RectangleRange.from(stroke.getRange().withPosition(new Vector(0, 0))),
       );
-    });
-
-    test("apply 在层级变化但几何不变时也应把受影响的静态邻接对象纳入局部失效", async () => {
-      const lower = new StrokeObject(401, new Vector(0, 0));
-      lower.setData({
-        points: [new Vector(1, 1), new Vector(8, 8)].map((p) => ({
-          x: p.x,
-          y: p.y,
-        })),
-      });
-      const upper = new StrokeObject(402, new Vector(0, 0));
-      upper.setData({
-        points: [new Vector(2, 2), new Vector(9, 9)].map((p) => ({
-          x: p.x,
-          y: p.y,
-        })),
-      });
-
-      const ownerChunk = createChunk(1);
-      ownerChunk.objectManager = new ChunkObjectManager(
-        1,
-        createCoverChunkStorage(),
-      );
-      ownerChunk.objectManager.staticGraph = DirectedGraph.parse([
-        [401, [402]],
-        [402, []],
-      ]);
-      ownerChunk.objectManager.setObjectCoverChunks(401, [1]);
-      ownerChunk.objectManager.setObjectCoverChunks(402, [1]);
-
-      const requestStaticRenderForObjects = jest.fn();
-      const renderHooks = {
-        requestActiveRender: jest.fn(),
-        requestStaticRender: jest.fn(),
-        requestStaticRenderForObjects,
-        flushViewportForObjects: jest.fn(),
-      };
-      const objectMap = new Map([
-        [401, lower],
-        [402, upper],
-      ]);
-      const board = {
-        width: 10,
-        height: 10,
-        getObjectById: jest.fn((objectId) => objectMap.get(objectId)),
-        getChunkById: jest.fn((chunkId) =>
-          chunkId === 1 ? ownerChunk : undefined,
-        ),
-        createChunkLoader: jest.fn(() => ({
-          trackChunk: jest.fn(),
-          emitLoadRequest: jest.fn(),
-        })),
-      };
-      const aom = new ActiveObjectManager(board, { renderHooks });
-
-      await aom.choose(new Set([lower]));
-      aom.liftup(new Set([lower]));
-      requestStaticRenderForObjects.mockClear();
-      aom.apply(new Set([lower]));
-
-      expect(requestStaticRenderForObjects).toHaveBeenCalledTimes(1);
-      const [invalidatedObjects] = requestStaticRenderForObjects.mock.calls[0];
-      expect(
-        invalidatedObjects
-          .map((objectInstance) => objectInstance.id)
-          .sort((a, b) => a - b),
-      ).toEqual([401, 402]);
     });
   });
 

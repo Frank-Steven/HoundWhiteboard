@@ -321,6 +321,39 @@ class BoardCore {
   }
 
   /**
+   * FullLoad 指定区块并等待全部加载完成
+   * @description 先注册监听再触发加载（加载可能同步完成，事件先于注册会错过）。
+   * 不能用 once：多区块并发加载时首个 LOAD_COMPLETE 会消耗全部 once 监听，
+   * 仅匹配者 resolve、其余监听已被移除而永久挂起（如圆对象跨区块场景）。
+   * @param {Chunk[]} chunks - 待加载的区块实例
+   * @param {number | string} requesterId - loader 请求方 id
+   * @returns {Promise<ChunkLoader>} 完成加载的 loader，由调用方负责销毁
+   */
+  async loadChunksAndWaitComplete(chunks, requesterId) {
+    const loader = this.createChunkLoader(requesterId);
+    await Promise.all(
+      chunks.map((chunk) => {
+        loader.trackChunk(chunk);
+        const promise = new Promise((resolve) => {
+          const handler = (payload) => {
+            if (payload.chunkId === chunk.id) {
+              this.chunkLoadEventBus.off(
+                CHUNK_LOAD_EVENTS.LOAD_COMPLETE,
+                handler,
+              );
+              resolve();
+            }
+          };
+          this.chunkLoadEventBus.on(CHUNK_LOAD_EVENTS.LOAD_COMPLETE, handler);
+        });
+        loader.emitLoadRequest(chunk, { strategy: "full" });
+        return promise;
+      }),
+    );
+    return loader;
+  }
+
+  /**
    * 获取根区块加载器
    * @returns {ChunkLoader}
    */
@@ -345,26 +378,6 @@ class BoardCore {
    */
   getChunkByCoordinate(x, y) {
     return this.rootChunkLoader.getChunkByCoordinate(x, y);
-  }
-
-  /**
-   * 获取区块的左右邻区块
-   * @param {Chunk} chunk - 当前区块
-   * @param {"right" | "left" | "up" | "down"} direction - 方向
-   * @returns {Chunk | undefined}
-   */
-  getNeighborChunk(chunk, direction) {
-    if (!chunk) return undefined;
-
-    const delta = {
-      right: { x: 1, y: 0 },
-      left: { x: -1, y: 0 },
-      up: { x: 0, y: 1 },
-      down: { x: 0, y: -1 },
-    }[direction];
-    if (!delta) return undefined;
-
-    return this.getChunkByCoordinate(chunk.x + delta.x, chunk.y + delta.y);
   }
 
   /**
@@ -670,14 +683,12 @@ class BoardCore {
     if (!chunk || !effectiveBoardRootPath) return;
 
     const objectIds = [
-      ...(chunk.objectManager?.staticGraph?.getNodes?.() ?? []),
+      ...(chunk.objectManager?.staticGraph.getNodes() ?? []),
     ];
     const serializedObjects = objectIds
       .map((id) => this.getObjectById(id))
       .filter(Boolean)
-      .map((obj) =>
-        obj && typeof obj.serialize === "function" ? obj.serialize() : obj,
-      );
+      .map((obj) => obj.serialize());
 
     if (serializedObjects.length > 0) {
       await this.persistenceAdapter.saveObjects(serializedObjects);
@@ -800,7 +811,7 @@ class BoardCore {
       this.#registerChunkLoadRequest(chunk.id, requesterId, strategy);
 
     const shouldSyncChunkObjects =
-      (chunk?.objectManager?.staticGraph?.getNodes?.()?.length ?? 0) > 0;
+      (chunk.objectManager?.staticGraph.getNodes().length ?? 0) > 0;
 
     if (effectiveStrategy === CHUNK_LOAD_STRATEGIES.FULL) {
       const changed = await chunk.loadFull();
@@ -851,7 +862,7 @@ class BoardCore {
     if (!removedStrategy) return false;
 
     const shouldSyncChunkObjects =
-      (chunk?.objectManager?.staticGraph?.getNodes?.()?.length ?? 0) > 0;
+      (chunk.objectManager?.staticGraph.getNodes().length ?? 0) > 0;
 
     if (
       removedStrategy === CHUNK_LOAD_STRATEGIES.FULL &&

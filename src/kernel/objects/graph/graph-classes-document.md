@@ -104,7 +104,6 @@ src/kernel/objects/graph/graph.js
 
 - `GraphObject` 已作为图形对象族公共基类落地
 - `CircleObject`、`EllipseObject` 与 `PolygonObject` 已接入统一反序列化入口
-- `graph3d.js` 仍不是当前主交互链路中的稳定对象类型，应视为预留或扩展模块
 
 ## 相关文档
 

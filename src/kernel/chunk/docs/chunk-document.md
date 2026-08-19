@@ -20,7 +20,6 @@
 | `x` / `y`                                            | 区块二维坐标                               | `number`                          |
 | `board`                                              | 所属白板引用，当前主路径通常是 `BoardCore` | `BoardCore \| Board \| undefined` |
 | `objectManager`                                      | 区块对象管理器                             | `ChunkObjectManager \| undefined` |
-| `leftChunk` / `rightChunk` / `upChunk` / `downChunk` | 邻接区块引用                               | `Chunk \| undefined`              |
 | `isLoad`                                             | 当前是否已加载                             | `boolean`                         |
 | `isTempLoad`                                         | 当前是否处于临时加载状态                   | `boolean`                         |
 
@@ -91,9 +90,10 @@
 会：
 
 - 确保存在 `objectManager`
-- 必要时通过 `board.registerObjectInstance(obj)` 注册对象
 - 向静态图加入对象节点
 - 根据 `below` / `above` 建立层叠边
+
+对象实例的白板级注册由调用方经 `BoardCore.registerObjectInstance` 显式完成。
 
 ### `removeObject(objectId)`
 
@@ -110,7 +110,6 @@
 | `coordinateToId(x, y)`                              | 二维坐标转 id                |
 | `isValidChunkIdentity(id, x, y)`                    | 判断区块 id 与坐标是否匹配   |
 | `worldToChunkId(worldPos, chunkWidth, chunkHeight)` | 世界坐标转区块 id            |
-| `connectTwoChunk(first, second, direction)`         | 连接两个邻接区块             |
 | `addObject(obj, below, above)`                      | 向静态图加入对象             |
 | `removeObject(objectId)`                            | 从静态图移除对象             |
 | `loadTemp()`                                        | 临时加载区块元数据           |

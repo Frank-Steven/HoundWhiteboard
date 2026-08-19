@@ -121,4 +121,3 @@ $$
 
 - [utils-document.md](./utils-document.md)
 - [math-algorithm-document.md](./math-algorithm-document.md)
-- [math3d-document.md](./math3d-document.md)
